@@ -4,6 +4,30 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+* **`examples/aep/` gains the evidence preconditions phase 3 asks for.** `story`'s `implement` and
+  `architecture-decision-record`'s `accept` now cost at least one `test_result`, evaluated
+  three-valued — so *nobody presented one* refuses as unobservable naming
+  `$args.evidence.test_result`, and *a count was presented and it is short* refuses as failed. The
+  first sends somebody to produce a record; the second to argue about the one that exists. That
+  distinction is the whole of `engineering-protocols` gap-register `:39`, and it is why three-valued
+  rules were built before this.
+
+  Only the guarded operations declare an `evidence` argument, so passing one to `propose` is refused
+  as an argument the operation does not take — the schema doing its job rather than a special case.
+  No edge changed.
+
+  The equivalence test gained a second half to match: a rung the pinned ladder charges for must be
+  charged for here too, paired by `(target status, evidence kind)`. Not by count or wording —
+  upstream declares `at_least` on a status and these definitions declare a `gte` on a verb-named
+  operation, so pinning the sentence would pin a translation rather than the claim. Verified by
+  deleting the precondition and watching it fail.
+
+  The pin moves to `engineering-protocols` `a193caa`, where `artifacts/lifecycles/story.yaml` now
+  carries that requirement for real. `scripts/check-upstream-pin.py` found the drift on its own,
+  two days after being written for exactly this.
+
 ### Changed — behaviour you may be relying on
 
 * **`entity graph` takes several definition files and two more formats.** The positional argument is

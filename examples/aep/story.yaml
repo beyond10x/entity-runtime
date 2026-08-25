@@ -149,10 +149,24 @@ operations:
   implement:
     arguments:
       fields:
+        # What was presented, counted by kind. `json` so a path into it is a run-time question:
+        # a requirement can name a kind without this definition listing every kind that exists.
+        evidence:
+          type: json
         actor:
           type: string
           required: true
           min_length: 1
+    preconditions:
+      # Phase 3 of the adoption design, and gap-register `:39` there: *a story's `implemented` is a
+      # claim nothing checks*. It is checked when the ladder asks — and three-valued, so the two
+      # refusals are different sentences. Nobody presented a test result reads as *unobservable*,
+      # naming `$args.evidence.test_result`; a count that is too low reads as *failed*. The first
+      # sends somebody to produce a record, the second to argue about the one that exists.
+      - name: 'evidence: test_result'
+        message: an implemented story carries at least one test result
+        assert:
+          gte: [$args.evidence.test_result, 1]
     transitions:
       - from: active
         to: implemented
