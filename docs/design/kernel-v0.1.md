@@ -1,6 +1,6 @@
 # The kernel — design v0.1
 
-**Status: normative for 0.1.** What `entity-core` does and why; `docs/requirements.md` is the
+**Status: normative for 0.1, revised after the 0.1.0 adversarial review (§ 13).** What `entity-core` does and why; `docs/requirements.md` is the
 register this satisfies, and each requirement id appears where the design meets it. Where code and
 this document disagree, the document wins until a later revision of it says otherwise.
 
@@ -56,8 +56,15 @@ operations: ...        # transitions, args, rules, set, events   § 3.3
 Fields have a kind — `string`, `integer`, `number`, `boolean`, `enum`, `array`, `object`, `json`
 (R-20) — and constraints: `required`, `default`, `min_length`, `max_length`, `min`, `max`, `values`,
 `items`, `properties`, `additional_properties`, and `additional_fields` on the schema itself (R-21).
+A constraint written on a kind it does not govern — `values` on a `string`, `items` on an `object` —
+is **refused at registration** (R-26). Ignoring it would leave an author believing a field is
+constrained when nothing checks it, which is the same failure as a rule that silently enforces half
+of what it says.
 Defaults are applied first, then everything is validated (R-22), and validation **accumulates**: a
-document with four broken values reports four errors, each with a path (R-23). Undeclared fields are
+document with four broken values reports four errors, each with a path (R-23). A default is applied
+at every depth an object or array element already reaches, but never invents the object that would
+hold it. Numbers are compared numerically rather than coerced: an integer above `i64::MAX` used to
+wrap to `-1`, pass a `max` bound and report a `min` failure naming a value nobody sent (R-20). Undeclared fields are
 refused unless the schema opts in (R-24); the fields document itself must be an object (R-25).
 
 The same `ObjectSchema` type describes an operation's arguments (R-40), so arguments get exactly the
@@ -76,8 +83,18 @@ declared here but on operations, because the edge *is* the operation: it has arg
 events of its own. `from` may be one state or several (R-31); two transitions of one operation
 starting from the same state would leave the kernel guessing, so the definition is refused (R-33).
 
-The lifecycle state is not a field. Nothing writes `lifecycle_state` except `create` and `execute`,
-and the kernel exposes no setter (R-34). An operation with no transition from the
+The lifecycle state is not a field **of the model**: nothing writes `lifecycle_state` except
+`create` and `execute`, the kernel exposes no setter, and there is no generic status write (R-34).
+
+What that does *not* say — and the first draft of this document did, wrongly — is that a caller
+cannot hand the kernel an instance carrying whatever state they like. An `EntityInstance` is data a
+store round-trips, so its fields are public and it deserialises; the kernel cannot know whether the
+instance in front of it is the one it produced. That is the shell's to know, and it is why storing
+an instance and appending its events is one job (§ 9, R-80). What the kernel *can* check, and now
+does, is that the instance could exist at all: its `(entity, version)` must match, and its state
+must be one the definition declares, else `UnknownState` (R-35). A sealed instance type — private
+fields, parsed through a validated `Raw` — would make the stronger claim true; it is a breaking
+change and a story, and until it lands this paragraph is the honest version. An operation with no transition from the
 current state is refused as `InvalidTransition` before any rule is evaluated (R-32). A generic
 `PATCH {status: fulfilled}` is the thing this design exists to make impossible: a status change is an operation, with a name, arguments and
 rules, or it does not happen.
@@ -122,11 +139,14 @@ Two kinds, distinguished by *what they may see*, which is what keeps them honest
 | belongs to | an operation | the entity |
 | evaluated | after arguments and transition, before `set` (R-50) | after creation and after every operation, on the **next** state, before events escape (R-51) |
 | may read | `$args.*`, `$fields.*`, `$old_fields.*`, `$from_state`, `$to_state`, `$id`, `$entity`, `$version` | `$fields.*`, `$state`, `$id`, `$entity`, `$version` |
+| may **not** read | `$state` — in a rule it would mean the state the operation is heading *for*, so `eq: [$state, draft]` on `draft → submitted` refuses every time it should pass | `$args.*`, `$old_fields.*`, `$from_state`, `$to_state` |
 | refusal | `PreconditionFailed { operation, rule, message }` | `InvariantViolation { rule, message }` |
 
 An invariant that could read `$args` would be a precondition in disguise, true only for the
-operation that happened to supply the argument. Refusing the reference at registration (R-14)
-makes the distinction a property of the definition rather than a convention.
+operation that happened to supply the argument. Refusing the reference at registration (R-14, R-52)
+makes the distinction a property of the definition rather than a convention — and the check follows
+the whole path, so `$fields.address.countri` is refused where `$fields.address.country` is accepted,
+rather than registering and then reading `false` forever.
 
 Rules carry an optional `name` and `message`; both appear in the refusal, and a rule without a
 message gets a default (R-56).
@@ -148,14 +168,22 @@ assert:
 ```
 
 Operators: `all`, `any`, `not`, `exists`, `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`,
-and the literals `true`/`false`. `all` and `any` must not be empty. Semantics (R-54):
+and the literals `true`/`false`. `all` and `any` must not be empty, and a condition carries
+**exactly one** operator: a mapping with two of them, or with a misspelled one, is refused by name
+rather than parsed as whichever variant matched first and quietly missing the rest (R-16). The same
+rule holds for every key of a definition document — `requried: true` is a defect, not a comment.
+Semantics (R-54):
 
 * a reference that does not resolve makes a comparison or membership test **false**; `exists` is the
   one operator that asks about presence;
 * `all` and `any` short-circuit in declaration order, which is deterministic because evaluation has
   no side effects;
-* `gt`/`gte`/`lt`/`lte` compare numbers and are `false` for anything else; `eq`/`ne` compare JSON
-  values structurally;
+* `gt`/`gte`/`lt`/`lte` compare numbers and are `false` for anything else;
+* `eq`/`ne`/`in`/`contains` compare structurally **except for numbers, which compare numerically**
+  (R-54): `100` equals `100.0`. Comparing a number's representation instead would make the operator
+  families disagree — `eq: [$fields.total, 100]` false while `all: [gte 100, lte 100]` true — so a
+  definition tested with integer fixtures would refuse the same document written with a decimal
+  point;
 * `contains` is array∋element, string⊇substring, or object∋key.
 
 There is no function call, loop, arithmetic, clock, random source or lookup (R-55). The `Condition`
@@ -178,6 +206,12 @@ literal; `$$` escapes a literal leading dollar; arrays and objects are resolved 
 The references are `$id`, `$entity`, `$version`, `$state`/`$to_state`, `$from_state`, `$args`,
 `$args.<path>`, `$fields`, `$fields.<path>`, `$old_fields`, `$old_fields.<path>` (R-61).
 
+A template is checked when the definition is registered, against the scope it sits in (R-64): a
+creation event has no arguments and no previous state, an operation template may read both, and a
+reference to an argument the operation does not declare is refused there and then. A definition that
+`entity validate` accepts is therefore one whose templates can resolve — except for a path into a
+`json` field, whose shape no schema describes and which stays a run-time `Template` error (R-63).
+
 There is deliberately no `$now`, `uuid()` or lookup (R-62). An operation that needs a timestamp
 declares an argument:
 
@@ -195,6 +229,7 @@ error, never a `null` written into an event somebody will later read as a fact (
 An operation runs in exactly this order (R-70), and a refusal at any step returns before the next:
 
 ```text
+ 0. instance carries a state the definition declares        UnknownState
  1. instance (entity, version) matches the definition      EntityMismatch
  2. operation exists                                        OperationNotFound
  3. arguments: defaults, then validation                    Validation
@@ -216,6 +251,9 @@ is zero", and invariants after `set` means the state a rule judges is the state 
 stored.
 
 ## 7. Outputs and refusals
+
+The identity is the caller's and is opaque to the kernel — which is not the same as absent: an
+empty or whitespace id is refused (R-75).
 
 ```rust
 pub struct EntityInstance { entity, version, id, lifecycle_state, revision, fields }   // R-71
@@ -302,3 +340,34 @@ in a further crate that depends on `entity-core` and never the other way round.
 
 What may not: the eleven-step order, the two rule scopes, the refusal-changes-nothing property, the
 absence of IO, and the absence of `$now`.
+
+## 13. What the 0.1.0 review changed
+
+An adversarial review of the 0.1.0 tag — a hands-on pass against the shipped binary and an
+independent multi-angle code review — produced findings in three classes. The record, with each
+finding's reproduction, is [`docs/reviews/2026-08-25-adversarial-review.md`](../reviews/2026-08-25-adversarial-review.md).
+
+**Defects the code now refuses**, each a new or widened requirement: a constraint on a kind it does
+not govern (R-26); a definition key or condition operator that was silently dropped (R-16); a
+second definition registered over an existing one (R-15); an instance claiming an undeclared state
+(R-35); a template whose scope could never resolve it (R-64); an empty identity (R-75); an integer
+outside `i64` wrapping negative (R-20); a nested reference path nobody checked (R-14); a default
+declared inside an object and never applied (R-22); `$state` read from a precondition (R-52);
+numbers compared by representation (R-54). In the shell: input parsed as YAML when it was JSON, and
+two flags reading one standard input (R-94); DOT written without escaping (R-95); `validate`
+stopping at the first bad file (R-96).
+
+**Claims the documents made and the code did not keep.** R-34 said the lifecycle state was closed
+*by the type*; it is closed by the kernel's own writes, and § 3.2 now says which is which. R-01's
+scan was evadable by a grouped import, an alias, `std::io`, `include_str!` or a line beginning with
+`*`; it now strips comments and strings properly, expands every `use` path, and matches whole
+words, and it is checked against fourteen plantings and eight lookalikes. The requirements checker
+accepted any `fn` as a pin, and could not see a row whose id cell carried a marker; both are fixed,
+and the second is now itself a check.
+
+**Judgements recorded rather than changed.** Rules stay two-valued: *missing* reads `false`, not
+`unknown`. That is enough for a lifecycle and not enough for an evidence gate, and the difference is
+the first thing `engineering-protocols` needs — `story:three-valued-conditions`, and § 4 of
+[`engineering-protocols-adoption-v0.1.md`](engineering-protocols-adoption-v0.1.md). A sealed
+`EntityInstance` would make R-34's strongest reading true and is a breaking change; it stays on the
+roadmap with the reason written down.

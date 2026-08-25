@@ -84,6 +84,7 @@ const config: Config = {
         {to: '/docs/guide/cli', label: 'CLI', position: 'left'},
         {to: '/docs/requirements', label: 'Requirements', position: 'left'},
         {to: '/docs/design/kernel-v0.1', label: 'Design', position: 'left'},
+        {to: '/docs/reviews/2026-08-25-adversarial-review', label: 'Review', position: 'left'},
         {
           href: 'https://github.com/beyond10x/entity-runtime',
           label: 'GitHub',
@@ -110,6 +111,7 @@ const config: Config = {
             {label: 'Requirements register', to: '/docs/requirements'},
             {label: 'Kernel design', to: '/docs/design/kernel-v0.1'},
             {label: 'Driving engineering-protocols', to: '/docs/design/engineering-protocols-adoption-v0.1'},
+            {label: 'Adversarial review (0.1.0)', to: '/docs/reviews/2026-08-25-adversarial-review'},
           ],
         },
         {

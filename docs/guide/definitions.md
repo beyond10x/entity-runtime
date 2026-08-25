@@ -5,6 +5,11 @@ the rules are an AST, the templates are values with `$` references, and there is
 an expression. That is what lets the kernel validate a definition when it is registered and
 evaluate it identically everywhere.
 
+**Every key is closed.** A key the model does not declare is refused, not ignored — `requried: true`
+would otherwise leave a field optional while its author believed it was required, and a
+`precondition:` that should have been `preconditions:` would leave an operation unguarded. The same
+holds inside a condition: exactly one operator, spelled correctly.
+
 ```yaml
 entity: order          # the type name; must not be empty
 version: 1             # default 1; must be > 0; (entity, version) is the identity
@@ -43,8 +48,16 @@ schema:
 | `object` | a nested object | `properties`, `additional_properties` |
 | `json` | anything | — |
 
-Every field accepts `required` and `default`. Defaults are applied **before** validation, and a
-default is itself validated against its field when the definition is registered.
+Every field accepts `required` and `default`. Defaults are applied **before** validation, at every
+depth an object or array element already reaches — a `default` on a nested property of an object
+that was supplied is filled in — and a default is itself validated against its field when the
+definition is registered. A default never invents the object that would hold it: supply
+`{"address": {}}` and its properties' defaults land; supply nothing and no `address` appears.
+
+A constraint written on a kind it does not govern is **refused**, not ignored: `values` on a
+`string`, `items` on an `object`, `min_length` on an `integer`. An `integer` outside the range of a
+64-bit signed value is compared numerically rather than wrapped, so a huge number cannot pass a
+`max` bound.
 
 Validation **accumulates**: an object with four bad values reports four errors, each with a path
 (`fields.total_cents`, `arguments.items[2].sku`). An undeclared field is an error unless
@@ -123,11 +136,16 @@ Two kinds, told apart by **what they may see**:
 | belongs to | an operation | the entity |
 | evaluated | after arguments and transition, before `set` | after creation and after every operation, on the **next** state, before events escape |
 | may read | `$args.*` `$fields.*` `$old_fields.*` `$from_state` `$to_state` `$id` `$entity` `$version` | `$fields.*` `$state` `$id` `$entity` `$version` |
+| may **not** read | `$state` | `$args.*` `$old_fields.*` `$from_state` `$to_state` |
 | refusal | `precondition_failed` | `invariant_violation` |
 
-An invariant that could read `$args` would be a precondition in disguise. The reference is refused
-when the definition is registered, as is any reference to a field or argument the schema does not
-declare.
+An invariant that could read `$args` would be a precondition in disguise. A precondition that could
+read `$state` would be worse: `$state` is the state the operation is heading *for*, so
+`eq: [$state, draft]` on a `draft → submitted` transition reads as "we are in draft" and refuses
+every time it should pass. Both references are refused when the definition is registered — as is
+any reference to a field, nested property or argument the schema does not declare:
+`$fields.address.countri` is refused where `$fields.address.country` is accepted, and
+`$fields.title.length` is refused because `title` is a string and nothing lives below it.
 
 ```yaml
 invariants:
@@ -159,8 +177,12 @@ An `assert` is an AST:
 | `contains: [container, needle]` | array ∋ element, string ⊇ substring, or object ∋ key |
 
 A reference that does not resolve makes a comparison or membership test **false**; `exists` is
-the one operator that asks about presence. There is no function call, loop, arithmetic, clock,
-random source or lookup.
+the one operator that asks about presence. Numbers compare **numerically** everywhere, so
+`eq: [$fields.total, 100]` holds for `100` and for `100.0` and agrees with `gte`/`lte`. There is no
+function call, loop, arithmetic, clock, random source or lookup.
+
+A condition carries exactly one operator. Two in one mapping — the indentation slip that puts `any:`
+beside `all:` — is refused by name rather than silently enforcing the first.
 
 > Known limit: *missing* and *false* are one verdict. A consumer that must tell *nobody looked*
 > from *it is wrong* needs a third value — see the [kernel design § 4](../design/kernel-v0.1.md#4-the-condition-language).
@@ -182,12 +204,16 @@ literal; `$$` escapes a literal leading dollar; arrays and objects are resolved 
 
 There is no `$now` and no `uuid()`. An operation that needs a timestamp declares an argument —
 `occurred_at: { type: string, required: true }` — and the shell, which has a clock, supplies it.
-A reference that does not resolve in a `set` value or an event payload is an error, never a
-silent `null`.
+
+Templates are checked when the definition is registered, against the scope they sit in: a creation
+event has no arguments and no `$from_state`; an operation template may read both; an argument the
+operation does not declare is refused there and then. What registration cannot decide — a path into
+a `json` field, whose shape no schema describes — stays a run-time error, never a silent `null`.
 
 ## Evaluation order
 
-1. the instance's `(entity, version)` matches the definition — else `entity_mismatch`
+1. the instance's `(entity, version)` matches the definition — else `entity_mismatch` — and its
+   `lifecycle_state` is one the definition declares — else `unknown_state`
 2. the operation exists — else `operation_not_found`
 3. arguments: defaults, then validation — else `validation`
 4. a transition is selected from the current state — else `invalid_transition`
@@ -208,5 +234,10 @@ Registering a definition refuses, with a typed `DefinitionError`: an empty entit
 state; an empty operation name; an operation without transitions; a transition through an
 undeclared state; two transitions from one state; `set` writing an undeclared field; an empty
 event type; an inconsistent field (`min` above `max`, an enum without `values`, an array without
-`items`, a default that fails its own field); an inconsistent rule (empty name or message, empty
-`all`/`any`, a reference the scope cannot see or the schema does not declare).
+`items`, a default that fails its own field); a constraint on a kind it does not govern; an
+inconsistent rule (empty name or message, empty `all`/`any`, a reference the scope cannot see or
+the schema does not declare, at any depth); a template whose scope could never resolve it; and a
+second definition of an `(entity, version)` already registered.
+
+A key the model does not declare, or a condition with two operators or a misspelled one, is refused
+earlier still — when the document is parsed.

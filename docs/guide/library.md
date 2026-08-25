@@ -18,7 +18,7 @@ entity-yaml = { git = "https://github.com/beyond10x/entity-runtime", package = "
 | `EntityDefinition` | the definition model; deserialises from YAML/JSON; validated on registration |
 | `Registry` | validated definitions keyed by `(entity, version)` |
 | `Runtime<'_>` | the kernel over a `Registry`; `create` and `execute` |
-| `EntityInstance` | `{ entity, version, id, lifecycle_state, revision, fields }` |
+| `EntityInstance` | `{ entity, version, id, lifecycle_state, revision, fields }`; `fields` is a name-ordered `serde_json::Map` |
 | `DomainEvent` | `{ entity, version, id, revision, type, payload }` — the fact, no envelope |
 | `Decision` | `{ instance, events }` — the only thing the kernel produces |
 | `DefinitionError` | the definition is malformed (at registration) |
@@ -36,7 +36,7 @@ use serde_json::json;
 
 let definition = entity_yaml::from_str(&std::fs::read_to_string("ticket.yaml")?)?; // IO: yours
 let mut registry = Registry::new();
-registry.register(definition)?;                    // DefinitionError if malformed; nothing stored
+registry.register(definition)?;                    // DefinitionError if malformed or already registered
 let runtime = Runtime::new(&registry);
 
 let opened = runtime.create("ticket", 1, "t-1", json!({ "title": "Login fails", "points": 3 }))?;
@@ -70,13 +70,19 @@ gather ids/time ────┴─▶ Runtime::execute(&instance, op, args) ─�
                           └─ Err(refusal) ─▶ record it; change nothing   └─ publish
 ```
 
-Three rules the kernel cannot enforce for you:
+Four rules the kernel cannot enforce for you:
 
-1. **Store the instance and the events together.** A transaction, an outbox, or an event store
+1. **Hand it an instance it produced.** `EntityInstance` is data your store round-trips, so its
+   fields are public and it deserialises; the kernel checks the type, the version and that the
+   state is one the definition declares, and cannot check more than that. Loading an instance from
+   somewhere you trust is the shell's job — which is the same reason storing the instance and its
+   events is one job.
+
+2. **Store the instance and the events together.** A transaction, an outbox, or an event store
    that is also the state store — how is yours; that they land together is the contract.
-2. **Compare `revision` before you store.** The kernel numbers revisions; an optimistic-concurrency
+3. **Compare `revision` before you store.** The kernel numbers revisions; an optimistic-concurrency
    check (`WHERE revision = expected`) is one line in the shell and catches two shells racing.
-3. **Add the envelope at the edge.** `DomainEvent` carries the fact only. Event id, recorded-at
+4. **Add the envelope at the edge.** `DomainEvent` carries the fact only. Event id, recorded-at
    time, correlation, causation and actor are yours to stamp when you record it, because the kernel
    could only have invented them.
 
@@ -94,8 +100,9 @@ assert_eq!(a, b);
 assert_eq!(serde_json::to_string(&a)?, serde_json::to_string(&b)?); // same bytes, too
 ```
 
-Ordered maps throughout (`BTreeMap`; `HashMap` is a banned token in the kernel's sources) make the
-serialised form stable, which is what lets a shell store a Decision and diff it later.
+Ordered maps throughout — fields are a `serde_json::Map` without `preserve_order`, and `HashMap` is
+a banned word in the kernel's sources — make the serialised form stable, which is what lets a shell
+store a Decision and diff it later.
 
 ## Definitions from JSON
 
@@ -113,7 +120,7 @@ let definition: entity_core::EntityDefinition = serde_json::from_value(json!({
 }))?;
 ```
 
-`entity-yaml` exists only so the kernel never links `serde_yaml`; it is `from_str(&str)` and
+`entity-yaml` exists only so the kernel never links a YAML parser; it is `from_str(&str)` and
 nothing more.
 
 ## What is not here yet

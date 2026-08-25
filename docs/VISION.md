@@ -58,6 +58,17 @@ Working, gated by `task check`: the kernel (`entity-core`), the YAML adapter (`e
 the `entity` command (`entity-cli`), with a requirements register whose every row names the test
 that pins it and a purity scan that keeps the kernel IO-free by construction.
 
+0.1.0 was reviewed adversarially — a hands-on pass against the shipped binary and an independent
+multi-angle code review — and 0.2.0 is what that produced. The shape held; what did not was the
+number of ways a definition could say less than its author meant. A misspelled key, a second
+operator in one condition, a constraint on the wrong kind, a template or a nested path that could
+never resolve, `$state` read from a precondition where it means the state being moved *to* — each
+registered quietly and enforced nothing. All of them are refusals now, at the moment the document
+is read. Two claims these documents made were also wrong rather than merely weak, and are corrected
+rather than quietly dropped: the lifecycle state was never closed *by the type*, and the purity
+scan was walked past by a grouped import. The record, with every reproduction, is
+[the review](reviews/2026-08-25-adversarial-review.md).
+
 Not yet, stated plainly: rules are two-valued — a missing reference reads `false`, not `unknown` —
 which is enough for a lifecycle ladder and not enough for `engineering-protocols`' evidence gates;
 there are no typed references between entities, no projections, no event envelope type, no storage
