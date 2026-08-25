@@ -1,6 +1,6 @@
 # Upstream fixture — `engineering-protocols` lifecycle documents
 
-Copied verbatim, not adapted. These nine files are what
+Copied verbatim, not adapted. These ten files are what
 [`aep_lifecycles.rs`](../../aep_lifecycles.rs) checks `examples/aep/*.yaml` against, and they are
 committed here rather than read from a sibling checkout so the equivalence test says the same thing
 on a machine that has only this repository.
@@ -8,8 +8,8 @@ on a machine that has only this repository.
 | | |
 |---|---|
 | source | `github.com/beyond10x/engineering-protocols`, `artifacts/lifecycles/*.yaml` |
-| pinned commit | `a193caa616c9cd64d5c70ceb9a7eec7eb3d13581` — `main` after phase 3 landed there. No tag on it; the last tag, `0.14.0`, is `1fc6bf87` and predates the requirement below. Naming a tag that does not point at the copied bytes would send anyone reproducing this to a different sha |
-| last upstream change to these files | `a193caa616c9cd64d5c70ceb9a7eec7eb3d13581`, 2026-08-25 — *feat: a rung may cost evidence, and the refusal says which kind of no*. `story.yaml` gained a `requires:` block: `implemented` costs one `test_result` |
+| pinned commit | `32faa51f66273f147a6c268f7ac1155e46375509` — `main` after the `obligation` ladder landed there. No tag on it; the last tag, `0.17.0`, predates this commit by one. Naming a tag that does not point at the copied bytes would send anyone reproducing this to a different sha |
+| last upstream change to these files | `32faa51f66273f147a6c268f7ac1155e46375509`, 2026-08-25 — *feat(lifecycles): obligation — a commitment on a clock nobody here controls*. A tenth ladder, and the first written entirely in names no Rust enum holds |
 | copied | 2026-08-25; refreshed the same day for the ninth ladder |
 | licence | Apache-2.0, the same as this repository |
 
@@ -18,6 +18,7 @@ on a machine that has only this repository.
 ca15b5c1c630b3ca4a794305024edf03b16921c635a6f53da38037562caaa9e5  design.yaml
 fe8e08bd3c57f988ed6228ae7060bb7393893ce51d680a171c99f4bb8bfbe858  epic.yaml
 602c4fb794f846ed1c280b22d01842e28a1e692dfd752eb7a5fc220819dfeae2  initiative.yaml
+7224f7515ead95da321fe1c4dc98ee7c1369303ae7409686aa9211459642efc4  obligation.yaml
 a282c5a1fe9abde13354faaa2c05e8bc2308dc7569a56b6b900d82ff870e9bbd  review-result.yaml
 357de517350ef2ee6421bc95dfba81cc2b276db193b878c666a9935d6ee7c142  specification.yaml
 982e7690baf1584c0049969ce731572cb3be8c8919327d42f39d88f3709b03fc  story.yaml

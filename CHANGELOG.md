@@ -4,7 +4,22 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+* **`examples/aep/obligation.yaml`, the tenth ladder — and the first written entirely in names no
+  Rust enum holds.** `engineering-protocols` 0.17.0 added `obligation`: a commitment on a clock
+  nobody controls, `open → met | slipped`, where `slipped` opens on a date and `met` is terminal
+  while `slipped` is not, because an obligation that slipped can still be met.
+
+  The kind, all three of its rungs, and its dated guard needed no code in either repository. That is
+  what the open-vocabulary work and the `before`/`after` operators were for, and it is the first
+  thing to spend both at once.
+
+  The equivalence test gained the matching half: a rung the pinned ladder **dates** must be dated
+  here too, paired by `(target status, frontmatter key)`. Without it a definition could quietly drop
+  the `after` precondition and only the upstream document would still say the rung waits.
+
+  `scripts/check-upstream-pin.py` found the drift by itself, again — second time in two waves.
 
 ## [0.5.0] - 2026-08-25
 

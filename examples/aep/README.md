@@ -1,6 +1,6 @@
 # The AEP artifact model, as entity definitions
 
-Nine definitions, one per lifecycle document `engineering-protocols` ships. This is **phase 1** of
+Ten definitions, one per lifecycle document `engineering-protocols` ships. This is **phase 1** of
 [`../../docs/design/engineering-protocols-adoption-v0.1.md`](../../docs/design/engineering-protocols-adoption-v0.1.md),
 and its claim is deliberately narrow: *these say exactly what their ladders say*.
 
@@ -11,6 +11,7 @@ and its claim is deliberately narrow: *these say exactly what their ladders say*
 | `architecture-decision-record.yaml` | proposed, then accepted or refused; both endings kept | 4 | 3 | 3 |
 | `review-result.yaml` | a fact once written | 2 | 1 | 1 |
 | `vision.yaml` | `design`'s ladder with `implemented` removed — a vision is replaced, never finished | 6 | 6 | 9 |
+| `obligation.yaml` | a commitment on a clock nobody controls; `slipped` opens on a date, `met` is terminal and `slipped` is not | 3 | 2 | 3 |
 
 ## What is here, and what is not
 
@@ -45,9 +46,9 @@ a checkout that happens to be beside this one.
 
 ```console
 $ cargo test -p entity-yaml --test aep_lifecycles
-running 11 tests ... ok
+running 14 tests ... ok
 $ entity validate examples/aep/*.yaml
-9 file(s), 0 invalid
+10 file(s), 0 invalid
 ```
 
 ## Status

@@ -1,0 +1,115 @@
+# The AEP `obligation` lifecycle, expressed as an entity definition.
+#
+# Phase 1 of `docs/design/engineering-protocols-adoption-v0.1.md`: the transitions map in
+# `engineering-protocols` `artifacts/lifecycles/obligation.yaml` at `32faa51` — a Rust
+# `LifecycleRegistry` consults it and nothing else — carried here as data a kernel executes.
+# `crates/entity-yaml/tests/aep_lifecycles.rs` proves the two say the same thing.
+#
+# A commitment on a clock nobody controls: due on a date the organisation does not set, satisfied
+# by a person. Worth reading for what it is *not* — `met` is terminal and `slipped` is not, because
+# an obligation that slipped can still be met and escalation is not an ending.
+#
+# The upstream ladder guards `slipped` with `when: { after: due }`. That guard is expressed here as
+# a precondition using `before`/`after`, which is the second thing phase 3 turned on: the clock is
+# read at the edge and handed in as `$args.now`.
+
+entity: obligation
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    title:
+      type: string
+      required: true
+      min_length: 1
+
+    summary:
+      type: string
+
+    owner:
+      type: string
+
+    tags:
+      type: array
+      default: []
+      items:
+        type: string
+
+    # The date the outside world set. Not a `string` but a `json` field, matching how the markdown
+    # store carries a frontmatter key this format does not name.
+    due:
+      type: json
+
+    body:
+      type: json
+
+lifecycle:
+  initial: open
+  states:
+    - open
+    - met
+    - slipped
+
+create:
+  emit:
+    type: ArtifactCreated
+    payload:
+      artifact_id: $id
+      kind: $entity
+      status: $state
+      title: $fields.title
+
+operations:
+  # Satisfied. Reachable from `open` and from `slipped` alike, and it costs nothing: an obligation
+  # may be met early, and one that slipped is not beyond meeting.
+  meet:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: [open, slipped]
+        to: met
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: meet
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  # Overdue. Unreachable until the date this obligation records has passed, so *slipped* is a fact
+  # about the calendar rather than somebody's opinion on a Monday.
+  slip:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+        now:
+          type: string
+          required: true
+          min_length: 1
+    preconditions:
+      - name: 'after: due'
+        message: an obligation has not slipped until its due date has passed
+        assert:
+          after: [$args.now, $fields.due]
+    transitions:
+      - from: open
+        to: slipped
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: slip
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
