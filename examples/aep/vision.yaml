@@ -1,16 +1,18 @@
-# The AEP `design` lifecycle, expressed as an entity definition.
+# The AEP `vision` lifecycle, expressed as an entity definition.
 #
 # Phase 1 of `docs/design/engineering-protocols-adoption-v0.1.md`: the transitions map in
-# `engineering-protocols` `artifacts/lifecycles/design.yaml` at `4e6279b` — a Rust
+# `engineering-protocols` `artifacts/lifecycles/vision.yaml` at `4e6279b` — a Rust
 # `LifecycleRegistry` consults it and nothing else — carried here as data a kernel executes.
 # `crates/entity-yaml/tests/aep_lifecycles.rs` proves the two say the same thing.
 #
-# How something is to be built. `implemented` is not the end of its usefulness — it is the point at which the system is supposed to match it, which is what makes a stale approved design worth catching.
+# A standing statement about where the work is going. It is `design`'s ladder with `implemented`
+# removed, and the removal is the whole point: a specification is implemented when the system
+# matches it, and a vision never is — the work under it is what gets implemented. A vision that
+# stops being true is not finished, it is replaced, so `superseded` is its only real terminal.
 #
 # No rules yet: phase 1 is edge equivalence only. Preconditions arrive with phase 3, once a rule
 # can say `unknown`.
-
-entity: design
+entity: vision
 version: 1
 
 schema:
@@ -47,7 +49,6 @@ lifecycle:
     - draft
     - in_review
     - approved
-    - implemented
     - rejected
     - superseded
     - archived
@@ -146,27 +147,6 @@ operations:
           to: $to_state
           actor: $args.actor
 
-  # The point at which the system is supposed to match it.
-  implement:
-    arguments:
-      fields:
-        actor:
-          type: string
-          required: true
-          min_length: 1
-    transitions:
-      - from: approved
-        to: implemented
-    emits:
-      - type: ArtifactMoved
-        payload:
-          artifact_id: $id
-          kind: $entity
-          operation: implement
-          from: $from_state
-          to: $to_state
-          actor: $args.actor
-
   # Replaced by a later artifact.
   supersede:
     arguments:
@@ -176,7 +156,7 @@ operations:
           required: true
           min_length: 1
     transitions:
-      - from: [approved, implemented]
+      - from: approved
         to: superseded
     emits:
       - type: ArtifactMoved
@@ -197,7 +177,7 @@ operations:
           required: true
           min_length: 1
     transitions:
-      - from: [draft, approved, implemented, rejected, superseded]
+      - from: [draft, approved, rejected, superseded]
         to: archived
     emits:
       - type: ArtifactMoved

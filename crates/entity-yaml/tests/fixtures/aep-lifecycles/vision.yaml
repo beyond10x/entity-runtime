@@ -1,0 +1,28 @@
+# `specification.yaml`'s ladder with one rung removed, and the removal is the whole point.
+#
+# A vision is a document, so it takes the shape this repository already gives a document: review is
+# the only way out of draft, a review that asks for changes sends it back rather than leaving the
+# status claiming a review is still running, and a rejected one is kept so the next attempt can read
+# why. Copying that is deliberate — a second document shape that differed only by accident would
+# make two kinds of agreement out of one.
+#
+# What it does not have is `implemented`. A specification is implemented when the system matches it;
+# a vision never is. It is a standing statement about where the work is going, the work under it is
+# what gets implemented, and the day it stops being true it is not finished — it is replaced. Offering
+# `implemented` would have offered a rung nothing can honestly reach, and `superseded` is the only
+# terminal a standing statement has that says what actually happened.
+#
+# Before this document existed the kind resolved to the permissive fallback, so `protocol artifact
+# move` accepted every status for a vision — including `implemented` — and the first artifact an
+# adopting repository writes was the one nothing validated.
+kind: vision
+initial: draft
+
+transitions:
+  draft: [in_review, archived]
+  in_review: [draft, approved, rejected]
+  # No `implemented`. Approved means in force; the only way out is a successor or the shelf.
+  approved: [superseded, archived]
+  rejected: [archived]
+  superseded: [archived]
+  archived: []

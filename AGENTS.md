@@ -113,10 +113,18 @@ task check
 Eight steps, in this order: `fmt-check` · `clippy` (`--workspace --all-targets --locked
 -D warnings`, which is what makes `missing_docs` fatal) · `test` · `doc-check`
 (`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml` and
-`examples/aep/*.yaml`) · `req-check` · `pin-check` (every `PIN.md` under `crates/` still hashes to
+`examples/aep/*.yaml`, `examples/references/*.yaml`) · `req-check` · `pin-check` (every `PIN.md` under `crates/` still hashes to
 what it records, in both directions — a moved copy and an unpinned file beside it) ·
 `plan-check` (`protocol artifact validate`). Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
+
+One check is deliberately **outside** the gate. `pin-check` holds the AEP fixture against its own
+`PIN.md`; whether that fixture is still what `engineering-protocols` ships is a different question,
+and answering it means cloning their repository. `.github/workflows/upstream-pin.yml` asks it weekly
+(`scripts/check-upstream-pin.py <checkout>`, runnable locally against a sibling clone), so the gate
+stays network-free and drift surfaces as its own red run rather than as a puzzling failure in an
+unrelated step. It was added because the fixture went stale for real: `vision.yaml` landed upstream
+and this repository stayed green while its equivalence test claimed to cover every ladder.
 
 CI runs the first six through **one reusable workflow**, `.github/workflows/gate.yml`, which
 `check.yml` and `release.yml` both call: a tag cannot be cut against a shorter gate than a pull

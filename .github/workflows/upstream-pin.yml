@@ -1,0 +1,68 @@
+# Whether the pinned AEP ladders are still what `engineering-protocols` ships.
+#
+# `pin-check`, in the gate, holds the committed fixture against its own `PIN.md`. It says nothing
+# about the thing the fixture is a copy of, and that is the half that went wrong: `vision.yaml`
+# landed upstream in 0.14.0 and this repository stayed green, its equivalence test asserting
+# agreement about eight ladders while nine existed.
+#
+# This is on its own clock and not in `task check`, for the same reason the dependency audit is:
+# the gate reaches no network, and a check whose answer depends on cloning somebody else's
+# repository would make every local `task check` depend on being online and on upstream being up.
+# It is also why the fixture is committed at all — a test that reads a sibling checkout says a
+# different thing on a machine that has none.
+#
+# A red run here means one thing: upstream moved, and somebody has to decide whether this
+# repository follows. That is a decision, not a merge conflict, which is why nothing here opens a
+# pull request.
+name: Upstream pin
+
+on:
+  schedule:
+    - cron: "15 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ladders:
+    name: The pinned ladders against upstream
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Full depth: the report names the tag to pin to, and `git describe` needs tags to find one.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: beyond10x/engineering-protocols
+          path: upstream
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Redirect and then `cat`, rather than piping through `tee`: a pipeline reports its **last**
+      # command's status, not the checker's. `engineering-protocols` pushed two commits claiming a
+      # gate that had aborted at its first step because of exactly this, and records it in their
+      # AGENTS.md. The status recorded here is the checker's own.
+      - name: Compare
+        id: compare
+        run: |
+          set +e
+          python3 scripts/check-upstream-pin.py upstream > report.txt 2>&1
+          status=$?
+          cat report.txt
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "## Upstream pin"
+            echo
+            echo '```'
+            cat report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "${{ steps.compare.outputs.status }}"

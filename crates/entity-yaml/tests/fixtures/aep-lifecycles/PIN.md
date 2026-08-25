@@ -1,6 +1,6 @@
 # Upstream fixture — `engineering-protocols` lifecycle documents
 
-Copied verbatim, not adapted. These eight files are what
+Copied verbatim, not adapted. These nine files are what
 [`aep_lifecycles.rs`](../../aep_lifecycles.rs) checks `examples/aep/*.yaml` against, and they are
 committed here rather than read from a sibling checkout so the equivalence test says the same thing
 on a machine that has only this repository.
@@ -8,9 +8,9 @@ on a machine that has only this repository.
 | | |
 |---|---|
 | source | `github.com/beyond10x/engineering-protocols`, `artifacts/lifecycles/*.yaml` |
-| pinned commit | `79b641c9c75411627669dfce7f0bac04d4472463` |
-| last upstream change to these files | `7c232ac95ce7d4aefd3f8aa9e031261fafb7e436`, 2026-08-21 — *feat(planning): a markdown store, and status moves the lifecycle checks first* |
-| copied | 2026-08-25 |
+| pinned commit | `4e6279bd8706092b770e55e189501e01de8f8005` — `main` at the 0.14.0 release. **Not** the `0.14.0` tag, which is `1fc6bf87`, the commit that delivered the wave; this is the changelog commit after it. The ladders are identical between the two, and naming the tag would send anyone reproducing this to a different sha |
+| last upstream change to these files | `57b8d2b2e67026ef48cad742ecb8acf1c8008a59`, 2026-08-25 — *feat(lifecycles): a vision is never implemented* |
+| copied | 2026-08-25; refreshed the same day for the ninth ladder |
 | licence | Apache-2.0, the same as this repository |
 
 ```
@@ -22,6 +22,7 @@ a282c5a1fe9abde13354faaa2c05e8bc2308dc7569a56b6b900d82ff870e9bbd  review-result.
 357de517350ef2ee6421bc95dfba81cc2b276db193b878c666a9935d6ee7c142  specification.yaml
 9c74bc3188153f6e34eb94c68c19fec60f920fd642e64aecb07269ec4fbd8510  story.yaml
 638bc428c36f2cd7ffaa0b0ba5cc7306db90805db57cf8b1ec44373cb011c3a0  task.yaml
+db65a35124f2aff6c3c9e14a792cc6316b5a1626df51d9ea3dda54bdda9e994d  vision.yaml
 ```
 
 ## Refreshing the pin
@@ -31,5 +32,19 @@ A refresh that makes the test fail is the point of the fixture: it means the ups
 and `examples/aep/` has not, which is a fact somebody has to decide about rather than a merge
 conflict to resolve.
 
-Until phase 0 has a verdict (`story:aep-mapping-review`), that decision is *this* repository's alone:
-nothing in `engineering-protocols` knows these files were copied.
+## What the pin does not do
+
+It holds the copy honest — `pin-check` recomputes every sum above on each run of the gate, so a file
+that changes here without its sum changing is refused. It says **nothing** about whether the copy is
+still what upstream ships.
+
+That gap is not theoretical: `vision.yaml` landed upstream in `engineering-protocols` 0.14.0 and
+this repository stayed green for as long as it took somebody to notice, with an equivalence test
+asserting agreement about eight ladders while nine existed. Nothing here reaches
+`engineering-protocols` at build or test time, deliberately — a test whose coverage depends on a
+sibling checkout says a different thing on a machine that has none — so the signal has to come from
+outside the gate. `.github/workflows/upstream-pin.yml` is that signal: it clones upstream on a
+schedule and opens the question, without putting the network inside `task check`.
+
+Until phase 0 has a verdict (`story:aep-mapping-review`), refreshing this pin is *this* repository's
+decision alone: nothing in `engineering-protocols` knows these files were copied.

@@ -52,7 +52,7 @@ Each phase is a story here and would be a story there; none starts until the ope
 | phase | what | evidence of done |
 |---|---|---|
 | 0 | this document; the mapping is reviewed by both repositories | accepted or refused, with the reason, on a plan page in `engineering-protocols` |
-| 1 | **done** — the eight `artifacts/lifecycles/*.yaml` re-expressed as eight definitions under `examples/aep/`, with one operation per edge and no rules | an equivalence test: for every kind, the set of `(from, to)` edges the definition yields equals the transitions map in the YAML at the pinned commit; `entity validate examples/aep/*.yaml` exit 0 |
+| 1 | **done** — every `artifacts/lifecycles/*.yaml` re-expressed as a definition under `examples/aep/`, with one operation per edge and no rules. Nine at `engineering-protocols` 0.14.0, eight when it shipped: the count follows theirs and lives in the fixture, not in prose | an equivalence test: for every kind, the set of `(from, to)` edges the definition yields equals the transitions map in the YAML at the pinned commit; `entity validate examples/aep/*.yaml` exit 0 |
 | 2 | **done** — `protocol artifact move` evaluated by this kernel behind the existing CLI, refusing what it refuses today and nothing more | `engineering-protocols` `crates/aep-backend-markdown/tests/kernel_equivalence.rs`: the kernel and `ArtifactLifecycle::permits_transition` agree on **every ordered pair of statuses** for every kind either store holds — 800 pairs, 90% of them illegal |
 | 3 | preconditions on `implement` and `accept`: evidence must be present | gap register :39 closes with a mechanism, not a verdict |
 | 4 | open status vocabulary: `correction-owed` and friends added as data | gap register :70 closes without a Rust change |
