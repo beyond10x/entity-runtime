@@ -16,6 +16,11 @@ const sidebars: SidebarsConfig = {
     {type: 'doc', id: 'VISION', label: 'Vision'},
     {type: 'doc', id: 'requirements', label: 'Requirements register'},
     {
+      type: 'doc',
+      id: 'reviews/2026-08-25-adversarial-review',
+      label: 'Adversarial review (0.1.0)',
+    },
+    {
       type: 'category',
       label: 'Design',
       collapsed: false,

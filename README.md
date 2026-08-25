@@ -132,18 +132,30 @@ prints is accepted back as the next `--instance`.
 
 | property | how it is kept |
 |---|---|
-| the kernel does no IO — no clock, ids, files, network, randomness, async | `crates/entity-core/tests/purity.rs` scans every source line and pins the dependency list to `serde` + `serde_json` |
+| the kernel does no IO — no clock, ids, files, network, randomness, async | `crates/entity-core/tests/purity.rs` strips comments and strings, expands every `use` path and matches whole words, so a grouped import or an alias is caught too; it is checked against fourteen plantings and eight lookalikes, and pins the dependency list to `serde` + `serde_json` |
 | same inputs, same `Decision`, same bytes | ordered maps only (`HashMap` is a banned token); a determinism test |
 | a refusal changes nothing | instances are taken by `&`; a test executes three refusals and compares before/after |
-| the lifecycle state has no setter | only `create` and `execute` assign it |
-| a rule cannot read what its scope forbids | refused at registration, not at run time |
+| the kernel never writes a state except through an operation | only `create` and `execute` assign one, and an instance claiming a state the definition does not declare is refused |
+| a rule or template cannot read what its scope forbids | refused at registration, whole path checked — `$fields.address.countri` never reaches run time |
+| a key nobody reads cannot silence a rule | every definition struct denies unknown fields; a condition carries exactly one operator |
 | every public item is documented, no `unsafe` | `missing_docs` + `unsafe_code = "forbid"` in `[workspace.lints]`, fatal under the gate's `-D warnings` |
 | every requirement is pinned | `scripts/check-requirements.py` fails the gate when a row cites a test that does not exist |
+
+Numbers compare numerically everywhere, so `eq: [$fields.total, 100]` holds for `100.0` too. A key
+the model does not declare, a condition with two operators, a constraint on the wrong kind, a
+template or a reference path that could never resolve — each is refused when the document is read,
+because a definition that says less than its author meant is the failure this format exists to
+prevent.
 
 Rules are **two-valued**: a reference that does not resolve reads `false`. That is enough for a
 lifecycle and not enough for an evidence gate that must tell *nobody looked* from *it is wrong*;
 the three-valued extension is `story:three-valued-conditions` and is the first thing
 `engineering-protocols` needs before it can be driven by this.
+
+0.1.0 was reviewed adversarially and 0.2.0 is what that produced — thirteen new refusals, two
+corrected claims, and a purity scan that can no longer be walked past. The record, with every
+reproduction and its disposition, is
+[`docs/reviews/2026-08-25-adversarial-review.md`](docs/reviews/2026-08-25-adversarial-review.md).
 
 ## Where it sits
 

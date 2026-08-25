@@ -34,10 +34,13 @@ somewhere. Do not write an enforcement here that you cannot point at.
 
 1. **The kernel does no IO.** No clock, identifier generator, filesystem, network, environment,
    thread, async runtime or random source in `entity-core`.
-   *Enforced by* `crates/entity-core/tests/purity.rs`: a banned-token scan over every source line
-   of the crate (comments excluded), checked against a planted offence so a scan that has stopped
-   seeing anything fails on it; and a second test pinning the dependency list to `serde` and
-   `serde_json`.
+   *Enforced by* `crates/entity-core/tests/purity.rs`, which strips comments and string literals
+   (so prose about `std::fs` is not a breach and a dereference at the start of a line is not
+   mistaken for one), expands every `use` path (so `use std::{fs, env};` and
+   `use std::env::var as fetch;` are both seen), and matches whole words (so `Operand::` is not a
+   `rand::`). It is checked against fourteen plantings it must catch and eight lookalikes it must
+   not, and a second test pins the dependency list — every dependency table, not just the literal
+   `[dependencies]` — to `serde` and `serde_json`.
 2. **Same inputs, same `Decision`, same bytes.** Ordered maps only; no `HashMap`/`HashSet`.
    *Enforced by* the same scan (`HashMap` and `HashSet` are banned tokens) and
    `the_same_inputs_produce_the_same_decision_byte_for_byte`.
@@ -45,15 +48,27 @@ somewhere. Do not write an enforcement here that you cannot point at.
    and returns a new one; there is no code path that mutates the caller's.
    *Enforced by* the signatures of `create` and `execute` and by
    `a_refusal_leaves_the_caller_owned_instance_untouched`.
-4. **The lifecycle state has no setter.** `lifecycle_state` is assigned in `create` and `execute`
-   and nowhere else; there is no generic status write and no delete.
-   *Enforced by* the type — nothing in the public API sets the field — and by R-34's row in the
-   register. Adding such an API is a design change, not a feature.
-5. **Rules see only what their scope allows.** An invariant cannot read `$args`, `$old_fields` or
-   `$from_state`; any rule referencing an undeclared field or argument is refused at registration.
-   *Enforced by* `validate_rule_reference` in `crates/entity-core/src/validation.rs` and the tests
-   `an_invariant_may_not_read_arguments_or_previous_state`,
-   `a_rule_referencing_an_undeclared_field_is_refused`.
+4. **The kernel never writes a lifecycle state except through an operation.** `lifecycle_state` is
+   assigned in `create` and `execute` and nowhere else; there is no setter and no generic status
+   write, and nothing is ever deleted.
+   *Enforced by* those two functions being the only writers, and by `execute` refusing an instance
+   whose state the definition does not declare (`UnknownState`,
+   `an_instance_claiming_a_state_the_definition_does_not_declare_is_refused`). It is **not**
+   enforced by the type: `EntityInstance` has public fields and deserialises, because an instance is
+   data a store round-trips, so which instance reaches the kernel is the shell's responsibility
+   (R-80). This invariant said "closed by the type" until the 0.1.0 review showed it was not;
+   sealing the type is a breaking change and a story. Do not restate the stronger claim.
+5. **Rules and templates see only what their scope allows, and every path is checked.** An
+   invariant cannot read `$args`, `$old_fields`, `$from_state` or `$to_state`; a precondition
+   cannot read `$state`, which would mean the state the operation is heading for; a creation event
+   has neither arguments nor a previous state. Any reference to a field, nested property or
+   argument the schema does not declare — at any depth — is refused at registration, in a rule and
+   in a `set` or event template alike.
+   *Enforced by* `validate_reference` and `validate_reference_path` in
+   `crates/entity-core/src/validation.rs` and the tests
+   `a_precondition_may_not_read_state_and_an_invariant_may_not_read_the_transition`,
+   `a_nested_reference_path_is_checked_against_the_schema`,
+   `a_template_the_scope_cannot_resolve_is_refused_at_registration`.
 6. **Value validation accumulates.** An object with four broken values reports four errors, each
    with a path.
    *Enforced by* `validate_object` returning `Vec<ValidationError>` and
@@ -75,10 +90,19 @@ somewhere. Do not write an enforcement here that you cannot point at.
    raised to errors by the gate's `-D warnings`; the `doc-check` step fails on a broken intra-doc
    link. All three members opt in with `[lints] workspace = true`; a new crate that omits that line
    is outside every lint here.
-10. **Every requirement is pinned, and the pin exists.**
+10. **Every requirement is pinned, and the pin exists and runs.**
     *Enforced by* `scripts/check-requirements.py` in the gate: every `R-nn` is referenced by a
-    design under `docs/design/`, every cited test is a `fn` under `crates/`, every row names its
-    evidence.
+    design under `docs/design/`, every cited test is a live `#[test]` function under `crates/`
+    (not merely a `fn`, and not `#[ignore]`d), every row names its evidence, and every `R-nn` the
+    register mentions has a row the checker can actually parse — a marker in an id cell once made
+    21 rows invisible to all of the above.
+11. **A definition document's keys are closed.** Every definition struct is
+    `#[serde(deny_unknown_fields)]` and a condition carries exactly one known operator.
+    *Enforced by* those attributes and by `Condition`'s hand-written `Deserialize`
+    (`crates/entity-core/src/definition.rs`), plus
+    `a_misspelled_definition_key_is_refused_rather_than_ignored` and
+    `a_condition_carrying_two_operators_or_an_unknown_one_is_refused`. A key nobody reads is a rule
+    nobody enforces.
 
 ## Gate
 
@@ -86,11 +110,17 @@ somewhere. Do not write an enforcement here that you cannot point at.
 task check
 ```
 
-Seven steps, in this order: `fmt-check` · `clippy` (`--workspace --all-targets -D warnings`, which
-is what makes `missing_docs` fatal) · `test` · `doc-check` (`RUSTDOCFLAGS=-D warnings`) ·
-`example-check` (`entity validate examples/*.yaml`) · `req-check` · `plan-check`
-(`protocol artifact validate`). CI (`.github/workflows/check.yml`) runs the first six; it has no
-`protocol` binary.
+Seven steps, in this order: `fmt-check` · `clippy` (`--workspace --all-targets --locked
+-D warnings`, which is what makes `missing_docs` fatal) · `test` · `doc-check`
+(`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml`) · `req-check` ·
+`plan-check` (`protocol artifact validate`). Every cargo step runs `--locked`, so the gate judges the dependency
+set the repository committed rather than one cargo re-resolved on the way past.
+
+CI runs the first six through **one reusable workflow**, `.github/workflows/gate.yml`, which
+`check.yml` and `release.yml` both call: a tag cannot be cut against a shorter gate than a pull
+request had to pass. It also runs an `msrv` job on 1.85.0, because `rust-version` is a promise to
+anyone who depends on these crates and nothing else would notice it breaking. `plan-check` is local
+only — CI has no `protocol` binary. If you add a step, add it to both the Taskfile and `gate.yml`.
 
 Land nothing that does not pass all seven. Read the gate's own exit status, not a pipeline's:
 `task check 2>&1 | tail` reports `tail`'s.
@@ -107,7 +137,10 @@ the gate's output.
   index, a blob store — each is a crate that depends on the kernel, never the reverse.
 * **The shell owns IO.** `entity-cli` reads files and stdin and prints; nothing else here does.
   If a new verb needs a clock, the clock is read in the CLI and passed in as an argument.
-* **Nothing in `task check` reaches the network** and no step spends money.
+* **No step of `task check` calls a network service of its own** — nothing downloads a schema,
+  resolves a remote `$ref` or calls an API — and no step spends money. Cargo may still populate its
+  registry cache on a cold machine; `--locked` is what keeps that from changing what is built.
+  `task site-build` is excluded from `check` because `npm ci` genuinely fetches.
 * **Never commit a credential, a token or anything adopter-internal.**
 
 ## The website
@@ -164,8 +197,10 @@ state: propose them and wait for the operator unless the operator asked for the 
 * **Comments explain why.** Doc comments on public items say what the type is *for*, and where a
   design decision is embedded in it, why.
 * **Dependencies.** The workspace has four direct third-party crates: `serde`, `serde_json`,
-  `serde_yaml`, `clap`. The kernel may use the first two. Prefer no dependency, and justify a new
-  one in the manifest beside the line that adds it.
+  `serde_yaml_ng`, `clap`. The kernel may use the first two — `crates/entity-core/tests/purity.rs`
+  fails if that changes. `serde_yaml_ng` replaced `serde_yaml`, whose last release marks itself
+  deprecated and receives no fixes; the reason is in the workspace manifest beside the line. Prefer
+  no dependency, and justify a new one in the manifest beside the line that adds it.
 
 ## Changelog
 
