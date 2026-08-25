@@ -11,6 +11,7 @@ tasks:
       - task: doc-check
       - task: example-check
       - task: req-check
+      - task: pin-check
       - task: plan-check
 
   fmt-check:
@@ -45,6 +46,11 @@ tasks:
     desc: every requirement in docs/requirements.md is cited by the design and pinned by a test that exists
     cmds:
       - python3 scripts/check-requirements.py
+
+  pin-check:
+    desc: every pinned upstream fixture still hashes to what its PIN.md records
+    cmds:
+      - python3 scripts/check-pin.py
 
   plan-check:
     desc: the planning store validates

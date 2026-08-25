@@ -110,10 +110,11 @@ somewhere. Do not write an enforcement here that you cannot point at.
 task check
 ```
 
-Seven steps, in this order: `fmt-check` · `clippy` (`--workspace --all-targets --locked
+Eight steps, in this order: `fmt-check` · `clippy` (`--workspace --all-targets --locked
 -D warnings`, which is what makes `missing_docs` fatal) · `test` · `doc-check`
 (`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml` and
-`examples/aep/*.yaml`) · `req-check` ·
+`examples/aep/*.yaml`) · `req-check` · `pin-check` (every `PIN.md` under `crates/` still hashes to
+what it records, in both directions — a moved copy and an unpinned file beside it) ·
 `plan-check` (`protocol artifact validate`). Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
 

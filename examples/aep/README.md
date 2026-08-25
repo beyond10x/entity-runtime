@@ -14,8 +14,13 @@ and its claim is deliberately narrow: *these say exactly what their ladders say*
 ## What is here, and what is not
 
 * **The lifecycle is the point.** A status vocabulary that today is a ten-variant Rust enum
-  (`ArtifactStatus`) is eight YAML files here, so `correction-owed` — the rung an adopter needed and
-  could not have — is a line, not a release.
+  (`ArtifactStatus`) is eight YAML files here, so `correction-owed` — the rung an adopter needed
+  and could not have — costs a line and an operation rather than a release of a crate.
+
+  Not *here*, though, and not yet: the equivalence test binds these files to the pinned ladder in
+  both directions, so adding that rung to `story.yaml` fails until `engineering-protocols` adds it
+  too. That is the guard working. These definitions cannot lead upstream, by construction — which
+  is the whole reason they are safe to send as evidence.
 * **`status` is not a field**, and `additional_fields` is `false` everywhere. The kernel owns the
   lifecycle state; nothing can move an artifact by editing it. A test asserts this per kind.
 * **No rules yet.** *`implemented` requires evidence* is phase 3, and it waits on

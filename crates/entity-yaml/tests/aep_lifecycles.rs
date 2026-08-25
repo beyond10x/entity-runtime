@@ -210,15 +210,15 @@ fn each_definition_yields_exactly_the_edges_the_pinned_transitions_map_yields() 
 /// carry an empty list. Nothing may leave them, which is the structural form of *nothing is deleted*.
 #[test]
 fn no_operation_leaves_a_state_the_pinned_ladder_ends_at() {
-    let mut checked = 0;
     for kind in pinned_kinds() {
         let upstream = upstream(&kind);
         let edges = definition_edges(&definition(&kind));
+        let mut terminal = 0;
         for (state, targets) in &upstream.transitions {
             if !targets.is_empty() {
                 continue;
             }
-            checked += 1;
+            terminal += 1;
             let leaving: Vec<(&Edge, &String)> = edges
                 .iter()
                 .filter(|((from, _), _)| from == state)
@@ -228,8 +228,14 @@ fn no_operation_leaves_a_state_the_pinned_ladder_ends_at() {
                 "{kind}: `{state}` is terminal upstream, but {leaving:?} leaves it"
             );
         }
+        // Per kind, not summed across them: a total would let one ladder lose its terminal rung
+        // and stay green on another ladder's count, which is a check that cannot see what it is
+        // for.
+        assert!(
+            terminal >= 1,
+            "{kind}: no terminal rung, so nothing was checked"
+        );
     }
-    assert!(checked >= 8, "every kind has at least one terminal rung");
 }
 
 #[test]
