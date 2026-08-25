@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/entity-core",
+  "crates/entity-yaml",
+  "crates/entity-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/beyond10x/entity-runtime"
+rust-version = "1.85"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+clap = { version = "4.6", features = ["derive"] }
+
+# Every member opts in with `[lints] workspace = true`. `unsafe_code = "forbid"` cannot be lifted by
+# an inner `allow`; `missing_docs` is raised to an error by the gate's `-D warnings`.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = "warn"

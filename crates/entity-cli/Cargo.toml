@@ -1,0 +1,23 @@
+[package]
+name = "entity-cli"
+description = "The `entity` command: the reference shell around entity-core — validate, inspect, graph, create, execute"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "entity"
+path = "src/main.rs"
+
+[dependencies]
+entity-core = { path = "../entity-core", version = "0.1.0" }
+entity-yaml = { path = "../entity-yaml", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

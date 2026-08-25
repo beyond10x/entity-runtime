@@ -1,0 +1,12 @@
+version: aep.project/1
+
+# The protocol source is the globally identified repository at one full commit; this repository
+# carries no cross-repository path. Advancing the pin is an explicit change to this file.
+protocol: adp/1
+profile: development.standard
+protocols: git+ssh://git@github.com/beyond10x/engineering-protocols.git#79b641c9c75411627669dfce7f0bac04d4472463
+
+summary: >-
+  A schema-driven entity runtime: entity types declared as data (schema, lifecycle, operations,
+  rules, events) and executed by an IO-free deterministic kernel. The foundation that
+  engineering-protocols' artifact model is to be driven by.

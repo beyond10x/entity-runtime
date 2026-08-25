@@ -1,0 +1,78 @@
+# The gate. `task check` is the measurement; CI runs the same steps in the same order.
+version: '3'
+
+tasks:
+  check:
+    desc: The full gate — run this before claiming anything works
+    cmds:
+      - task: fmt-check
+      - task: clippy
+      - task: test
+      - task: doc-check
+      - task: example-check
+      - task: req-check
+      - task: plan-check
+
+  fmt-check:
+    desc: rustfmt, check only
+    cmds:
+      - cargo fmt --all -- --check
+
+  clippy:
+    desc: clippy over every target, warnings are errors (this is what makes missing_docs fatal)
+    cmds:
+      - cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    desc: every unit, integration and doc test
+    cmds:
+      - cargo test --workspace
+
+  doc-check:
+    desc: rustdoc with broken intra-doc links as errors
+    env:
+      RUSTDOCFLAGS: -D warnings
+    cmds:
+      - cargo doc --workspace --no-deps
+
+  example-check:
+    desc: every shipped example definition validates through the CLI
+    cmds:
+      - cargo run -q -p entity-cli -- validate examples/*.yaml
+
+  req-check:
+    desc: every requirement in docs/requirements.md is cited by the design and pinned by a test that exists
+    cmds:
+      - python3 scripts/check-requirements.py
+
+  plan-check:
+    desc: the planning store validates
+    cmds:
+      - protocol artifact validate
+
+  fmt:
+    desc: rustfmt, in place
+    cmds:
+      - cargo fmt --all
+
+  demo:
+    desc: walk an order through its lifecycle with the CLI
+    cmds:
+      - cargo run -q -p entity-cli -- graph examples/order.yaml
+      - cargo run -q -p entity-cli -- create --definition examples/order.yaml --id ord-1 --fields '{"customer_id":"c-1","total_cents":2599}' --format text
+
+  # The site is not a step of `check`: `npm ci` reaches the registry and `check` reaches no network.
+  # It is gated in CI by .github/workflows/pages.yml on every push and pull request.
+  site-build:
+    desc: install and build the Docusaurus site (network)
+    dir: website
+    cmds:
+      - npm ci
+      - npm run typecheck
+      - npm run build
+
+  site-start:
+    desc: run the site locally with live reload
+    dir: website
+    cmds:
+      - npm run start
