@@ -1,12 +1,14 @@
-//! Phase 1 of [`docs/design/engineering-protocols-adoption-v0.1.md`]: the eight AEP lifecycle
-//! documents from `engineering-protocols`, expressed as entity definitions under `examples/aep/`.
+//! Phase 1 of [`docs/design/engineering-protocols-adoption-v0.1.md`]: every AEP lifecycle
+//! document `engineering-protocols` ships, expressed as an entity definition under `examples/aep/`.
+//! Nine of them at the pinned commit; the number is read from the fixture, never written down here,
+//! because a count in a test is a second place for the truth to live.
 //!
 //! The claim these tests make is narrow and is the whole of phase 1: **the definitions declare
 //! exactly the edges the upstream transitions map declares — no more, no fewer.** No rules, no
 //! preconditions, no evidence; those arrive with phase 3, once a rule can say `unknown`.
 //!
 //! The upstream documents are read from a committed fixture
-//! (`tests/fixtures/aep-lifecycles/`, pinned at `79b641c` — see its `PIN.md`) rather than from a
+//! (`tests/fixtures/aep-lifecycles/`, pinned at `4e6279b` — see its `PIN.md`) rather than from a
 //! sibling checkout, so this says the same thing on a machine that has only this repository.
 
 use entity_core::{CoreError, Registry, Runtime};

@@ -32,7 +32,7 @@ Four items. **All four were decided on 2026-08-25** (§ 7); what remains is orde
 
 | # | item | state | reversible until |
 |---|---|---|---|
-| **D** | phase 1: the eight lifecycles as definitions | **shipped** — 8 definitions, 64 edges, 11 tests, in the gate | always, it is `examples/` |
+| **D** | phase 1: every lifecycle as a definition | **shipped** — 9 definitions, 73 edges, 11 tests, in the gate; refreshed to `engineering-protocols` 0.14.0 | always, it is `examples/` |
 | **C** | `story:three-valued-conditions` — the one semantics change | **shipped** — `Truth`, two new refusals, R-57/R-58 | it ships in a release |
 | **A** | put the mapping to `engineering-protocols`, carrying D as evidence | decided; sent after D | it is a document |
 | **B** | the dependency arrow | **taken** — `entity-core` is a git-pinned dependency of `aep-backend-markdown`; [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | — the manifest line exists |
@@ -127,7 +127,7 @@ small before the type ships and expensive after:
   `engineering-protocols@79b641c` by file and line, and **nothing checks it** — this repository pins
   requirements to tests mechanically (`scripts/check-requirements.py`) and pins this by hand.
   Phase 1's story already requires a committed fixture rather than a sibling checkout; **commit that
-  fixture now** (the eight `artifacts/lifecycles/*.yaml` plus the sha) and the pin becomes a thing
+  fixture now** (`artifacts/lifecycles/*.yaml` plus the sha) and the pin becomes a thing
   the gate can hold.
 * **An `explain` verb is *not* needed for phase 2.** Worth stating because it looks like it is:
   `execute` is pure and a refusal changes nothing (R-04), so attempting the move *is* a safe dry run.
@@ -167,12 +167,17 @@ Phases 0–4 are the design's. Two more follow from their gap register and are w
 |---|---|---|
 | `three-valued-conditions` | their invariant 5 | now — critical path |
 | `accumulating-definition-validation` | their invariant 3 | **shipped** |
-| `typed-references` | `artifacts/relations/relations.yaml` | phase 3 |
+| `typed-references` | `artifacts/relations/relations.yaml` | **shipped** — `type: ref` with `entity`, `inverse` and `acyclic`; R-27/R-28 |
 | `event-envelope` | their `DomainEvent` correlation/causation | phase 5 |
 | `explain-verb` | their `protocol explain` UX parity | after phase 2 |
 | `schema-fragments` | gap register :77, shared ladders | phase 4, authoring |
 | `definition-json-schema` | their `cargo xtask schema` convention | any time |
 | `projections`, `replay-from-events`, `definition-migrations`, `provider-spi`, `named-predicates`, `static-template-validation`, `pedantic-lints` | nothing there | after adoption is real |
+
+`entity-graph` is not in that table because no adopter asked for it either — it is here because the
+vision claims a definition can be *rendered by tooling that never parses code*, and until it existed
+the only rendering was a list of arrows. It is also the first thing that makes typed references
+visible, which is the argument for having built them.
 
 The last row is the point of the ranking: **seven of fourteen kernel stories are not asked for by the
 only named adopter.** Doing them first would grow a kernel nobody has yet agreed to use.

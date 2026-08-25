@@ -1,7 +1,7 @@
 # The AEP `initiative` lifecycle, expressed as an entity definition.
 #
 # Phase 1 of `docs/design/engineering-protocols-adoption-v0.1.md`: the transitions map in
-# `engineering-protocols` `artifacts/lifecycles/initiative.yaml` at `79b641c` — a Rust
+# `engineering-protocols` `artifacts/lifecycles/initiative.yaml` at `4e6279b` — a Rust
 # `LifecycleRegistry` consults it and nothing else — carried here as data a kernel executes.
 # `crates/entity-yaml/tests/aep_lifecycles.rs` proves the two say the same thing.
 #

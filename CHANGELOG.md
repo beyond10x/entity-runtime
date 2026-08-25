@@ -4,7 +4,23 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+* **`examples/aep/vision.yaml`, and a check that notices when upstream moves.** `engineering-protocols`
+  0.14.0 added a ninth lifecycle — a vision is `design`'s ladder with `implemented` removed, because
+  a vision is replaced rather than finished. The pinned fixture and the definitions follow it, and
+  the equivalence test now covers nine ladders and 73 edges.
+
+  The reason it needed noticing at all is the interesting part: nothing was red. `pin-check` holds
+  the committed fixture against its own `PIN.md` and says nothing about whether that fixture is
+  still what upstream ships, so this repository was green while its equivalence test asserted
+  agreement about eight ladders and nine existed. `scripts/check-upstream-pin.py` answers the other
+  question — a ladder whose rungs moved, one upstream ships and nothing pins, one pinned and gone —
+  and `.github/workflows/upstream-pin.yml` runs it weekly against a fresh clone.
+
+  It is **not** a gate step, deliberately. `task check` reaches no network, and a check that had to
+  clone somebody else's repository would make every local run depend on being online. Drift gets its
+  own red run rather than arriving as a puzzling failure somewhere else.
 
 ## [0.3.0] - 2026-08-25
 
