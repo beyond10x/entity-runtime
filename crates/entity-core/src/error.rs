@@ -107,6 +107,21 @@ pub enum DefinitionError {
         /// What is wrong.
         message: String,
     },
+    /// A `ref` field points at an entity type the registry does not hold.
+    ///
+    /// A **set**-level defect, not a definition-level one, which is why it comes from
+    /// [`Registry::validate_all`](crate::Registry::validate_all) and never from `register`. Two
+    /// types that point at each other — a story naming its epic, an epic naming its stories — are
+    /// ordinary, and a check that ran at registration would make them impossible to register in
+    /// either order.
+    UnknownRelationTarget {
+        /// The entity whose definition declares the reference.
+        entity: String,
+        /// Where the reference is declared, such as `schema.customer`.
+        path: String,
+        /// The entity type it points at, which nothing registered.
+        target: String,
+    },
     /// A `set` value or an event payload references something its scope cannot see, or uses an
     /// expression that is not a reference at all.
     ///
@@ -152,6 +167,7 @@ impl DefinitionError {
             Self::InvalidField { .. } => "invalid_field",
             Self::ConstraintNotApplicable { .. } => "constraint_not_applicable",
             Self::InvalidRule { .. } => "invalid_rule",
+            Self::UnknownRelationTarget { .. } => "unknown_relation_target",
             Self::InvalidTemplate { .. } => "invalid_template",
             Self::DuplicateDefinition { .. } => "duplicate_definition",
         }
@@ -215,6 +231,14 @@ impl fmt::Display for DefinitionError {
                 f,
                 "invalid field definition at '{path}': '{constraint}' does not apply to a {kind} \
                  field; it applies to {applies_to}"
+            ),
+            Self::UnknownRelationTarget {
+                entity,
+                path,
+                target,
+            } => write!(
+                f,
+                "{entity}'s '{path}' points at entity '{target}', which is not registered"
             ),
             Self::InvalidRule { path, message } => {
                 write!(f, "invalid rule at '{path}': {message}")

@@ -41,6 +41,7 @@ tasks:
     cmds:
       - cargo run -q -p entity-cli --locked -- validate examples/*.yaml
       - cargo run -q -p entity-cli --locked -- validate examples/aep/*.yaml
+      - cargo run -q -p entity-cli --locked -- validate examples/references/*.yaml
 
   req-check:
     desc: every requirement in docs/requirements.md is cited by the design and pinned by a test that exists

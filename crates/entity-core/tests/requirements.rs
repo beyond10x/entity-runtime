@@ -352,6 +352,204 @@ fn comparing_a_defect_list_to_one_defect_holds_only_when_it_is_the_only_one() {
     assert_eq!(two.first(), &DefinitionError::EmptyEntityName);
 }
 
+// --- Typed references ----------------------------------------------------------------------------
+
+/// A `ref` that does not say what it points at is a string with extra ceremony.
+#[test]
+fn a_ref_declares_the_entity_it_points_at_or_it_is_not_a_ref() {
+    let untargeted = register(with(
+        ticket(),
+        "schema.fields.epic",
+        json!({ "type": "ref" }),
+    ))
+    .expect_err("refused");
+    assert!(
+        matches!(untargeted.first(), DefinitionError::InvalidField { path, message }
+            if path == "schema.epic" && message.contains("must declare 'entity'")),
+        "{untargeted}"
+    );
+
+    let blank = register(with(
+        ticket(),
+        "schema.fields.epic",
+        json!({ "type": "ref", "entity": "  " }),
+    ))
+    .expect_err("refused");
+    assert!(
+        matches!(blank.first(), DefinitionError::InvalidField { .. }),
+        "{blank}"
+    );
+
+    // And the constraint is refused where it does not govern, exactly as `values` on a string is.
+    let misplaced = register(with(
+        ticket(),
+        "schema.fields.title",
+        json!({ "type": "string", "entity": "epic" }),
+    ))
+    .expect_err("refused");
+    assert!(
+        matches!(misplaced.first(), DefinitionError::ConstraintNotApplicable { constraint, .. }
+            if *constraint == "entity/inverse/acyclic"),
+        "{misplaced}"
+    );
+}
+
+/// R-26 through the machinery R-26 exists for. `acyclic` is an `Option<bool>` and not a `bool`
+/// precisely so that **written** and **absent** are different things: with a plain `bool`,
+/// `acyclic: false` on a string is indistinguishable from not writing it, so it would be accepted
+/// in silence — a key nobody reads, on a field the author believes is governed.
+#[test]
+fn a_written_acyclic_is_refused_on_a_kind_it_does_not_govern() {
+    for written in [json!(true), json!(false)] {
+        for kind in ["string", "json", "integer"] {
+            let refused = register(with(
+                ticket(),
+                "schema.fields.probe",
+                json!({ "type": kind, "acyclic": written }),
+            ))
+            .unwrap_err();
+            assert!(
+                matches!(
+                    refused.first(),
+                    DefinitionError::ConstraintNotApplicable { constraint, .. }
+                        if *constraint == "entity/inverse/acyclic"
+                ),
+                "{kind} with acyclic: {written} — {refused}"
+            );
+        }
+    }
+
+    // And on a `ref`, where it does govern, both are accepted and mean different things.
+    for written in [json!(true), json!(false)] {
+        register(with(
+            ticket(),
+            "schema.fields.probe",
+            json!({ "type": "ref", "entity": "other", "acyclic": written }),
+        ))
+        .unwrap_or_else(|error| panic!("a ref may declare acyclic: {written} — {error}"));
+    }
+}
+
+/// The kernel checks the shape of an identity and stops there. It is handed one instance (R-01),
+/// so whether an epic called `epic:x` exists is not a question it can be asked — and answering it
+/// by lookup would make the same inputs give different answers at different moments (R-02).
+#[test]
+fn a_reference_is_an_identity_and_the_kernel_checks_nothing_else_about_it() {
+    let registry = register(with(
+        ticket(),
+        "schema.fields.epic",
+        json!({ "type": "ref", "entity": "epic", "inverse": "stories", "acyclic": true }),
+    ))
+    .expect("a well-formed ref");
+    let runtime = Runtime::new(&registry);
+
+    // No `epic` is registered and no epic instance exists anywhere. It is still accepted.
+    let created = runtime
+        .create(
+            "ticket",
+            1,
+            "t-1",
+            json!({ "title": "t", "epic": "epic:nothing-has-this-id" }),
+        )
+        .expect("the kernel does not resolve a reference");
+    assert_eq!(
+        created.instance.fields["epic"],
+        json!("epic:nothing-has-this-id")
+    );
+
+    for bad in [
+        json!(""),
+        json!("   "),
+        json!(7),
+        json!(null),
+        json!(["epic:a"]),
+    ] {
+        runtime
+            .create("ticket", 1, "t-2", json!({ "title": "t", "epic": bad }))
+            .expect_err("an identity is a non-empty string");
+    }
+}
+
+/// Two types that point at each other are ordinary. A check that ran at registration would make
+/// them impossible to register in either order, which is why the set is validated as a set.
+#[test]
+fn mutually_referencing_types_register_in_either_order_and_validate_as_a_set() {
+    let story = json!({
+        "entity": "story",
+        "schema": { "fields": { "epic": { "type": "ref", "entity": "epic" } } },
+        "lifecycle": { "initial": "draft", "states": ["draft"] },
+        "operations": { "touch": { "transitions": [{ "from": "draft", "to": "draft" }] } }
+    });
+    let epic = json!({
+        "entity": "epic",
+        "schema": { "fields": { "stories": {
+            "type": "array", "items": { "type": "ref", "entity": "story" }
+        }}},
+        "lifecycle": { "initial": "draft", "states": ["draft"] },
+        "operations": { "touch": { "transitions": [{ "from": "draft", "to": "draft" }] } }
+    });
+
+    for order in [[&story, &epic], [&epic, &story]] {
+        let mut registry = Registry::new();
+        for document in order {
+            registry
+                .register(definition(document.clone()))
+                .expect("each is a valid definition on its own");
+        }
+        registry.validate_all().expect("and the set is consistent");
+    }
+}
+
+/// Every missing target, not the first, and at any depth — a reference nested in a list is still a
+/// reference.
+#[test]
+fn validate_all_names_every_reference_whose_type_nobody_registered() {
+    let mut registry = Registry::new();
+    registry
+        .register(definition(json!({
+            "entity": "order",
+            "schema": { "fields": {
+                "customer": { "type": "ref", "entity": "customer" },
+                "lines": { "type": "array", "items": { "type": "object", "properties": {
+                    "sku": { "type": "ref", "entity": "product" }
+                }}}
+            }},
+            "lifecycle": { "initial": "draft", "states": ["draft"] },
+            "operations": { "assign": {
+                "arguments": { "fields": { "courier": { "type": "ref", "entity": "courier" } } },
+                "transitions": [{ "from": "draft", "to": "draft" }]
+            }}
+        })))
+        .expect("valid on its own — nothing here is about other types");
+
+    let errors = registry
+        .validate_all()
+        .expect_err("three types are missing");
+    assert_eq!(errors.len(), 3, "{errors}");
+
+    let reported: Vec<String> = errors
+        .iter()
+        .map(|defect| match defect {
+            DefinitionError::UnknownRelationTarget { path, target, .. } => {
+                format!("{path} -> {target}")
+            }
+            other => panic!("unexpected defect: {other}"),
+        })
+        .collect();
+    assert!(
+        reported.contains(&"schema.customer -> customer".to_owned()),
+        "{reported:?}"
+    );
+    assert!(
+        reported.contains(&"schema.lines[].sku -> product".to_owned()),
+        "{reported:?}"
+    );
+    assert!(
+        reported.contains(&"operations.assign.arguments.courier -> courier".to_owned()),
+        "{reported:?}"
+    );
+}
+
 #[test]
 fn an_invalid_default_is_refused_at_registration() {
     let error = register(with(

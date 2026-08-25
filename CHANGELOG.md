@@ -4,7 +4,59 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed — behaviour you may be relying on
+
+* **`entity graph` takes several definition files and two more formats.** The positional argument is
+  now a list, `--references` switches the subject, and `--format` accepts `svg` and `html` beside
+  `text` and `dot`. `text` is byte-identical to before. Two DOT details changed: the graph is named
+  `"<entity> v<version>"` rather than `"<entity>"`, so two versions of one entity no longer produce
+  two files claiming to be the same graph; and each node emits its `label` explicitly, because a
+  node's id and its label are separate things in the reference graph and both have to survive a
+  quote. Passing several files without `--references` is a usage error rather than a guess.
+
 ### Added
+
+* **`entity-graph`, a fourth crate, and the picture nobody could draw before.** `entity graph
+  --references` draws entity types as boxes and `ref` fields as the edges between them — the reason
+  typed references were built first. `Graph::lifecycle` draws what `graph` always drew; both go
+  through one layout and four emitters.
+
+  **No layout engine.** Calling graphviz would make a drawing depend on which `dot` is installed, so
+  a picture could change without the definition changing — and a picture nobody can reproduce is not
+  reviewable in a pull request. The layering is integer arithmetic: longest-path from the entry,
+  with back edges classified first by depth-first search so a ladder that loops still lays out. Every
+  coordinate is a `usize`; a test scans the crate's own sources for floats, IO, clocks and hash maps,
+  and another reads the manifest to hold it to its single dependency.
+
+  A target type nothing declares is still drawn, marked as undeclared: leaving it out would hide
+  exactly what `Registry::validate_all` refuses.
+
+* **Typed references between entities.** A field may be `type: ref` with an `entity` naming the type
+  it points at, so a definition can say that an order's `customer` is a customer and a story's
+  `epic` is an epic. `inverse` labels how the other side reads the edge; `acyclic` declares that it
+  may not form one. `examples/references/` is a mutually-referencing pair, and `entity inspect`
+  shows the target, the label and the flag whether they are written on the field or on an array's
+  `items`.
+
+  **Cardinality is the array machinery that already exists** — one reference is `type: ref`, several
+  is `type: array` with `items` of kind `ref`. An earlier draft had a `relations:` block beside
+  `schema` with its own `cardinality` key; it was two ways to say one thing, which is the defect
+  this model refuses everywhere else, and it was dropped. `docs/design/kernel-v0.1.md` § 3.5 records
+  that.
+
+  **The kernel checks the declaration and the shape of an identity, and stops.** Whether an instance
+  carrying that identity exists, what state it is in, what revision — those are questions about
+  *another instance*, and `execute` is handed exactly one (R-01). Resolving one by lookup would mean
+  the same inputs could produce different decisions at different moments, which is the property that
+  makes a decision replayable (R-02). Resolution stays the shell's.
+
+  `Registry::validate_all` asks the one cross-definition question the kernel can answer: does every
+  `ref`, at any depth in a schema or an operation's arguments, point at a type the registry holds?
+  It reports every missing target rather than the first. It is **not** part of `register`, because
+  two types that reference each other are ordinary and a registration-time check would make them
+  impossible to register in either order. `entity` calls it once the registry is assembled.
+
+  R-20 gains `ref`; R-26 covers the three new constraints; R-27 and R-28 are new.
 
 * **`examples/aep/vision.yaml`, and a check that notices when upstream moves.** `engineering-protocols`
   0.14.0 added a ninth lifecycle — a vision is `design`'s ladder with `implemented` removed, because

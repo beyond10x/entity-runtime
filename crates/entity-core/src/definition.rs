@@ -136,6 +136,47 @@ pub struct FieldDefinition {
     /// Whether an object may carry properties not declared in `properties`. `object` only.
     #[serde(default)]
     pub additional_properties: bool,
+
+    /// The entity type this field points at. `ref` only, and required there.
+    ///
+    /// Naming the target is what makes a pointer a *typed* pointer: `customer: {type: ref, entity:
+    /// customer}` says an order's customer is a customer, and [`Registry::validate_all`] refuses a
+    /// registry whose definitions point at a type nobody registered.
+    ///
+    /// [`Registry::validate_all`]: crate::Registry::validate_all
+    #[serde(default)]
+    pub entity: Option<String>,
+
+    /// What the other side reads this edge by — `blocks` for a `blocked_by`. `ref` only, optional.
+    ///
+    /// A **label**, not a second edge. Nothing stores the reverse and the kernel never traverses
+    /// it; it exists so tooling and prose can name the direction they are reading, the way
+    /// `engineering-protocols` `RelationKind::inverse_label` already does.
+    #[serde(default)]
+    pub inverse: Option<String>,
+
+    /// Whether this edge may form a cycle. `ref` only; absent means `false`.
+    ///
+    /// An `Option<bool>` rather than a `bool` so that **written** and **absent** are different
+    /// things. With a plain `bool`, `acyclic: false` on a `string` is indistinguishable from not
+    /// writing it at all, so it would be accepted in silence — which is precisely the defect R-26
+    /// exists to prevent, arriving through the machinery built to prevent it. Read it through
+    /// [`FieldDefinition::is_acyclic`].
+    ///
+    /// A **declaration**, not an enforcement. The kernel is handed one instance and cannot see a
+    /// graph (R-01), so it records what the definition claims and the shell enforces it — which is
+    /// exactly the split `protocol artifact relate` already runs, rebuilding the graph before it
+    /// writes. Declaring it here is what turns a rule written in prose into one a shell can read.
+    #[serde(default)]
+    pub acyclic: Option<bool>,
+}
+
+impl FieldDefinition {
+    /// Whether this reference declares that it may not form a cycle. Absent reads as `false`.
+    #[must_use]
+    pub fn is_acyclic(&self) -> bool {
+        self.acyclic.unwrap_or(false)
+    }
 }
 
 /// The kinds a field may have.
@@ -159,6 +200,15 @@ pub enum FieldKind {
     Object,
     /// Any JSON value, unchecked.
     Json,
+    /// An identifier naming an instance of another entity type; `entity` applies and is required.
+    ///
+    /// The value is a non-empty string and the kernel checks nothing else about it. Whether an
+    /// instance of that type actually carries that identity is a question about *another
+    /// instance*, which the kernel is never handed — see [`Registry::validate_all`] for the half it
+    /// can answer and `docs/design/kernel-v0.1.md` for why the other half is the shell's.
+    ///
+    /// [`Registry::validate_all`]: crate::Registry::validate_all
+    Ref,
 }
 
 impl FieldKind {
@@ -173,6 +223,7 @@ impl FieldKind {
             Self::Array => "array",
             Self::Object => "object",
             Self::Json => "json",
+            Self::Ref => "ref",
         }
     }
 }

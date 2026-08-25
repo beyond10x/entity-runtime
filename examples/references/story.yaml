@@ -1,0 +1,47 @@
+# A story, which names the epic it belongs to.
+#
+# The other half of the pair in `epic.yaml`. One reference rather than several, so it is a plain
+# `ref` field: `type: ref` is one, `type: array` of `items: {type: ref}` is many.
+
+entity: story
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    title:
+      type: string
+      required: true
+      min_length: 1
+
+    epic:
+      type: ref
+      entity: epic
+      inverse: stories
+
+    # `acyclic` is a declaration, not an enforcement. A story blocked by a story that is blocked by
+    # it is a cycle, and the kernel cannot see one — it holds a single instance. Declaring it here
+    # gives a shell something to enforce *from*, instead of a convention it has to re-implement.
+    blocked_by:
+      type: array
+      default: []
+      items:
+        type: ref
+        entity: story
+        inverse: blocks
+        acyclic: true
+
+lifecycle:
+  initial: draft
+  states: [draft, active, done]
+
+operations:
+  activate:
+    transitions:
+      - from: draft
+        to: active
+
+  finish:
+    transitions:
+      - from: active
+        to: done

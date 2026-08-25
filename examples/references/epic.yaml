@@ -1,0 +1,63 @@
+# An epic, which names the stories that decompose it.
+#
+# Half of a mutually-referencing pair — see `story.yaml` beside it, which points back. That is the
+# case a reference model has to get right and the reason `Registry::validate_all` exists: neither
+# type can be registered "first" if each demands the other already be there, so the check is asked
+# of the finished set instead (R-28).
+
+entity: epic
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    title:
+      type: string
+      required: true
+      min_length: 1
+
+    # Several references: cardinality is the array machinery that already exists, not a second
+    # spelling of it.
+    stories:
+      type: array
+      default: []
+      items:
+        type: ref
+        entity: story
+        # A label. Nothing stores the reverse edge and the kernel never traverses it; it is here so
+        # a drawing and a refusal can name the direction they are reading.
+        inverse: epic
+
+lifecycle:
+  initial: draft
+  states: [draft, active, done]
+
+operations:
+  activate:
+    transitions:
+      - from: draft
+        to: active
+
+  # The kernel accepts the identity and does not look for it. Whether `story:x` exists is a question
+  # about another instance, which `execute` is never handed (R-01) — and answering it by lookup
+  # would make the same inputs give different answers at different moments (R-02).
+  adopt:
+    arguments:
+      fields:
+        story:
+          type: ref
+          entity: story
+          required: true
+    transitions:
+      - from: [draft, active]
+        to: active
+    emits:
+      - type: StoryAdopted
+        payload:
+          epic: $id
+          story: $args.story
+
+  finish:
+    transitions:
+      - from: active
+        to: done

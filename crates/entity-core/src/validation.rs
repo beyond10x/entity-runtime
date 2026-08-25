@@ -505,6 +505,46 @@ fn validate_schema_definition(schema: &ObjectSchema, path: &str) -> Result<(), D
 
 /// Which constraints a kind admits. A constraint outside its kind's list is refused rather than
 /// ignored, because an author who writes one believes it is enforced.
+/// Every `ref` a definition declares, as `(path, target entity)`, at any depth.
+///
+/// Walks the entity schema and every operation's argument schema, through `items` and `properties`,
+/// because a reference nested in a list of objects is still a reference and a check that only
+/// looked at top-level fields would be one an author discovers by being wrong.
+pub(crate) fn relation_targets(definition: &EntityDefinition) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    collect_targets(&definition.schema, "schema", &mut found);
+    for (name, operation) in &definition.operations {
+        collect_targets(
+            &operation.arguments,
+            &format!("operations.{name}.arguments"),
+            &mut found,
+        );
+    }
+    found
+}
+
+fn collect_targets(schema: &ObjectSchema, path: &str, found: &mut Vec<(String, String)>) {
+    for (name, field) in &schema.fields {
+        collect_field_targets(field, &format!("{path}.{name}"), found);
+    }
+}
+
+fn collect_field_targets(field: &FieldDefinition, path: &str, found: &mut Vec<(String, String)>) {
+    if field.kind == FieldKind::Ref {
+        if let Some(target) = &field.entity {
+            found.push((path.to_owned(), target.clone()));
+        }
+    }
+    if let Some(items) = &field.items {
+        collect_field_targets(items, &format!("{path}[]"), found);
+    }
+    for (name, property) in &field.properties {
+        collect_field_targets(property, &format!("{path}.{name}"), found);
+    }
+}
+
+/// Which constraints a kind admits. A constraint outside its kind's list is refused rather than
+/// ignored, because an author who writes one believes it is enforced.
 fn validate_constraint_applicability(
     field: &FieldDefinition,
     path: &str,
@@ -537,6 +577,11 @@ fn validate_constraint_applicability(
         && field.kind != FieldKind::Object
     {
         return refuse("properties/additional_properties", "an object field");
+    }
+    if (field.entity.is_some() || field.inverse.is_some() || field.acyclic.is_some())
+        && field.kind != FieldKind::Ref
+    {
+        return refuse("entity/inverse/acyclic", "a ref field");
     }
     Ok(())
 }
@@ -572,6 +617,30 @@ fn validate_field_definition(field: &FieldDefinition, path: &str) -> Result<(), 
             return Err(DefinitionError::InvalidField {
                 path: path.to_owned(),
                 message: "array must declare 'items'".into(),
+            });
+        }
+        // A `ref` that does not say what it points at is a string with extra ceremony. Naming the
+        // target is the entire content of the kind.
+        FieldKind::Ref
+            if field
+                .entity
+                .as_deref()
+                .is_none_or(|entity| entity.trim().is_empty()) =>
+        {
+            return Err(DefinitionError::InvalidField {
+                path: path.to_owned(),
+                message: "ref must declare 'entity', the type it points at".into(),
+            });
+        }
+        FieldKind::Ref
+            if field
+                .inverse
+                .as_deref()
+                .is_some_and(|label| label.trim().is_empty()) =>
+        {
+            return Err(DefinitionError::InvalidField {
+                path: path.to_owned(),
+                message: "'inverse' is a label and cannot be blank; leave it out instead".into(),
             });
         }
         _ => {}
@@ -765,6 +834,17 @@ fn validate_value(
             None => wrong_type(path, "object", errors),
         },
         FieldKind::Json => {}
+        // The identity is opaque to the kernel, exactly as `EntityInstance::id` is (R-75): a
+        // non-empty string and nothing more. Whether an instance of the target type carries it is
+        // a question about another instance, which the kernel is never handed.
+        FieldKind::Ref => match value.as_str() {
+            Some(identity) if identity.trim().is_empty() => errors.push(ValidationError::new(
+                path,
+                "a reference is not empty or whitespace",
+            )),
+            Some(_) => {}
+            None => wrong_type(path, "ref", errors),
+        },
     }
 }
 
