@@ -4,6 +4,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] - 2026-08-25
+
+The first release: the kernel, the YAML adapter and the `entity` command, with every requirement
+pinned. Rules are two-valued (a missing reference reads `false`); three-valued evaluation is
+`story:three-valued-conditions`.
+
 ### Added
 
 * `entity-core`: the kernel. Entity types registered from data — schema, lifecycle, operations
