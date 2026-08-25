@@ -61,18 +61,32 @@ Phases 2–4 need § 4 first.
 
 ## 4. What must change here before phase 2
 
-**Three-valued rules.** `engineering-protocols` invariant 5: *`Unknown` is not `False`* — a fact
-nobody observed reads `?`, never `✗`, and only `True` permits a transition. This kernel's rules are
-two-valued: a missing reference makes a comparison `false` (R-54). For a lifecycle ladder that is
-harmless; for *`implemented` requires evidence* it is wrong in exactly the way that invariant
-exists to prevent — "nobody has looked lately" would refuse with the same message as "it is broken".
+**Three-valued rules — done.** `engineering-protocols` invariant 5: *`Unknown` is not `False`* — a
+fact nobody observed reads `?`, never `✗`, and only `True` permits a transition. This kernel's rules
+were two-valued: a missing reference made a comparison `false` (R-54 as it read then). For a
+lifecycle ladder that is harmless; for *`implemented` requires evidence* it is wrong in exactly the
+way that invariant exists to prevent — "nobody has looked lately" refused with the same message as
+"it is broken".
 
-Proposed: a `Truth { True, False, Unknown }` result for rule evaluation with Kleene `all`/`any`/
-`not`, where a missing reference is `Unknown`; a rule holds only when `True`; and the refusal
-distinguishes the two (`PreconditionFailed` vs a new `PreconditionUnobservable`). R-54 would be
-revised — the `exists` operator stays the presence test, `false` stays `false`, and `Unknown` is
-what a comparison against nothing returns. Tracked as `story:three-valued-conditions`. This is the
-one change in this list that alters kernel semantics; the others add.
+Shipped as R-57 and R-58, and specified in [`kernel-v0.1.md` § 4.1](kernel-v0.1.md#41-three-values-and-which-questions-can-have-them):
+a `Truth { True, False, Unknown }` result with Kleene `all`/`any`/`not`; a rule holds only when
+`True`; and the refusal distinguishes the two — `PreconditionFailed` against a new
+`PreconditionUnobservable`, which carries every unresolved address rather than the first.
+
+`Unknown` is confined to questions about a **value** — the comparisons — where a reference that
+resolves to nothing, including a key **present and null**, leaves nothing to read. `exists` asks
+about the **store** and stays two-valued (R-58): the kernel holds the instance, so it can always
+see whether a key carries a value. That is the split `engineering-protocols` already makes without
+naming it — its predicate language has six comparison operators and no presence operator, and its
+only candidate-shaped `Unknown` is `ValueAbsent`. R-54's short-circuit clause was revised with it;
+the old wording is quoted in the register. `story:three-valued-conditions`.
+
+The `Truth` type is taken from `aep-domain::predicate::Truth` rather than designed here — same
+variant names, same Kleene tables, same *only `True` satisfies*. Two kernels that disagreed about
+what `Unknown` means would disagree about whether a gate passed, and this seam is exactly what
+phase 2 runs through.
+
+This was the one change in this list that alters kernel semantics; the others add.
 
 **Accumulating definition validation.** Invariant 3 there; R-13 refuses correctly but reports one
 defect per attempt. `story:accumulating-definition-validation`.

@@ -70,6 +70,7 @@
 //! | [`Registry`] | validated definitions, keyed by `(entity, version)` |
 //! | [`Runtime`], [`create`], [`execute`] | the kernel: the only functions that produce a [`Decision`] |
 //! | [`DefinitionError`], [`ValidationError`], [`CoreError`] | every refusal, typed |
+//! | [`Truth`] | what a condition evaluates to: `True`, `False` or `Unknown` |
 //!
 //! # Evaluation order of an operation
 //!
@@ -87,11 +88,26 @@
 //!
 //! A refusal at any step returns the typed error and nothing else: the caller's instance is never
 //! touched and no partial event list escapes.
+//!
+//! # Rules answer with three values, not two
+//!
+//! A condition evaluates to [`Truth`], and a rule holds only when the answer is [`Truth::True`].
+//! A reference that does not resolve — a missing key, or a key present with nothing after it —
+//! makes the condition [`Truth::Unknown`] rather than false, and the refusal is
+//! [`CoreError::PreconditionUnobservable`] or [`CoreError::InvariantUnobservable`], carrying
+//! **every** address nothing was observed at. *Nobody looked* is never reported as *it is wrong*.
+//!
+//! `Unknown` belongs to the *question*, not to the operator. Asking whether there is a value at
+//! an address is a question about the store, which the kernel can always answer:
+//! [`Condition::Exists`] is two-valued and negates in the ordinary way. Asking what a value says
+//! is a question about the value, and that is the one nothing can answer when the value is not
+//! there.
 
 mod definition;
 mod error;
 mod registry;
 mod runtime;
+mod truth;
 mod validation;
 
 pub use definition::{
@@ -102,3 +118,4 @@ pub use definition::{
 pub use error::{CoreError, DefinitionError, ValidationError};
 pub use registry::Registry;
 pub use runtime::{create, execute, Decision, DomainEvent, EntityInstance, Runtime};
+pub use truth::Truth;

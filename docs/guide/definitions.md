@@ -137,7 +137,7 @@ Two kinds, told apart by **what they may see**:
 | evaluated | after arguments and transition, before `set` | after creation and after every operation, on the **next** state, before events escape |
 | may read | `$args.*` `$fields.*` `$old_fields.*` `$from_state` `$to_state` `$id` `$entity` `$version` | `$fields.*` `$state` `$id` `$entity` `$version` |
 | may **not** read | `$state` | `$args.*` `$old_fields.*` `$from_state` `$to_state` |
-| refusal | `precondition_failed` | `invariant_violation` |
+| refusal | `precondition_failed`, or `precondition_unobservable` | `invariant_violation`, or `invariant_unobservable` |
 
 An invariant that could read `$args` would be a precondition in disguise. A precondition that could
 read `$state` would be worse: `$state` is the state the operation is heading *for*, so
@@ -158,34 +158,89 @@ invariants:
 ```
 
 `name` and `message` are optional; both appear in the refusal, and a rule without a message gets
-a default.
+a default. This one asks `exists`, a question about the store, so an order that reaches `rejected`
+with no reason recorded is refused as a plain violation — see [Three values, and where the third
+one comes from](#three-values-and-where-the-third-one-comes-from) below.
 
 ## Conditions
 
 An `assert` is an AST:
 
-| operator | holds when |
+| operator | evaluates to |
 |---|---|
 | `true` / `false` | literally |
-| `all: [c, ...]` | every child holds (short-circuits; must not be empty) |
-| `any: [c, ...]` | at least one child holds (short-circuits; must not be empty) |
-| `not: c` | the child does not hold |
-| `exists: x` | `x` resolves to a value |
+| `all: [c, ...]` | `true` when every child does; must not be empty |
+| `any: [c, ...]` | `true` when at least one child does; must not be empty |
+| `not: c` | the child's value, negated — and `unknown` negates to `unknown` |
+| `exists: x` | `true` when there is a value at `x`, else `false` |
 | `eq: [a, b]` / `ne: [a, b]` | structural equality / inequality of JSON values |
-| `gt`, `gte`, `lt`, `lte: [a, b]` | numeric comparison; `false` unless both are numbers |
-| `in: [needle, haystack]` | `haystack` resolves to an array containing `needle` |
+| `gt`, `gte`, `lt`, `lte: [a, b]` | numeric comparison; `false` when both resolve and either is not a number |
+| `in: [needle, haystack]` | `true` when `haystack` is an array containing `needle` |
 | `contains: [container, needle]` | array ∋ element, string ⊇ substring, or object ∋ key |
 
-A reference that does not resolve makes a comparison or membership test **false**; `exists` is
-the one operator that asks about presence. Numbers compare **numerically** everywhere, so
-`eq: [$fields.total, 100]` holds for `100` and for `100.0` and agrees with `gte`/`lte`. There is no
-function call, loop, arithmetic, clock, random source or lookup.
+Numbers compare **numerically** everywhere, so `eq: [$fields.total, 100]` holds for `100` and for
+`100.0` and agrees with `gte`/`lte`. There is no function call, loop, arithmetic, clock, random
+source or lookup.
 
 A condition carries exactly one operator. Two in one mapping — the indentation slip that puts `any:`
 beside `all:` — is refused by name rather than silently enforcing the first.
 
-> Known limit: *missing* and *false* are one verdict. A consumer that must tell *nobody looked*
-> from *it is wrong* needs a third value — see the [kernel design § 4](../design/kernel-v0.1.md#4-the-condition-language).
+### Three values, and where the third one comes from
+
+A rule answers `true`, `false` or `unknown`, and **holds only when the answer is `true`**.
+
+`unknown` is a property of the **question**, not of the operator asking it. The operators split
+into two groups:
+
+| the question | operators | can answer `unknown`? |
+|---|---|---|
+| **about the store** — is there a value at this address? | `exists` | no. The kernel holds the instance, so it can always look |
+| **about a value** — what does it say? | `eq` `ne` `gt` `gte` `lt` `lte` `in` `contains` | yes, when there is no value to read |
+
+So `exists` is an ordinary two-valued predicate and `not: { exists: $fields.x }` means exactly what
+it reads as. What has no answer is `gte: [$fields.score, 4]` on a claim nobody has scored — you
+cannot say whether an unwritten score clears four.
+
+A key present with nothing after it is **not** a value. `review:` with a blank line after it is how
+YAML spells *nobody filled this in*, so `exists` reports `false` for it and a comparison against it
+reports `unknown`. A `null` you write as a literal in the definition is a value; you wrote it.
+
+An `unknown` rule is its own refusal, `precondition_unobservable` or `invariant_unobservable`,
+naming **every** address it could not read:
+
+```console
+$ entity execute --definition claim.yaml --instance @c-1.json --operation accept
+refused: precondition 'evidenced' for operation 'accept' cannot be evaluated: an accepted claim
+carries an approved review scoring at least four; nothing was observed at $fields.review,
+$fields.score
+```
+
+Compare `precondition_failed`, which means somebody looked and what they found contradicts the
+rule. Sending an operator to fix a review that was never written is the failure this distinction
+exists to prevent.
+
+The connectives are [Kleene's](https://en.wikipedia.org/wiki/Three-valued_logic): `false`
+dominates `all`, `true` dominates `any`, and `not unknown` is `unknown`. On any rule that never
+reads a missing value they are ordinary boolean logic, so nothing else changes. `all` and `any`
+evaluate **every** operand rather than stopping early — the answer is the same either way, and
+evaluating all of them is what lets one refusal name all three missing facts instead of three
+refusals naming one each.
+
+### Guarding a value question with a store question
+
+Because `false` dominates `all`, putting the presence test in the same rule turns *nobody recorded
+it* into a plain failure rather than a stall:
+
+```yaml
+assert:
+  all:
+    - exists: $fields.resolution          # false when nothing is recorded ...
+    - eq: [$fields.resolution, fixed]     # ... so this cannot leave the rule unknown
+```
+
+Order does not matter — Kleene's connectives are commutative. Write it that way when a missing
+value should refuse plainly, and leave the comparison bare when a missing value should stop the
+gate and send somebody to go and record one.
 
 ## Templates and references
 
@@ -217,11 +272,12 @@ a `json` field, whose shape no schema describes — stays a run-time error, neve
 2. the operation exists — else `operation_not_found`
 3. arguments: defaults, then validation — else `validation`
 4. a transition is selected from the current state — else `invalid_transition`
-5. preconditions, against the current state and the arguments — else `precondition_failed`
+5. preconditions, against the current state and the arguments — else `precondition_failed`, or
+   `precondition_unobservable` when a rule reads something nobody recorded
 6. `set`, every assignment against the pre-operation fields — else `template`
 7. the resulting fields are validated — else `validation`
 8. the next instance is constructed: new state, revision + 1
-9. invariants, against the next state — else `invariant_violation`
+9. invariants, against the next state — else `invariant_violation`, or `invariant_unobservable`
 10. events are materialised — else `template`
 11. the Decision is returned
 

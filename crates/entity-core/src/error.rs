@@ -323,12 +323,41 @@ pub enum CoreError {
         /// The rule's message, or a default.
         message: String,
     },
+    /// A precondition of the operation could not be evaluated: something it reads has no value.
+    ///
+    /// The counterpart to [`PreconditionFailed`](Self::PreconditionFailed), and the reason the
+    /// two are different variants. *No review has been recorded* and *the review says rejected*
+    /// are different facts, and an operator told only that a gate failed will go and fix the
+    /// wrong one. `unresolved` carries **every** address nothing was observed at, not the first,
+    /// so one refusal can be acted on once.
+    PreconditionUnobservable {
+        /// The operation.
+        operation: String,
+        /// The rule's name, if it has one.
+        rule: Option<String>,
+        /// The rule's message, or a default.
+        message: String,
+        /// Every reference the rule reads that resolved to nothing, sorted and without repeats.
+        unresolved: Vec<String>,
+    },
     /// An entity invariant would not hold for the resulting state. The state was discarded.
     InvariantViolation {
         /// The rule's name, if it has one.
         rule: Option<String>,
         /// The rule's message, or a default.
         message: String,
+    },
+    /// An entity invariant could not be evaluated: something it reads has no value.
+    ///
+    /// The state was discarded, exactly as for a violation — an invariant nobody can check is not
+    /// an invariant that held.
+    InvariantUnobservable {
+        /// The rule's name, if it has one.
+        rule: Option<String>,
+        /// The rule's message, or a default.
+        message: String,
+        /// Every reference the rule reads that resolved to nothing, sorted and without repeats.
+        unresolved: Vec<String>,
     },
     /// A `set` or event template referenced something that does not exist at run time.
     ///
@@ -355,7 +384,9 @@ impl CoreError {
             Self::OperationNotFound { .. } => "operation_not_found",
             Self::InvalidTransition { .. } => "invalid_transition",
             Self::PreconditionFailed { .. } => "precondition_failed",
+            Self::PreconditionUnobservable { .. } => "precondition_unobservable",
             Self::InvariantViolation { .. } => "invariant_violation",
+            Self::InvariantUnobservable { .. } => "invariant_unobservable",
             Self::Template { .. } => "template",
         }
     }
@@ -406,15 +437,56 @@ impl fmt::Display for CoreError {
                 ),
                 None => write!(f, "precondition failed for operation '{operation}': {message}"),
             },
+            Self::PreconditionUnobservable {
+                operation,
+                rule,
+                message,
+                unresolved,
+            } => {
+                match rule {
+                    Some(rule) => write!(
+                        f,
+                        "precondition '{rule}' for operation '{operation}' cannot be evaluated: {message}"
+                    )?,
+                    None => write!(
+                        f,
+                        "precondition for operation '{operation}' cannot be evaluated: {message}"
+                    )?,
+                }
+                write!(f, "; {}", nothing_observed_at(unresolved))
+            }
             Self::InvariantViolation { rule, message } => match rule {
                 Some(rule) => write!(f, "invariant '{rule}' violated: {message}"),
                 None => write!(f, "entity invariant violated: {message}"),
             },
+            Self::InvariantUnobservable {
+                rule,
+                message,
+                unresolved,
+            } => {
+                match rule {
+                    Some(rule) => write!(f, "invariant '{rule}' cannot be evaluated: {message}")?,
+                    None => write!(f, "entity invariant cannot be evaluated: {message}")?,
+                }
+                write!(f, "; {}", nothing_observed_at(unresolved))
+            }
             Self::Template { expression, message } => {
                 write!(f, "cannot resolve template '{expression}': {message}")
             }
         }
     }
+}
+
+/// The tail of an unobservable refusal: what to go and observe.
+///
+/// A refusal that says *go and observe* without naming what to observe reproduces, in a type,
+/// exactly the prose-rule failure this kernel exists to end — so the empty case says so plainly
+/// rather than printing an empty list.
+fn nothing_observed_at(unresolved: &[String]) -> String {
+    if unresolved.is_empty() {
+        return "nothing was observed, and the rule does not name a reference".to_owned();
+    }
+    format!("nothing was observed at {}", unresolved.join(", "))
 }
 
 impl std::error::Error for CoreError {

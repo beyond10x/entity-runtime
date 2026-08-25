@@ -289,8 +289,21 @@ pub const CONDITION_OPERATORS: &[&str] = &[
 /// A deliberately small, deterministic predicate language, written as data.
 ///
 /// Operands are ordinary YAML/JSON values and may contain the same `$...` references as event and
-/// `set` templates. A reference that does not resolve makes a comparison or membership test
-/// **false**; [`Condition::Exists`] is the explicit way to ask whether something is there.
+/// `set` templates.
+///
+/// The operators fall into two groups, and which group an operator is in decides whether it can
+/// answer [`Unknown`](crate::Truth::Unknown):
+///
+/// * **Questions about the store** — [`Condition::Exists`]. *Is there a value at this address?*
+///   Always answerable, because the kernel holds the instance and can see the key. Two-valued.
+/// * **Questions about a value** — every comparison and membership test. *What does it say?*
+///   Unanswerable when there is no value to read, so a reference that resolves to nothing makes
+///   them [`Unknown`](crate::Truth::Unknown) rather than false: *nobody recorded this* is not
+///   *this is wrong*.
+///
+/// No operator is three-valued by itself; `Unknown` is a property of the question, not of the
+/// operator asking it. That is what keeps `not` ordinary — `not: { exists: … }` means exactly
+/// what it reads as.
 ///
 /// There is no function call, no loop, no arithmetic, no clock and no lookup. A definition can be
 /// validated at registration and evaluated the same way every time because of what this type
@@ -319,7 +332,10 @@ pub enum Condition {
         /// The child.
         not: Box<Condition>,
     },
-    /// The operand resolves to a value.
+    /// There is a value at this address. A question about the store, so always answerable:
+    /// two-valued, and `not: { exists: … }` is its negation in the ordinary way.
+    ///
+    /// A key present with nothing after it does **not** exist — `null` is not a value.
     Exists {
         /// The operand, usually a reference such as `$fields.reason`.
         exists: Value,

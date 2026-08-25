@@ -322,6 +322,85 @@ fn create_then_execute_through_a_pipe_and_a_refusal_with_its_typed_reason() {
     assert_eq!(refusal["state"], "submitted");
 }
 
+/// The operator-facing half of three-valued rules. A refusal that says *go and observe* without
+/// saying what to observe is the prose rule this kernel replaced, printed by a program.
+#[test]
+fn an_unobservable_refusal_names_every_address_nobody_observed() {
+    let path = scratch(
+        "gate.yaml",
+        r#"
+entity: claim
+version: 1
+schema:
+  fields:
+    title: { type: string, required: true }
+    review: { type: string }
+    score: { type: integer }
+lifecycle:
+  initial: draft
+  states: [draft, accepted]
+operations:
+  accept:
+    preconditions:
+      - name: evidenced
+        assert:
+          all:
+            - eq: [$fields.review, approved]
+            - gte: [$fields.score, 4]
+        message: an accepted claim carries an approved review scoring at least four
+    transitions:
+      - from: draft
+        to: accepted
+"#,
+    );
+    let definition = path.to_str().unwrap();
+
+    let created = run(
+        &[
+            "create",
+            "--definition",
+            definition,
+            "--id",
+            "c-1",
+            "--fields",
+            r#"{"title": "a claim"}"#,
+        ],
+        None,
+    );
+    assert_eq!(created.status.code(), Some(0), "{}", stderr(&created));
+
+    let refused = run(
+        &[
+            "execute",
+            "--definition",
+            definition,
+            "--instance",
+            "-",
+            "--operation",
+            "accept",
+            "--arguments",
+            "{}",
+        ],
+        Some(&stdout(&created)),
+    );
+    assert_eq!(refused.status.code(), Some(1), "{}", stderr(&refused));
+
+    let refusal = refusal_of(&refused);
+    assert_eq!(refusal["kind"], "precondition_unobservable");
+    assert_eq!(refusal["operation"], "accept");
+    assert_eq!(refusal["rule"], "evidenced");
+    // Both, not the first: one refusal the operator can act on once.
+    assert_eq!(
+        refusal["unresolved"],
+        serde_json::json!(["$fields.review", "$fields.score"])
+    );
+    assert!(
+        stderr(&refused).contains("nothing was observed at $fields.review, $fields.score"),
+        "{}",
+        stderr(&refused)
+    );
+}
+
 #[test]
 fn create_refuses_to_guess_between_two_definitions() {
     let second = scratch(

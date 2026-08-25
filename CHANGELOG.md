@@ -4,8 +4,44 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed — behaviour you may be relying on
+
+* **A rule that compares against something nobody recorded is now `unknown`, not `false`.** A
+  condition evaluates to `True`, `False` or `Unknown`, and a rule holds only when `True`. The
+  refusal is a new `PreconditionUnobservable` / `InvariantUnobservable` carrying **every** address
+  it could not read, sorted, rather than the first. *Nobody looked* and *it is wrong* used to be
+  one message; sending an operator to fix a review that was never written is what that cost.
+* **`exists` is unchanged.** `Unknown` is a property of the *question*, not of the operator asking
+  it. Asking whether there is a value at an address is a question about the store, which the
+  kernel can always answer — so `exists` stays two-valued and `not: { exists: … }` still means what
+  it reads as. Only questions about a *value* — `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`,
+  `contains` — can come back `unknown`, and only when there is no value to read. If a missing value
+  should refuse plainly rather than stall the gate, guard the comparison in the same rule:
+  `all: [{exists: $fields.x}, {eq: [$fields.x, v]}]`, which `False` dominance decides.
+* **A key present with nothing after it is not a value.** `review:` with a blank after it is how
+  YAML spells *nobody filled this in*, so `exists` reports `false` for it and a comparison against
+  it reports `unknown`. Schema validation cannot catch this for a `json`-kind field, where `null`
+  is legal. A `null` written as a literal in a definition is still a value.
+* **`all` and `any` no longer short-circuit.** Kleene's connectives are order-independent, so the
+  answer is unchanged; what changes is that one refusal now names all three missing facts instead
+  of three refusals naming one each. R-54's deterministic short-circuit clause was revised with the
+  rest of the row, and the wording it replaced is quoted in the register.
+* `entity`'s JSON refusal gains `precondition_unobservable` and `invariant_unobservable`, each with
+  an `unresolved` array. Exit codes are unchanged: a refusal is still `1`.
+
+Nothing about a lifecycle ladder changes. Every rule that never compares against a missing value
+evaluates exactly as it did — including both invariants in `examples/order.yaml`.
+
 ### Added
 
+* **`Truth { True, False, Unknown }`, public**, with Kleene `and`/`or`/`not` and `is_satisfied`.
+  The variant names and tables are taken from `engineering-protocols`' own
+  `aep-domain::predicate::Truth` rather than designed here — two kernels that disagreed about what
+  `Unknown` means would disagree about whether a gate passed.
+* `docs/requirements.md` gains **R-57** (three-valued evaluation) and **R-58** (which questions can
+  be `Unknown` and which cannot), and `docs/design/kernel-v0.1.md` § 4.1 specifies both, including
+  the rejected first draft that put the choice in the operator instead. R-50, R-51, R-53 and R-54
+  were revised; each replaced wording is quoted beneath its table.
 * **The eight AEP lifecycles, as entity definitions.** `examples/aep/*.yaml` expresses every
   lifecycle document `engineering-protocols` ships — `story`, `epic`, `initiative`, `task`,
   `design`, `specification`, `architecture-decision-record`, `review-result` — as data this kernel

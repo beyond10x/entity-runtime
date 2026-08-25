@@ -18,6 +18,11 @@ afterwards: the system offers a Rust library crate **and** a CLI layer.
 either because the code grew to meet them or because the row claimed more than the code enforced.
 Rows beginning ✚ are new refusals that review produced.
 
+**Rows whose requirement begins ⟳ were revised when three-valued rule evaluation shipped**
+(`story:three-valued-conditions`). The wording each one replaced is quoted beneath its table, so a
+claim this register once made is not silently gone: a requirement that changes has to be readable
+as a change.
+
 **How to read the `pinned by` column.** A backticked name is a `#[test]` function under `crates/`
 and must exist and not be `#[ignore]`d. `type` means the property is closed by the type system —
 there is no API that could violate it — and the design names the type. `manifest` means a
@@ -84,13 +89,30 @@ and each one is a story.
 
 | id | requirement | pinned by |
 |---|---|---|
-| R-50 | Preconditions belong to an operation. They are evaluated after argument validation and transition selection and before `set` or events; a failure is `PreconditionFailed { operation, rule, message }`. | `a_failed_precondition_yields_no_decision_and_names_the_rule`, `operation_precondition_blocks_mutation_and_event_emission` |
-| R-51 | Invariants belong to the entity. They are evaluated after creation and after every successful operation, against the next state, before any event escapes; a failure is `InvariantViolation { rule, message }`. | `a_failed_invariant_at_creation_yields_no_decision`, `a_failed_invariant_after_an_operation_yields_no_decision_and_no_events`, `entity_invariant_is_checked_after_create`, `entity_invariant_is_checked_after_operation_before_events_escape` |
+| R-50 | ⟳ Preconditions belong to an operation. They are evaluated after argument validation and transition selection and before `set` or events. A rule answered and contradicted is `PreconditionFailed { operation, rule, message }`; a rule that could not be answered is `PreconditionUnobservable { operation, rule, message, unresolved }` (R-57). | `a_failed_precondition_yields_no_decision_and_names_the_rule`, `operation_precondition_blocks_mutation_and_event_emission` |
+| R-51 | ⟳ Invariants belong to the entity. They are evaluated after creation and after every successful operation, against the next state, before any event escapes. A violation is `InvariantViolation { rule, message }`; an invariant that could not be answered is `InvariantUnobservable { rule, message, unresolved }` (R-57), and the next state is discarded either way. | `a_failed_invariant_at_creation_yields_no_decision`, `a_failed_invariant_after_an_operation_yields_no_decision_and_no_events`, `an_invariant_contradicted_after_an_operation_is_a_violation_not_an_unobservable`, `entity_invariant_is_checked_after_create`, `entity_invariant_is_checked_after_operation_before_events_escape` |
 | R-52 | ✎ Scopes differ, and the difference is enforced at registration in both directions. A precondition may read `$args.*`, `$fields.*`, `$old_fields.*`, `$from_state`, `$to_state`, `$id`, `$entity`, `$version` — **not `$state`**, which would silently mean the state the operation is heading for. An invariant may read only `$fields.*`, `$state`, `$id`, `$entity`, `$version` — not the arguments, the previous state or `$to_state`. | `a_precondition_may_not_read_state_and_an_invariant_may_not_read_the_transition`, `an_invariant_may_not_read_arguments_or_previous_state`, `definition_rejects_operation_only_reference_in_invariant`, `a_precondition_may_read_the_arguments_and_the_transition` |
-| R-53 | The condition language is a data AST, not an expression language: literal `true`/`false`, `all`, `any`, `not`, `exists`, `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`. `all` and `any` must not be empty, and a condition carries exactly one operator. | `numeric_comparisons_are_numeric_and_compare_false_otherwise`, `contains_and_in_cover_arrays_strings_objects_and_membership`, `an_empty_all_or_any_is_refused`, `a_condition_carrying_two_operators_or_an_unknown_one_is_refused` |
-| R-54 | ✎ A reference that does not resolve makes a comparison or membership test `false`; `exists` is the explicit presence test. `all`/`any` short-circuit deterministically. `gt`/`gte`/`lt`/`lte` are numeric and `false` for non-numbers. **`eq`/`ne`/`in`/`contains` compare numbers numerically too**, so `100` and `100.0` are equal and the operator families agree. `contains` covers array∋element, string⊇substring and object∋key. | `a_missing_reference_makes_a_comparison_false_and_exists_is_the_presence_test`, `numeric_comparisons_are_numeric_and_compare_false_otherwise`, `contains_and_in_cover_arrays_strings_objects_and_membership`, `equality_is_numeric_so_an_integer_equals_the_same_number_written_with_a_decimal_point` |
-| R-55 | Conditions have no function call, loop, arithmetic, clock, random source or lookup. | type (the `Condition` enum has thirteen variants and none of those), `an_unresolvable_template_reference_is_an_error_not_a_null` |
+| R-53 | ⟳ The condition language is a data AST, not an expression language: literal `true`/`false`, `all`, `any`, `not`, `exists`, `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`. `all` and `any` must not be empty, and a condition carries exactly one operator. | `numeric_comparisons_are_numeric_and_compare_false_otherwise`, `contains_and_in_cover_arrays_strings_objects_and_membership`, `an_empty_all_or_any_is_refused`, `a_condition_carrying_two_operators_or_an_unknown_one_is_refused` |
+| R-54 | ⟳ A reference that does not resolve makes a **value** question — a comparison or membership test — `Unknown` (R-57), not `false`. `all`/`any` evaluate **every** operand — the Kleene answer is order-independent, so nothing is bought by stopping early and a complete list of unresolved addresses is. `gt`/`gte`/`lt`/`lte` are numeric and `false` when both operands resolve and either is not a number. **`eq`/`ne`/`in`/`contains` compare numbers numerically too**, so `100` and `100.0` are equal and the operator families agree. `contains` covers array∋element, string⊇substring and object∋key. | `a_value_question_over_a_missing_reference_is_unobservable_and_exists_stays_two_valued`, `numeric_comparisons_are_numeric_and_compare_false_otherwise`, `contains_and_in_cover_arrays_strings_objects_and_membership`, `equality_is_numeric_so_an_integer_equals_the_same_number_written_with_a_decimal_point` |
+| R-57 | ✚ A condition evaluates to `Truth { True, False, Unknown }` and a rule holds **only** when `True`. The connectives are Kleene's, so on any rule that never reads a missing value they are ordinary boolean logic. An `Unknown` rule is refused as `PreconditionUnobservable`/`InvariantUnobservable`, carrying **every** unresolved address, sorted and without repeats — never the first one only. | `a_value_question_over_a_missing_reference_is_unobservable_and_exists_stays_two_valued`, `an_unobservable_refusal_names_every_unresolved_reference_not_the_first`, `kleene_agrees_with_boolean_logic_wherever_nothing_is_unknown`, `the_connectives_are_commutative_and_associative`, `an_unobservable_refusal_names_every_address_nobody_observed` |
+| R-58 | ✚ `Unknown` belongs to the question, not to the operator. A question about the **store** — `exists`, *is there a value at this address* — is always answerable, because the kernel holds the instance; it is two-valued and `not: { exists: x }` negates it in the ordinary way. A question about a **value** — every comparison and membership test — is `Unknown` when there is no value to read. A key **present and null** is not a value: `exists` reports `false` for it and a comparison against it reports `Unknown`. A `null` written as a literal in the definition is a value. | `a_value_question_over_a_missing_reference_is_unobservable_and_exists_stays_two_valued`, `a_present_null_is_not_a_value_for_either_kind_of_question`, `negation_cannot_turn_nobody_looked_into_it_is_wrong`, `only_true_satisfies_a_rule` |
+| R-55 | Conditions have no function call, loop, arithmetic, clock, random source or lookup. | type (the `Condition` enum has fourteen variants and none of those), `an_unresolvable_template_reference_is_an_error_not_a_null` |
 | R-56 | A refusal names the rule when it has a name and reports its message, or a default when it has none. | `a_rule_without_a_message_reports_a_default`, `a_failed_precondition_yields_no_decision_and_names_the_rule` |
+
+**R-54, as it read before three-valued evaluation:** *"A reference that does not resolve makes a
+comparison or membership test `false`; `exists` is the explicit presence test. `all`/`any`
+short-circuit deterministically."* The first clause is now untrue and the second is gone; the
+middle clause survived intact, which is the whole shape of the change. A missing value makes a
+*comparison* `Unknown`, because a gate that reports *nobody recorded this* and *this is wrong* with
+one word sends whoever reads the refusal to fix the wrong thing — but `exists` is still exactly the
+presence test it always was, because presence is a question the kernel can always answer. `all`/
+`any` evaluate every operand, because the address of each missing fact is worth more than the
+evaluations saved. Numeric comparison and `contains` coverage are unchanged, and every definition
+that never compares against a missing value evaluates exactly as it did.
+
+**R-50 and R-51, before:** a precondition failure was `PreconditionFailed` and an invariant failure
+was `InvariantViolation`, with no third case. Those variants still exist and still mean what they
+meant; what changed is that a rule nobody can answer no longer borrows one of them.
 
 ## Templates
 
@@ -141,7 +163,6 @@ these is a requirement of this version; each is a story in the planning store
 
 | addition | why it is not here yet |
 |---|---|
-| three-valued rule evaluation (`unknown` when a reference is missing) | R-54 collapses *missing* into *false*, which is enough for a lifecycle and not enough for an evidence gate; required before `engineering-protocols` can be driven by this, see `docs/design/engineering-protocols-adoption-v0.1.md` § 4 |
 | relationships and typed references between entities (`type: ref`) | needs a decision on whether a reference is checked by the kernel (which would need the other instance as an input) or by the shell |
 | definition validation that accumulates every defect instead of stopping at the first | R-13 refuses correctly but reports one defect per attempt; value validation already accumulates (R-23) |
 | a sealed `EntityInstance` — private fields, parsed through a validated `Raw` type | would make R-34 a property of the type rather than a property of the kernel's own writes; a breaking API change, and the shell still owns which instance it loads |
