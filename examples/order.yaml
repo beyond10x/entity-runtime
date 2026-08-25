@@ -43,6 +43,11 @@ lifecycle:
 
 # Invariants describe properties that must be true for every materialized state.
 # They are checked after create and after every operation.
+#
+# Both use `exists`, which asks about the store — is there a value at this address? — and is
+# therefore always answerable: two-valued, and a rejected order with no reason recorded is refused
+# as a plain violation. `unknown` only ever comes from asking what a value *says* when there is no
+# value to read, as in `gte: [$fields.review_score, 4]` on an order nobody has reviewed.
 invariants:
   - name: rejected_requires_reason
     assert:

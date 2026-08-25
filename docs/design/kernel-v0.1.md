@@ -168,17 +168,20 @@ assert:
 ```
 
 Operators: `all`, `any`, `not`, `exists`, `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`,
-and the literals `true`/`false`. `all` and `any` must not be empty, and a condition carries
-**exactly one** operator: a mapping with two of them, or with a misspelled one, is refused by name
-rather than parsed as whichever variant matched first and quietly missing the rest (R-16). The same
-rule holds for every key of a definition document — `requried: true` is a defect, not a comment.
-Semantics (R-54):
+and the literals `true`/`false`. `all` and `any` must not be empty, and a condition
+carries **exactly one** operator: a mapping with two of them, or with a misspelled one, is refused
+by name rather than parsed as whichever variant matched first and quietly missing the rest (R-16).
+The same rule holds for every key of a definition document — `requried: true` is a defect, not a
+comment. Semantics (R-54):
 
-* a reference that does not resolve makes a comparison or membership test **false**; `exists` is the
-  one operator that asks about presence;
-* `all` and `any` short-circuit in declaration order, which is deterministic because evaluation has
-  no side effects;
-* `gt`/`gte`/`lt`/`lte` compare numbers and are `false` for anything else;
+* a condition evaluates to `Truth { True, False, Unknown }` and a rule holds only when the answer
+  is `True` (R-57); a *value* question over a reference that resolves to nothing is `Unknown`,
+  while `exists` — the one *store* question — stays two-valued (R-58);
+* `all` and `any` evaluate **every** operand in declaration order. Kleene's connectives are
+  order-independent, so the answer is the same as short-circuiting would give — what is not the
+  same is how many unresolved addresses have been gathered when it comes back (R-54, R-57);
+* `gt`/`gte`/`lt`/`lte` compare numbers and are `false` when both operands resolve and either is
+  not a number;
 * `eq`/`ne`/`in`/`contains` compare structurally **except for numbers, which compare numerically**
   (R-54): `100` equals `100.0`. Comparing a number's representation instead would make the operator
   families disagree — `eq: [$fields.total, 100]` false while `all: [gte 100, lte 100]` true — so a
@@ -193,11 +196,57 @@ tooling that never parses source code. A richer language (CEL, Rhai, …) could 
 behind the same two rule slots; nothing in this design depends on the AST staying this small,
 only on it staying data.
 
-**Known limitation, recorded on purpose.** *Missing* and *false* collapse into one verdict. That is
-the proof-of-concept's semantics and it holds here (R-54), but a consumer that distinguishes *nobody
-looked* from *it is wrong* — `engineering-protocols` invariant 5, "Unknown is not False" — needs a
-third value. See `engineering-protocols-adoption-v0.1.md` § 4 and the story
-`story:three-valued-conditions`.
+### 4.1 Three values, and which questions can have them
+
+*Missing* and *false* used to collapse into one verdict — the proof of concept's semantics, and
+enough to govern a lifecycle ladder. They no longer do (R-57). `engineering-protocols` invariant 5,
+"Unknown is not False", is the requirement that forced it, and the consequence is concrete: an
+operator told only that an evidence gate failed goes and fixes a review that was never written.
+
+**`Unknown` belongs to the question, not to the operator.** The operators fall into two groups:
+
+| the question | operators | can be `Unknown` |
+|---|---|---|
+| about the **store** — is there a value at this address? | `exists` | no |
+| about a **value** — what does it say? | `eq` `ne` `gt` `gte` `lt` `lte` `in` `contains` | yes |
+
+The kernel holds the instance, so it can always see whether a key carries a value; a presence
+question is therefore always answerable, and pretending otherwise would be a lie about what the
+kernel knows. What it cannot answer is what an unwritten value says. So `exists` is an ordinary
+two-valued predicate (R-58), `not: { exists: x }` negates in the ordinary way, and the third value
+appears exactly where there is genuinely nothing to read.
+
+A first draft of this split put the choice in the operator instead — `exists` answering
+`True`-or-`Unknown` and a new two-valued `absent` beside it. That produced a pair that were not
+each other's negation, which is a rule nobody can hold in their head; and it made the kernel claim
+it could not tell whether a field was set, which is false. Confining `Unknown` to value questions
+gets the same guarantee with one operator and no asymmetry, and it leaves every lifecycle-shaped
+rule evaluating exactly as it did — the two invariant tests that this change first broke went back
+to their original assertions unaltered.
+
+The two groups compose through Kleene's `False` dominance. `all: [{exists: x}, {eq: [x, v]}]`
+refuses plainly when nothing is recorded, because the presence test decides the rule; a bare
+comparison stalls instead and sends somebody to record one. That is the choice a definition author
+makes, per rule, in the rule.
+
+Two things count as nothing: a reference that names no key, and a reference to a key that is
+**present and null**. The second is the one that matters in practice — `review:` with nothing after
+it is how YAML front matter spells *nobody filled this in*, and schema validation cannot catch it
+for a `json`-kind field, where `null` is legal. A `null` written as a literal in the definition
+stays a value; the author wrote it, so it is an observation.
+
+An `Unknown` rule is its own refusal, carrying **every** unresolved address rather than the first
+(R-57). A refusal that says *go and observe* without naming what to observe reproduces, in a type,
+exactly the prose-rule failure this whole programme exists to end — and naming one missing fact out
+of three costs the operator three round trips.
+
+The shape of `Truth` — the variant names, the Kleene tables, `is_satisfied` meaning `True` alone —
+is taken from `engineering-protocols`' own `aep-domain::predicate::Truth` rather than designed
+here. Their predicate language has no presence operator at all: six comparison operators, and its
+only candidate-shaped `Unknown` is `ValueAbsent`, a comparison it cannot decide. The split above is
+therefore the one they already made, written down. Two kernels that disagreed about what `Unknown`
+means would disagree about whether a gate passed, which is the seam phase 2 of
+`engineering-protocols-adoption-v0.1.md` runs straight through.
 
 ## 5. Templates
 

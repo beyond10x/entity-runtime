@@ -94,7 +94,9 @@ A refusal always carries `kind` and `message`, plus the fields of its kind:
 | `validation` | `errors: [{path, message}]` — every failure, not the first |
 | `invalid_transition` | `operation`, `state` |
 | `precondition_failed` | `operation`, `rule`, `reason` |
+| `precondition_unobservable` | `operation`, `rule`, `reason`, `unresolved` — every address nothing was observed at |
 | `invariant_violation` | `rule`, `reason` |
+| `invariant_unobservable` | `rule`, `reason`, `unresolved` |
 | `operation_not_found` | `operation` |
 | `entity_not_registered` | `entity`, `version` |
 | `entity_mismatch` | `expected: {entity, version}`, `actual: {entity, version}` |

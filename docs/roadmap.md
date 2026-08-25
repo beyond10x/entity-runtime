@@ -33,7 +33,7 @@ Four items. **All four were decided on 2026-08-25** (§ 7); what remains is orde
 | # | item | state | reversible until |
 |---|---|---|---|
 | **D** | phase 1: the eight lifecycles as definitions | **shipped** — 8 definitions, 64 edges, 11 tests, in the gate | always, it is `examples/` |
-| **C** | `story:three-valued-conditions` — the one semantics change | decided down to its three open questions (§ 4a) | it ships in a release |
+| **C** | `story:three-valued-conditions` — the one semantics change | **shipped** — `Truth`, two new refusals, R-57/R-58 | it ships in a release |
 | **A** | put the mapping to `engineering-protocols`, carrying D as evidence | decided; sent after D | it is a document |
 | **B** | the dependency arrow | decided: [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | phase 2 adds the manifest line |
 
@@ -93,13 +93,21 @@ small before the type ships and expensive after:
    field for *which reference did not resolve*. Telling an operator "go and observe" without naming
    what to observe reproduces, in a type, exactly the prose-rule failure `engineering-protocols`
    exists to end. The `Unobservable` counterpart should carry the unresolved path(s).
-2. **`null` has no verdict. → A present `null` is `Unknown`, `exists` included.** `exists` is `resolve_operand(..).is_some()`
-   (`crates/entity-core/src/runtime.rs:375`) and `lookup` returns `Some(Value::Null)` for a key that
-   is present and null (`runtime.rs:634-645`). Argument schema validation catches that for a typed
-   required argument (`runtime.rs:236`) but not for a `json`-kind field. YAML front matter spells
-   *nobody filled this in* as `key:` — a present null, and a blank field must never satisfy the gate
-   that exists to stop exactly that. `exists` therefore becomes three-valued, revising the story's
-   earlier sentence; "three-valued *fields* are out of scope" stays true.
+2. **`null` has no verdict. → A present `null` is not a value.** `lookup` returns
+   `Some(Value::Null)` for a key that is present and null (`runtime.rs:634-645`), and argument
+   schema validation catches that for a typed required argument (`runtime.rs:236`) but not for a
+   `json`-kind field. YAML front matter spells *nobody filled this in* as `key:` — a present null,
+   and a blank field must never satisfy the gate that exists to stop exactly that.
+
+   **Amended when it was built.** The decision as first taken read *"`Unknown`, `exists`
+   included"*, which would have made `exists` three-valued and never `False`. That was wrong, and
+   a two-valued `absent` operator bolted on beside it to compensate was wronger: the two were not
+   each other's negation, and the kernel would have been claiming it could not tell whether a
+   field was set — which is false, since it holds the instance. `Unknown` belongs to the
+   **question**, not the operator: `exists` asks about the store and stays two-valued (`false` for
+   a present null); every comparison asks about a value and is `Unknown` when there is none to
+   read. Same guarantee, one operator, no asymmetry. See `kernel-v0.1.md` § 4.1, which records the
+   rejected draft so nobody re-proposes it. "Three-valued *fields* are out of scope" stays true.
 3. **Kleene changes what short-circuiting costs. → Collect every address; short-circuit goes.** R-54 pins `all`/`any` to short-circuit
    deterministically (`requirements.md:91`). Under Kleene the truth value is order-independent, but
    *which unresolved reference gets reported by (1)* is not. `all`/`any` evaluate every operand when
@@ -174,7 +182,7 @@ only named adopter.** Doing them first would grow a kernel nobody has yet agreed
 |---|---|---|
 | what goes to `engineering-protocols`, and when | build phase 1, send it as the evidence | `story:aep-mapping-review`, `story:aep-lifecycles-as-definitions` |
 | the dependency arrow | `engineering-protocols` takes `entity-core` as a Cargo dependency; this repository takes nothing back, ever | `atlas/architecture/adr/0002` |
-| a present `null` | `Unknown`, `exists` included | `story:three-valued-conditions` |
+| a present `null` | not a value — `exists` reports `false`, a comparison reports `unknown` (amended from *"`Unknown`, `exists` included"* when built; § 4a) | `story:three-valued-conditions` |
 | an `Unknown` refusal's address | names every unresolved path; `all`/`any` stop short-circuiting when the outcome is `Unknown` | `story:three-valued-conditions` |
 
 Nothing in steps 1–3 of the ADR's order publishes a dependency, so the arrow is reversible until

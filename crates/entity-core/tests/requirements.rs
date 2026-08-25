@@ -4,7 +4,7 @@
 //! name; `scripts/check-requirements.py` fails the gate when a cited test does not exist.
 
 use entity_core::{
-    execute, CoreError, DefinitionError, EntityDefinition, EntityInstance, Registry, Runtime,
+    execute, CoreError, DefinitionError, EntityDefinition, EntityInstance, Registry, Runtime, Truth,
 };
 use serde_json::{json, Value};
 
@@ -723,21 +723,21 @@ fn an_instance_of_another_definition_is_refused() {
 /// `PreconditionFailed` and nothing else. `is_ok()` would accept a refusal for any other reason —
 /// a validation error, a lifecycle refusal — and so could not tell "the reference read false" from
 /// "the condition blew up".
-fn assert_verdict(registry: &Registry, condition: &Value, holds: bool) {
+/// Runs `touch` and reports what its single precondition evaluated to, as the three values a
+/// condition now has. Which refusal came back *is* the verdict: `PreconditionFailed` means the
+/// rule was answered and contradicted, `PreconditionUnobservable` means it could not be answered.
+fn assert_verdict(registry: &Registry, condition: &Value, expected: Truth) {
     let instance = open_ticket(registry, 3);
-    match Runtime::new(registry).execute(&instance, "touch", json!({})) {
+    let verdict = match Runtime::new(registry).execute(&instance, "touch", json!({})) {
         Ok(decision) => {
-            assert!(holds, "{condition} should have been refused");
             assert_eq!(decision.instance.revision, 2);
+            Truth::True
         }
-        Err(error) => {
-            assert!(!holds, "{condition} should have held; refused with {error}");
-            assert!(
-                matches!(error, CoreError::PreconditionFailed { .. }),
-                "{condition} must fail as a precondition, not as {error}"
-            );
-        }
-    }
+        Err(CoreError::PreconditionFailed { .. }) => Truth::False,
+        Err(CoreError::PreconditionUnobservable { .. }) => Truth::Unknown,
+        Err(other) => panic!("{condition} must be decided as a precondition, not as {other}"),
+    };
+    assert_eq!(verdict, expected, "{condition}");
 }
 
 // --- Rules ---------------------------------------------------------------------------------------
@@ -764,7 +764,9 @@ fn a_failed_precondition_yields_no_decision_and_names_the_rule() {
 #[test]
 fn a_failed_invariant_after_an_operation_yields_no_decision_and_no_events() {
     // Remove the argument that would have satisfied the invariant, so `close` reaches `closed`
-    // without a resolution.
+    // without a resolution. The invariant asks `exists`, which is a question about the store and
+    // is answerable: there is no resolution, so this is a plain violation. Three-valued rules did
+    // not change this test, which is the point of confining `Unknown` to value questions.
     let document = with(
         with(ticket(), "operations.close.arguments", json!({})),
         "operations.close.set",
@@ -780,6 +782,43 @@ fn a_failed_invariant_after_an_operation_yields_no_decision_and_no_events() {
         CoreError::InvariantViolation {
             rule: Some("closed_requires_resolution".into()),
             message: "closed tickets need a resolution".into(),
+        }
+    );
+    assert_eq!(instance.lifecycle_state, "open");
+}
+
+/// The other half of R-51 under three-valued rules: an invariant that something *observed*
+/// contradicts is still a violation after an operation, not an unobservable. Without this the
+/// register's claim that a failure is `InvariantViolation` would be pinned only at creation.
+#[test]
+fn an_invariant_contradicted_after_an_operation_is_a_violation_not_an_unobservable() {
+    // Also the guard idiom in situ: `not exists` short-circuits nothing, but Kleene's `False`
+    // dominance means the comparison beside it cannot stall the rule once presence is decided.
+    let document = with(
+        ticket(),
+        "invariants",
+        json!([{
+            "name": "resolution_says_something",
+            // The presence test guards the comparison, so the invariant is satisfiable before a
+            // resolution is written — an invariant is checked at creation too, and *not yet
+            // resolved* must not read as *resolved badly*.
+            "assert": { "any": [
+                { "not": { "exists": "$fields.resolution" } },
+                { "ne": ["$fields.resolution", "unknown"] }
+            ]},
+            "message": "'unknown' is not a resolution"
+        }]),
+    );
+    let registry = register(document).unwrap();
+    let instance = open_ticket(&registry, 3);
+    let error = Runtime::new(&registry)
+        .execute(&instance, "close", json!({ "resolution": "unknown" }))
+        .expect_err("'unknown' is not a resolution");
+    assert_eq!(
+        error,
+        CoreError::InvariantViolation {
+            rule: Some("resolution_says_something".into()),
+            message: "'unknown' is not a resolution".into(),
         }
     );
 }
@@ -821,27 +860,175 @@ fn a_rule_without_a_message_reports_a_default() {
     );
 }
 
+/// R-54, revised. This test used to assert the collapse it now exists to prevent: a missing
+/// reference read `false`, so *nobody recorded a resolution* and *the resolution is not "x"* came
+/// back as one refusal. The old wording is kept in the register beside the new one.
+///
+/// The split is by **what is being asked**, not by which operator asks it. `exists` is a question
+/// about the store and stays two-valued; every comparison is a question about a value, and has no
+/// answer when there is no value to read.
 #[test]
-fn a_missing_reference_makes_a_comparison_false_and_exists_is_the_presence_test() {
+fn a_value_question_over_a_missing_reference_is_unobservable_and_exists_stays_two_valued() {
     let cases = [
-        (json!({ "eq": ["$fields.resolution", "x"] }), false),
-        (json!({ "ne": ["$fields.resolution", "x"] }), false),
-        (json!({ "gt": ["$fields.resolution", 0] }), false),
-        (json!({ "in": ["$fields.resolution", ["x"]] }), false),
-        (json!({ "exists": "$fields.resolution" }), false),
-        (json!({ "not": { "exists": "$fields.resolution" } }), true),
-        (json!({ "exists": "$fields.title" }), true),
-        (json!({ "exists": "$from_state" }), true),
+        // Value questions. Nothing was recorded, so there is nothing to compare against.
+        (json!({ "eq": ["$fields.resolution", "x"] }), Truth::Unknown),
+        (json!({ "ne": ["$fields.resolution", "x"] }), Truth::Unknown),
+        (json!({ "gt": ["$fields.resolution", 0] }), Truth::Unknown),
+        (
+            json!({ "in": ["$fields.resolution", ["x"]] }),
+            Truth::Unknown,
+        ),
+        (
+            json!({ "contains": ["$fields.resolution", "x"] }),
+            Truth::Unknown,
+        ),
+        // A question about the store. Always answerable, so two-valued — and `not` is ordinary.
+        (json!({ "exists": "$fields.resolution" }), Truth::False),
+        (
+            json!({ "not": { "exists": "$fields.resolution" } }),
+            Truth::True,
+        ),
+        (json!({ "exists": "$fields.title" }), Truth::True),
+        (
+            json!({ "not": { "exists": "$fields.title" } }),
+            Truth::False,
+        ),
+        (json!({ "exists": "$from_state" }), Truth::True),
+        // A reference that resolves is unaffected: two-valued, exactly as before.
+        (
+            json!({ "eq": ["$fields.title", "Login fails"] }),
+            Truth::True,
+        ),
+        (json!({ "eq": ["$fields.title", "other"] }), Truth::False),
+        // Kleene: `False` dominates a conjunction and `True` dominates a disjunction, so a rule
+        // that is already decided is not held up by what is missing beside it.
+        (
+            json!({ "all": [ false, { "eq": ["$fields.resolution", "x"] } ] }),
+            Truth::False,
+        ),
+        (
+            json!({ "any": [ true, { "eq": ["$fields.resolution", "x"] } ] }),
+            Truth::True,
+        ),
+        (
+            json!({ "all": [ true, { "eq": ["$fields.resolution", "x"] } ] }),
+            Truth::Unknown,
+        ),
+        (
+            json!({ "any": [ false, { "eq": ["$fields.resolution", "x"] } ] }),
+            Truth::Unknown,
+        ),
+        // The idiom that makes the two groups compose: guard the value question with the store
+        // question, and a rule about something nobody recorded refuses plainly instead of
+        // stalling. Order does not matter — Kleene is commutative — so this is not a trick.
+        (
+            json!({ "all": [
+                { "exists": "$fields.resolution" },
+                { "eq": ["$fields.resolution", "x"] }
+            ]}),
+            Truth::False,
+        ),
     ];
-    for (condition, holds) in cases {
+    for (condition, expected) in cases {
         let registry = register(with(
             ticket(),
             "operations.touch.preconditions",
             json!([{ "assert": condition }]),
         ))
         .unwrap();
-        assert_verdict(&registry, &condition, holds);
+        assert_verdict(&registry, &condition, expected);
     }
+}
+
+/// One refusal the operator can act on once, rather than three in sequence. This is what buys
+/// out `all`/`any` short-circuiting: the truth value is the same either way, but which addresses
+/// have been gathered when the answer comes back is not.
+#[test]
+fn an_unobservable_refusal_names_every_unresolved_reference_not_the_first() {
+    let registry = register(with(
+        ticket(),
+        "operations.touch.preconditions",
+        json!([{
+            "name": "evidenced",
+            "message": "every fact the gate reads must be recorded",
+            "assert": { "all": [
+                { "eq": ["$fields.resolution", "fixed"] },
+                { "eq": ["$fields.assignee", "someone"] },
+                { "gt": ["$fields.extra", 0] }
+            ]}
+        }]),
+    ))
+    .unwrap();
+    let instance = open_ticket(&registry, 3);
+    let error = Runtime::new(&registry)
+        .execute(&instance, "touch", json!({}))
+        .expect_err("nothing was recorded");
+    assert_eq!(
+        error,
+        CoreError::PreconditionUnobservable {
+            operation: "touch".into(),
+            rule: Some("evidenced".into()),
+            message: "every fact the gate reads must be recorded".into(),
+            unresolved: vec![
+                "$fields.assignee".into(),
+                "$fields.extra".into(),
+                "$fields.resolution".into(),
+            ],
+        }
+    );
+    assert!(
+        error.to_string().contains(
+            "nothing was observed at $fields.assignee, $fields.extra, $fields.resolution"
+        ),
+        "{error}"
+    );
+}
+
+/// `key:` with nothing after it is how YAML front matter spells *nobody filled this in*, so a
+/// present `null` is not a value: `exists` says so, and a comparison against it has no answer.
+/// Schema validation cannot catch this for a `json` field, where `null` is legal.
+#[test]
+fn a_present_null_is_not_a_value_for_either_kind_of_question() {
+    let base = with(
+        ticket(),
+        "operations.touch.preconditions",
+        json!([{ "name": "recorded", "assert": { "exists": "$fields.extra" } }]),
+    );
+    let registry = register(base).unwrap();
+    let runtime = Runtime::new(&registry);
+    let blank = runtime
+        .create("ticket", 1, "t-1", json!({ "title": "t", "extra": null }))
+        .expect("a null json field is a legal value")
+        .instance;
+    assert_eq!(blank.fields["extra"], Value::Null, "the null was stored");
+
+    // The store question is answered: there is nothing there.
+    let error = runtime
+        .execute(&blank, "touch", json!({}))
+        .expect_err("a blank field is not a value");
+    assert!(
+        matches!(error, CoreError::PreconditionFailed { .. }),
+        "{error}"
+    );
+
+    // The value question has no answer, and says which address it could not read.
+    let registry = register(with(
+        ticket(),
+        "operations.touch.preconditions",
+        json!([{ "name": "positive", "assert": { "gt": ["$fields.extra", 0] } }]),
+    ))
+    .unwrap();
+    let error = Runtime::new(&registry)
+        .execute(&blank, "touch", json!({}))
+        .expect_err("nothing to compare");
+    assert!(
+        matches!(
+            error,
+            CoreError::PreconditionUnobservable { ref unresolved, .. }
+                if unresolved == &["$fields.extra".to_owned()]
+        ),
+        "{error}"
+    );
 }
 
 #[test]
@@ -909,7 +1096,7 @@ fn numeric_comparisons_are_numeric_and_compare_false_otherwise() {
             json!([{ "assert": condition }]),
         ))
         .unwrap();
-        assert_verdict(&registry, &condition, holds);
+        assert_verdict(&registry, &condition, Truth::from_bool(holds));
     }
 }
 

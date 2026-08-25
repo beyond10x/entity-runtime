@@ -2,10 +2,11 @@
 
 use crate::{
     validation::{apply_defaults, validate_object},
-    Condition, CoreError, EntityDefinition, EventDefinition, Registry, RuleDefinition,
+    Condition, CoreError, EntityDefinition, EventDefinition, Registry, RuleDefinition, Truth,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeSet;
 
 /// One instance of an entity type: which definition it was created under, its identity, where it
 /// is in its lifecycle, how many times it has changed, and its fields.
@@ -311,21 +312,42 @@ pub fn execute(
     })
 }
 
+/// Every address a condition read and found nothing at, gathered as it is evaluated.
+///
+/// A `BTreeSet` rather than a `Vec`: sorted, so the same refusal prints the same way every time,
+/// and without repeats, so a reference read by three operands is named once.
+type Unobserved = BTreeSet<String>;
+
 fn check_preconditions(
     operation: &str,
     rules: &[RuleDefinition],
     context: &TemplateContext<'_>,
 ) -> Result<(), CoreError> {
     for rule in rules {
-        if !evaluate_condition(&rule.condition, context)? {
-            return Err(CoreError::PreconditionFailed {
-                operation: operation.to_owned(),
-                rule: rule.name.clone(),
-                message: rule
-                    .message
-                    .clone()
-                    .unwrap_or_else(|| "condition evaluated to false".into()),
-            });
+        let mut unobserved = Unobserved::new();
+        match evaluate_condition(&rule.condition, context, &mut unobserved)? {
+            Truth::True => {}
+            Truth::False => {
+                return Err(CoreError::PreconditionFailed {
+                    operation: operation.to_owned(),
+                    rule: rule.name.clone(),
+                    message: rule
+                        .message
+                        .clone()
+                        .unwrap_or_else(|| "condition evaluated to false".into()),
+                })
+            }
+            Truth::Unknown => {
+                return Err(CoreError::PreconditionUnobservable {
+                    operation: operation.to_owned(),
+                    rule: rule.name.clone(),
+                    message: rule
+                        .message
+                        .clone()
+                        .unwrap_or_else(|| "condition could not be evaluated".into()),
+                    unresolved: unobserved.into_iter().collect(),
+                })
+            }
         }
     }
     Ok(())
@@ -336,73 +358,117 @@ fn check_invariants(
     context: &TemplateContext<'_>,
 ) -> Result<(), CoreError> {
     for rule in &definition.invariants {
-        if !evaluate_condition(&rule.condition, context)? {
-            return Err(CoreError::InvariantViolation {
-                rule: rule.name.clone(),
-                message: rule
-                    .message
-                    .clone()
-                    .unwrap_or_else(|| "condition evaluated to false".into()),
-            });
+        let mut unobserved = Unobserved::new();
+        match evaluate_condition(&rule.condition, context, &mut unobserved)? {
+            Truth::True => {}
+            Truth::False => {
+                return Err(CoreError::InvariantViolation {
+                    rule: rule.name.clone(),
+                    message: rule
+                        .message
+                        .clone()
+                        .unwrap_or_else(|| "condition evaluated to false".into()),
+                })
+            }
+            Truth::Unknown => {
+                return Err(CoreError::InvariantUnobservable {
+                    rule: rule.name.clone(),
+                    message: rule
+                        .message
+                        .clone()
+                        .unwrap_or_else(|| "condition could not be evaluated".into()),
+                    unresolved: unobserved.into_iter().collect(),
+                })
+            }
         }
     }
     Ok(())
 }
 
+/// Evaluates a condition to [`Truth`], recording every address a *value* question read and found
+/// nothing at.
+///
+/// `Unknown` belongs to the question, not to the operator. Asking whether a value is there is
+/// always answerable; asking what it says is not, when it is not there.
+///
+/// `all` and `any` evaluate **every** operand, deliberately. Kleene's connectives are
+/// order-independent, so the truth value is the same either way — but *which* unobserved
+/// addresses have been recorded when the answer comes back is not, and a refusal that names one
+/// missing fact out of three costs the operator three round trips. Evaluation here is pure and
+/// cannot fail partway, so there is nothing to be bought by stopping early.
 fn evaluate_condition(
     condition: &Condition,
     context: &TemplateContext<'_>,
-) -> Result<bool, CoreError> {
+    unobserved: &mut Unobserved,
+) -> Result<Truth, CoreError> {
     match condition {
-        Condition::Literal(value) => Ok(*value),
+        Condition::Literal(value) => Ok(Truth::from_bool(*value)),
         Condition::All { all } => {
+            let mut result = Truth::True;
             for condition in all {
-                if !evaluate_condition(condition, context)? {
-                    return Ok(false);
-                }
+                result = result.and(evaluate_condition(condition, context, unobserved)?);
             }
-            Ok(true)
+            Ok(result)
         }
         Condition::Any { any } => {
+            let mut result = Truth::False;
             for condition in any {
-                if evaluate_condition(condition, context)? {
-                    return Ok(true);
-                }
+                result = result.or(evaluate_condition(condition, context, unobserved)?);
             }
-            Ok(false)
+            Ok(result)
         }
-        Condition::Not { not } => Ok(!evaluate_condition(not, context)?),
-        Condition::Exists { exists } => Ok(resolve_operand(exists, context)?.is_some()),
-        Condition::Eq { eq } => compare_values(eq, context, values_equal),
-        Condition::Ne { ne } => {
-            compare_values(ne, context, |left, right| !values_equal(left, right))
+        Condition::Not { not } => Ok(evaluate_condition(not, context, unobserved)?.not()),
+        Condition::Exists { exists } => {
+            // A question about the store, not about a value: the kernel holds the instance, so it
+            // can always answer it. Nothing goes into `unobserved` — this operator *is* the
+            // observation, and in `any: [{exists: $fields.a}, {eq: [$fields.b, 1]}]` naming
+            // `$fields.a` beside the genuinely unreadable `$fields.b` would send whoever reads the
+            // refusal after the wrong one.
+            let mut answered = Unobserved::new();
+            let resolved = resolve_operand(exists, context, &mut answered)?;
+            Ok(Truth::from_bool(resolved.is_some()))
         }
-        Condition::Gt { gt } => compare_numbers(gt, context, |left, right| left > right),
-        Condition::Gte { gte } => compare_numbers(gte, context, |left, right| left >= right),
-        Condition::Lt { lt } => compare_numbers(lt, context, |left, right| left < right),
-        Condition::Lte { lte } => compare_numbers(lte, context, |left, right| left <= right),
+        Condition::Eq { eq } => compare_values(eq, context, unobserved, values_equal),
+        Condition::Ne { ne } => compare_values(ne, context, unobserved, |left, right| {
+            !values_equal(left, right)
+        }),
+        Condition::Gt { gt } => {
+            compare_numbers(gt, context, unobserved, |left, right| left > right)
+        }
+        Condition::Gte { gte } => {
+            compare_numbers(gte, context, unobserved, |left, right| left >= right)
+        }
+        Condition::Lt { lt } => {
+            compare_numbers(lt, context, unobserved, |left, right| left < right)
+        }
+        Condition::Lte { lte } => {
+            compare_numbers(lte, context, unobserved, |left, right| left <= right)
+        }
         Condition::In { values } => {
-            let (needle, haystack) = resolve_pair(values, context)?;
+            let (needle, haystack) = resolve_pair(values, context, unobserved)?;
             match (needle, haystack) {
-                (Some(needle), Some(Value::Array(values))) => {
-                    Ok(values.iter().any(|value| values_equal(value, &needle)))
-                }
-                _ => Ok(false),
+                (Some(needle), Some(Value::Array(values))) => Ok(Truth::from_bool(
+                    values.iter().any(|value| values_equal(value, &needle)),
+                )),
+                // Both resolved, and the haystack is not a list: observed, and it does not hold.
+                (Some(_), Some(_)) => Ok(Truth::False),
+                _ => Ok(Truth::Unknown),
             }
         }
         Condition::Contains { contains } => {
-            let (container, needle) = resolve_pair(contains, context)?;
+            let (container, needle) = resolve_pair(contains, context, unobserved)?;
             match (container, needle) {
-                (Some(Value::Array(values)), Some(needle)) => {
-                    Ok(values.iter().any(|value| values_equal(value, &needle)))
-                }
+                (Some(Value::Array(values)), Some(needle)) => Ok(Truth::from_bool(
+                    values.iter().any(|value| values_equal(value, &needle)),
+                )),
                 (Some(Value::String(value)), Some(Value::String(needle))) => {
-                    Ok(value.contains(&needle))
+                    Ok(Truth::from_bool(value.contains(&needle)))
                 }
                 (Some(Value::Object(value)), Some(Value::String(key))) => {
-                    Ok(value.contains_key(&key))
+                    Ok(Truth::from_bool(value.contains_key(&key)))
                 }
-                _ => Ok(false),
+                (Some(_), Some(_)) => Ok(Truth::False),
+                _ => Ok(Truth::Unknown),
             }
         }
     }
@@ -442,74 +508,97 @@ fn values_equal(left: &Value, right: &Value) -> bool {
 fn compare_values(
     pair: &[Value; 2],
     context: &TemplateContext<'_>,
+    unobserved: &mut Unobserved,
     predicate: impl FnOnce(&Value, &Value) -> bool,
-) -> Result<bool, CoreError> {
-    let (left, right) = resolve_pair(pair, context)?;
+) -> Result<Truth, CoreError> {
+    let (left, right) = resolve_pair(pair, context, unobserved)?;
     match (left, right) {
-        (Some(left), Some(right)) => Ok(predicate(&left, &right)),
-        _ => Ok(false),
+        (Some(left), Some(right)) => Ok(Truth::from_bool(predicate(&left, &right))),
+        _ => Ok(Truth::Unknown),
     }
 }
 
 fn compare_numbers(
     pair: &[Value; 2],
     context: &TemplateContext<'_>,
+    unobserved: &mut Unobserved,
     predicate: impl FnOnce(f64, f64) -> bool,
-) -> Result<bool, CoreError> {
-    let (left, right) = resolve_pair(pair, context)?;
+) -> Result<Truth, CoreError> {
+    let (left, right) = resolve_pair(pair, context, unobserved)?;
     match (left, right) {
+        // Both resolved. Not being numbers is an observation about them, not an absence.
         (Some(left), Some(right)) => match (left.as_f64(), right.as_f64()) {
-            (Some(left), Some(right)) => Ok(predicate(left, right)),
-            _ => Ok(false),
+            (Some(left), Some(right)) => Ok(Truth::from_bool(predicate(left, right))),
+            _ => Ok(Truth::False),
         },
-        _ => Ok(false),
+        _ => Ok(Truth::Unknown),
     }
 }
 
 fn resolve_pair(
     pair: &[Value; 2],
     context: &TemplateContext<'_>,
+    unobserved: &mut Unobserved,
 ) -> Result<(Option<Value>, Option<Value>), CoreError> {
-    Ok((
-        resolve_operand(&pair[0], context)?,
-        resolve_operand(&pair[1], context)?,
-    ))
+    // Both sides, always: the left one failing to resolve must not hide the right one's address.
+    let left = resolve_operand(&pair[0], context, unobserved)?;
+    let right = resolve_operand(&pair[1], context, unobserved)?;
+    Ok((left, right))
 }
 
-/// Resolves an operand, where a reference that does not resolve is `None` rather than an error —
-/// which is what makes a comparison against a missing value `false` and `exists` meaningful.
+/// Resolves an operand, where nothing to observe is `None` rather than an error — which is what
+/// makes a comparison against it [`Truth::Unknown`].
+///
+/// Two things count as nothing to observe, and the second is the one that matters in practice: a
+/// reference that names no key, and a reference to a key that is **present and null**. `key:` with
+/// nothing after it is how YAML front matter spells *nobody filled this in*, and a gate that
+/// exists to catch exactly that must not read it as a value. A `null` written as a literal in the
+/// definition is left alone — the author wrote it, so it is an observation.
+///
+/// Every address that resolves to nothing is recorded in `unobserved`, including inside a list or
+/// mapping operand, so the refusal can name all of them at once.
 fn resolve_operand(
     value: &Value,
     context: &TemplateContext<'_>,
+    unobserved: &mut Unobserved,
 ) -> Result<Option<Value>, CoreError> {
     match value {
         Value::String(literal) if literal.starts_with("$$") => {
             Ok(Some(Value::String(literal[1..].to_owned())))
         }
         Value::String(expression) if expression.starts_with('$') => {
-            resolve_expression_optional(expression, context)
+            match resolve_expression_optional(expression, context)? {
+                Some(Value::Null) | None => {
+                    unobserved.insert(expression.clone());
+                    Ok(None)
+                }
+                resolved => Ok(resolved),
+            }
         }
         Value::Array(values) => {
             let mut resolved = Vec::with_capacity(values.len());
+            let mut complete = true;
             for value in values {
-                match resolve_operand(value, context)? {
+                // Keep going after the first gap: the addresses are the point.
+                match resolve_operand(value, context, unobserved)? {
                     Some(value) => resolved.push(value),
-                    None => return Ok(None),
+                    None => complete = false,
                 }
             }
-            Ok(Some(Value::Array(resolved)))
+            Ok(complete.then_some(Value::Array(resolved)))
         }
         Value::Object(values) => {
             let mut resolved = Map::new();
+            let mut complete = true;
             for (key, value) in values {
-                match resolve_operand(value, context)? {
+                match resolve_operand(value, context, unobserved)? {
                     Some(value) => {
                         resolved.insert(key.clone(), value);
                     }
-                    None => return Ok(None),
+                    None => complete = false,
                 }
             }
-            Ok(Some(Value::Object(resolved)))
+            Ok(complete.then_some(Value::Object(resolved)))
         }
         other => Ok(Some(other.clone())),
     }

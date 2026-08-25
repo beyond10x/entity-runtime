@@ -561,9 +561,22 @@ fn refusal(error: &CoreError) -> Value {
             rule,
             message,
         } => json!({ "operation": operation, "rule": rule, "reason": message }),
+        CoreError::PreconditionUnobservable {
+            operation,
+            rule,
+            message,
+            unresolved,
+        } => json!({
+            "operation": operation, "rule": rule, "reason": message, "unresolved": unresolved
+        }),
         CoreError::InvariantViolation { rule, message } => {
             json!({ "rule": rule, "reason": message })
         }
+        CoreError::InvariantUnobservable {
+            rule,
+            message,
+            unresolved,
+        } => json!({ "rule": rule, "reason": message, "unresolved": unresolved }),
         CoreError::OperationNotFound { operation } => json!({ "operation": operation }),
         CoreError::EntityNotRegistered { entity, version } => {
             json!({ "entity": entity, "version": version })
