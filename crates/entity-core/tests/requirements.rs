@@ -352,6 +352,114 @@ fn comparing_a_defect_list_to_one_defect_holds_only_when_it_is_the_only_one() {
     assert_eq!(two.first(), &DefinitionError::EmptyEntityName);
 }
 
+// --- Time ----------------------------------------------------------------------------------------
+
+/// The clock is read at the edge (R-62): a definition compares two instants it was handed, and
+/// there is no `$now` for it to ask.
+#[test]
+fn before_and_after_order_two_instants_the_shell_supplied() {
+    let cases = [
+        // `title` is present and is not a timestamp: unreadable, so Unknown rather than false.
+        (
+            json!({ "before": ["$fields.title", "2026-08-25"] }),
+            Truth::Unknown,
+        ),
+        // A reference that resolves to nothing is Unknown for the ordinary reason.
+        (
+            json!({ "before": ["$fields.resolution", "2026-08-25"] }),
+            Truth::Unknown,
+        ),
+        (
+            json!({ "before": ["2026-01-01", "2026-08-25"] }),
+            Truth::True,
+        ),
+        (
+            json!({ "after":  ["2026-01-01", "2026-08-25"] }),
+            Truth::False,
+        ),
+        (
+            json!({ "after":  ["2026-08-25T12:00:01Z", "2026-08-25T12:00:00Z"] }),
+            Truth::True,
+        ),
+        // Not lexicographic luck: a single-digit month would sort wrong as text.
+        (
+            json!({ "before": ["2026-01-31", "2026-02-01"] }),
+            Truth::True,
+        ),
+        // Equal instants are neither before nor after.
+        (
+            json!({ "before": ["2026-08-25", "2026-08-25T00:00:00"] }),
+            Truth::False,
+        ),
+        (
+            json!({ "after":  ["2026-08-25", "2026-08-25T00:00:00"] }),
+            Truth::False,
+        ),
+    ];
+    for (condition, expected) in cases {
+        let registry = register(with(
+            ticket(),
+            "operations.touch.preconditions",
+            json!([{ "assert": condition }]),
+        ))
+        .unwrap();
+        assert_verdict(&registry, &condition, expected);
+    }
+}
+
+/// An instant this kernel cannot read is `Unknown`, **not** `false` — and the refusal names the
+/// operand it could not read.
+///
+/// Deliberately different from `gt` on two non-numbers, which is `false`. *These are not numbers*
+/// is an observation anybody can make; *this is not a timestamp I can read* is a statement about
+/// this kernel's reach. Reading it as `false` would let `after: [$args.now, $fields.due]` answer
+/// "not yet due" for a value nobody understood, which is the collapse three-valued rules exist to
+/// prevent.
+#[test]
+fn an_instant_this_kernel_cannot_read_is_unobservable_and_the_refusal_names_it() {
+    let registry = register(with(
+        with(
+            ticket(),
+            "operations.touch.arguments",
+            json!({ "fields": { "now": { "type": "string" } } }),
+        ),
+        "operations.touch.preconditions",
+        json!([{
+            "name": "not_yet_due",
+            "message": "the deadline has not passed",
+            "assert": { "before": ["$args.now", "2026-12-31"] }
+        }]),
+    ))
+    .unwrap();
+    let instance = open_ticket(&registry, 3);
+
+    // An offset is refused rather than normalised: comparing it with a naive instant has no
+    // correct answer, and a shell that has offsets has a clock to normalise with.
+    for unreadable in [
+        "2026-08-25T12:00:00+02:00",
+        "yesterday",
+        "1756108800",
+        "2026-8-25",
+    ] {
+        let error = Runtime::new(&registry)
+            .execute(&instance, "touch", json!({ "now": unreadable }))
+            .unwrap_err();
+        assert!(
+            matches!(
+                error,
+                CoreError::PreconditionUnobservable { ref unresolved, .. }
+                    if unresolved == &["$args.now".to_owned()]
+            ),
+            "{unreadable}: {error}"
+        );
+    }
+
+    // And one it can read decides.
+    Runtime::new(&registry)
+        .execute(&instance, "touch", json!({ "now": "2026-08-25" }))
+        .expect("a readable instant before the deadline");
+}
+
 // --- Typed references ----------------------------------------------------------------------------
 
 /// A `ref` that does not say what it points at is a string with extra ceremony.

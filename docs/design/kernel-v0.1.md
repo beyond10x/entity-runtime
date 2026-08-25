@@ -224,7 +224,7 @@ assert:
 ```
 
 Operators: `all`, `any`, `not`, `exists`, `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`,
-and the literals `true`/`false`. `all` and `any` must not be empty, and a condition
+`before`, `after`, and the literals `true`/`false`. `all` and `any` must not be empty, and a condition
 carries **exactly one** operator: a mapping with two of them, or with a misspelled one, is refused
 by name rather than parsed as whichever variant matched first and quietly missing the rest (R-16).
 The same rule holds for every key of a definition document — `requried: true` is a defect, not a
@@ -243,10 +243,15 @@ comment. Semantics (R-54):
   families disagree — `eq: [$fields.total, 100]` false while `all: [gte 100, lte 100]` true — so a
   definition tested with integer fixtures would refuse the same document written with a decimal
   point;
-* `contains` is array∋element, string⊇substring, or object∋key.
+* `contains` is array∋element, string⊇substring, or object∋key;
+* `before`/`after` order two ISO-8601 instants (R-59). An operand this kernel cannot read is
+  `Unknown` rather than `false` — the one place the two comparison families deliberately differ,
+  because *not a number* is an observation and *not a timestamp I can read* is a statement about
+  the reader. There is no `$now` and there will not be (R-62): a definition compares instants it
+  was handed, which is what keeps the decision replayable.
 
 There is no function call, loop, arithmetic, clock, random source or lookup (R-55). The `Condition`
-type has thirteen variants and none of them is "evaluate this string", which is the property that
+type has sixteen variants and none of them is "evaluate this string", which is the property that
 lets a definition be validated at registration, evaluated identically everywhere, and rendered by
 tooling that never parses source code. A richer language (CEL, Rhai, …) could be introduced later
 behind the same two rule slots; nothing in this design depends on the AST staying this small,

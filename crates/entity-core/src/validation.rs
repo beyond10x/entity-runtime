@@ -420,6 +420,8 @@ fn validate_condition_definition(
         }
         Condition::Not { not } => validate_condition_definition(not, &format!("{path}.not"), scope),
         Condition::Exists { exists } => validate_operand(exists, &format!("{path}.exists"), scope),
+        Condition::Before { before } => validate_pair(before, &format!("{path}.before"), scope),
+        Condition::After { after } => validate_pair(after, &format!("{path}.after"), scope),
         Condition::Eq { eq } => validate_pair(eq, &format!("{path}.eq"), scope),
         Condition::Ne { ne } => validate_pair(ne, &format!("{path}.ne"), scope),
         Condition::Gt { gt } => validate_pair(gt, &format!("{path}.gt"), scope),
