@@ -9,7 +9,7 @@ relations:
 - derived_from: epic:drive-engineering-protocols
 - depends_on: story:three-valued-conditions
 - depends_on: story:aep-lifecycles-as-definitions
-revision: 4
+revision: 5
 ---
 # Story: Phase 2 — protocol artifact move evaluated by the kernel
 
@@ -22,7 +22,17 @@ refusing exactly what it refuses today.
 
 Depends on `story:three-valued-conditions` (invariant 5 there) and `story:aep-lifecycles-as-definitions`.
 How the kernel is reached — a dependency, a vendored copy, a process boundary — is an ADR in `atlas`
-first, because `engineering-protocols` is public and this repository's visibility is undecided.
+first. Both repositories are public as of 2026-08-25, so the open question is the arrow's direction,
+not this repository's visibility.
+
+Two coordination facts, recorded here because they are cheap now and expensive later:
+
+* `engineering-protocols` has no mention of this repository at any commit through `79b641c`
+  (`grep -rl entity-runtime` over its documents, artifact YAML and crates: no hits, 2026-08-25).
+  This story's parent phase 0 has not been put to the other side at all.
+* Their `story:journal-backed-store` reroutes the markdown store's writes through `CommandService`;
+  this story reroutes the same store's verdicts through the kernel. Built independently, that seam
+  is built twice.
 
 ## Acceptance
 
