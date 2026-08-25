@@ -4,6 +4,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] - 2026-08-25
+
 ### Changed — behaviour you may be relying on
 
 * **A rule that compares against something nobody recorded is now `unknown`, not `false`.** A
