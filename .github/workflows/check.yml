@@ -1,26 +1,19 @@
-name: check
+# Every push to main and every pull request runs the gate — the same workflow release.yml calls,
+# so the two cannot drift.
+name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      # The same steps as `task check`, in the same order, minus the two that need tools CI does
-      # not have (`req-check` needs only python, which is present; `plan-check` needs `protocol`).
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
-      - run: cargo doc --workspace --no-deps
-        env:
-          RUSTDOCFLAGS: -D warnings
-      - run: cargo run -q -p entity-cli -- validate examples/*.yaml
-      - run: python3 scripts/check-requirements.py
+  gate:
+    uses: ./.github/workflows/gate.yml
