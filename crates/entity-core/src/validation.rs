@@ -7,44 +7,83 @@
 //! `json` field or an open schema happens to resolve.
 
 use crate::{
-    Condition, DefinitionError, EntityDefinition, EventDefinition, FieldDefinition, FieldKind,
-    ObjectSchema, RuleDefinition, ValidationError,
+    Condition, DefinitionError, DefinitionErrors, EntityDefinition, EventDefinition,
+    FieldDefinition, FieldKind, ObjectSchema, RuleDefinition, ValidationError,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 // --- Definition validation -----------------------------------------------------------------------
 
-pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), DefinitionError> {
+/// Collects defects instead of stopping at the first.
+///
+/// Every check below is run for its own sake; the only reason one is ever skipped is that its
+/// prerequisite already failed and running it would report the same fault a second time under a
+/// different name. A cascade is worse than a short list: it buries the defect that caused it.
+#[derive(Default)]
+struct Defects(Vec<DefinitionError>);
+
+impl Defects {
+    fn push(&mut self, defect: DefinitionError) {
+        self.0.push(defect);
+    }
+
+    /// Records the defect a check found, if it found one.
+    fn check(&mut self, result: Result<(), DefinitionError>) {
+        if let Err(defect) = result {
+            self.0.push(defect);
+        }
+    }
+
+    fn into_result(self) -> Result<(), DefinitionErrors> {
+        if self.0.is_empty() {
+            Ok(())
+        } else {
+            Err(DefinitionErrors::new(self.0))
+        }
+    }
+}
+
+pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), DefinitionErrors> {
+    let mut defects = Defects::default();
+
     if definition.entity.trim().is_empty() {
-        return Err(DefinitionError::EmptyEntityName);
+        defects.push(DefinitionError::EmptyEntityName);
     }
     if definition.version == 0 {
-        return Err(DefinitionError::ZeroVersion);
-    }
-    if definition.lifecycle.states.is_empty() {
-        return Err(DefinitionError::EmptyLifecycle);
+        defects.push(DefinitionError::ZeroVersion);
     }
 
+    // The lifecycle is checked first and its soundness gates the transition checks below: when the
+    // ladder itself is malformed, every transition would report a second time as a state the
+    // lifecycle does not declare, which is one fault wearing as many names as the document has
+    // operations.
     let mut states = BTreeSet::new();
+    let mut ladder_is_sound = true;
+    if definition.lifecycle.states.is_empty() {
+        defects.push(DefinitionError::EmptyLifecycle);
+        ladder_is_sound = false;
+    }
     for state in &definition.lifecycle.states {
         if state.trim().is_empty() {
-            return Err(DefinitionError::EmptyLifecycleState);
+            defects.push(DefinitionError::EmptyLifecycleState);
+            ladder_is_sound = false;
+            continue;
         }
         if !states.insert(state.clone()) {
-            return Err(DefinitionError::DuplicateLifecycleState {
+            defects.push(DefinitionError::DuplicateLifecycleState {
                 state: state.clone(),
             });
+            ladder_is_sound = false;
         }
     }
-
-    if !states.contains(&definition.lifecycle.initial) {
-        return Err(DefinitionError::UnknownInitialState {
+    if ladder_is_sound && !states.contains(&definition.lifecycle.initial) {
+        defects.push(DefinitionError::UnknownInitialState {
             state: definition.lifecycle.initial.clone(),
         });
     }
 
-    validate_schema_definition(&definition.schema, "schema")?;
+    defects.check(validate_schema_definition(&definition.schema, "schema"));
 
     let invariant_scope = Scope {
         kind: ScopeKind::Invariant,
@@ -52,11 +91,15 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         args: None,
     };
     for (index, invariant) in definition.invariants.iter().enumerate() {
-        validate_rule_definition(invariant, &format!("invariants[{index}]"), invariant_scope)?;
+        defects.check(validate_rule_definition(
+            invariant,
+            &format!("invariants[{index}]"),
+            invariant_scope,
+        ));
     }
 
     if let Some(event) = &definition.create.emit {
-        validate_event_definition(
+        defects.check(validate_event_definition(
             event,
             "create.emit",
             None,
@@ -65,47 +108,50 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 fields: &definition.schema,
                 args: None,
             },
-        )?;
+        ));
     }
 
     for (operation_name, operation) in &definition.operations {
         if operation_name.trim().is_empty() {
-            return Err(DefinitionError::EmptyOperationName);
+            defects.push(DefinitionError::EmptyOperationName);
         }
         if operation.transitions.is_empty() {
-            return Err(DefinitionError::NoTransitions {
+            defects.push(DefinitionError::NoTransitions {
                 operation: operation_name.clone(),
             });
         }
 
-        validate_schema_definition(
+        defects.check(validate_schema_definition(
             &operation.arguments,
             &format!("operations.{operation_name}.arguments"),
-        )?;
+        ));
 
         let mut operation_source_states = BTreeSet::new();
         for transition in &operation.transitions {
             if transition.from.is_empty() {
-                return Err(DefinitionError::EmptyFromStates {
+                defects.push(DefinitionError::EmptyFromStates {
                     operation: operation_name.clone(),
                 });
             }
             for from in transition.from.iter() {
-                if !states.contains(from) {
-                    return Err(DefinitionError::UnknownFromState {
+                if ladder_is_sound && !states.contains(from) {
+                    defects.push(DefinitionError::UnknownFromState {
                         operation: operation_name.clone(),
                         state: from.clone(),
                     });
+                    // A state the ladder does not declare is not also *ambiguous*; naming it twice
+                    // would make one typo look like two problems.
+                    continue;
                 }
                 if !operation_source_states.insert(from.clone()) {
-                    return Err(DefinitionError::AmbiguousTransition {
+                    defects.push(DefinitionError::AmbiguousTransition {
                         operation: operation_name.clone(),
                         state: from.clone(),
                     });
                 }
             }
-            if !states.contains(&transition.to) {
-                return Err(DefinitionError::UnknownToState {
+            if ladder_is_sound && !states.contains(&transition.to) {
+                defects.push(DefinitionError::UnknownToState {
                     operation: operation_name.clone(),
                     state: transition.to.clone(),
                 });
@@ -118,11 +164,11 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
             args: Some(&operation.arguments),
         };
         for (index, precondition) in operation.preconditions.iter().enumerate() {
-            validate_rule_definition(
+            defects.check(validate_rule_definition(
                 precondition,
                 &format!("operations.{operation_name}.preconditions[{index}]"),
                 rule_scope,
-            )?;
+            ));
         }
 
         let template_scope = Scope {
@@ -133,29 +179,30 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         for (field, template) in &operation.set {
             if !definition.schema.additional_fields && !definition.schema.fields.contains_key(field)
             {
-                return Err(DefinitionError::UnknownSetField {
+                defects.push(DefinitionError::UnknownSetField {
                     operation: operation_name.clone(),
                     field: field.clone(),
                 });
+                // The template is checked anyway: its own references are a separate fault.
             }
-            validate_template(
+            defects.check(validate_template(
                 template,
                 &format!("operations.{operation_name}.set.{field}"),
                 template_scope,
-            )?;
+            ));
         }
 
         for (index, event) in operation.emits.iter().enumerate() {
-            validate_event_definition(
+            defects.check(validate_event_definition(
                 event,
                 &format!("operations.{operation_name}.emits[{index}]"),
                 Some(operation_name),
                 template_scope,
-            )?;
+            ));
         }
     }
 
-    Ok(())
+    defects.into_result()
 }
 
 fn validate_event_definition(

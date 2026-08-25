@@ -93,6 +93,7 @@ A refusal always carries `kind` and `message`, plus the fields of its kind:
 |---|---|
 | `validation` | `errors: [{path, message}]` — every failure, not the first |
 | `invalid_transition` | `operation`, `state` |
+| `definition` | `defect` (the first defect's kind), `defects` (every defect, each with its `kind` and `message`) |
 | `precondition_failed` | `operation`, `rule`, `reason` |
 | `precondition_unobservable` | `operation`, `rule`, `reason`, `unresolved` — every address nothing was observed at |
 | `invariant_violation` | `rule`, `reason` |

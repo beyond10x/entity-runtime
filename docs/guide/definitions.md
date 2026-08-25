@@ -285,7 +285,12 @@ A refusal at any step returns before the next, and the caller's instance is unto
 
 ## Refusals at registration
 
-Registering a definition refuses, with a typed `DefinitionError`: an empty entity name; version
+Registering a definition refuses with **every** defect it has — a `DefinitionErrors`, non-empty,
+each entry a typed `DefinitionError` — so fixing a document takes one pass rather than one run per
+fault. A check whose prerequisite already failed is skipped: a lifecycle with a duplicate rung is
+one finding, not one per transition it invalidates. `entity validate` prints them all.
+
+The defects are: an empty entity name; version
 `0`; an empty lifecycle or an empty state name; an `initial` not among the states; a duplicate
 state; an empty operation name; an operation without transitions; a transition through an
 undeclared state; two transitions from one state; `set` writing an undeclared field; an empty

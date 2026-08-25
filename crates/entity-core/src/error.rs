@@ -263,14 +263,130 @@ impl fmt::Display for ValidationError {
 
 impl std::error::Error for ValidationError {}
 
+/// Every defect in one definition, in the order they were found.
+///
+/// Non-empty by construction: it is only ever produced instead of an `Ok`.
+///
+/// Validation used to stop at the first defect, so a document with four of them took four
+/// attempts to fix and each attempt told you nothing about the next. Value validation already
+/// reported every failing field at once (R-23); this is the same courtesy for the definition
+/// itself, and `engineering-protocols` invariant 3 asks for it by name.
+///
+/// Comparing one of these to a single [`DefinitionError`] holds when it carries exactly that
+/// defect and nothing else, so a test that asserts one defect is also asserting that there were
+/// no others.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DefinitionErrors(Vec<DefinitionError>);
+
+impl DefinitionErrors {
+    /// Builds a list. Panics on an empty one, which would mean a refusal with nothing wrong.
+    pub(crate) fn new(defects: Vec<DefinitionError>) -> Self {
+        assert!(!defects.is_empty(), "a refusal names at least one defect");
+        Self(defects)
+    }
+
+    /// The first defect found, which is what a caller that only wants one should read.
+    #[must_use]
+    pub fn first(&self) -> &DefinitionError {
+        &self.0[0]
+    }
+
+    /// Every defect, in the order they were found.
+    #[must_use]
+    pub fn as_slice(&self) -> &[DefinitionError] {
+        &self.0
+    }
+
+    /// Every defect, owned.
+    #[must_use]
+    pub fn into_vec(self) -> Vec<DefinitionError> {
+        self.0
+    }
+
+    /// How many defects there are. Never zero.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Always `false`. Present because clippy asks for it beside [`len`](Self::len), and because
+    /// a reader who wonders is better answered by a method than by a comment.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        false
+    }
+
+    /// Iterates the defects.
+    pub fn iter(&self) -> std::slice::Iter<'_, DefinitionError> {
+        self.0.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a DefinitionErrors {
+    type Item = &'a DefinitionError;
+    type IntoIter = std::slice::Iter<'a, DefinitionError>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for DefinitionErrors {
+    type Item = DefinitionError;
+    type IntoIter = std::vec::IntoIter<DefinitionError>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl From<DefinitionError> for DefinitionErrors {
+    fn from(error: DefinitionError) -> Self {
+        Self(vec![error])
+    }
+}
+
+impl PartialEq<DefinitionError> for DefinitionErrors {
+    fn eq(&self, other: &DefinitionError) -> bool {
+        self.0.len() == 1 && &self.0[0] == other
+    }
+}
+
+impl PartialEq<DefinitionErrors> for DefinitionError {
+    fn eq(&self, other: &DefinitionErrors) -> bool {
+        other == self
+    }
+}
+
+impl fmt::Display for DefinitionErrors {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_slice() {
+            [only] => write!(f, "{only}"),
+            defects => {
+                write!(f, "{} defects", defects.len())?;
+                for defect in defects {
+                    write!(f, "; {defect}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::error::Error for DefinitionErrors {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.first())
+    }
+}
+
 /// The kernel refused to produce a [`Decision`](crate::Decision).
 ///
 /// Every variant is a refusal with an address: which operation, which state, which rule. A
 /// refusal changes nothing — the caller's instance is exactly as it was.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreError {
-    /// The definition itself is malformed.
-    Definition(DefinitionError),
+    /// The definition itself is malformed. Every defect found, not the first.
+    Definition(DefinitionErrors),
     /// One or more values did not satisfy their schema. Every failure is listed.
     Validation(Vec<ValidationError>),
     /// No definition is registered under this `(entity, version)`.
@@ -500,6 +616,12 @@ impl std::error::Error for CoreError {
 
 impl From<DefinitionError> for CoreError {
     fn from(value: DefinitionError) -> Self {
+        Self::Definition(value.into())
+    }
+}
+
+impl From<DefinitionErrors> for CoreError {
+    fn from(value: DefinitionErrors) -> Self {
         Self::Definition(value)
     }
 }
