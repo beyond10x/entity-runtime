@@ -37,7 +37,8 @@ Four items. **All four were decided on 2026-08-25** (§ 7); what remains is orde
 | **A** | put the mapping to `engineering-protocols`, carrying D as evidence | decided; sent after D | it is a document |
 | **B** | the dependency arrow | **taken** — `entity-core` is a git-pinned dependency of `aep-backend-markdown`; [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | — the manifest line exists |
 
-Phase 2 is **done**: `protocol artifact move` is decided by this kernel, with an 800-pair verdict
+Phase 3 is **done** on both sides — a ladder may declare what a rung costs, and the refusal tells
+*nobody looked* from *it does not hold*. Phase 2 is **done**: `protocol artifact move` is decided by this kernel, with an 800-pair verdict
 equivalence test in their repository. Phases 3 and 4 are next, in that order.
 
 ## 3. What to send, and where it lands

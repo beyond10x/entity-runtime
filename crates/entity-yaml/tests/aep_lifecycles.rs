@@ -11,7 +11,7 @@
 //! (`tests/fixtures/aep-lifecycles/`, pinned at `4e6279b` — see its `PIN.md`) rather than from a
 //! sibling checkout, so this says the same thing on a machine that has only this repository.
 
-use entity_core::{CoreError, Registry, Runtime};
+use entity_core::{CoreError, EntityInstance, Registry, Runtime};
 use serde_json::json;
 use serde_yaml_ng::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -208,6 +208,78 @@ fn each_definition_yields_exactly_the_edges_the_pinned_transitions_map_yields() 
     }
 }
 
+/// Phase 3's half of the equivalence: a rung upstream says costs evidence must cost it here too.
+///
+/// The edge test above compares which moves exist. This compares what one of them *asks for* —
+/// paired by `(target status, evidence kind)`, which is what both sides genuinely say. It does not
+/// compare counts or wording: upstream declares `at_least` on a status, these definitions declare a
+/// `gte` on a verb-named operation, and pinning the sentence would be pinning a translation rather
+/// than the claim.
+#[test]
+fn a_rung_the_pinned_ladder_charges_for_is_charged_for_here_too() {
+    let mut compared = 0;
+    for kind in pinned_kinds() {
+        let upstream = upstream_requires(&kind);
+        let definition = definition(&kind);
+        for (state, evidence) in &upstream {
+            compared += 1;
+            let reaching: Vec<&entity_core::OperationDefinition> = definition
+                .operations
+                .values()
+                .filter(|operation| {
+                    operation
+                        .transitions
+                        .iter()
+                        .any(|transition| &transition.to == state)
+                })
+                .collect();
+            assert!(
+                !reaching.is_empty(),
+                "{kind}: nothing reaches `{state}`, which the ladder charges for"
+            );
+            let charged = reaching.iter().any(|operation| {
+                operation.preconditions.iter().any(|rule| {
+                    serde_json::to_string(&rule.condition)
+                        .unwrap_or_default()
+                        .contains(evidence.as_str())
+                })
+            });
+            assert!(
+                charged,
+                "{kind}: the pinned ladder charges `{evidence}` to reach `{state}`, and no \
+                 operation reaching it declares a precondition that reads one"
+            );
+        }
+    }
+    assert!(
+        compared >= 1,
+        "no pinned ladder charges for anything, so this test compared nothing"
+    );
+}
+
+/// `(status, evidence kind)` for every requirement the pinned ladder declares.
+fn upstream_requires(kind: &str) -> Vec<(String, String)> {
+    let path = fixtures_dir().join(format!("{kind}.yaml"));
+    let text = fs::read_to_string(&path).expect("readable");
+    let value: Value = serde_yaml_ng::from_str(&text).expect("parses");
+    let Some(requires) = value.get("requires").and_then(Value::as_mapping) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for (status, requirements) in requires {
+        let status = status.as_str().expect("a status is a string").to_owned();
+        for requirement in requirements.as_sequence().expect("a list") {
+            let evidence = requirement
+                .get("evidence")
+                .and_then(Value::as_str)
+                .expect("a requirement names an evidence kind")
+                .to_owned();
+            found.push((status.clone(), evidence));
+        }
+    }
+    found
+}
+
 /// Upstream's terminal rungs — `archived`, and `rejected`/`superseded` where the ladder ends there —
 /// carry an empty list. Nothing may leave them, which is the structural form of *nothing is deleted*.
 #[test]
@@ -273,8 +345,17 @@ fn a_story_walks_the_ladder_and_every_move_is_a_fact() {
         ("activate", "active"),
         ("implement", "implemented"),
     ] {
+        // `implement` costs a test result now — phase 3 of the adoption design, and gap-register
+        // `:39` on the other side. Every other rung on this ladder is free, and only `implement`
+        // *declares* an `evidence` argument: passing one to `propose` is refused as an argument the
+        // operation does not take, which is the schema doing its job rather than a special case.
+        let arguments = if operation == "implement" {
+            json!({ "actor": "timo", "evidence": { "test_result": 1 } })
+        } else {
+            json!({ "actor": "timo" })
+        };
         let decision = runtime
-            .execute(&instance, operation, json!({ "actor": "timo" }))
+            .execute(&instance, operation, arguments)
             .unwrap_or_else(|error| panic!("{operation}: {error}"));
         assert_eq!(decision.instance.lifecycle_state, state);
         assert_eq!(decision.events.len(), 1);
@@ -284,6 +365,46 @@ fn a_story_walks_the_ladder_and_every_move_is_a_fact() {
         assert_eq!(decision.events[0].payload["actor"], json!("timo"));
         instance = decision.instance;
     }
+}
+
+#[test]
+fn a_story_cannot_reach_implemented_without_the_evidence_its_ladder_asks_for() {
+    let (registry, _) = registry_for("story");
+    let runtime = Runtime::new(&registry);
+    let active = EntityInstance {
+        entity: "story".to_owned(),
+        version: 1,
+        id: "story:x".to_owned(),
+        lifecycle_state: "active".to_owned(),
+        revision: 3,
+        fields: serde_json::from_value(json!({ "title": "x", "tags": [] })).expect("fields"),
+    };
+
+    // Nobody presented one: unobservable, naming the address, not "the requirement failed".
+    let unobserved = runtime
+        .execute(&active, "implement", json!({ "actor": "timo" }))
+        .expect_err("no evidence was presented");
+    assert!(
+        matches!(
+            unobserved,
+            CoreError::PreconditionUnobservable { ref unresolved, .. }
+                if unresolved == &["$args.evidence.test_result".to_owned()]
+        ),
+        "{unobserved}"
+    );
+
+    // Somebody presented a count and it is short: a different refusal, for a different reader.
+    let insufficient = runtime
+        .execute(
+            &active,
+            "implement",
+            json!({ "actor": "timo", "evidence": { "test_result": 0 } }),
+        )
+        .expect_err("zero is an observation");
+    assert!(
+        matches!(insufficient, CoreError::PreconditionFailed { .. }),
+        "{insufficient}"
+    );
 }
 
 #[test]

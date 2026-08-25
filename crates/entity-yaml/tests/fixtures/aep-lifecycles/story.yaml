@@ -20,3 +20,18 @@ transitions:
   implemented: [archived]
   rejected: [archived]
   archived: []
+
+# What a rung costs. `implemented` was a claim nothing checked — gap register :39, opened by an
+# adopter's governed dogfood run — and this is the line that checks it. A story reaches
+# `implemented` when at least one test result has been presented for it, and the refusal when none
+# has tells that apart from a count that is short: one sends you to produce a record, the other to
+# argue about the one that exists.
+#
+# It establishes that a count was presented, and not that the records are sound, about this story,
+# or produced by somebody independent of its author. Those are the engine's judgements and they are
+# `story:completion-needs-evidence`. This is the mechanism half, and it is reversible by deleting
+# these four lines.
+requires:
+  implemented:
+    - evidence: test_result
+      at_least: 1
