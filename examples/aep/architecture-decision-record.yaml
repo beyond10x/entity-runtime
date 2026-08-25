@@ -1,0 +1,123 @@
+# The AEP `architecture-decision-record` lifecycle, expressed as an entity definition.
+#
+# Phase 1 of `docs/design/engineering-protocols-adoption-v0.1.md`: the transitions map in
+# `engineering-protocols` `artifacts/lifecycles/architecture-decision-record.yaml` at `79b641c` — a Rust
+# `LifecycleRegistry` consults it and nothing else — carried here as data a kernel executes.
+# `crates/entity-yaml/tests/aep_lifecycles.rs` proves the two say the same thing.
+#
+# A decision and its reasons. Both terminal states are kept: a decision that was refused, and one that has been replaced, are still part of the record.
+#
+# No rules yet: phase 1 is edge equivalence only. Preconditions arrive with phase 3, once a rule
+# can say `unknown`.
+
+entity: architecture-decision-record
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    # `id`, `kind` and `status` are not fields: the kernel owns identity and the lifecycle state,
+    # and writing either as a field is how a status becomes something anybody can set.
+    title:
+      type: string
+      required: true
+      min_length: 1
+
+    summary:
+      type: string
+
+    owner:
+      type: string
+
+    tags:
+      type: array
+      default: []
+      items:
+        type: string
+
+    # The markdown body, unmodelled for now. `artifacts/kinds/*.yaml` declares `required_sections`
+    # there; modelling those as fields is a later step, and this is what the design calls keeping
+    # the body as json in the first one.
+    body:
+      type: json
+
+lifecycle:
+  initial: proposed
+  states:
+    - proposed
+    - accepted
+    - rejected
+    - superseded
+
+create:
+  emit:
+    type: ArtifactCreated
+    payload:
+      artifact_id: $id
+      kind: $entity
+      status: $state
+      title: $fields.title
+
+operations:
+  # Decided and in force.
+  accept:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: proposed
+        to: accepted
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: accept
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  # Refused, and still part of the record.
+  reject:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: proposed
+        to: rejected
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: reject
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  # Replaced by a later decision, and still part of the record.
+  supersede:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: accepted
+        to: superseded
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: supersede
+          from: $from_state
+          to: $to_state
+          actor: $args.actor

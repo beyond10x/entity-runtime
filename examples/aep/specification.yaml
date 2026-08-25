@@ -1,0 +1,210 @@
+# The AEP `specification` lifecycle, expressed as an entity definition.
+#
+# Phase 1 of `docs/design/engineering-protocols-adoption-v0.1.md`: the transitions map in
+# `engineering-protocols` `artifacts/lifecycles/specification.yaml` at `79b641c` — a Rust
+# `LifecycleRegistry` consults it and nothing else — carried here as data a kernel executes.
+# `crates/entity-yaml/tests/aep_lifecycles.rs` proves the two say the same thing.
+#
+# What must exist. Review is the only way out of draft, so a specification cannot become approved by being edited.
+#
+# No rules yet: phase 1 is edge equivalence only. Preconditions arrive with phase 3, once a rule
+# can say `unknown`.
+
+entity: specification
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    # `id`, `kind` and `status` are not fields: the kernel owns identity and the lifecycle state,
+    # and writing either as a field is how a status becomes something anybody can set.
+    title:
+      type: string
+      required: true
+      min_length: 1
+
+    summary:
+      type: string
+
+    owner:
+      type: string
+
+    tags:
+      type: array
+      default: []
+      items:
+        type: string
+
+    # The markdown body, unmodelled for now. `artifacts/kinds/*.yaml` declares `required_sections`
+    # there; modelling those as fields is a later step, and this is what the design calls keeping
+    # the body as json in the first one.
+    body:
+      type: json
+
+lifecycle:
+  initial: draft
+  states:
+    - draft
+    - in_review
+    - approved
+    - implemented
+    - rejected
+    - superseded
+    - archived
+
+create:
+  emit:
+    type: ArtifactCreated
+    payload:
+      artifact_id: $id
+      kind: $entity
+      status: $state
+      title: $fields.title
+
+operations:
+  # Review is the only way out of draft.
+  submit:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: draft
+        to: in_review
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: submit
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  # A review that asks for changes sends it back, so the status never claims a review is still running.
+  request_changes:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: in_review
+        to: draft
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: request_changes
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  # Reviewed and agreed.
+  approve:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: in_review
+        to: approved
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: approve
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  # Refused, and kept: the next attempt should be able to read why.
+  reject:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: in_review
+        to: rejected
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: reject
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  # The point at which the system is supposed to match it.
+  implement:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: approved
+        to: implemented
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: implement
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  # Replaced by a later artifact.
+  supersede:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: [approved, implemented]
+        to: superseded
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: supersede
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  # Kept for the record only.
+  archive:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: [draft, approved, implemented, rejected, superseded]
+        to: archived
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: archive
+          from: $from_state
+          to: $to_state
+          actor: $args.actor

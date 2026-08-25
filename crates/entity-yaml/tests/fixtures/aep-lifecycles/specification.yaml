@@ -1,0 +1,19 @@
+# A specification's status is what a protocol tests when it demands "an approved specification before
+# implementation". The ladder is therefore deliberately narrow: every rung has a distinct meaning a
+# requirement can name, and nothing skips review.
+kind: specification
+initial: draft
+
+transitions:
+  # Review is the only way out of draft, so a specification cannot become approved by being edited.
+  draft: [in_review, archived]
+  # A review that asks for changes sends it back to draft rather than leaving it in_review, so the
+  # status never claims a review is still running when it is not.
+  in_review: [draft, approved, rejected]
+  approved: [implemented, superseded, archived]
+  implemented: [superseded, archived]
+  # Terminal. A rejected specification is kept, not deleted: the next attempt should be able to read
+  # why this one was refused.
+  rejected: [archived]
+  superseded: [archived]
+  archived: []

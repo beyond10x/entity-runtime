@@ -1,0 +1,22 @@
+# Intentionally close to what a planning tool already models — refinement, agreement, work in
+# flight, done — because a story that moves between one of those and this repository should not
+# change shape on the way.
+#
+# It used to say that a story is the kind an organisation is *most likely* to keep somewhere else.
+# That is no longer the trade it describes: the markdown planning store makes AEP a place a story
+# can actually live, and `protocol artifact move` enforces this ladder over it. Keeping stories in
+# Linear or Jira is still entirely supported — `examples/development-passkeys` is that arrangement,
+# with the story as an `external` location — but it is now a choice between two homes rather than
+# the only one available.
+kind: story
+initial: draft
+
+transitions:
+  draft: [proposed, archived]
+  # `proposed` means refined and agreed enough to pick up; `rejected` means it will not be done, which
+  # is a different fact from being dropped from a backlog.
+  proposed: [draft, active, rejected]
+  active: [implemented, archived]
+  implemented: [archived]
+  rejected: [archived]
+  archived: []

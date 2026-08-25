@@ -1,0 +1,17 @@
+# Applies to `design` and, by kind-hierarchy fallback, to every design subkind that declares no
+# lifecycle of its own — feature, component, api and data designs included.
+kind: design
+initial: draft
+
+transitions:
+  draft: [in_review, archived]
+  # Back to draft when a review asks for changes; `rejected` is for a design that is not going to be
+  # rewritten, so the two outcomes stay distinguishable after the fact.
+  in_review: [draft, approved, rejected]
+  # `implemented` is not the end of a design's usefulness — it is the point at which the system is
+  # supposed to match it, which is what makes a stale approved design worth catching.
+  approved: [implemented, superseded, archived]
+  implemented: [superseded, archived]
+  rejected: [archived]
+  superseded: [archived]
+  archived: []

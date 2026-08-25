@@ -1,0 +1,17 @@
+# An accepted ADR is a historical record, not a living document. Later decisions supersede it; they do
+# not edit it. That is the whole value of the artifact: the chain `proposed → accepted → superseded`
+# stays followable, so a reader can reconstruct what was believed at the time and what changed it. An
+# ADR rewritten in place destroys exactly the reasoning someone came to read.
+#
+# Consequently there is no `archived` here, and no route back to `proposed`. A decision that turned out
+# to be wrong gets a successor ADR carrying `supersedes:`, never a quiet retraction.
+kind: architecture-decision-record
+initial: proposed
+
+transitions:
+  proposed: [accepted, rejected]
+  accepted: [superseded]
+  # Both terminal: a decision that was refused, and one that has been replaced, are still part of the
+  # record.
+  rejected: []
+  superseded: []

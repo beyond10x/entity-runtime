@@ -39,6 +39,7 @@ tasks:
     desc: every shipped example definition validates through the CLI
     cmds:
       - cargo run -q -p entity-cli --locked -- validate examples/*.yaml
+      - cargo run -q -p entity-cli --locked -- validate examples/aep/*.yaml
 
   req-check:
     desc: every requirement in docs/requirements.md is cited by the design and pinned by a test that exists

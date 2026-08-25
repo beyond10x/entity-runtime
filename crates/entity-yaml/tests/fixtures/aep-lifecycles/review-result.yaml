@@ -1,0 +1,13 @@
+# A review outcome is immutable once recorded. A review that can be edited after the fact is not
+# evidence — it is an opinion with a timestamp, and any requirement resting on it ("an approved review
+# of the design, by a human, covering the current version") becomes unfalsifiable if the recorded
+# result can be improved later to make the gate pass.
+#
+# So there is no draft, no re-review and no correction: a review is recorded `active`, and a second
+# look is a second review artifact. `archived` exists only to retire a review whose subject is gone.
+kind: review-result
+initial: active
+
+transitions:
+  active: [archived]
+  archived: []
