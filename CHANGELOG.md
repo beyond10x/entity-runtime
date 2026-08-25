@@ -6,6 +6,17 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.2.1] - 2026-08-25
+
+### Fixed
+
+* **The 0.2.0 archives report `entity 0.1.0`.** The changelog was cut, the tag was written and the
+  workspace version was never bumped, so five platforms' binaries went out claiming to be the
+  release before them. 0.2.1 is 0.2.0 with its own version number — nothing else in the runtime
+  changed — and with the check that would have caught it: a test comparing the binary's version to
+  the newest released heading in this file, which the gate runs. Use 0.2.1; 0.2.0's archives are
+  correct code under the wrong name.
+
 ## [0.2.0] - 2026-08-25
 
 An adversarial review of 0.1.0 — a hands-on pass against the shipped binary and an independent

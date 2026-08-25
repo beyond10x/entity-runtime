@@ -12,8 +12,8 @@ name = "entity"
 path = "src/main.rs"
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.1.0" }
-entity-yaml = { path = "../entity-yaml", version = "0.1.0" }
+entity-core = { path = "../entity-core", version = "0.2.1" }
+entity-yaml = { path = "../entity-yaml", version = "0.2.1" }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
