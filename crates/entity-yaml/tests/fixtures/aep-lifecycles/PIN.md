@@ -1,6 +1,6 @@
 # Upstream fixture — `engineering-protocols` lifecycle documents
 
-Copied verbatim, not adapted. These ten files are what
+Copied verbatim, not adapted. These eleven files are what
 [`aep_lifecycles.rs`](../../aep_lifecycles.rs) checks `examples/aep/*.yaml` against, and they are
 committed here rather than read from a sibling checkout so the equivalence test says the same thing
 on a machine that has only this repository.
@@ -8,13 +8,14 @@ on a machine that has only this repository.
 | | |
 |---|---|
 | source | `github.com/beyond10x/engineering-protocols`, `artifacts/lifecycles/*.yaml` |
-| pinned commit | `32faa51f66273f147a6c268f7ac1155e46375509` — `main` after the `obligation` ladder landed there. No tag on it; the last tag, `0.17.0`, predates this commit by one. Naming a tag that does not point at the copied bytes would send anyone reproducing this to a different sha |
-| last upstream change to these files | `32faa51f66273f147a6c268f7ac1155e46375509`, 2026-08-25 — *feat(lifecycles): obligation — a commitment on a clock nobody here controls*. A tenth ladder, and the first written entirely in names no Rust enum holds |
+| pinned commit | `3de6e07` — `main` after the `blocker` ladder landed there, tagged `0.18.0`'s delivering commit |
+| last upstream change to these files | `3de6e07`, 2026-08-25 — *feat(lifecycles): blocker, typed by what would clear it*. An eleventh ladder |
 | copied | 2026-08-25; refreshed the same day for the ninth ladder |
 | licence | Apache-2.0, the same as this repository |
 
 ```
 8982ee715013ddec5b9e8fa81a0283c300d662684c05d65a42c3fd0567329e52  architecture-decision-record.yaml
+973ec77a5870ab2c1c74e3108370b4b34d20c84c19b38298f3df804c18563a7e  blocker.yaml
 ca15b5c1c630b3ca4a794305024edf03b16921c635a6f53da38037562caaa9e5  design.yaml
 fe8e08bd3c57f988ed6228ae7060bb7393893ce51d680a171c99f4bb8bfbe858  epic.yaml
 602c4fb794f846ed1c280b22d01842e28a1e692dfd752eb7a5fc220819dfeae2  initiative.yaml
