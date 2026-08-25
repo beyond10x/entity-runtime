@@ -13,6 +13,14 @@ tasks:
       - task: req-check
       - task: pin-check
       - task: plan-check
+      - task: notes-check
+
+  notes-check:
+    desc: The release-notes reflow still handles tables, fences and list boundaries.
+    # Cheap, and it guards something nobody proofreads: the notes a release publishes are generated,
+    # so a reflow that quietly ate a table would ship as a broken page and be found by a reader.
+    cmds:
+      - python3 scripts/changelog-section.py --self-test
 
   fmt-check:
     desc: rustfmt, check only
