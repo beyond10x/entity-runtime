@@ -21,24 +21,24 @@ tasks:
   clippy:
     desc: clippy over every target, warnings are errors (this is what makes missing_docs fatal)
     cmds:
-      - cargo clippy --workspace --all-targets -- -D warnings
+      - cargo clippy --workspace --all-targets --locked -- -D warnings
 
   test:
     desc: every unit, integration and doc test
     cmds:
-      - cargo test --workspace
+      - cargo test --workspace --locked
 
   doc-check:
     desc: rustdoc with broken intra-doc links as errors
     env:
       RUSTDOCFLAGS: -D warnings
     cmds:
-      - cargo doc --workspace --no-deps
+      - cargo doc --workspace --no-deps --locked
 
   example-check:
     desc: every shipped example definition validates through the CLI
     cmds:
-      - cargo run -q -p entity-cli -- validate examples/*.yaml
+      - cargo run -q -p entity-cli --locked -- validate examples/*.yaml
 
   req-check:
     desc: every requirement in docs/requirements.md is cited by the design and pinned by a test that exists

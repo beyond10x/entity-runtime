@@ -3,7 +3,7 @@
 # so a dangling link (`onBrokenLinks: 'throw'`) fails before it lands.
 #
 # One-time repository setup this workflow needs: Settings → Pages → Source: "GitHub Actions".
-# Never "Deploy from a branch → /docs": that would publish the raw tree at the public URL.
+# Never "Deploy from a branch → /docs": that would serve the raw tree at the public URL.
 name: Publish documentation
 
 on:
@@ -37,12 +37,12 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
@@ -55,10 +55,9 @@ jobs:
         working-directory: website
         run: npm ci --ignore-scripts
 
-      - name: Audit dependencies
-        working-directory: website
-        run: npm audit --audit-level=critical
-
+      # The dependency audit is deliberately NOT here: a new advisory in a transitive dependency
+      # would turn a documentation deploy red on a commit that touched a Markdown file. It runs
+      # weekly in audit.yml, where a finding is a finding rather than a broken deploy.
       - name: Type-check website
         working-directory: website
         run: npm run typecheck

@@ -1,5 +1,7 @@
 version: 2
 updates:
+  # Grouped so a Monday morning brings one pull request per ecosystem rather than five: ten
+  # concurrent site builds racing for the same npm registry produced noise, not signal.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -7,7 +9,10 @@ updates:
       day: monday
       time: "06:00"
       timezone: Europe/Berlin
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
 
   - package-ecosystem: npm
     directory: /website
@@ -16,7 +21,18 @@ updates:
       day: monday
       time: "06:15"
       timezone: Europe/Berlin
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    groups:
+      docusaurus:
+        patterns: ["@docusaurus/*", "@mdx-js/*", "react", "react-dom", "prism-react-renderer", "clsx"]
+      types:
+        patterns: ["@types/*", "typescript"]
+    ignore:
+      # TypeScript 7 is refused by `@docusaurus/tsconfig`'s settings today: the bump fails
+      # `npm run typecheck`, which is a real gate, not a flake. Revisit when Docusaurus ships
+      # support; until then a major bump here is noise with a red check attached.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: cargo
     directory: /
@@ -25,4 +41,7 @@ updates:
       day: monday
       time: "06:30"
       timezone: Europe/Berlin
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    groups:
+      cargo:
+        patterns: ["*"]
