@@ -128,6 +128,17 @@ Land nothing that does not pass all seven. Read the gate's own exit status, not 
 **Prose states no count of the gate's suites or tests.** That number lives in exactly one place:
 the gate's output.
 
+## Branch protection
+
+`main` carries a ruleset (`main: checks before merge`, id 21404415): `gate / Gate`,
+`gate / MSRV 1.85` and `Build Docusaurus` must pass, the branch cannot be deleted, and history
+cannot be rewritten. **`b10x-bot` and repository admins bypass it**, which is what keeps
+`private Atlas delivery tooling push origin main` working — the rule exists for pull requests, where a
+Dependabot bump used to be mergeable with a cancelled or failing site build.
+
+If a check name changes, change it here too: a required check that no longer runs blocks every
+pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime/rulesets/21404415`).
+
 ## Boundaries
 
 * **Vocabulary crosses to `engineering-protocols`; a dependency is a decision not yet taken.** No
