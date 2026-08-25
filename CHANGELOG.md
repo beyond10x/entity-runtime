@@ -4,6 +4,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.4.0] - 2026-08-25
+
 ### Added
 
 * **`examples/aep/` gains the evidence preconditions phase 3 asks for.** `story`'s `implement` and
