@@ -4,7 +4,24 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+* **`before` and `after`, for ordering two instants.** ISO-8601 — `2026-08-25`, or
+  `2026-08-25T12:00:00[.fff][Z]`, with a space accepted for the `T`. The clock is still read at the
+  edge and handed in as an argument; there is no `$now` and there will not be, because a definition
+  that could ask what time it is stops being replayable.
+
+  **An instant this kernel cannot read is `unknown`, not `false`** — and the refusal names the
+  operand. This is the one place the two comparison families deliberately differ: `gt` on two
+  non-numbers is `false` because *these are not numbers* is an observation anybody can make, while
+  *this is not a timestamp I can read* is a statement about the reader. Answering `false` would let
+  `after: [$args.now, $fields.due]` quietly report "not yet due" for a value nobody understood.
+
+  An explicit offset — `+02:00` — is refused rather than normalised. Comparing it with a naive
+  instant has no correct answer, and a shell that has offsets has a clock to normalise with. No date
+  library: every one of them ships a `now()`, which is the thing R-01 exists to keep out.
+
+  R-59 is new; R-53 and R-55 revised.
 
 ## [0.4.0] - 2026-08-25
 

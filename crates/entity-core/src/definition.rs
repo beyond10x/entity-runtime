@@ -335,6 +335,7 @@ pub struct RuleDefinition {
 /// Every operator a condition may use, in the order the documentation lists them.
 pub const CONDITION_OPERATORS: &[&str] = &[
     "all", "any", "not", "exists", "eq", "ne", "gt", "gte", "lt", "lte", "in", "contains",
+    "before", "after",
 ];
 
 /// A deliberately small, deterministic predicate language, written as data.
@@ -390,6 +391,25 @@ pub enum Condition {
     Exists {
         /// The operand, usually a reference such as `$fields.reason`.
         exists: Value,
+    },
+    /// The first instant is earlier than the second.
+    ///
+    /// Both operands are read as ISO-8601 — `2026-08-25`, or `2026-08-25T12:00:00[.fff][Z]`. An
+    /// operand this kernel cannot read makes the comparison [`Unknown`](crate::Truth::Unknown), not
+    /// `false`, because *this is not a timestamp I can read* is a statement about the reader rather
+    /// than about the world.
+    ///
+    /// There is no `$now`, and there will not be (R-62): the clock is read at the edge and handed
+    /// in as an argument, which is what keeps a decision replayable a year later.
+    Before {
+        /// Earlier, then later.
+        before: [Value; 2],
+    },
+    /// The first instant is later than the second. The mirror of [`Condition::Before`], with the
+    /// same reading and the same refusals.
+    After {
+        /// Later, then earlier.
+        after: [Value; 2],
     },
     /// The two operands are equal. Numbers compare numerically, so `100` equals `100.0`.
     Eq {
@@ -501,6 +521,12 @@ impl Condition {
                 not: Box::new(Self::from_value(operand)?),
             }),
             "exists" => Ok(Self::Exists { exists: operand }),
+            "before" => Ok(Self::Before {
+                before: pair(operand, "before")?,
+            }),
+            "after" => Ok(Self::After {
+                after: pair(operand, "after")?,
+            }),
             "eq" => Ok(Self::Eq {
                 eq: pair(operand, "eq")?,
             }),

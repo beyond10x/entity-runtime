@@ -428,6 +428,12 @@ fn evaluate_condition(
             let resolved = resolve_operand(exists, context, &mut answered)?;
             Ok(Truth::from_bool(resolved.is_some()))
         }
+        Condition::Before { before } => {
+            compare_instants(before, context, unobserved, |left, right| left < right)
+        }
+        Condition::After { after } => {
+            compare_instants(after, context, unobserved, |left, right| left > right)
+        }
         Condition::Eq { eq } => compare_values(eq, context, unobserved, values_equal),
         Condition::Ne { ne } => compare_values(ne, context, unobserved, |left, right| {
             !values_equal(left, right)
@@ -514,6 +520,41 @@ fn compare_values(
     let (left, right) = resolve_pair(pair, context, unobserved)?;
     match (left, right) {
         (Some(left), Some(right)) => Ok(Truth::from_bool(predicate(&left, &right))),
+        _ => Ok(Truth::Unknown),
+    }
+}
+
+/// Orders two instants, where anything this kernel cannot read is `Unknown` rather than `false`.
+///
+/// Unlike [`compare_numbers`], a value that is present and unreadable does **not** answer `false`.
+/// *These are not numbers* is an observation; *this is not a timestamp I can read* is a statement
+/// about the reader, and answering `false` would let a gate quietly permit a move against a value
+/// nobody understood. See `crate::timestamp` for what is read and what is refused.
+fn compare_instants(
+    pair: &[Value; 2],
+    context: &TemplateContext<'_>,
+    unobserved: &mut Unobserved,
+    predicate: impl FnOnce(crate::timestamp::Timestamp, crate::timestamp::Timestamp) -> bool,
+) -> Result<Truth, CoreError> {
+    let (left, right) = resolve_pair(pair, context, unobserved)?;
+    let (Some(left), Some(right)) = (left, right) else {
+        return Ok(Truth::Unknown);
+    };
+    let mut read = |value: &Value, written: &Value| {
+        let instant = value.as_str().and_then(crate::timestamp::parse);
+        if instant.is_none() {
+            if let Value::String(expression) = written {
+                if expression.starts_with('$') {
+                    unobserved.insert(expression.clone());
+                }
+            }
+        }
+        instant
+    };
+    let left = read(&left, &pair[0]);
+    let right = read(&right, &pair[1]);
+    match (left, right) {
+        (Some(left), Some(right)) => Ok(Truth::from_bool(predicate(left, right))),
         _ => Ok(Truth::Unknown),
     }
 }
