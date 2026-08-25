@@ -35,7 +35,7 @@ what is genuinely its own — the evidence model, three-valued predicates, capab
 | entity type `aep.design/v1` (`entity.rs` module doc) | `EntityDefinition { entity: "design", version: 1 }` | identity by `(entity, version)`, as already |
 | `EntityId` opaque, ≥ 12 chars (`entity.rs:52`) | `EntityInstance::id`, opaque to the kernel | the length rule would be the shell's; the kernel never parses an id |
 | `ArtifactStatus` (closed enum) | `lifecycle.states` per definition | `correction-owed` becomes a line in a YAML file |
-| `artifacts/lifecycles/story.yaml` transitions map | one operation per edge, e.g. `propose: draft → proposed`, `activate: proposed → active`, `implement: active → implemented` | an edge gains arguments, preconditions and events; `protocol artifact move --to implemented` becomes `execute --operation implement` |
+| `artifacts/lifecycles/story.yaml` transitions map | one operation per edge | an edge gains arguments, preconditions and events. Written here as verbs (`propose`, `activate`, `implement`) and shipped that way in `examples/aep/`; **phase 2 did not adopt them** — it names each operation for its target status, because a verb vocabulary is theirs to decide and `story:entity-runtime-mapping` is still asking |
 | `protocol artifact move` (status only) | an operation with `preconditions` | *`implemented` requires evidence* is `preconditions: [{ exists: $args.evidence_ref }]` — or, with three-valued rules (§ 4), a predicate over facts |
 | `aep.entity.archive/v1`, `aep.entity.supersede/v1`, **no delete** (`command.rs:706-710`) | terminal states `archived`, `superseded`; no operation leaves them; no delete exists to call | R-34 makes the absence structural |
 | `DomainEvent` with correlation/causation (`domain_event.rs`) | `DomainEvent` (fact) + the shell's envelope | the split is already how `domain_event.rs` argues it: "an event is not an audit record" |
@@ -52,12 +52,29 @@ Each phase is a story here and would be a story there; none starts until the ope
 | phase | what | evidence of done |
 |---|---|---|
 | 0 | this document; the mapping is reviewed by both repositories | accepted or refused, with the reason, on a plan page in `engineering-protocols` |
-| 1 | the eight `artifacts/lifecycles/*.yaml` re-expressed as eight definitions under `examples/aep/`, with one operation per edge and no rules | an equivalence test: for every kind, the set of `(from, operation, to)` edges the definition yields equals the transitions map in the YAML at the pinned commit; `entity validate examples/aep/*.yaml` exit 0 |
-| 2 | `protocol artifact move` evaluated by this kernel behind the existing CLI, refusing what it refuses today and nothing more | the markdown store's status moves produce identical accept/refuse verdicts on the planning stores of `engineering-protocols` and `agentic-principles` (98 + 6 artifacts on 2026-08-25) |
+| 1 | **done** — the eight `artifacts/lifecycles/*.yaml` re-expressed as eight definitions under `examples/aep/`, with one operation per edge and no rules | an equivalence test: for every kind, the set of `(from, to)` edges the definition yields equals the transitions map in the YAML at the pinned commit; `entity validate examples/aep/*.yaml` exit 0 |
+| 2 | **done** — `protocol artifact move` evaluated by this kernel behind the existing CLI, refusing what it refuses today and nothing more | `engineering-protocols` `crates/aep-backend-markdown/tests/kernel_equivalence.rs`: the kernel and `ArtifactLifecycle::permits_transition` agree on **every ordered pair of statuses** for every kind either store holds — 800 pairs, 90% of them illegal |
 | 3 | preconditions on `implement` and `accept`: evidence must be present | gap register :39 closes with a mechanism, not a verdict |
 | 4 | open status vocabulary: `correction-owed` and friends added as data | gap register :70 closes without a Rust change |
 
-Phases 2–4 need § 4 first.
+Phases 2–4 need § 4 first, and § 4 is done.
+
+**Phase 2, as built.** `Document::move_status` asks
+`aep-backend-markdown::kernel::permits_transition`, which builds an `EntityDefinition` from the
+`ArtifactLifecycle` and executes the move. Three things about it are worth carrying forward:
+
+* **The operations are named for the target status, not for a verb.** This design's § 2 says
+  `protocol artifact move --to implemented` becomes `execute --operation implement`. It did not, and
+  should not have: a verb vocabulary is a published surface on their side and nobody has agreed to
+  one — `story:entity-runtime-mapping` asks for that decision and has not had it. Naming each
+  operation for its target introduces no name that is not already theirs, and phase 2 keeps its
+  promise of changing no verdict *and* no vocabulary. The verb-named definitions in `examples/aep/`
+  remain a proposal, not a dependency.
+* **No `explain` verb was needed**, exactly as § 4b predicted: `execute` is pure and a refusal
+  changes nothing (R-04), so attempting the move *is* the dry run.
+* **The dependency is by git revision**, not by version: `entity-core` is not published, and pinning
+  a revision is the reversible half of `atlas/architecture/adr/0002`. Deleting the bridge leaves the
+  lookup it replaced standing behind it.
 
 ## 4. What must change here before phase 2
 
