@@ -1,0 +1,77 @@
+# The AEP `blocker` lifecycle, expressed as an entity definition.
+#
+# Phase 1 of `docs/design/engineering-protocols-adoption-v0.1.md`: the transitions map in
+# `engineering-protocols` `artifacts/lifecycles/blocker.yaml` at `3de6e07` — a Rust
+# `LifecycleRegistry` consults it and nothing else — carried here as data a kernel executes.
+# `crates/entity-yaml/tests/aep_lifecycles.rs` proves the two say the same thing.
+#
+# What is stopping something, typed by what would clear it. Upstream the *type* is the kind:
+# `credential-blocker` and `person-blocker` resolve to this one ladder through their hyphen lineage.
+# This kernel has no kind hierarchy — `story:schema-fragments` is where that would go — so the
+# equivalence here is over the ladder itself, which is the thing the pinned document declares.
+#
+# Two rungs and no more, and `cleared` is terminal: something blocked again is a new blocker with
+# its own date, not the old one reopened, or "how long were we stuck" has no answer.
+
+entity: blocker
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    title:
+      type: string
+      required: true
+      min_length: 1
+
+    summary:
+      type: string
+
+    owner:
+      type: string
+
+    tags:
+      type: array
+      default: []
+      items:
+        type: string
+
+    body:
+      type: json
+
+lifecycle:
+  initial: open
+  states:
+    - open
+    - cleared
+
+create:
+  emit:
+    type: ArtifactCreated
+    payload:
+      artifact_id: $id
+      kind: $entity
+      status: $state
+      title: $fields.title
+
+operations:
+  # It no longer stops anything. Nothing leaves `cleared`.
+  clear:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: open
+        to: cleared
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: clear
+          from: $from_state
+          to: $to_state
+          actor: $args.actor

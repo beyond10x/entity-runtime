@@ -6,6 +6,19 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.5.2] - 2026-08-25
+
+### Added
+
+* **`examples/aep/blocker.yaml`, the eleventh ladder.** `engineering-protocols` 0.18.0 added
+  `blocker` — what is stopping something, typed by what would clear it. Upstream the *type* is the
+  kind: `credential-blocker` and `person-blocker` share one ladder through their hyphen lineage.
+
+  This kernel has no kind hierarchy, so the equivalence here is over the ladder itself, which is what
+  the pinned document declares. `story:schema-fragments` is where a hierarchy would go, and it is
+  worth saying that the adopter got the effect without one — their lineage rule is a naming
+  convention their own type system reads, not something the definition format has to grow.
+
 ## [0.5.1] - 2026-08-25
 
 ### Added

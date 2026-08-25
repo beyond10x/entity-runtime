@@ -1,0 +1,22 @@
+# What is stopping something, typed by what would clear it.
+#
+# Gap register :73's third concept. The `blocks` edge already existed; the *type* did not, and the
+# type is what turns five stuck items into one conversation. "Parked on a credential" and "parked on
+# a person" look identical in a backlog and are not the same problem: one is a ticket to an admin
+# team, the other is a conversation, and a third is a decision nobody has taken.
+#
+# The type is the **kind**, not a field. `credential-blocker`, `person-blocker`, `decision-blocker`
+# and `vendor-blocker` all resolve to this ladder through `ArtifactKind::parent`, which reads the
+# last hyphen segment — so a team's own category of blocker costs a name and nothing else. No
+# document per type, no enum, no release. That machinery is the one gap register :77 was about, and
+# this is what it is for.
+#
+# Two rungs, because a blocker has two states worth recording and no more. `cleared` is terminal:
+# a thing that blocked and no longer does is history, and something blocked again is a new blocker
+# with its own date, not the old one reopened — otherwise "how long were we stuck" has no answer.
+kind: blocker
+initial: open
+
+transitions:
+  open: [cleared]
+  cleared: []
