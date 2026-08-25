@@ -53,7 +53,7 @@ operations: ...        # transitions, args, rules, set, events   § 3.3
 
 ### 3.1 Schema
 
-Fields have a kind — `string`, `integer`, `number`, `boolean`, `enum`, `array`, `object`, `json`
+Fields have a kind — `string`, `integer`, `number`, `boolean`, `enum`, `array`, `object`, `json`, `ref`
 (R-20) — and constraints: `required`, `default`, `min_length`, `max_length`, `min`, `max`, `values`,
 `items`, `properties`, `additional_properties`, and `additional_fields` on the schema itself (R-21).
 A constraint written on a kind it does not govern — `values` on a `string`, `items` on an `object` —
@@ -150,6 +150,62 @@ rather than registering and then reading `false` forever.
 
 Rules carry an optional `name` and `message`; both appear in the refusal, and a rule without a
 message gets a default (R-56).
+
+### 3.5 References between entities
+
+A field may be a **typed pointer** at another entity type (R-27):
+
+```yaml
+schema:
+  fields:
+    epic:     { type: ref, entity: epic, inverse: stories }
+    blockers: { type: array, items: { type: ref, entity: blocker, acyclic: true } }
+```
+
+`entity` names the target type and is required — a `ref` that does not say what it points at is a
+string with extra ceremony, and it is refused at registration the same way an `enum` without
+`values` is. Declaring `entity`, `inverse` or `acyclic` on any other kind is refused too (R-26),
+which is the rule this model already applies to every constraint.
+
+**There is no `relations:` block, deliberately.** An earlier draft had one — a section beside
+`schema` declaring edges with their own `cardinality` key — and it was two ways to say one thing.
+Cardinality is the array machinery that already exists: one reference is `type: ref`, several is an
+`array` whose `items` are `ref`. A second spelling for that would be the same defect as a condition
+carrying two operators, arriving as a feature.
+
+#### What the kernel checks, and the line it does not cross
+
+Exactly two things, and the second is smaller than it looks:
+
+1. **The declaration**, at registration: the target type is named, `inverse` is not blank.
+2. **The shape of a value**: an identity is a non-empty, non-whitespace string. That is the same
+   contract `EntityInstance::id` already has (R-75) — opaque to the kernel, meaningful to the shell.
+
+And, of the finished registry rather than of one definition, `Registry::validate_all` asks whether
+every target *type* is registered (R-28). It is not part of `register`, and that is a design choice
+with a reason: a story that names its epic and an epic that names its stories are ordinary, and a
+registration-time check would make them impossible to register in either order.
+
+What the kernel never checks is whether an instance carrying that identity **exists**, or what state
+it is in, or what revision. Those are questions about *another instance*, and `execute` is handed
+exactly one (R-01). This is not a limitation to route around later: resolving a reference by lookup
+would mean the same definition, instance, operation and arguments could produce different decisions
+at different moments, which is R-02 — the property that makes a decision replayable a year later.
+Resolution is the shell's, exactly as `protocol artifact relate` resolves one today, rebuilding the
+graph before it writes.
+
+#### What the declaration buys, given that
+
+The kernel enforces neither `inverse` nor `acyclic`, so it is fair to ask what they are for. They
+turn a rule that was written in prose into one a shell can read. `engineering-protocols` declares
+its `source`/`target` pairings in `artifacts/relations/relations.yaml` and says in the file's own
+header that they are *"advisory guidance for humans until the artifact validator reads them"* —
+rules written down twice and enforced once. A declaration in the definition is the first half of
+closing that: the shell has something to enforce **from**, rather than a convention to re-implement.
+
+`inverse` is a label and not a second edge — nothing stores the reverse and the kernel never
+traverses it. It exists so a graph drawing and a refusal message can name the direction they are
+reading, which is what `RelationKind::inverse_label` already does on the other side.
 
 ## 4. The condition language
 
@@ -386,6 +442,9 @@ in a further crate that depends on `entity-core` and never the other way round.
   gets a changelog line.
 * How many defects a registration reports, beyond the floor R-13 sets: it now reports every one
   (`DefinitionErrors`), and reporting more of them, or grouping them differently, is welcome.
+* **Adding a field kind**, as `ref` was added (§ 3.5) — an addition to R-20 with its own row and a
+  changelog line. What may *not* change with it is the line § 3.5 draws: a kind whose validation
+  needs to read another instance is a kind this kernel cannot have.
 
 What may not: the eleven-step order, the two rule scopes, the refusal-changes-nothing property, the
 absence of IO, and the absence of `$now`.

@@ -62,10 +62,15 @@ enum Command {
         #[arg(long, value_enum, default_value_t = Format::Text)]
         format: Format,
     },
-    /// Draw the lifecycle: states as nodes, operations as the edges between them.
+    /// Draw a definition: its lifecycle, or the references between several definitions.
     Graph {
-        /// The definition file, YAML.
-        definition: PathBuf,
+        /// The definition files, YAML. Several are only useful with `--references`.
+        #[arg(required = true)]
+        definitions: Vec<PathBuf>,
+        /// Draw the references between the definitions instead of one definition's lifecycle:
+        /// entity types as nodes, `ref` fields as the edges between them.
+        #[arg(long)]
+        references: bool,
         #[arg(long, value_enum, default_value_t = GraphFormat::Text)]
         format: GraphFormat,
     },
@@ -73,6 +78,13 @@ enum Command {
     Create {
         #[command(flatten)]
         definition: DefinitionArg,
+        /// Which type to create, when several `--definition` files were given.
+        ///
+        /// Several are needed whenever a definition declares a `ref`: the type it points at has to
+        /// be registered too, or the registry is not a consistent set. With one file this is
+        /// unnecessary and the type is unambiguous.
+        #[arg(long)]
+        entity: Option<String>,
         /// The new instance's identity. The kernel generates none; you supply it.
         #[arg(long)]
         id: String,
@@ -119,10 +131,14 @@ enum Format {
 
 #[derive(Clone, Copy, ValueEnum)]
 enum GraphFormat {
-    /// One line per transition: `from --operation--> to`.
+    /// One line per edge: `from --label--> to`.
     Text,
-    /// Graphviz DOT.
+    /// Graphviz DOT, for whoever already has `dot`.
     Dot,
+    /// A standalone SVG, laid out here rather than by a tool nobody controls the version of.
+    Svg,
+    /// One self-contained page: the drawing, and the same edges as a table beneath it.
+    Html,
 }
 
 /// Why the command did not produce a result, and which exit code that earns.
@@ -182,18 +198,39 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                 Format::Yaml => write_all(out, &to_yaml(&definition)?),
             }
         }
-        Command::Graph { definition, format } => {
-            let definition = load_validated(&definition)?;
-            write_all(out, &graph(&definition, format))
+        Command::Graph {
+            definitions,
+            references,
+            format,
+        } => {
+            let loaded = definitions
+                .iter()
+                .map(|path| load_validated(path))
+                .collect::<Result<Vec<_>, _>>()?;
+            let drawing =
+                if references {
+                    entity_graph::Graph::references(&loaded)
+                } else {
+                    match loaded.as_slice() {
+                        [only] => entity_graph::Graph::lifecycle(only),
+                        _ => return Err(Failure::Usage(
+                            "a lifecycle is one definition's; pass one file, or --references to \
+                             draw the edges between several"
+                                .to_owned(),
+                        )),
+                    }
+                };
+            write_all(out, &graph(&drawing, format))
         }
         Command::Create {
             definition,
+            entity: wanted,
             id,
             fields,
             format,
         } => {
             let registry = load_registry(&definition.definitions)?;
-            let (entity, version) = single_type(&registry)?;
+            let (entity, version) = chosen_type(&registry, wanted.as_deref())?;
             let fields = read_value(&fields, "--fields", &mut StdinOnce::default())?;
             let decision = Runtime::new(&registry).create(&entity, version, id, fields)?;
             write_decision(out, &decision, format)
@@ -261,20 +298,51 @@ fn load_registry(paths: &[PathBuf]) -> Result<Registry, Failure> {
         let definition = load_validated(path)?;
         registry.register(definition)?;
     }
+    // Asked of the finished set, not of each file: two types that point at each other are ordinary,
+    // and a check that ran per file would refuse whichever was loaded first.
+    registry.validate_all()?;
     Ok(registry)
 }
 
 /// `create` needs to know which type to create. With one definition file that is unambiguous;
 /// with several it is not, and the command says so rather than guessing.
-fn single_type(registry: &Registry) -> Result<(String, u32), Failure> {
-    let mut types = registry
+fn chosen_type(registry: &Registry, wanted: Option<&str>) -> Result<(String, u32), Failure> {
+    let mut named: Vec<(String, u32)> = registry
         .iter()
-        .map(|definition| (definition.entity.clone(), definition.version));
-    match (types.next(), types.next()) {
-        (Some(only), None) => Ok(only),
-        _ => Err(Failure::Usage(
-            "create takes exactly one --definition, so the type to create is unambiguous".into(),
-        )),
+        .filter(|definition| wanted.is_none_or(|wanted| definition.entity == wanted))
+        .map(|definition| (definition.entity.clone(), definition.version))
+        .collect();
+
+    match (named.len(), wanted) {
+        (1, _) => Ok(named.remove(0)),
+        // Several definitions and no `--entity`. This is ordinary now rather than a mistake: a
+        // definition that declares a `ref` needs the type it points at registered beside it, so a
+        // reference example is *always* several files. Name the type instead of guessing.
+        (_, None) => {
+            let available: Vec<&str> = registry
+                .iter()
+                .map(|definition| definition.entity.as_str())
+                .collect();
+            Err(Failure::Usage(format!(
+                "several definitions are registered, so which type to create is ambiguous — pass \
+                 --entity, one of: {}",
+                available.join(", ")
+            )))
+        }
+        (0, Some(wanted)) => {
+            let available: Vec<&str> = registry
+                .iter()
+                .map(|definition| definition.entity.as_str())
+                .collect();
+            Err(Failure::Usage(format!(
+                "no --definition declares entity '{wanted}'; the registry holds: {}",
+                available.join(", ")
+            )))
+        }
+        (_, Some(wanted)) => Err(Failure::Usage(format!(
+            "several versions of '{wanted}' are registered; create the version you mean by \
+             passing only its definition"
+        ))),
     }
 }
 
@@ -356,8 +424,28 @@ fn validate(paths: &[PathBuf], out: &mut impl Write) -> Result<(), Failure> {
             }
         }
     }
+    // Validating several definitions is validating a *set*, and a set has a question a file does
+    // not: does every `ref` point at a type somebody declared? Without this the gate could run
+    // `validate` over a reference example and miss a dangling edge entirely, which is what an
+    // independent review of this command found.
+    let mut dangling = 0usize;
+    if invalid == 0 && paths.len() > 1 {
+        let mut registry = Registry::new();
+        for path in paths {
+            if let Ok(definition) = load_definition(path) {
+                let _ = registry.register(definition);
+            }
+        }
+        if let Err(errors) = registry.validate_all() {
+            dangling = errors.len();
+            for error in &errors {
+                writeln!(out, "across the set: {error}").map_err(io_failure)?;
+            }
+        }
+    }
+
     writeln!(out, "{} file(s), {invalid} invalid", paths.len()).map_err(io_failure)?;
-    if invalid > 0 {
+    if invalid > 0 || dangling > 0 {
         return Err(Failure::Reported);
     }
     Ok(())
@@ -394,6 +482,26 @@ fn inspect_text(definition: &EntityDefinition) -> String {
         }
         if !field.values.is_empty() {
             notes.push(format!("one of [{}]", field.values.join(", ")));
+        }
+        // A reference's notes come from the field itself, or from an array's `items` — the same
+        // declaration either way, and a reader should not have to know which shape it was written
+        // in to be told what the edge points at.
+        let reference = field
+            .entity
+            .as_ref()
+            .map(|entity| (entity, field, ""))
+            .or_else(|| {
+                let items = field.items.as_ref()?;
+                Some((items.entity.as_ref()?, items.as_ref(), " (each)"))
+            });
+        if let Some((entity, declared, each)) = reference {
+            notes.push(format!("-> {entity}{each}"));
+            if let Some(inverse) = &declared.inverse {
+                notes.push(format!("read back as {inverse}"));
+            }
+            if declared.is_acyclic() {
+                notes.push("acyclic".into());
+            }
         }
         let _ = writeln!(text, "  {name}: {}", notes.join(", "));
     }
@@ -463,71 +571,17 @@ fn rule_line(rule: &entity_core::RuleDefinition) -> String {
     }
 }
 
-/// A DOT string literal. A state called `a"b` would otherwise close the quote and produce a graph
-/// no renderer accepts — or, worse, one carrying attributes nobody wrote.
-fn dot_quote(value: &str) -> String {
-    let mut quoted = String::with_capacity(value.len() + 2);
-    quoted.push('"');
-    for character in value.chars() {
-        match character {
-            '"' | '\\' => {
-                quoted.push('\\');
-                quoted.push(character);
-            }
-            '\n' => quoted.push_str("\\n"),
-            other => quoted.push(other),
-        }
-    }
-    quoted.push('"');
-    quoted
-}
-
-fn graph(definition: &EntityDefinition, format: GraphFormat) -> String {
-    let mut edges = Vec::new();
-    for (name, operation) in &definition.operations {
-        for transition in &operation.transitions {
-            for from in transition.from.iter() {
-                edges.push((from.clone(), name.clone(), transition.to.clone()));
-            }
-        }
-    }
-    edges.sort();
-    let mut text = String::new();
+fn graph(drawing: &entity_graph::Graph, format: GraphFormat) -> String {
+    // The drawing, the layout and every emitter live in `entity-graph`: this is a shell, and a
+    // renderer in it would be one nothing but this binary could use — the library caller who wants
+    // the same picture would have to reimplement it.
+    let layout = entity_graph::Layout::of(drawing);
     match format {
-        GraphFormat::Text => {
-            let _ = writeln!(
-                text,
-                "{} v{}: initial {}",
-                definition.entity, definition.version, definition.lifecycle.initial
-            );
-            for (from, operation, to) in &edges {
-                let _ = writeln!(text, "{from} --{operation}--> {to}");
-            }
-        }
-        GraphFormat::Dot => {
-            let _ = writeln!(text, "digraph {} {{", dot_quote(&definition.entity));
-            let _ = writeln!(text, "  rankdir=LR;");
-            let _ = writeln!(
-                text,
-                "  {} [peripheries=2];",
-                dot_quote(&definition.lifecycle.initial)
-            );
-            for state in &definition.lifecycle.states {
-                let _ = writeln!(text, "  {};", dot_quote(state));
-            }
-            for (from, operation, to) in &edges {
-                let _ = writeln!(
-                    text,
-                    "  {} -> {} [label={}];",
-                    dot_quote(from),
-                    dot_quote(to),
-                    dot_quote(operation)
-                );
-            }
-            let _ = writeln!(text, "}}");
-        }
+        GraphFormat::Text => entity_graph::render::text(drawing),
+        GraphFormat::Dot => entity_graph::render::dot(drawing),
+        GraphFormat::Svg => entity_graph::render::svg(drawing, &layout),
+        GraphFormat::Html => entity_graph::render::html(drawing, &layout),
     }
-    text
 }
 
 fn write_decision(

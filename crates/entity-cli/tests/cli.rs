@@ -222,7 +222,9 @@ fn inspect_and_graph_describe_the_definition() {
         None,
     );
     let dot = stdout(&output);
-    assert!(dot.starts_with("digraph \"order\" {"), "{dot}");
+    // The graph is named for the *version* as well, so two versions of one entity do not
+    // produce two files claiming to be the same graph.
+    assert!(dot.starts_with("digraph \"order v1\" {"), "{dot}");
     assert!(
         dot.contains("\"submitted\" -> \"approved\" [label=\"approve\"];"),
         "{dot}"
@@ -243,8 +245,13 @@ fn graph_dot_quotes_a_name_that_would_otherwise_close_the_string() {
     );
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     let dot = stdout(&output);
-    assert!(dot.starts_with(r#"digraph "q\"x" {"#), "{dot}");
-    assert!(dot.contains(r#""a\"b" [peripheries=2];"#), "{dot}");
+    assert!(dot.starts_with(r#"digraph "q\"x v1" {"#), "{dot}");
+    // The label is emitted explicitly now — a node id and its label are separate things in
+    // the reference graph, and both have to survive a quote.
+    assert!(
+        dot.contains(r#""a\"b" [label="a\"b" peripheries=2];"#),
+        "{dot}"
+    );
 }
 
 #[test]
@@ -437,7 +444,7 @@ operations:
 }
 
 #[test]
-fn create_refuses_to_guess_between_two_definitions() {
+fn create_refuses_to_guess_between_two_definitions_and_says_how_to_choose() {
     let second = scratch(
         "second.yaml",
         "entity: other\nlifecycle: { initial: a, states: [a] }\nschema: {}\n",
@@ -454,11 +461,35 @@ fn create_refuses_to_guess_between_two_definitions() {
         ],
         None,
     );
+    // Still a refusal rather than a guess — but several definitions are ordinary now, because a
+    // definition that declares a `ref` needs the type it points at registered beside it. So the
+    // refusal names the way through instead of naming a restriction that no longer holds.
     assert_eq!(output.status.code(), Some(2));
+    let message = stderr(&output);
+    assert!(message.contains("--entity"), "{message}");
+    assert!(message.contains("order"), "{message}");
+    assert!(message.contains("other"), "{message}");
+
+    // And naming it works.
+    let chosen = run(
+        &[
+            "create",
+            "--definition",
+            order_yaml().to_str().unwrap(),
+            "--definition",
+            second.to_str().unwrap(),
+            "--entity",
+            "other",
+            "--id",
+            "x",
+        ],
+        None,
+    );
+    assert_eq!(chosen.status.code(), Some(0), "{}", stderr(&chosen));
     assert!(
-        stderr(&output).contains("exactly one --definition"),
+        stdout(&chosen).contains("\"entity\": \"other\""),
         "{}",
-        stderr(&output)
+        stdout(&chosen)
     );
 }
 

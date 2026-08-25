@@ -1,0 +1,20 @@
+[package]
+name = "entity-graph"
+description = "Drawings of what a definition says: its lifecycle, and the references between types. Deterministic, no layout engine, no IO."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# One dependency, and `tests/boundary.rs` reads this file to keep it that way. A renderer that
+# could reach a filesystem or a clock is one that could draw something the definition does not say,
+# and the drawing would stop being reproducible from the definition alone.
+[dependencies]
+entity-core = { path = "../entity-core", version = "0.3.0" }
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

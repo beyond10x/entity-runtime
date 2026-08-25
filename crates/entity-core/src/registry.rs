@@ -61,6 +61,43 @@ impl Registry {
         Ok(())
     }
 
+    /// Checks the registry as a **set**: every `ref` points at an entity type it holds.
+    ///
+    /// [`register`](Self::register) validates a definition on its own, and deliberately says
+    /// nothing about references, because two types that point at each other are ordinary — a story
+    /// naming its epic and an epic naming its stories cannot both be registered if each demands
+    /// the other first. So the question is asked of the finished set, once, by whoever assembled
+    /// it.
+    ///
+    /// Only the **type** is checked. Whether an instance carrying that identity exists is a
+    /// question about another instance, and the kernel is handed exactly one (R-01); a reference's
+    /// target is the shell's to resolve, exactly as `protocol artifact relate` resolves one today.
+    ///
+    /// # Errors
+    ///
+    /// [`DefinitionError::UnknownRelationTarget`] for every reference whose target is missing —
+    /// all of them, not the first, because a registry assembled from ten files has ten chances to
+    /// name a type that is not there.
+    pub fn validate_all(&self) -> Result<(), DefinitionErrors> {
+        let mut defects = Vec::new();
+        for definition in self.iter() {
+            for (path, target) in crate::validation::relation_targets(definition) {
+                if !self.definitions.contains_key(&target) {
+                    defects.push(DefinitionError::UnknownRelationTarget {
+                        entity: definition.entity.clone(),
+                        path,
+                        target,
+                    });
+                }
+            }
+        }
+        if defects.is_empty() {
+            Ok(())
+        } else {
+            Err(DefinitionErrors::new(defects))
+        }
+    }
+
     /// The definition registered under `(entity, version)`, if any.
     pub fn get(&self, entity: &str, version: u32) -> Option<&EntityDefinition> {
         self.definitions.get(entity)?.get(&version)
