@@ -35,9 +35,10 @@ Four items. **All four were decided on 2026-08-25** (§ 7); what remains is orde
 | **D** | phase 1: the eight lifecycles as definitions | **shipped** — 8 definitions, 64 edges, 11 tests, in the gate | always, it is `examples/` |
 | **C** | `story:three-valued-conditions` — the one semantics change | **shipped** — `Truth`, two new refusals, R-57/R-58 | it ships in a release |
 | **A** | put the mapping to `engineering-protocols`, carrying D as evidence | decided; sent after D | it is a document |
-| **B** | the dependency arrow | decided: [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | phase 2 adds the manifest line |
+| **B** | the dependency arrow | **taken** — `entity-core` is a git-pinned dependency of `aep-backend-markdown`; [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | — the manifest line exists |
 
-Phases 2, 3 and 4 sit behind all four.
+Phase 2 is **done**: `protocol artifact move` is decided by this kernel, with an 800-pair verdict
+equivalence test in their repository. Phases 3 and 4 are next, in that order.
 
 ## 3. What to send, and where it lands
 
