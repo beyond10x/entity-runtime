@@ -1,0 +1,161 @@
+entity: order
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    customer_id:
+      type: string
+      required: true
+      min_length: 1
+
+    total_cents:
+      type: integer
+      required: true
+      min: 0
+
+    priority:
+      type: enum
+      values: [low, normal, high]
+      default: normal
+
+    tags:
+      type: array
+      default: []
+      items:
+        type: string
+
+    rejection_reason:
+      type: string
+
+    tracking_number:
+      type: string
+
+lifecycle:
+  initial: draft
+  states:
+    - draft
+    - submitted
+    - approved
+    - rejected
+    - fulfilled
+    - cancelled
+
+# Invariants describe properties that must be true for every materialized state.
+# They are checked after create and after every operation.
+invariants:
+  - name: rejected_requires_reason
+    assert:
+      any:
+        - ne: [$state, rejected]
+        - exists: $fields.rejection_reason
+    message: rejected orders must have a rejection reason
+
+  - name: fulfilled_requires_tracking
+    assert:
+      any:
+        - ne: [$state, fulfilled]
+        - exists: $fields.tracking_number
+    message: fulfilled orders must have a tracking number
+
+create:
+  emit:
+    type: OrderCreated
+    payload:
+      order_id: $id
+      state: $state
+      fields: $fields
+
+operations:
+  submit:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+    transitions:
+      - from: draft
+        to: submitted
+    emits:
+      - type: OrderSubmitted
+        payload:
+          order_id: $id
+          actor: $args.actor
+          from: $from_state
+          to: $to_state
+
+  approve:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+    transitions:
+      - from: submitted
+        to: approved
+    preconditions:
+      - name: positive_total
+        assert:
+          gt: [$fields.total_cents, 0]
+        message: zero-value orders cannot be approved
+    emits:
+      - type: OrderApproved
+        payload:
+          order_id: $id
+          actor: $args.actor
+
+  reject:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+        reason:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: submitted
+        to: rejected
+    set:
+      rejection_reason: $args.reason
+    emits:
+      - type: OrderRejected
+        payload:
+          order_id: $id
+          actor: $args.actor
+          reason: $fields.rejection_reason
+
+  fulfill:
+    arguments:
+      fields:
+        tracking_number:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: approved
+        to: fulfilled
+    set:
+      tracking_number: $args.tracking_number
+    emits:
+      - type: OrderFulfilled
+        payload:
+          order_id: $id
+          tracking_number: $fields.tracking_number
+
+  cancel:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+    transitions:
+      - from: [draft, submitted]
+        to: cancelled
+    emits:
+      - type: OrderCancelled
+        payload:
+          order_id: $id
+          actor: $args.actor
+          from: $from_state

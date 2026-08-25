@@ -1,0 +1,18 @@
+[package]
+name = "entity-core"
+description = "IO-free, deterministic kernel for schema-driven, lifecycle-governed entities declared as data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The kernel's whole dependency list. `tests/purity.rs` scans the sources for anything that would
+# reach a clock, the filesystem, the network or a random source; this list is the other half of the
+# same guarantee — nothing here can do IO.
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
