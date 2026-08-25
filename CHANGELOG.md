@@ -4,6 +4,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.0] - 2026-08-25
+
 ### Fixed
 
 * **`entity-graph`'s boundary test enforced nothing.** An independent review of 0.4.0 added a real
