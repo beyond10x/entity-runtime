@@ -4,6 +4,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.1] - 2026-08-25
+
 ### Added
 
 * **`examples/aep/obligation.yaml`, the tenth ladder — and the first written entirely in names no
