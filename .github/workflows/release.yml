@@ -114,16 +114,21 @@ jobs:
       # The notes are the tag's own section of CHANGELOG.md — the text written for the person
       # hitting the behaviour, not a commit list. A tag with no section gets GitHub's generated
       # notes and says so, rather than an empty page.
+      #
+      # Reflowed on the way out, because release notes render as **GFM** and GFM turns a single
+      # newline into a `<br>`. Confirmed against GitHub's own `/markdown` endpoint, not assumed:
+      # the 0.5.2 section carried five stray breaks before this and none after. CHANGELOG.md stays
+      # wrapped at 100 columns, which is the right shape for a file somebody reviews in a diff;
+      # only the notes are joined. `scripts/changelog-section.py --self-test` holds the shapes that
+      # must survive — tables, fences, list boundaries, deliberate two-space breaks.
       - name: Release notes from CHANGELOG.md
         env:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           version="${TAG#v}"
-          awk -v v="$version" '
-            /^## \[/ { if (found) exit; found = ($0 ~ "^## \\[" v "\\]") ; next }
-            found { print }
-          ' CHANGELOG.md > notes.md
+          python3 scripts/changelog-section.py --self-test
+          python3 scripts/changelog-section.py CHANGELOG.md "$version" > notes.md || true
           if [[ -s notes.md ]]; then
             echo "notes: CHANGELOG.md section for ${version}"
             echo "GENERATE=false" >> "$GITHUB_ENV"

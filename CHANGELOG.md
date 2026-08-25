@@ -4,7 +4,32 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Release notes no longer break mid-sentence.** GitHub renders release bodies as **GFM**, and GFM
+  turns a single newline into a `<br>`. `CHANGELOG.md` is hard-wrapped at 100 columns, so every one
+  of those wraps was arriving as a literal line break — text snapping after "added" and before "the",
+  in spots no author chose.
+
+  Measured against GitHub's own `/markdown` endpoint rather than eyeballed:
+
+  | release | stray `<br>` before | after |
+  |---|---|---|
+  | 0.4.0 | 55 | 0 |
+  | 0.3.0 | 47 | 0 |
+  | 0.5.0 | 28 | 0 |
+
+  `scripts/changelog-section.py` extracts the tag's section and joins the continuation lines of each
+  paragraph. **The file stays wrapped** — that is the right shape for something reviewed in a diff,
+  and writing the CHANGELOG in one-line paragraphs would make every edit a whole-paragraph diff to
+  please a renderer. Only the notes are reflowed.
+
+  Left exactly as written: fenced code, tables, headings, blockquotes, list-item boundaries, and a
+  line ending in two spaces, which is Markdown's own way of asking for a break. `--self-test` holds
+  those seven shapes and runs in the gate and in the workflow, because generated notes are notes
+  nobody proofreads.
+
+  All seven published releases were re-rendered with the fix.
 
 ## [0.5.2] - 2026-08-25
 
