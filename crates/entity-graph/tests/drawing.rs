@@ -126,9 +126,10 @@ fn references_draw_the_types_as_boxes_and_the_ref_fields_as_edges() {
             .map(|edge| edge.to.clone())
     };
     assert_eq!(
-        edge("epic", "stories").as_deref(),
+        edge("epic", "stories[]").as_deref(),
         Some("story"),
-        "through an array's items"
+        "through an array's items, and the `[]` says so — a bare `stories` and a list of them are \
+         two labels, not one that overwrites the other"
     );
     assert_eq!(edge("story", "epic").as_deref(), Some("epic"));
     assert_eq!(
@@ -221,6 +222,95 @@ fn a_self_loop_is_drawn_rather_than_collapsed_to_nothing() {
     assert_eq!(layout.back_edges.len(), 1);
     let svg = render::svg(&graph, &layout);
     assert!(svg.contains(" C"), "a self-loop is drawn as a curve: {svg}");
+}
+
+/// Two references that used to collapse into one edge, dropping the other silently — and the
+/// dropped one was the dangling reference `Registry::validate_all` refuses. Found by an
+/// independent review after 0.4.0 shipped.
+#[test]
+fn two_references_that_read_the_same_are_two_edges() {
+    let story = definition(json!({
+        "entity": "story",
+        "schema": { "fields": {
+            "a": { "type": "object", "properties": { "b": { "type": "ref", "entity": "epic" } } },
+            "a.b": { "type": "ref", "entity": "person" }
+        }},
+        "lifecycle": { "initial": "draft", "states": ["draft"] },
+        "operations": { "touch": { "transitions": [{ "from": "draft", "to": "draft" }] } }
+    }));
+    let graph = Graph::references([&story]);
+    let targets: Vec<&str> = graph.edges.iter().map(|edge| edge.to.as_str()).collect();
+    assert!(targets.contains(&"epic"), "{targets:?}");
+    assert!(targets.contains(&"person"), "{targets:?}");
+    assert_eq!(graph.edges.len(), 2, "neither may overwrite the other");
+}
+
+/// XML 1.0 permits no escape for most control characters, so they are replaced rather than
+/// escaped. Before this, a name carrying `U+0001` produced an SVG no parser accepts from a
+/// definition `entity validate` had passed.
+#[test]
+fn a_control_character_cannot_reach_the_document() {
+    let awkward = definition(json!({
+        "entity": "ctrl",
+        "schema": {},
+        "lifecycle": { "initial": "a\u{1}b", "states": ["a\u{1}b"] },
+        "operations": { "go": { "transitions": [{ "from": "a\u{1}b", "to": "a\u{1}b" }] } }
+    }));
+    let graph = Graph::lifecycle(&awkward);
+    let layout = Layout::of(&graph);
+    for drawing in [render::svg(&graph, &layout), render::html(&graph, &layout)] {
+        assert!(
+            !drawing.contains('\u{1}'),
+            "a raw control character reached the document"
+        );
+        assert!(
+            drawing.contains('\u{FFFD}'),
+            "and it is visible rather than dropped"
+        );
+    }
+}
+
+/// `Graph`'s fields are public, so a caller can build a node list the constructors never would.
+/// Layout and renderer must then agree about which node an edge names.
+#[test]
+fn a_duplicate_node_id_is_read_the_same_way_by_the_layout_and_the_renderer() {
+    let graph = Graph {
+        title: "dup".to_owned(),
+        nodes: vec![
+            entity_graph::Node {
+                id: "a".into(),
+                label: "a".into(),
+                emphasis: Emphasis::Plain,
+            },
+            entity_graph::Node {
+                id: "b".into(),
+                label: "b".into(),
+                emphasis: Emphasis::Plain,
+            },
+            entity_graph::Node {
+                id: "a".into(),
+                label: "a2".into(),
+                emphasis: Emphasis::Plain,
+            },
+        ],
+        edges: vec![entity_graph::Edge {
+            from: "a".into(),
+            to: "b".into(),
+            label: "x".into(),
+        }],
+    };
+    let layout = Layout::of(&graph);
+    // The layout indexes `a` as the last of the two; the renderer must too, or it draws the arrow
+    // out of a box the layout put somewhere else.
+    assert_eq!(
+        layout.layer_of(2),
+        Some(0),
+        "the last `a` is the one the layout placed"
+    );
+    assert!(
+        render::svg(&graph, &layout).contains("a2"),
+        "and the renderer drew it"
+    );
 }
 
 #[test]

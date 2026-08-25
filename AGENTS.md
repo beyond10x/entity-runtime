@@ -88,7 +88,7 @@ somewhere. Do not write an enforcement here that you cannot point at.
 9. **Every public item is documented and there is no `unsafe`.**
    *Enforced by* `missing_docs = "warn"` and `unsafe_code = "forbid"` in `[workspace.lints]`,
    raised to errors by the gate's `-D warnings`; the `doc-check` step fails on a broken intra-doc
-   link. All three members opt in with `[lints] workspace = true`; a new crate that omits that line
+   link. Every member opts in with `[lints] workspace = true`; a new crate that omits that line
    is outside every lint here.
 10. **Every requirement is pinned, and the pin exists and runs.**
     *Enforced by* `scripts/check-requirements.py` in the gate: every `R-nn` is referenced by a

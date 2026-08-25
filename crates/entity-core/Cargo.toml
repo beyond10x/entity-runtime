@@ -14,5 +14,10 @@ rust-version.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+# The source scanner the purity test reads this crate with. A dev-dependency, so nothing it
+# contains is linked into the kernel.
+scan-support = { path = "../scan-support" }
+
 [lints]
 workspace = true

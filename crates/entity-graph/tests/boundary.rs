@@ -30,125 +30,80 @@ fn sources() -> Vec<(PathBuf, String)> {
     found
 }
 
-/// One dependency, and it is the kernel. Read from the manifest, because that is the file that
-/// decides — a test that asserted this by listing `use` statements would pass while a dependency
-/// nobody imported yet sat in the build.
+/// One dependency, and it is the kernel.
+///
+/// Read with `scan_support::dependencies`, which sees `[dependencies.foo]` and
+/// `[target.'cfg(unix)'.dependencies]` as well as the literal heading. The hand-rolled version this
+/// replaces split on the literal `[dependencies]` string and saw neither: a real `tokio` added as
+/// its own table compiled, and this test passed.
 #[test]
 fn the_renderer_depends_on_the_kernel_and_nothing_else() {
     let manifest = fs::read_to_string(crate_root().join("Cargo.toml")).expect("readable");
-    let dependencies = manifest
-        .split("[dependencies]")
-        .nth(1)
-        .expect("the manifest declares dependencies")
-        .split("\n[")
-        .next()
-        .expect("a section ends");
-
-    let named: Vec<&str> = dependencies
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .filter_map(|line| line.split(['=', ' ', '.']).next())
-        .filter(|name| !name.is_empty())
-        .collect();
-
+    let declared: Vec<String> = scan_support::dependencies(&manifest).into_iter().collect();
     assert_eq!(
-        named,
-        vec!["entity-core"],
+        declared,
+        vec!["entity-core".to_owned()],
         "this crate takes one dependency; anything else needs an argument in the manifest first"
     );
 }
 
 /// The same list `entity-core` bans, plus floating point.
 ///
-/// Floats are here and not there because this crate does arithmetic and that one does not lay
-/// anything out: two machines that round differently would produce two drawings of one definition,
-/// which is the failure this whole crate is arranged to avoid. Every coordinate is a `usize`.
+/// Floats are here and not there because this crate does arithmetic and that one lays nothing out:
+/// two machines that round differently would draw one definition two ways, which is the failure
+/// this crate is arranged to avoid. Every coordinate is a `usize`.
 #[test]
 fn the_renderer_reaches_no_clock_filesystem_network_random_source_or_float() {
     const BANNED: &[&str] = &[
-        "std::fs",
-        "std::net",
-        "std::time",
+        "fs",
+        "net",
         "SystemTime",
         "Instant",
-        "std::env",
-        "std::process",
-        "rand::",
+        "env",
+        "process",
+        "rand",
         "HashMap",
         "HashSet",
         "f32",
         "f64",
         "tokio",
-        "async",
-        "include_str!",
-        "include_bytes!",
+        "include_str",
+        "include_bytes",
     ];
 
     let mut findings = Vec::new();
     for (path, text) in sources() {
-        let stripped = strip(&text);
-        for banned in BANNED {
-            if stripped.contains(banned) {
-                findings.push(format!("{}: {banned}", path.display()));
+        let code = scan_support::code_only(&text);
+        for (line, word) in scan_support::words(&code) {
+            if BANNED.contains(&word) {
+                findings.push(format!("{}:{line}: `{word}`", path.display()));
             }
         }
     }
-    assert!(findings.is_empty(), "{findings:?}");
+    assert!(findings.is_empty(), "{findings:#?}");
 }
 
-/// Comments and string literals removed, so a *word* in prose is not a finding and a word in code
-/// is. Without this the module doc above — which names every banned token — would fail the scan it
-/// describes.
-fn strip(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut characters = text.chars().peekable();
-    while let Some(character) = characters.next() {
-        match character {
-            '/' if characters.peek() == Some(&'/') => {
-                for next in characters.by_ref() {
-                    if next == '\n' {
-                        out.push('\n');
-                        break;
-                    }
-                }
-            }
-            '"' => {
-                let mut escaped = false;
-                for next in characters.by_ref() {
-                    if escaped {
-                        escaped = false;
-                    } else if next == '\\' {
-                        escaped = true;
-                    } else if next == '"' {
-                        break;
-                    }
-                }
-                out.push_str("\"\"");
-            }
-            other => out.push(other),
-        }
-    }
-    out
-}
-
-/// The scan has to see a planted violation, or it is decoration. Two plantings and two lookalikes,
-/// on the same reasoning as `entity-core`'s.
+/// The plantings an independent review used to show the previous scanner enforced nothing. They
+/// live in `scan-support` too; they are repeated here because this crate's test is what a reader
+/// of this crate will check.
 #[test]
-fn the_scan_sees_a_planted_violation_and_not_a_lookalike() {
-    let planted = "fn read() { let _ = std::fs::read_to_string(\"x\"); }";
-    assert!(strip(planted).contains("std::fs"), "a real call is seen");
-
-    let planted = "let ratio: f64 = 1.0;";
-    assert!(strip(planted).contains("f64"), "a real float is seen");
+fn the_scan_sees_what_the_one_it_replaced_could_not() {
+    let after_a_char_literal = "if c == '\"' { }\nlet _ = std::fs::read_to_string(\"x\");";
+    assert!(
+        scan_support::words(&scan_support::code_only(after_a_char_literal))
+            .any(|(_, word)| word == "fs"),
+        "a char literal holding a quote must not blank out the rest of the file"
+    );
 
     let prose = "// this crate never touches std::fs or f64\n";
-    assert!(!strip(prose).contains("std::fs"), "a comment is not a call");
-    assert!(!strip(prose).contains("f64"), "a comment is not a float");
-
-    let literal = "let message = \"std::fs is banned here\";";
     assert!(
-        !strip(literal).contains("std::fs"),
-        "a string literal is not a call"
+        !scan_support::words(&scan_support::code_only(prose)).any(|(_, w)| w == "fs" || w == "f64"),
+        "a comment is not a call"
+    );
+
+    let manifest = "[dependencies]\nentity-core = { path = \"..\" }\n\n[dependencies.tokio]\nversion = \"1\"\n";
+    assert!(
+        scan_support::dependencies(manifest).contains("tokio"),
+        "a dependency written as its own table is a dependency"
     );
 }

@@ -45,7 +45,7 @@
 //! reproduce is not reviewable. The layering is integer arithmetic in [`Layout`].
 //!
 //! **No IO, no clock, no floating point**, for the same reason and checked the same way
-//! `entity-core`'s purity is: `tests/determinism.rs` scans this crate's own sources. The one
+//! `entity-core`'s purity is: `tests/boundary.rs` scans this crate's own sources. The one
 //! dependency is `entity-core`, asserted by a test that reads the manifest — a renderer that could
 //! reach a filesystem is one that could draw something the definition does not say.
 //!

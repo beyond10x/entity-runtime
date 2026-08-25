@@ -265,8 +265,15 @@ fn places(graph: &Graph, layout: &Layout) -> Vec<Place> {
     places
 }
 
+/// Which node an edge names.
+///
+/// The **last** node with that id, matching how [`Layout`] builds its index — a `BTreeMap`
+/// collected in order, where a later duplicate replaces an earlier one. They disagreed before: the
+/// layout laid out one node and the renderer drew the arrow into another, so a back edge left a box
+/// and re-entered the same box. Duplicate ids are not reachable through the two constructors, but
+/// `Graph`'s fields are public and a caller can build one.
 fn find(graph: &Graph, id: &str) -> Option<usize> {
-    graph.nodes.iter().position(|node| node.id == id)
+    graph.nodes.iter().rposition(|node| node.id == id)
 }
 
 /// A DOT string literal. A name carrying a quote or a backslash must not close the string it is
@@ -285,6 +292,16 @@ fn quote(value: &str) -> String {
 }
 
 /// XML text content and attribute values.
+///
+/// Five characters are escaped, and a sixth class is **replaced**: XML 1.0 permits only tab, line
+/// feed and carriage return below `U+0020`, and the rest have no escape — `&#1;` is as invalid as
+/// the raw byte. A state name carrying `U+0001` used to produce an SVG no parser accepts and an
+/// HTML document no browser accepts, from a definition `entity validate` had passed. So an
+/// unrepresentable character becomes `U+FFFD`, which is visible in the drawing and valid in the
+/// document: silently dropping it would make two different names draw the same box.
+///
+/// Found by an independent review after 0.4.0 shipped. R-95 claimed "valid DOT, valid SVG and a
+/// valid HTML page" and was pinned only for DOT.
 fn escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for character in value.chars() {
@@ -294,8 +311,19 @@ fn escape(value: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&#39;"),
-            other => out.push(other),
+            other if is_xml_char(other) => out.push(other),
+            _ => out.push('\u{FFFD}'),
         }
     }
     out
+}
+
+/// Whether XML 1.0 permits the character at all.
+///
+/// `Char ::= #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]`. Rust has no
+/// surrogates in a `char`, so only the low controls and the two non-characters at the end of the
+/// BMP need excluding.
+fn is_xml_char(character: char) -> bool {
+    matches!(character, '\t' | '\n' | '\r')
+        || matches!(character, ' '..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..)
 }
