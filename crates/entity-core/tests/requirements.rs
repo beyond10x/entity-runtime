@@ -719,6 +719,27 @@ fn an_instance_of_another_definition_is_refused() {
     );
 }
 
+/// A rule that should hold produces a decision; one that should not produces a
+/// `PreconditionFailed` and nothing else. `is_ok()` would accept a refusal for any other reason —
+/// a validation error, a lifecycle refusal — and so could not tell "the reference read false" from
+/// "the condition blew up".
+fn assert_verdict(registry: &Registry, condition: &Value, holds: bool) {
+    let instance = open_ticket(registry, 3);
+    match Runtime::new(registry).execute(&instance, "touch", json!({})) {
+        Ok(decision) => {
+            assert!(holds, "{condition} should have been refused");
+            assert_eq!(decision.instance.revision, 2);
+        }
+        Err(error) => {
+            assert!(!holds, "{condition} should have held; refused with {error}");
+            assert!(
+                matches!(error, CoreError::PreconditionFailed { .. }),
+                "{condition} must fail as a precondition, not as {error}"
+            );
+        }
+    }
+}
+
 // --- Rules ---------------------------------------------------------------------------------------
 
 #[test]
@@ -819,9 +840,7 @@ fn a_missing_reference_makes_a_comparison_false_and_exists_is_the_presence_test(
             json!([{ "assert": condition }]),
         ))
         .unwrap();
-        let result =
-            Runtime::new(&registry).execute(&open_ticket(&registry, 3), "touch", json!({}));
-        assert_eq!(result.is_ok(), holds, "{condition}");
+        assert_verdict(&registry, &condition, holds);
     }
 }
 
@@ -890,9 +909,7 @@ fn numeric_comparisons_are_numeric_and_compare_false_otherwise() {
             json!([{ "assert": condition }]),
         ))
         .unwrap();
-        let result =
-            Runtime::new(&registry).execute(&open_ticket(&registry, 3), "touch", json!({}));
-        assert_eq!(result.is_ok(), holds, "{condition}");
+        assert_verdict(&registry, &condition, holds);
     }
 }
 
@@ -932,32 +949,66 @@ fn a_precondition_may_read_the_arguments_and_the_transition() {
 // --- Templates -----------------------------------------------------------------------------------
 
 #[test]
-fn an_unresolvable_template_reference_is_an_error_not_a_null() {
-    let registry = register(with(
+fn a_template_the_scope_cannot_resolve_is_refused_at_registration() {
+    // `touch` declares no arguments, so `$args.actor` could never resolve, and `$now` is not a
+    // reference at all. Both used to register and then fail on every single execution.
+    for (path, template) in [
+        (
+            "operations.touch.emits",
+            json!([{ "type": "T", "payload": { "who": "$args.actor" } }]),
+        ),
+        (
+            "operations.touch.emits",
+            json!([{ "type": "T", "payload": { "when": "$now" } }]),
+        ),
+        ("operations.touch.set", json!({ "title": "$args.nope" })),
+    ] {
+        let error = register(with(ticket(), path, template)).expect_err(path);
+        assert!(
+            matches!(error, DefinitionError::InvalidTemplate { .. }),
+            "{path}: {error}"
+        );
+    }
+
+    // A creation event has no previous state and no arguments, and says so at registration.
+    let error = register(with(
         ticket(),
-        "operations.touch.emits",
-        json!([{ "type": "Touched", "payload": { "who": "$args.actor" } }]),
+        "create.emit.payload",
+        json!({ "from": "$from_state" }),
     ))
-    .unwrap();
-    let error = Runtime::new(&registry)
-        .execute(&open_ticket(&registry, 3), "touch", json!({}))
-        .expect_err("no such argument");
+    .expect_err("create has no previous state");
     assert!(
-        matches!(error, CoreError::Template { ref expression, .. } if expression == "$args.actor"),
+        matches!(error, DefinitionError::InvalidTemplate { ref path, .. }
+            if path == "create.emit.payload.from"),
         "{error}"
     );
 
+    // What an operation template may legitimately read still registers.
+    register(with(
+        ticket(),
+        "operations.touch.emits",
+        json!([{ "type": "T", "payload": { "state": "$state", "was": "$from_state" } }]),
+    ))
+    .expect("an operation template reads the transition");
+}
+
+#[test]
+fn an_unresolvable_template_reference_is_an_error_not_a_null() {
+    // What registration cannot decide is left to run time: a path into a `json` field, whose
+    // shape no schema describes.
     let registry = register(with(
         ticket(),
         "operations.touch.emits",
-        json!([{ "type": "Touched", "payload": { "when": "$now" } }]),
+        json!([{ "type": "Touched", "payload": { "deep": "$fields.extra.missing" } }]),
     ))
     .unwrap();
+
     let error = Runtime::new(&registry)
         .execute(&open_ticket(&registry, 3), "touch", json!({}))
-        .expect_err("no clock");
+        .expect_err("nothing is there");
     assert!(
-        matches!(error, CoreError::Template { ref expression, ref message } if expression == "$now" && message.contains("unknown")),
+        matches!(error, CoreError::Template { ref expression, .. }
+            if expression == "$fields.extra.missing"),
         "{error}"
     );
 }
@@ -1036,4 +1087,359 @@ fn a_refusal_leaves_the_caller_owned_instance_untouched() {
             .expect_err(operation);
     }
     assert_eq!(instance, before);
+}
+
+// --- Refusals the review of 0.1.0 added --------------------------------------------------------
+
+/// Parsing without the panic, for the documents that must not even deserialise.
+fn parse(value: Value) -> Result<EntityDefinition, serde_json::Error> {
+    serde_json::from_value(value)
+}
+
+#[test]
+fn an_integer_beyond_i64_is_compared_numerically_not_wrapped() {
+    // 2^64-1 used to be coerced `as u64 as i64` to -1, which passed `max: 100` and made a `min`
+    // message name a number nobody sent.
+    let huge = json!({ "title": "big", "points": 18_446_744_073_709_551_615_u64 });
+
+    let bounded = register(with(
+        ticket(),
+        "schema.fields.points",
+        json!({ "type": "integer", "max": 100 }),
+    ))
+    .unwrap();
+    let error = Runtime::new(&bounded)
+        .create("ticket", 1, "t-1", huge.clone())
+        .expect_err("2^64-1 is not below 100");
+    let CoreError::Validation(errors) = error else {
+        panic!("expected a validation refusal")
+    };
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].path, "fields.points");
+    assert!(
+        errors[0].message.contains("exceeds maximum"),
+        "{}",
+        errors[0]
+    );
+
+    let floored = register(with(
+        ticket(),
+        "schema.fields.points",
+        json!({ "type": "integer", "min": 0 }),
+    ))
+    .unwrap();
+    let created = Runtime::new(&floored)
+        .create("ticket", 1, "t-1", huge)
+        .expect("2^64-1 is above 0");
+    assert_eq!(
+        created.instance.fields["points"],
+        json!(18_446_744_073_709_551_615_u64)
+    );
+}
+
+#[test]
+fn a_default_declared_inside_an_object_is_applied() {
+    let document = with(
+        ticket(),
+        "schema.fields.origin",
+        json!({
+            "type": "object",
+            "properties": { "country": { "type": "string", "required": true, "default": "DE" } }
+        }),
+    );
+    let registry = register(document).unwrap();
+    let runtime = Runtime::new(&registry);
+
+    let created = runtime
+        .create("ticket", 1, "t-1", json!({ "title": "x", "origin": {} }))
+        .expect("the nested default fills the gap");
+    assert_eq!(
+        created.instance.fields["origin"],
+        json!({ "country": "DE" })
+    );
+
+    // A default does not invent the object that would hold it.
+    let created = runtime
+        .create("ticket", 1, "t-2", json!({ "title": "x" }))
+        .expect("no object, no nested default");
+    assert!(!created.instance.fields.contains_key("origin"));
+}
+
+#[test]
+fn a_precondition_may_not_read_state_and_an_invariant_may_not_read_the_transition() {
+    // `$state` resolves to the state the operation is heading *for*, so a precondition reading it
+    // looks like a guard on the current state and is the opposite of one.
+    let error = register(with(
+        ticket(),
+        "operations.touch.preconditions",
+        json!([{ "assert": { "eq": ["$state", "open"] } }]),
+    ))
+    .expect_err("a precondition cannot read $state");
+    assert!(
+        matches!(error, DefinitionError::InvalidRule { ref message, .. }
+            if message.contains("$state") && message.contains("$from_state")),
+        "{error}"
+    );
+
+    for reference in ["$to_state", "$from_state", "$args", "$old_fields.title"] {
+        let error = register(with(
+            ticket(),
+            "invariants",
+            json!([{ "assert": { "exists": reference } }]),
+        ))
+        .expect_err(reference);
+        assert!(
+            matches!(error, DefinitionError::InvalidRule { ref path, .. } if path == "invariants[0].assert.exists"),
+            "{reference}: {error}"
+        );
+    }
+
+    // What each scope may read still registers.
+    register(with(
+        ticket(),
+        "operations.touch.preconditions",
+        json!([{ "assert": { "all": [ { "eq": ["$from_state", "open"] }, { "eq": ["$to_state", "open"] } ] } }]),
+    ))
+    .expect("a precondition reads the transition");
+    register(with(
+        ticket(),
+        "invariants",
+        json!([{ "assert": { "eq": ["$state", "open"] } }]),
+    ))
+    .expect("an invariant reads the state it is judging");
+}
+
+#[test]
+fn a_condition_carrying_two_operators_or_an_unknown_one_is_refused() {
+    // Untagged deserialisation used to take the first variant that matched and drop the rest, so
+    // an indentation slip enforced half a rule.
+    let two = parse(with(
+        ticket(),
+        "invariants",
+        json!([{ "assert": { "eq": [1, 1], "ne": [1, 1] } }]),
+    ))
+    .expect_err("two operators");
+    assert!(two.to_string().contains("exactly one operator"), "{two}");
+
+    let unknown = parse(with(
+        ticket(),
+        "invariants",
+        json!([{ "assert": { "gte_": [1, 1] } }]),
+    ))
+    .expect_err("misspelled operator");
+    assert!(
+        unknown.to_string().contains("gte_") && unknown.to_string().contains("expected one of"),
+        "{unknown}"
+    );
+
+    let shape = parse(with(
+        ticket(),
+        "invariants",
+        json!([{ "assert": { "eq": [1] } }]),
+    ))
+    .expect_err("eq takes two operands");
+    assert!(
+        shape.to_string().contains("exactly two operands"),
+        "{shape}"
+    );
+}
+
+#[test]
+fn a_misspelled_definition_key_is_refused_rather_than_ignored() {
+    for document in [
+        with(
+            ticket(),
+            "schema.fields.points",
+            json!({ "type": "integer", "requried": true }),
+        ),
+        with(ticket(), "operations.touch.precondition", json!([])),
+        with(ticket(), "lifecycle.state", json!(["open"])),
+    ] {
+        let error = parse(document).expect_err("an unknown key is a defect, not a comment");
+        assert!(error.to_string().contains("unknown field"), "{error}");
+    }
+}
+
+#[test]
+fn equality_is_numeric_so_an_integer_equals_the_same_number_written_with_a_decimal_point() {
+    let document = with(
+        with(ticket(), "schema.fields.total", json!({ "type": "number" })),
+        "operations.touch.preconditions",
+        json!([{ "assert": { "eq": ["$fields.total", 100] } }]),
+    );
+    let registry = register(document).unwrap();
+    let runtime = Runtime::new(&registry);
+
+    for written in [json!(100), json!(100.0)] {
+        let instance = runtime
+            .create(
+                "ticket",
+                1,
+                "t-1",
+                json!({ "title": "x", "total": written }),
+            )
+            .expect("created")
+            .instance;
+        runtime
+            .execute(&instance, "touch", json!({}))
+            .unwrap_or_else(|error| panic!("{written} should equal 100: {error}"));
+    }
+
+    // `in` and `contains` agree with it.
+    let document = with(
+        with(ticket(), "schema.fields.total", json!({ "type": "number" })),
+        "operations.touch.preconditions",
+        json!([{ "assert": { "in": ["$fields.total", [100, 200]] } }]),
+    );
+    let registry = register(document).unwrap();
+    let runtime = Runtime::new(&registry);
+    let instance = runtime
+        .create("ticket", 1, "t-1", json!({ "title": "x", "total": 100.0 }))
+        .unwrap()
+        .instance;
+    runtime
+        .execute(&instance, "touch", json!({}))
+        .expect("100.0 is in [100, 200]");
+}
+
+#[test]
+fn a_nested_reference_path_is_checked_against_the_schema() {
+    for (reference, refused) in [
+        ("$fields.meta.source", false),
+        ("$fields.meta.sourc", true),
+        ("$fields.title.length", true),
+        ("$fields.extra.anything.at.all", false),
+        ("$fields.nonexistent", true),
+    ] {
+        let outcome = register(with(
+            ticket(),
+            "invariants",
+            json!([{ "assert": { "exists": reference } }]),
+        ));
+        assert_eq!(
+            outcome.is_err(),
+            refused,
+            "{reference}: {:?}",
+            outcome.err()
+        );
+    }
+}
+
+#[test]
+fn an_instance_claiming_a_state_the_definition_does_not_declare_is_refused() {
+    let registry = register(ticket()).unwrap();
+    let mut instance = open_ticket(&registry, 3);
+    instance.lifecycle_state = "limbo".into();
+
+    let error = Runtime::new(&registry)
+        .execute(&instance, "touch", json!({}))
+        .expect_err("no such state");
+    assert_eq!(
+        error,
+        CoreError::UnknownState {
+            entity: "ticket".into(),
+            state: "limbo".into()
+        }
+    );
+}
+
+#[test]
+fn registering_over_an_existing_definition_is_refused_and_replace_is_how_to_mean_it() {
+    let mut registry = Registry::new();
+    registry.register(definition(ticket())).expect("first");
+
+    let error = registry
+        .register(definition(ticket()))
+        .expect_err("the second would silently win");
+    assert_eq!(
+        error,
+        DefinitionError::DuplicateDefinition {
+            entity: "ticket".into(),
+            version: 1
+        }
+    );
+
+    registry
+        .replace(definition(with(
+            ticket(),
+            "schema.additional_fields",
+            json!(true),
+        )))
+        .expect("replace says it out loud");
+    assert_eq!(registry.len(), 1);
+    assert!(
+        registry
+            .get("ticket", 1)
+            .expect("registered")
+            .schema
+            .additional_fields
+    );
+}
+
+#[test]
+fn a_constraint_that_does_not_apply_to_its_kind_is_refused() {
+    for (field, constraint) in [
+        (json!({ "type": "string", "values": ["a"] }), "values"),
+        (
+            json!({ "type": "integer", "min_length": 3 }),
+            "min_length/max_length",
+        ),
+        (
+            json!({ "type": "string", "items": { "type": "string" } }),
+            "items",
+        ),
+        (
+            json!({ "type": "string", "properties": { "a": { "type": "string" } } }),
+            "properties/additional_properties",
+        ),
+        (json!({ "type": "boolean", "min": 1 }), "min/max"),
+    ] {
+        let error = register(with(ticket(), "schema.fields.probe", field)).expect_err(constraint);
+        assert!(
+            matches!(error, DefinitionError::ConstraintNotApplicable { ref path, constraint: found, .. }
+                if path == "schema.probe" && found == constraint),
+            "{constraint}: {error}"
+        );
+    }
+}
+
+#[test]
+fn an_empty_identity_is_refused() {
+    let registry = register(ticket()).unwrap();
+    for id in ["", "   "] {
+        let error = Runtime::new(&registry)
+            .create("ticket", 1, id, json!({ "title": "x" }))
+            .expect_err("an opaque id is still not an empty one");
+        assert!(
+            matches!(&error, CoreError::Validation(errors) if errors.len() == 1 && errors[0].path == "id"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn fields_are_ordered_by_name_so_two_identical_decisions_serialise_alike() {
+    let registry = register(with(ticket(), "schema.additional_fields", json!(true))).unwrap();
+    let created = Runtime::new(&registry)
+        .create(
+            "ticket",
+            1,
+            "t-1",
+            json!({ "zebra": 1, "title": "x", "alpha": 2 }),
+        )
+        .expect("created");
+
+    let names: Vec<&str> = created.instance.fields.keys().map(String::as_str).collect();
+    let mut sorted = names.clone();
+    sorted.sort_unstable();
+    assert_eq!(
+        names, sorted,
+        "field order is not the map's insertion order"
+    );
+
+    let serialised = serde_json::to_string(&created.instance.fields).expect("json");
+    assert!(
+        serialised.starts_with("{\"alpha\""),
+        "serialisation must follow the same order: {serialised}"
+    );
 }
