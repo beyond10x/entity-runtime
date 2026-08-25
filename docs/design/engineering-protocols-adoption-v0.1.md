@@ -40,7 +40,7 @@ what is genuinely its own — the evidence model, three-valued predicates, capab
 | `aep.entity.archive/v1`, `aep.entity.supersede/v1`, **no delete** (`command.rs:706-710`) | terminal states `archived`, `superseded`; no operation leaves them; no delete exists to call | R-34 makes the absence structural |
 | `DomainEvent` with correlation/causation (`domain_event.rs`) | `DomainEvent` (fact) + the shell's envelope | the split is already how `domain_event.rs` argues it: "an event is not an audit record" |
 | a denied command → audit record, **no event** (`domain_event.rs` table) | `Err(CoreError)` → shell records the refusal; no `Decision`, no events (R-04) | identical contract |
-| `Raw*` → validated via `TryFrom`, accumulate (`AGENTS.md` invariants 2, 3) | parse → `Registry::register` validates; value validation accumulates (R-23) | definition validation stops at the first defect today — `story:accumulating-definition-validation` |
+| `Raw*` → validated via `TryFrom`, accumulate (`AGENTS.md` invariants 2, 3) | parse → `Registry::register` validates; both value validation (R-23) and definition validation (R-13) accumulate | — |
 | clock-free, RNG-free domain; `BTreeMap` only (invariants 8, 9) | R-01, R-05, pinned by `tests/purity.rs` | same discipline, same kind of scan |
 | `artifacts/kinds/*.yaml` `required_sections` | schema fields with `required: true` on the artifact's body model | when the body is modelled as fields; a first step keeps `body` as `json` |
 | `artifacts/relations/relations.yaml` source/target pairings | typed references (roadmap: `type: ref`) | not in 0.1; the shell keeps validating edges until it is |
@@ -88,8 +88,11 @@ phase 2 runs through.
 
 This was the one change in this list that alters kernel semantics; the others add.
 
-**Accumulating definition validation.** Invariant 3 there; R-13 refuses correctly but reports one
-defect per attempt. `story:accumulating-definition-validation`.
+**Accumulating definition validation — done.** Invariant 3 there. `Registry::register` now returns
+`DefinitionErrors`, a non-empty list of every defect the document has, and `entity validate` prints
+them all. A check whose prerequisite already failed is skipped, so one broken ladder is one
+finding rather than one per transition it invalidates. R-13 revised.
+`story:accumulating-definition-validation`.
 
 **Typed references.** Relations are the artifact graph's edges; the kernel has no `ref` kind. Until
 it does, the shell keeps validating edges as `protocol artifact relate` does today.

@@ -1,6 +1,6 @@
 //! The registry: validated definitions, by name and version.
 
-use crate::{DefinitionError, EntityDefinition};
+use crate::{DefinitionError, DefinitionErrors, EntityDefinition};
 use std::collections::BTreeMap;
 
 /// Validated entity definitions, keyed by `(entity, version)`.
@@ -30,16 +30,17 @@ impl Registry {
     /// # Errors
     ///
     /// [`DefinitionError::DuplicateDefinition`] when this `(entity, version)` is already
-    /// registered; otherwise the first defect found — an undeclared lifecycle state, an ambiguous
-    /// transition, a `set` writing an unknown field, a rule or template referencing something its
-    /// scope cannot see, an inapplicable constraint, an invalid default. Nothing is stored when
-    /// validation fails.
-    pub fn register(&mut self, definition: EntityDefinition) -> Result<(), DefinitionError> {
+    /// registered; otherwise **every** defect the document has — an undeclared lifecycle state, an
+    /// ambiguous transition, a `set` writing an unknown field, a rule or template referencing
+    /// something its scope cannot see, an inapplicable constraint, an invalid default. Nothing is
+    /// stored when validation fails.
+    pub fn register(&mut self, definition: EntityDefinition) -> Result<(), DefinitionErrors> {
         if self.get(&definition.entity, definition.version).is_some() {
             return Err(DefinitionError::DuplicateDefinition {
                 entity: definition.entity.clone(),
                 version: definition.version,
-            });
+            }
+            .into());
         }
         self.replace(definition)
     }
@@ -49,8 +50,9 @@ impl Registry {
     ///
     /// # Errors
     ///
-    /// The first defect found. Nothing is stored, and nothing is removed, when validation fails.
-    pub fn replace(&mut self, definition: EntityDefinition) -> Result<(), DefinitionError> {
+    /// Every defect the document has. Nothing is stored, and nothing is removed, when validation
+    /// fails.
+    pub fn replace(&mut self, definition: EntityDefinition) -> Result<(), DefinitionErrors> {
         definition.validate()?;
         self.definitions
             .entry(definition.entity.clone())

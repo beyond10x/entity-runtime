@@ -66,7 +66,7 @@ impl EntityDefinition {
     /// # Errors
     ///
     /// The first [`DefinitionError`](crate::DefinitionError) found.
-    pub fn validate(&self) -> Result<(), crate::DefinitionError> {
+    pub fn validate(&self) -> Result<(), crate::DefinitionErrors> {
         crate::validation::validate_definition(self)
     }
 }

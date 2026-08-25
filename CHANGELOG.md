@@ -27,13 +27,25 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   of three refusals naming one each. R-54's deterministic short-circuit clause was revised with the
   rest of the row, and the wording it replaced is quoted in the register.
 * `entity`'s JSON refusal gains `precondition_unobservable` and `invariant_unobservable`, each with
-  an `unresolved` array. Exit codes are unchanged: a refusal is still `1`.
+  an `unresolved` array, and its `definition` refusal gains a `defects` array beside the existing
+  `defect`. Exit codes are unchanged: a refusal is still `1`.
+* `CoreError::Definition` now carries `DefinitionErrors` rather than one `DefinitionError`, and
+  `Registry::register`/`replace`/`EntityDefinition::validate` return it. A caller that wants one
+  defect reads `.first()`.
 
 Nothing about a lifecycle ladder changes. Every rule that never compares against a missing value
 evaluates exactly as it did — including both invariants in `examples/order.yaml`.
 
 ### Added
 
+* **Registration reports every defect, not the first.** `Registry::register`, `Registry::replace`
+  and `EntityDefinition::validate` return `DefinitionErrors` — a non-empty list of typed
+  `DefinitionError`s — and `entity validate` prints them all, so fixing a definition takes one pass
+  rather than one run per fault. Value validation has reported every failing field since 0.1.0
+  (R-23); this is the same for the definition itself. A check whose prerequisite already failed is
+  skipped, so a lifecycle with a duplicate rung is one finding rather than one per transition it
+  invalidates. Comparing a `DefinitionErrors` to a single `DefinitionError` holds only when it
+  carries exactly that one, which is what keeps a single-defect assertion honest.
 * **`Truth { True, False, Unknown }`, public**, with Kleene `and`/`or`/`not` and `is_satisfied`.
   The variant names and tables are taken from `engineering-protocols`' own
   `aep-domain::predicate::Truth` rather than designed here — two kernels that disagreed about what

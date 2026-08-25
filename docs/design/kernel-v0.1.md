@@ -384,8 +384,8 @@ in a further crate that depends on `entity-core` and never the other way round.
 * Rust type and function names, module layout, error message wording.
 * Adding operators to `Condition` or references to templates — each is an addition to R-53/R-61 and
   gets a changelog line.
-* Reporting *more* than one `DefinitionError` per registration (R-13 says refused with a typed error;
-  accumulating is stronger and welcome).
+* How many defects a registration reports, beyond the floor R-13 sets: it now reports every one
+  (`DefinitionErrors`), and reporting more of them, or grouping them differently, is welcome.
 
 What may not: the eleven-step order, the two rule scopes, the refusal-changes-nothing property, the
 absence of IO, and the absence of `$now`.

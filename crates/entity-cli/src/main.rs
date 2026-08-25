@@ -10,7 +10,7 @@
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use entity_core::{
-    CoreError, Decision, DefinitionError, EntityDefinition, EntityInstance, Registry, Runtime,
+    CoreError, Decision, DefinitionErrors, EntityDefinition, EntityInstance, Registry, Runtime,
     ValidationError,
 };
 use serde_json::{json, Value};
@@ -141,8 +141,8 @@ impl From<CoreError> for Failure {
     }
 }
 
-impl From<DefinitionError> for Failure {
-    fn from(error: DefinitionError) -> Self {
+impl From<DefinitionErrors> for Failure {
+    fn from(error: DefinitionErrors) -> Self {
         Self::Refused(error.into())
     }
 }
@@ -325,20 +325,34 @@ fn read_instance(source: &str, stdin: &mut StdinOnce) -> Result<EntityInstance, 
 fn validate(paths: &[PathBuf], out: &mut impl Write) -> Result<(), Failure> {
     let mut invalid = 0usize;
     for path in paths {
-        let outcome = load_definition(path).and_then(|definition| {
-            definition
-                .validate()
-                .map(|()| (definition.entity.clone(), definition.version))
-                .map_err(|error| error.to_string())
-        });
+        let outcome = load_definition(path)
+            .map_err(|reason| vec![reason])
+            .and_then(|definition| {
+                definition
+                    .validate()
+                    .map(|()| (definition.entity.clone(), definition.version))
+                    .map_err(|errors| errors.iter().map(ToString::to_string).collect())
+            });
         match outcome {
             Ok((entity, version)) => {
                 writeln!(out, "{}: valid ({entity} v{version})", path.display())
                     .map_err(io_failure)?;
             }
-            Err(reason) => {
+            Err(reasons) => {
                 invalid += 1;
-                writeln!(out, "{}: invalid: {reason}", path.display()).map_err(io_failure)?;
+                // One line names the file and how much is wrong with it; the defects follow,
+                // indented, one per line. Reporting only the first meant fixing a definition took
+                // as many runs as it had faults.
+                match reasons.as_slice() {
+                    [only] => writeln!(out, "{}: invalid: {only}", path.display()),
+                    many => writeln!(out, "{}: invalid: {} defects", path.display(), many.len()),
+                }
+                .map_err(io_failure)?;
+                if reasons.len() > 1 {
+                    for reason in &reasons {
+                        writeln!(out, "  {reason}").map_err(io_failure)?;
+                    }
+                }
             }
         }
     }
@@ -595,7 +609,14 @@ fn refusal(error: &CoreError) -> Value {
             expression,
             message,
         } => json!({ "expression": expression, "reason": message }),
-        CoreError::Definition(error) => json!({ "defect": error.kind() }),
+        // Every defect, not the first: a caller fixing a definition from this output should not
+        // have to run the command once per fault.
+        CoreError::Definition(errors) => json!({
+            "defect": errors.first().kind(),
+            "defects": errors.iter()
+                .map(|defect| json!({ "kind": defect.kind(), "message": defect.to_string() }))
+                .collect::<Vec<_>>()
+        }),
     };
     if let (Some(target), Some(source)) = (refusal.as_object_mut(), details.as_object()) {
         for (key, value) in source {

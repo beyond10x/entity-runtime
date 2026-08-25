@@ -94,6 +94,41 @@ fn validate_names_the_defect_and_exits_one() {
     assert!(text.contains("2 file(s), 1 invalid"), "{text}");
 }
 
+/// Fixing a definition used to take as many runs of `validate` as it had faults, because each
+/// run named one. This is the same file three times over in one pass.
+#[test]
+fn validate_prints_every_defect_of_a_file_not_only_the_first() {
+    let broken = scratch(
+        "three-defects.yaml",
+        r#"
+entity: broken
+version: 0
+lifecycle: { initial: nowhere, states: [somewhere] }
+schema:
+  fields:
+    count: { type: integer, default: "many" }
+operations:
+  touch:
+    transitions: [ { from: somewhere, to: somewhere } ]
+"#,
+    );
+    let output = run(&["validate", broken.to_str().unwrap()], None);
+    assert_eq!(output.status.code(), Some(1));
+
+    let text = stdout(&output);
+    assert!(text.contains("invalid: 3 defects"), "{text}");
+    assert!(
+        text.contains("entity version must be greater than zero"),
+        "{text}"
+    );
+    assert!(
+        text.contains("lifecycle initial state 'nowhere' is not declared"),
+        "{text}"
+    );
+    assert!(text.contains("schema.count"), "{text}");
+    assert!(text.contains("1 file(s), 1 invalid"), "{text}");
+}
+
 #[test]
 fn validate_reports_every_file_and_a_broken_one_is_a_finding_not_a_usage_error() {
     // A syntax slip in the first example must not hide a broken lifecycle in the second: both are

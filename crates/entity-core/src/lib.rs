@@ -69,7 +69,7 @@
 //! | [`EntityDefinition`] and its parts | the definition model — what a YAML or JSON document deserialises into |
 //! | [`Registry`] | validated definitions, keyed by `(entity, version)` |
 //! | [`Runtime`], [`create`], [`execute`] | the kernel: the only functions that produce a [`Decision`] |
-//! | [`DefinitionError`], [`ValidationError`], [`CoreError`] | every refusal, typed |
+//! | [`DefinitionError`], [`DefinitionErrors`], [`ValidationError`], [`CoreError`] | every refusal, typed |
 //! | [`Truth`] | what a condition evaluates to: `True`, `False` or `Unknown` |
 //!
 //! # Evaluation order of an operation
@@ -115,7 +115,7 @@ pub use definition::{
     LifecycleDefinition, ObjectSchema, OneOrMany, OperationDefinition, RuleDefinition,
     TransitionDefinition, CONDITION_OPERATORS,
 };
-pub use error::{CoreError, DefinitionError, ValidationError};
+pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
 pub use registry::Registry;
 pub use runtime::{create, execute, Decision, DomainEvent, EntityInstance, Runtime};
 pub use truth::Truth;

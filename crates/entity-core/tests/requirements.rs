@@ -4,7 +4,8 @@
 //! name; `scripts/check-requirements.py` fails the gate when a cited test does not exist.
 
 use entity_core::{
-    execute, CoreError, DefinitionError, EntityDefinition, EntityInstance, Registry, Runtime, Truth,
+    execute, CoreError, DefinitionError, DefinitionErrors, EntityDefinition, EntityInstance,
+    Registry, Runtime, Truth,
 };
 use serde_json::{json, Value};
 
@@ -12,7 +13,7 @@ fn definition(value: Value) -> EntityDefinition {
     serde_json::from_value(value).expect("a well-formed definition document")
 }
 
-fn register(value: Value) -> Result<Registry, DefinitionError> {
+fn register(value: Value) -> Result<Registry, DefinitionErrors> {
     let mut registry = Registry::new();
     registry.register(definition(value))?;
     Ok(registry)
@@ -246,7 +247,7 @@ fn an_enum_without_values_and_an_array_without_items_are_refused() {
     ))
     .expect_err("refused");
     assert!(
-        matches!(no_values, DefinitionError::InvalidField { ref path, .. } if path == "schema.priority"),
+        matches!(no_values.first(), DefinitionError::InvalidField { ref path, .. } if path == "schema.priority"),
         "{no_values}"
     );
 
@@ -257,9 +258,98 @@ fn an_enum_without_values_and_an_array_without_items_are_refused() {
     ))
     .expect_err("refused");
     assert!(
-        matches!(no_items, DefinitionError::InvalidField { ref path, .. } if path == "schema.tags"),
+        matches!(no_items.first(), DefinitionError::InvalidField { ref path, .. } if path == "schema.tags"),
         "{no_items}"
     );
+}
+
+/// R-13, revised. Validation used to stop at the first defect, so a document with three faults
+/// took three attempts to fix and each attempt told you nothing about the next. Value validation
+/// already reported every failing field at once (R-23); this is the same courtesy for the
+/// definition, and `engineering-protocols` invariant 3 asks for it by name.
+#[test]
+fn definition_validation_reports_every_defect_not_the_first() {
+    let document = with(
+        with(
+            with(ticket(), "lifecycle.initial", json!("limbo")),
+            "operations.touch.transitions",
+            json!([{ "from": "open", "to": "open" }, { "from": "open", "to": "closed" }]),
+        ),
+        "schema.fields.points",
+        json!({ "type": "integer", "default": "many" }),
+    );
+    let errors = register(document).expect_err("three defects");
+
+    assert_eq!(errors.len(), 3, "{errors}");
+    assert_eq!(
+        errors.as_slice()[0],
+        DefinitionError::UnknownInitialState {
+            state: "limbo".into()
+        }
+    );
+    assert!(
+        matches!(
+            &errors.as_slice()[1],
+            DefinitionError::InvalidField { path, message }
+                if path == "schema.points" && message.contains("invalid default")
+        ),
+        "{errors}"
+    );
+    assert_eq!(
+        errors.as_slice()[2],
+        DefinitionError::AmbiguousTransition {
+            operation: "touch".into(),
+            state: "open".into()
+        }
+    );
+
+    // The sentence a person reads names the count and then every one of them.
+    let reported = errors.to_string();
+    assert!(reported.starts_with("3 defects; "), "{reported}");
+    for defect in &errors {
+        assert!(reported.contains(&defect.to_string()), "{reported}");
+    }
+}
+
+/// The failure mode accumulation invites: one fault reported as many. A ladder with a duplicate
+/// rung would make every transition in the document a second finding — *state `open` is not
+/// declared* — burying the one defect that caused them.
+#[test]
+fn a_broken_ladder_is_reported_once_and_does_not_cascade_through_every_transition() {
+    let errors = register(with(
+        ticket(),
+        "lifecycle.states",
+        json!(["open", "open", "in_progress", "closed"]),
+    ))
+    .expect_err("refused");
+
+    assert_eq!(
+        errors,
+        DefinitionError::DuplicateLifecycleState {
+            state: "open".into()
+        },
+        "the duplicate rung, and nothing it caused: {errors}"
+    );
+}
+
+/// A defect list is compared against a single defect only when it carries exactly that one, so
+/// every existing single-defect assertion in this file is also asserting there were no others.
+#[test]
+fn comparing_a_defect_list_to_one_defect_holds_only_when_it_is_the_only_one() {
+    let one = register(with(ticket(), "version", json!(0))).expect_err("refused");
+    assert_eq!(one, DefinitionError::ZeroVersion);
+    assert_eq!(one.len(), 1);
+    assert_eq!(one.first(), &DefinitionError::ZeroVersion);
+
+    let two = register(with(
+        with(ticket(), "version", json!(0)),
+        "entity",
+        json!("  "),
+    ))
+    .expect_err("refused");
+    assert_eq!(two.len(), 2);
+    assert_ne!(two, DefinitionError::ZeroVersion);
+    assert_eq!(two.first(), &DefinitionError::EmptyEntityName);
 }
 
 #[test]
@@ -271,7 +361,7 @@ fn an_invalid_default_is_refused_at_registration() {
     ))
     .expect_err("refused");
     assert!(
-        matches!(error, DefinitionError::InvalidField { ref path, ref message } if path == "schema.points" && message.contains("invalid default")),
+        matches!(error.first(), DefinitionError::InvalidField { ref path, ref message } if path == "schema.points" && message.contains("invalid default")),
         "{error}"
     );
 }
@@ -291,7 +381,7 @@ fn a_rule_referencing_an_undeclared_field_is_refused() {
     ))
     .expect_err("refused");
     assert!(
-        matches!(error, DefinitionError::InvalidRule { ref path, .. } if path.starts_with("operations.touch.preconditions[0].assert.exists")),
+        matches!(error.first(), DefinitionError::InvalidRule { ref path, .. } if path.starts_with("operations.touch.preconditions[0].assert.exists")),
         "{error}"
     );
 }
@@ -306,7 +396,7 @@ fn an_invariant_may_not_read_arguments_or_previous_state() {
         ))
         .expect_err(reference);
         assert!(
-            matches!(error, DefinitionError::InvalidRule { ref path, .. } if path == "invariants[0].assert.exists"),
+            matches!(error.first(), DefinitionError::InvalidRule { ref path, .. } if path == "invariants[0].assert.exists"),
             "{reference}: {error}"
         );
     }
@@ -322,7 +412,7 @@ fn an_empty_all_or_any_is_refused() {
         ))
         .expect_err(operator);
         assert!(
-            matches!(error, DefinitionError::InvalidRule { ref message, .. } if message.contains(operator)),
+            matches!(error.first(), DefinitionError::InvalidRule { ref message, .. } if message.contains(operator)),
             "{operator}: {error}"
         );
     }
@@ -1152,7 +1242,7 @@ fn a_template_the_scope_cannot_resolve_is_refused_at_registration() {
     ] {
         let error = register(with(ticket(), path, template)).expect_err(path);
         assert!(
-            matches!(error, DefinitionError::InvalidTemplate { .. }),
+            matches!(error.first(), DefinitionError::InvalidTemplate { .. }),
             "{path}: {error}"
         );
     }
@@ -1165,7 +1255,7 @@ fn a_template_the_scope_cannot_resolve_is_refused_at_registration() {
     ))
     .expect_err("create has no previous state");
     assert!(
-        matches!(error, DefinitionError::InvalidTemplate { ref path, .. }
+        matches!(error.first(), DefinitionError::InvalidTemplate { ref path, .. }
             if path == "create.emit.payload.from"),
         "{error}"
     );
@@ -1363,7 +1453,7 @@ fn a_precondition_may_not_read_state_and_an_invariant_may_not_read_the_transitio
     ))
     .expect_err("a precondition cannot read $state");
     assert!(
-        matches!(error, DefinitionError::InvalidRule { ref message, .. }
+        matches!(error.first(), DefinitionError::InvalidRule { ref message, .. }
             if message.contains("$state") && message.contains("$from_state")),
         "{error}"
     );
@@ -1376,7 +1466,7 @@ fn a_precondition_may_not_read_state_and_an_invariant_may_not_read_the_transitio
         ))
         .expect_err(reference);
         assert!(
-            matches!(error, DefinitionError::InvalidRule { ref path, .. } if path == "invariants[0].assert.exists"),
+            matches!(error.first(), DefinitionError::InvalidRule { ref path, .. } if path == "invariants[0].assert.exists"),
             "{reference}: {error}"
         );
     }
@@ -1583,8 +1673,8 @@ fn a_constraint_that_does_not_apply_to_its_kind_is_refused() {
     ] {
         let error = register(with(ticket(), "schema.fields.probe", field)).expect_err(constraint);
         assert!(
-            matches!(error, DefinitionError::ConstraintNotApplicable { ref path, constraint: found, .. }
-                if path == "schema.probe" && found == constraint),
+            matches!(error.first(), DefinitionError::ConstraintNotApplicable { ref path, constraint: found, .. }
+                if path == "schema.probe" && found == &constraint),
             "{constraint}: {error}"
         );
     }

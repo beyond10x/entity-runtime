@@ -79,7 +79,7 @@ at `4b6f2a1`:
 | § 4 item | verdict |
 |---|---|
 | **three-valued rules** | correct, load-bearing, and **under-specified in three places** — below |
-| **accumulating definition validation** | correct, cheap, independent of everything else; R-13 today reports one defect per attempt (`requirements.md:44`) while value validation already accumulates (`requirements.md:56`) |
+| **accumulating definition validation** | **shipped** — `Registry::register` returns `DefinitionErrors`, every defect at once, and one broken ladder is one finding rather than one per transition it invalidates |
 | **typed references** | correct as a goal, **not a phase-2 blocker**. The design's own words: *"until it does, the shell keeps validating edges as `protocol artifact relate` does today"*. It belongs with relations (phase 3+), not on the critical path |
 
 ### 4a. Three-valued: three questions, decided 2026-08-25
@@ -165,7 +165,7 @@ Phases 0–4 are the design's. Two more follow from their gap register and are w
 | story | forced by | when |
 |---|---|---|
 | `three-valued-conditions` | their invariant 5 | now — critical path |
-| `accumulating-definition-validation` | their invariant 3 | now — independent, cheap |
+| `accumulating-definition-validation` | their invariant 3 | **shipped** |
 | `typed-references` | `artifacts/relations/relations.yaml` | phase 3 |
 | `event-envelope` | their `DomainEvent` correlation/causation | phase 5 |
 | `explain-verb` | their `protocol explain` UX parity | after phase 2 |

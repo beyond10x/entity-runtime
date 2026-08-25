@@ -203,7 +203,7 @@ operations: {}
         .register(definition)
         .expect_err("invariant cannot depend on command arguments");
 
-    assert!(matches!(error, DefinitionError::InvalidRule { .. }));
+    assert!(matches!(error.first(), DefinitionError::InvalidRule { .. }));
 }
 
 #[test]
