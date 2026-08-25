@@ -23,8 +23,10 @@ on:
 permissions:
   contents: read
 
+# One group per ref: deploys from main still serialise, and two pull requests opened together no
+# longer cancel each other's build — a PR whose link gate was cancelled reads like one that passed.
 concurrency:
-  group: github-pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
