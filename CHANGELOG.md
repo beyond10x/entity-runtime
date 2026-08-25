@@ -4,7 +4,26 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+* **The eight AEP lifecycles, as entity definitions.** `examples/aep/*.yaml` expresses every
+  lifecycle document `engineering-protocols` ships — `story`, `epic`, `initiative`, `task`,
+  `design`, `specification`, `architecture-decision-record`, `review-result` — as data this kernel
+  executes, one operation per edge of each ladder. Phase 1 of
+  [`docs/design/engineering-protocols-adoption-v0.1.md`](docs/design/engineering-protocols-adoption-v0.1.md);
+  no rules yet, because a precondition worth writing needs a rule that can say `unknown`.
+* **An equivalence test that makes the translation checkable, not asserted.**
+  `crates/entity-yaml/tests/aep_lifecycles.rs` compares each definition's `(from, to)` edge set
+  against the upstream `transitions` map, read from a committed fixture pinned at `79b641c`
+  (`crates/entity-yaml/tests/fixtures/aep-lifecycles/PIN.md`) rather than from a sibling checkout.
+  A definition that invents an edge and a ladder that grows one upstream both fail, by name. The
+  gate runs it, and `example-check` now validates `examples/aep/` too.
+* **[`docs/roadmap.md`](docs/roadmap.md)** — what order the adoption goes in, blocked on what, and
+  the four decisions taken on 2026-08-25: phase 1 ships before phase 0 and is its evidence; the
+  dependency arrow points from `engineering-protocols` to `entity-core` and never back; a present
+  `null` will not count as a value; and an unobservable refusal will name every unresolved path.
+
+Nothing in the kernel changed, and nothing here publishes a dependency in either direction.
 
 ## [0.2.1] - 2026-08-25
 

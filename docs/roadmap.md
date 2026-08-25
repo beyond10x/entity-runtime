@@ -32,7 +32,7 @@ Four items. **All four were decided on 2026-08-25** (§ 7); what remains is orde
 
 | # | item | state | reversible until |
 |---|---|---|---|
-| **D** | phase 1: the eight lifecycles as definitions | **first** — decided; nothing blocks it | always, it is `examples/` |
+| **D** | phase 1: the eight lifecycles as definitions | **shipped** — 8 definitions, 64 edges, 11 tests, in the gate | always, it is `examples/` |
 | **C** | `story:three-valued-conditions` — the one semantics change | decided down to its three open questions (§ 4a) | it ships in a release |
 | **A** | put the mapping to `engineering-protocols`, carrying D as evidence | decided; sent after D | it is a document |
 | **B** | the dependency arrow | decided: [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | phase 2 adds the manifest line |
@@ -132,7 +132,11 @@ small before the type ships and expensive after:
 A paper review of a mapping table is weak evidence. Eight definitions plus an equivalence test that
 proves *the definitions yield exactly the transitions your YAML declares* is the artefact that makes
 the review decidable — and it costs `examples/` in this tree, changes nothing in theirs, and is
-thrown away for free if the verdict is no. Phase 1 ships **as** phase 0's evidence.
+thrown away for free if the verdict is no. Phase 1 ships **as** phase 0's evidence, and it has:
+[`examples/aep/`](https://github.com/beyond10x/entity-runtime/tree/main/examples/aep) — 8
+definitions, 64 edges, 11 tests, `example-check` and `cargo test` both in `task check`. The
+equivalence was verified in both directions by breaking it: an invented edge fails naming the edge,
+and a rung added to the pinned fixture fails naming what the definitions do not express.
 
 The old edge is still in the store: `protocol artifact` has `relate` and no `unrelate`, so an edge
 can be added and never removed. `story:aep-mapping-review informed_by

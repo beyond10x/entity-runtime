@@ -112,7 +112,8 @@ task check
 
 Seven steps, in this order: `fmt-check` · `clippy` (`--workspace --all-targets --locked
 -D warnings`, which is what makes `missing_docs` fatal) · `test` · `doc-check`
-(`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml`) · `req-check` ·
+(`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml` and
+`examples/aep/*.yaml`) · `req-check` ·
 `plan-check` (`protocol artifact validate`). Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
 
@@ -172,6 +173,8 @@ step of `task check`, which reaches no network.
 | designs, normative and proposed | `docs/design/` |
 | the adopter's guide — what the site's navbar points at | `docs/guide/` |
 | what a user of the runtime sees change | `CHANGELOG.md` |
+| the order the adoption goes in, and the decisions taken | `docs/roadmap.md` |
+| the AEP artifact model as definitions, and the pinned upstream it is checked against | `examples/aep/`, `crates/entity-yaml/tests/fixtures/aep-lifecycles/` |
 
 ## Planning artifacts
 

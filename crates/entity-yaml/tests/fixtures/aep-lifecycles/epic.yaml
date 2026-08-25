@@ -1,0 +1,20 @@
+# This ladder exists because AEP became a system of record for the kind. Before the markdown
+# planning store there was nowhere here to *keep* an epic, so declaring its statuses would have
+# validated documents nobody wrote; now `protocol artifact move` refuses a status move against this
+# file, and an epic that skips agreement is caught rather than merely discouraged.
+#
+# The same four beats as `story.yaml`, and deliberately identical to it: an epic differs from a
+# story in size, not in how it is agreed, and two ladders that differ only by accident would make
+# `protocol artifact board` read as two boards.
+kind: epic
+initial: draft
+
+transitions:
+  draft: [proposed, archived]
+  # `proposed` means refined and agreed enough to pick up; `rejected` means it will not be done, which
+  # is a different fact from being dropped from a backlog.
+  proposed: [draft, active, rejected]
+  active: [implemented, archived]
+  implemented: [archived]
+  rejected: [archived]
+  archived: []
