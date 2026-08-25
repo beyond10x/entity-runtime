@@ -15,6 +15,7 @@ const sidebars: SidebarsConfig = {
     },
     {type: 'doc', id: 'VISION', label: 'Vision'},
     {type: 'doc', id: 'requirements', label: 'Requirements register'},
+    {type: 'doc', id: 'roadmap', label: 'Roadmap (proposed)'},
     {
       type: 'doc',
       id: 'reviews/2026-08-25-adversarial-review',
