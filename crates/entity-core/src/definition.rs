@@ -4,6 +4,11 @@
 //! condition language is an AST, the templates are values with `$` references, and there is no
 //! place to put code. That is what keeps a definition portable, inspectable and safe to load
 //! from a file somebody else wrote.
+//!
+//! Every struct here refuses unknown keys, and a condition refuses anything but exactly one
+//! known operator. A definition that is *nearly* right — `requried: true`, two operators in one
+//! `assert`, a `precondition:` that should have been `preconditions:` — is a definition that
+//! would silently enforce less than it says, so it is refused where it is read.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -19,6 +24,7 @@ fn default_version() -> u32 {
 /// are different types as far as the kernel is concerned; an instance records which one it was
 /// created under and is executed against that one only.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct EntityDefinition {
     /// The type name, such as `order`. Must not be empty.
     pub entity: String,
@@ -37,7 +43,8 @@ pub struct EntityDefinition {
     ///
     /// Evaluated after creation and after every successful operation, against the *next* state.
     /// An invariant may read `$fields.*`, `$state`, `$id`, `$entity` and `$version` — never the
-    /// arguments or the previous state, so it cannot depend on how the state was reached.
+    /// arguments, the previous state or the transition, so it cannot depend on how the state was
+    /// reached.
     #[serde(default)]
     pub invariants: Vec<RuleDefinition>,
 
@@ -50,8 +57,23 @@ pub struct EntityDefinition {
     pub operations: BTreeMap<String, OperationDefinition>,
 }
 
+impl EntityDefinition {
+    /// Checks that this definition is internally consistent and could be executed.
+    ///
+    /// [`Registry::register`](crate::Registry::register) calls this; it is public so a tool can
+    /// check a definition without building a registry.
+    ///
+    /// # Errors
+    ///
+    /// The first [`DefinitionError`](crate::DefinitionError) found.
+    pub fn validate(&self) -> Result<(), crate::DefinitionError> {
+        crate::validation::validate_definition(self)
+    }
+}
+
 /// A set of named, typed fields — the shape of an instance or of an operation's arguments.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ObjectSchema {
     /// The declared fields, by name.
     #[serde(default)]
@@ -64,7 +86,11 @@ pub struct ObjectSchema {
 }
 
 /// One field: its kind and the constraints a value must satisfy.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+///
+/// A constraint that does not apply to the field's kind — `values` on a `string`, `items` on an
+/// `object` — is refused when the definition is registered rather than silently ignored.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct FieldDefinition {
     /// The kind of value.
     #[serde(rename = "type")]
@@ -74,48 +100,50 @@ pub struct FieldDefinition {
     #[serde(default)]
     pub required: bool,
 
-    /// The value used when none is supplied. Validated against this field at registration.
+    /// The value used when none is supplied. Validated against this field at registration, and
+    /// applied at every depth — a default on a nested `properties` entry is filled in too.
     #[serde(default)]
     pub default: Option<Value>,
 
-    /// Minimum length in characters, for strings.
+    /// Minimum length in characters. `string` only.
     #[serde(default)]
     pub min_length: Option<usize>,
 
-    /// Maximum length in characters, for strings.
+    /// Maximum length in characters. `string` only.
     #[serde(default)]
     pub max_length: Option<usize>,
 
-    /// Minimum value, for integers and numbers.
+    /// Minimum value. `integer` and `number` only.
     #[serde(default)]
     pub min: Option<f64>,
 
-    /// Maximum value, for integers and numbers.
+    /// Maximum value. `integer` and `number` only.
     #[serde(default)]
     pub max: Option<f64>,
 
-    /// The permitted values, for enums. Must not be empty for an enum.
+    /// The permitted values. `enum` only, and required there.
     #[serde(default)]
     pub values: Vec<String>,
 
-    /// The element definition, for arrays. Required for an array.
+    /// The element definition. `array` only, and required there.
     #[serde(default)]
     pub items: Option<Box<FieldDefinition>>,
 
-    /// The nested properties, for objects.
+    /// The nested properties. `object` only.
     #[serde(default)]
     pub properties: BTreeMap<String, FieldDefinition>,
 
-    /// Whether an object may carry properties not declared in `properties`. Defaults to `false`.
+    /// Whether an object may carry properties not declared in `properties`. `object` only.
     #[serde(default)]
     pub additional_properties: bool,
 }
 
 /// The kinds a field may have.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldKind {
     /// A UTF-8 string; `min_length` and `max_length` apply.
+    #[default]
     String,
     /// A whole number; `min` and `max` apply.
     Integer,
@@ -133,11 +161,34 @@ pub enum FieldKind {
     Json,
 }
 
+impl FieldKind {
+    /// The spelling used in a document, for messages.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::String => "string",
+            Self::Integer => "integer",
+            Self::Number => "number",
+            Self::Boolean => "boolean",
+            Self::Enum => "enum",
+            Self::Array => "array",
+            Self::Object => "object",
+            Self::Json => "json",
+        }
+    }
+}
+
+impl std::fmt::Display for FieldKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// The states an instance may occupy.
 ///
 /// Transitions are not declared here but on the operations that perform them: a state machine
 /// whose edges are named operations, each with its own arguments and rules.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct LifecycleDefinition {
     /// The state a newly created instance is in. Must be one of `states`.
     pub initial: String,
@@ -148,15 +199,17 @@ pub struct LifecycleDefinition {
 
 /// What creation does beyond validating the fields and entering the initial state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct CreateDefinition {
-    /// The event emitted on creation, if any. Its templates see `$id`, `$state` and `$fields`;
-    /// there is no `$from_state` and there are no arguments.
+    /// The event emitted on creation, if any. Its templates see `$id`, `$entity`, `$version`,
+    /// `$state` and `$fields`; there is no previous state and there are no arguments.
     #[serde(default)]
     pub emit: Option<EventDefinition>,
 }
 
 /// One operation: how an instance moves from one state to another, and what that produces.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct OperationDefinition {
     /// The arguments the operation takes. Defaulted, then validated, before anything else.
     #[serde(default)]
@@ -167,7 +220,8 @@ pub struct OperationDefinition {
 
     /// Rules evaluated against the current state, the selected transition and the validated
     /// arguments, before any mutation. A precondition may read `$args.*`, `$fields.*`,
-    /// `$old_fields.*`, `$from_state`, `$to_state`, `$id`, `$entity` and `$version`.
+    /// `$old_fields.*`, `$from_state`, `$to_state`, `$id`, `$entity` and `$version` — but not
+    /// `$state`, which in a rule would silently mean the state the operation is heading for.
     #[serde(default)]
     pub preconditions: Vec<RuleDefinition>,
 
@@ -187,6 +241,7 @@ pub struct OperationDefinition {
 
 /// One edge of the lifecycle: from one or more states to one state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct TransitionDefinition {
     /// The state or states the operation may start from.
     pub from: OneOrMany<String>,
@@ -197,18 +252,21 @@ pub struct TransitionDefinition {
 
 /// An event an operation emits: a type name and a templated payload.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct EventDefinition {
     /// The event type, such as `OrderSubmitted`. Must not be empty.
     #[serde(rename = "type")]
     pub event_type: String,
 
-    /// The payload template. Any JSON value; strings beginning with `$` are references.
+    /// The payload template. Any JSON value; strings beginning with `$` are references, checked
+    /// against the emitting scope when the definition is registered.
     #[serde(default = "empty_object")]
     pub payload: Value,
 }
 
 /// A named rule: a condition that must evaluate to `true`, and what to say when it does not.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct RuleDefinition {
     /// The rule's name, reported in the refusal. Optional; must not be empty when present.
     #[serde(default)]
@@ -223,6 +281,11 @@ pub struct RuleDefinition {
     pub message: Option<String>,
 }
 
+/// Every operator a condition may use, in the order the documentation lists them.
+pub const CONDITION_OPERATORS: &[&str] = &[
+    "all", "any", "not", "exists", "eq", "ne", "gt", "gte", "lt", "lte", "in", "contains",
+];
+
 /// A deliberately small, deterministic predicate language, written as data.
 ///
 /// Operands are ordinary YAML/JSON values and may contain the same `$...` references as event and
@@ -232,7 +295,11 @@ pub struct RuleDefinition {
 /// There is no function call, no loop, no arithmetic, no clock and no lookup. A definition can be
 /// validated at registration and evaluated the same way every time because of what this type
 /// cannot express.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+///
+/// A condition is `true`, `false`, or a mapping carrying **exactly one** known operator. Two
+/// operators in one mapping, or a misspelled one, is a refusal naming what was found and what is
+/// accepted — a silently dropped half-rule is the failure this refusal exists to prevent.
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum Condition {
     /// `true` or `false`, literally.
@@ -257,12 +324,12 @@ pub enum Condition {
         /// The operand, usually a reference such as `$fields.reason`.
         exists: Value,
     },
-    /// The two operands are equal.
+    /// The two operands are equal. Numbers compare numerically, so `100` equals `100.0`.
     Eq {
         /// Left and right.
         eq: [Value; 2],
     },
-    /// The two operands differ.
+    /// The two operands differ. Numbers compare numerically.
     Ne {
         /// Left and right.
         ne: [Value; 2],
@@ -301,6 +368,144 @@ pub enum Condition {
     },
 }
 
+impl<'de> Deserialize<'de> for Condition {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        Self::from_value(value).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Condition {
+    /// Reads a condition out of an already-parsed value, naming what is wrong when it is not one.
+    ///
+    /// # Errors
+    ///
+    /// A sentence for a person: an unknown operator, more than one operator, a `not` that is not a
+    /// condition, a comparison that is not a pair.
+    pub fn from_value(value: Value) -> Result<Self, String> {
+        let operators = || CONDITION_OPERATORS.join(", ");
+        let map = match value {
+            Value::Bool(literal) => return Ok(Self::Literal(literal)),
+            Value::Object(map) => map,
+            other => {
+                return Err(format!(
+                    "a condition is `true`, `false`, or a mapping with one operator ({}); found {}",
+                    operators(),
+                    describe(&other)
+                ))
+            }
+        };
+
+        let unknown: Vec<&str> = map
+            .keys()
+            .map(String::as_str)
+            .filter(|key| !CONDITION_OPERATORS.contains(key))
+            .collect();
+        if !unknown.is_empty() {
+            return Err(format!(
+                "unknown condition operator '{}'; expected one of {}",
+                unknown.join("', '"),
+                operators()
+            ));
+        }
+        if map.len() != 1 {
+            let mut found: Vec<&str> = map.keys().map(String::as_str).collect();
+            found.sort_unstable();
+            return Err(format!(
+                "a condition carries exactly one operator; found {} ('{}'). Combine them with \
+                 `all` or `any` instead — a second key here would otherwise be dropped",
+                map.len(),
+                found.join("', '")
+            ));
+        }
+
+        let (operator, operand) = map.into_iter().next().expect("exactly one entry");
+        match operator.as_str() {
+            "all" => Ok(Self::All {
+                all: children(operand, "all")?,
+            }),
+            "any" => Ok(Self::Any {
+                any: children(operand, "any")?,
+            }),
+            "not" => Ok(Self::Not {
+                not: Box::new(Self::from_value(operand)?),
+            }),
+            "exists" => Ok(Self::Exists { exists: operand }),
+            "eq" => Ok(Self::Eq {
+                eq: pair(operand, "eq")?,
+            }),
+            "ne" => Ok(Self::Ne {
+                ne: pair(operand, "ne")?,
+            }),
+            "gt" => Ok(Self::Gt {
+                gt: pair(operand, "gt")?,
+            }),
+            "gte" => Ok(Self::Gte {
+                gte: pair(operand, "gte")?,
+            }),
+            "lt" => Ok(Self::Lt {
+                lt: pair(operand, "lt")?,
+            }),
+            "lte" => Ok(Self::Lte {
+                lte: pair(operand, "lte")?,
+            }),
+            "in" => Ok(Self::In {
+                values: pair(operand, "in")?,
+            }),
+            "contains" => Ok(Self::Contains {
+                contains: pair(operand, "contains")?,
+            }),
+            other => Err(format!(
+                "unknown condition operator '{other}'; expected one of {}",
+                operators()
+            )),
+        }
+    }
+}
+
+fn children(operand: Value, operator: &str) -> Result<Vec<Condition>, String> {
+    match operand {
+        Value::Array(values) => values.into_iter().map(Condition::from_value).collect(),
+        other => Err(format!(
+            "'{operator}' takes a list of conditions; found {}",
+            describe(&other)
+        )),
+    }
+}
+
+fn pair(operand: Value, operator: &str) -> Result<[Value; 2], String> {
+    match operand {
+        Value::Array(values) if values.len() == 2 => {
+            let mut values = values.into_iter();
+            let left = values.next().expect("two values");
+            let right = values.next().expect("two values");
+            Ok([left, right])
+        }
+        Value::Array(values) => Err(format!(
+            "'{operator}' takes exactly two operands; found {}",
+            values.len()
+        )),
+        other => Err(format!(
+            "'{operator}' takes a list of two operands; found {}",
+            describe(&other)
+        )),
+    }
+}
+
+fn describe(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "a boolean",
+        Value::Number(_) => "a number",
+        Value::String(_) => "a string",
+        Value::Array(_) => "a list",
+        Value::Object(_) => "a mapping",
+    }
+}
+
 fn empty_object() -> Value {
     Value::Object(Default::default())
 }
@@ -316,16 +521,30 @@ pub enum OneOrMany<T> {
 }
 
 impl<T> OneOrMany<T> {
-    /// The values, in order.
-    pub fn iter(&self) -> Box<dyn Iterator<Item = &T> + '_> {
+    /// The values, as a slice — no allocation, one or many alike.
+    pub fn as_slice(&self) -> &[T] {
         match self {
-            Self::One(value) => Box::new(std::iter::once(value)),
-            Self::Many(values) => Box::new(values.iter()),
+            Self::One(value) => std::slice::from_ref(value),
+            Self::Many(values) => values,
         }
+    }
+
+    /// The values, in order.
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.as_slice().iter()
     }
 
     /// Whether there are no values. Only `Many([])` is empty.
     pub fn is_empty(&self) -> bool {
-        matches!(self, Self::Many(values) if values.is_empty())
+        self.as_slice().is_empty()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a OneOrMany<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }

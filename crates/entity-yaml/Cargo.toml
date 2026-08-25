@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 entity-core = { path = "../entity-core", version = "0.1.0" }
-serde_yaml.workspace = true
+serde_yaml_ng.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

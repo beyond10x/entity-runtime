@@ -31,7 +31,7 @@ use std::fmt;
 ///
 /// Carries the parser's own message, which names the line and column.
 #[derive(Debug)]
-pub struct YamlError(serde_yaml::Error);
+pub struct YamlError(serde_yaml_ng::Error);
 
 impl fmt::Display for YamlError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -52,5 +52,5 @@ impl std::error::Error for YamlError {
 /// [`YamlError`] when the text is not valid YAML or does not have the shape of a definition —
 /// a missing `lifecycle`, a field without a `type`, a condition with an unknown operator.
 pub fn from_str(input: &str) -> Result<EntityDefinition, YamlError> {
-    serde_yaml::from_str(input).map_err(YamlError)
+    serde_yaml_ng::from_str(input).map_err(YamlError)
 }

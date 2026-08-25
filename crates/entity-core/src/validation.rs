@@ -1,11 +1,19 @@
 //! Definition validation (at registration) and value validation (at create/execute).
+//!
+//! Registration is where a defect that could never work is caught: an undeclared state, a
+//! constraint on a kind it does not apply to, a rule or template reading something its scope
+//! cannot see — at any depth of the schema, not only at the root. What is left for run time is
+//! only what run time knows: whether a value satisfies its field, and whether a path into a
+//! `json` field or an open schema happens to resolve.
 
 use crate::{
-    Condition, DefinitionError, EntityDefinition, FieldDefinition, FieldKind, ObjectSchema,
-    RuleDefinition, ValidationError,
+    Condition, DefinitionError, EntityDefinition, EventDefinition, FieldDefinition, FieldKind,
+    ObjectSchema, RuleDefinition, ValidationError,
 };
 use serde_json::{Map, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+// --- Definition validation -----------------------------------------------------------------------
 
 pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), DefinitionError> {
     if definition.entity.trim().is_empty() {
@@ -38,20 +46,26 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
 
     validate_schema_definition(&definition.schema, "schema")?;
 
+    let invariant_scope = Scope {
+        kind: ScopeKind::Invariant,
+        fields: &definition.schema,
+        args: None,
+    };
     for (index, invariant) in definition.invariants.iter().enumerate() {
-        validate_rule_definition(
-            invariant,
-            &format!("invariants[{index}]"),
-            RuleScope::Invariant {
-                fields: &definition.schema,
-            },
-        )?;
+        validate_rule_definition(invariant, &format!("invariants[{index}]"), invariant_scope)?;
     }
 
     if let Some(event) = &definition.create.emit {
-        if event.event_type.trim().is_empty() {
-            return Err(DefinitionError::EmptyEventType { operation: None });
-        }
+        validate_event_definition(
+            event,
+            "create.emit",
+            None,
+            Scope {
+                kind: ScopeKind::CreateTemplate,
+                fields: &definition.schema,
+                args: None,
+            },
+        )?;
     }
 
     for (operation_name, operation) in &definition.operations {
@@ -98,65 +112,227 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
             }
         }
 
+        let rule_scope = Scope {
+            kind: ScopeKind::Precondition,
+            fields: &definition.schema,
+            args: Some(&operation.arguments),
+        };
         for (index, precondition) in operation.preconditions.iter().enumerate() {
             validate_rule_definition(
                 precondition,
                 &format!("operations.{operation_name}.preconditions[{index}]"),
-                RuleScope::Operation {
-                    fields: &definition.schema,
-                    args: &operation.arguments,
-                },
+                rule_scope,
             )?;
         }
 
-        if !definition.schema.additional_fields {
-            for field in operation.set.keys() {
-                if !definition.schema.fields.contains_key(field) {
-                    return Err(DefinitionError::UnknownSetField {
-                        operation: operation_name.clone(),
-                        field: field.clone(),
-                    });
-                }
-            }
-        }
-
-        for event in &operation.emits {
-            if event.event_type.trim().is_empty() {
-                return Err(DefinitionError::EmptyEventType {
-                    operation: Some(operation_name.clone()),
+        let template_scope = Scope {
+            kind: ScopeKind::OperationTemplate,
+            fields: &definition.schema,
+            args: Some(&operation.arguments),
+        };
+        for (field, template) in &operation.set {
+            if !definition.schema.additional_fields && !definition.schema.fields.contains_key(field)
+            {
+                return Err(DefinitionError::UnknownSetField {
+                    operation: operation_name.clone(),
+                    field: field.clone(),
                 });
             }
+            validate_template(
+                template,
+                &format!("operations.{operation_name}.set.{field}"),
+                template_scope,
+            )?;
+        }
+
+        for (index, event) in operation.emits.iter().enumerate() {
+            validate_event_definition(
+                event,
+                &format!("operations.{operation_name}.emits[{index}]"),
+                Some(operation_name),
+                template_scope,
+            )?;
         }
     }
 
     Ok(())
 }
 
-#[derive(Clone, Copy)]
-enum RuleScope<'a> {
-    Invariant {
-        fields: &'a ObjectSchema,
-    },
-    Operation {
-        fields: &'a ObjectSchema,
-        args: &'a ObjectSchema,
-    },
+fn validate_event_definition(
+    event: &EventDefinition,
+    path: &str,
+    operation: Option<&String>,
+    scope: Scope<'_>,
+) -> Result<(), DefinitionError> {
+    if event.event_type.trim().is_empty() {
+        return Err(DefinitionError::EmptyEventType {
+            operation: operation.cloned(),
+        });
+    }
+    validate_template(&event.payload, &format!("{path}.payload"), scope)
 }
+
+// --- Reference scopes ----------------------------------------------------------------------------
+
+/// Which references a value may carry, which differs by where the value sits.
+///
+/// The distinction is the point: an invariant that could read `$args` would be a precondition in
+/// disguise, true only for the operation that happened to supply the argument, and a precondition
+/// that could read `$state` would be reading the state the operation is heading *for* while
+/// looking like it reads the state it starts from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScopeKind {
+    Invariant,
+    Precondition,
+    CreateTemplate,
+    OperationTemplate,
+}
+
+impl ScopeKind {
+    fn allowed(self) -> &'static str {
+        match self {
+            Self::Invariant => "$id, $entity, $version, $state, $fields, $fields.<path>",
+            Self::Precondition => {
+                "$id, $entity, $version, $from_state, $to_state, $args, $args.<path>, $fields, \
+                 $fields.<path>, $old_fields, $old_fields.<path>"
+            }
+            Self::CreateTemplate => {
+                "$id, $entity, $version, $state, $to_state, $fields, $fields.<path>"
+            }
+            Self::OperationTemplate => {
+                "$id, $entity, $version, $state, $from_state, $to_state, $args, $args.<path>, \
+                 $fields, $fields.<path>, $old_fields, $old_fields.<path>"
+            }
+        }
+    }
+
+    fn is_rule(self) -> bool {
+        matches!(self, Self::Invariant | Self::Precondition)
+    }
+
+    fn what(self) -> &'static str {
+        match self {
+            Self::Invariant => "an entity invariant",
+            Self::Precondition => "an operation precondition",
+            Self::CreateTemplate => "a creation event payload",
+            Self::OperationTemplate => "an operation template",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Scope<'a> {
+    kind: ScopeKind,
+    fields: &'a ObjectSchema,
+    args: Option<&'a ObjectSchema>,
+}
+
+impl Scope<'_> {
+    /// Whether a bare reference (no path) is available here.
+    fn allows(&self, expression: &str) -> bool {
+        match expression {
+            "$id" | "$entity" | "$version" | "$fields" => true,
+            "$state" => !matches!(self.kind, ScopeKind::Precondition),
+            "$to_state" => !matches!(self.kind, ScopeKind::Invariant),
+            "$from_state" | "$args" | "$old_fields" => matches!(
+                self.kind,
+                ScopeKind::Precondition | ScopeKind::OperationTemplate
+            ),
+            _ => false,
+        }
+    }
+}
+
+/// Checks one `$...` reference against its scope, following the path through the schema.
+fn validate_reference(expression: &str, scope: Scope<'_>) -> Result<(), String> {
+    let refused = |detail: String| {
+        Err(format!(
+            "{detail}; {} may read {}",
+            scope.kind.what(),
+            scope.kind.allowed()
+        ))
+    };
+
+    if scope.allows(expression) {
+        return Ok(());
+    }
+
+    for (prefix, schema, noun) in [
+        ("$fields.", Some(scope.fields), "field"),
+        ("$old_fields.", Some(scope.fields), "field"),
+        ("$args.", scope.args, "argument"),
+    ] {
+        let Some(path) = expression.strip_prefix(prefix) else {
+            continue;
+        };
+        let root = prefix.trim_end_matches('.');
+        if !scope.allows(root) {
+            return refused(format!("'{expression}' is not available here"));
+        }
+        let Some(schema) = schema else {
+            return refused(format!("'{expression}' is not available here"));
+        };
+        return validate_reference_path(schema, path, noun)
+            .map_err(|detail| format!("'{expression}' cannot resolve: {detail}"));
+    }
+
+    if expression.starts_with('$') {
+        return refused(format!("'{expression}' is not a reference available here"));
+    }
+    Ok(())
+}
+
+/// Walks `path` through the schema, so `$fields.address.countri` is refused where
+/// `$fields.address.country` is accepted.
+fn validate_reference_path(schema: &ObjectSchema, path: &str, noun: &str) -> Result<(), String> {
+    let mut segments = path.split('.');
+    let root = segments.next().unwrap_or_default();
+    if root.is_empty() {
+        return Err("the path is empty".into());
+    }
+
+    let mut field = match schema.fields.get(root) {
+        Some(field) => field,
+        None if schema.additional_fields => return Ok(()),
+        None => return Err(format!("unknown {noun} '{root}'")),
+    };
+
+    let mut walked = root.to_owned();
+    for segment in segments {
+        match field.kind {
+            FieldKind::Json => return Ok(()),
+            FieldKind::Object => match field.properties.get(segment) {
+                Some(next) => field = next,
+                None if field.additional_properties => return Ok(()),
+                None => {
+                    return Err(format!("'{walked}' declares no property '{segment}'"));
+                }
+            },
+            kind => {
+                return Err(format!(
+                    "'{walked}' is a {kind} field, so '{segment}' resolves to nothing"
+                ));
+            }
+        }
+        walked.push('.');
+        walked.push_str(segment);
+    }
+    Ok(())
+}
+
+// --- Rules ---------------------------------------------------------------------------------------
 
 fn validate_rule_definition(
     rule: &RuleDefinition,
     path: &str,
-    scope: RuleScope<'_>,
+    scope: Scope<'_>,
 ) -> Result<(), DefinitionError> {
     if rule
         .name
         .as_ref()
         .is_some_and(|name| name.trim().is_empty())
     {
-        return Err(DefinitionError::InvalidRule {
-            path: path.to_owned(),
-            message: "rule name cannot be empty".into(),
-        });
+        return invalid_rule(path, "rule name cannot be empty");
     }
 
     if rule
@@ -164,10 +340,7 @@ fn validate_rule_definition(
         .as_ref()
         .is_some_and(|message| message.trim().is_empty())
     {
-        return Err(DefinitionError::InvalidRule {
-            path: path.to_owned(),
-            message: "rule message cannot be empty".into(),
-        });
+        return invalid_rule(path, "rule message cannot be empty");
     }
 
     validate_condition_definition(&rule.condition, &format!("{path}.assert"), scope)
@@ -176,7 +349,7 @@ fn validate_rule_definition(
 fn validate_condition_definition(
     condition: &Condition,
     path: &str,
-    scope: RuleScope<'_>,
+    scope: Scope<'_>,
 ) -> Result<(), DefinitionError> {
     match condition {
         Condition::Literal(_) => Ok(()),
@@ -213,34 +386,53 @@ fn validate_condition_definition(
     }
 }
 
-fn validate_pair(
-    values: &[Value; 2],
-    path: &str,
-    scope: RuleScope<'_>,
-) -> Result<(), DefinitionError> {
+fn validate_pair(values: &[Value; 2], path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
     validate_operand(&values[0], &format!("{path}[0]"), scope)?;
     validate_operand(&values[1], &format!("{path}[1]"), scope)
 }
 
-fn validate_operand(
+fn validate_operand(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
+    walk_references(value, path, scope, &mut |expression, path, scope| {
+        validate_reference(expression, scope).map_err(|message| {
+            if scope.kind.is_rule() {
+                DefinitionError::InvalidRule {
+                    path: path.to_owned(),
+                    message,
+                }
+            } else {
+                DefinitionError::InvalidTemplate {
+                    path: path.to_owned(),
+                    message,
+                }
+            }
+        })
+    })
+}
+
+/// The same walk for a `set` value or an event payload, reported as a template defect.
+fn validate_template(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
+    validate_operand(value, path, scope)
+}
+
+/// Visits every `$` string inside a value, at any depth. `$$literal` is not a reference.
+fn walk_references(
     value: &Value,
     path: &str,
-    scope: RuleScope<'_>,
+    scope: Scope<'_>,
+    check: &mut impl FnMut(&str, &str, Scope<'_>) -> Result<(), DefinitionError>,
 ) -> Result<(), DefinitionError> {
     match value {
         Value::String(text) if text.starts_with("$$") => Ok(()),
-        Value::String(expression) if expression.starts_with('$') => {
-            validate_rule_reference(expression, path, scope)
-        }
+        Value::String(expression) if expression.starts_with('$') => check(expression, path, scope),
         Value::Array(values) => {
             for (index, value) in values.iter().enumerate() {
-                validate_operand(value, &format!("{path}[{index}]"), scope)?;
+                walk_references(value, &format!("{path}[{index}]"), scope, check)?;
             }
             Ok(())
         }
         Value::Object(values) => {
             for (key, value) in values {
-                validate_operand(value, &format!("{path}.{key}"), scope)?;
+                walk_references(value, &format!("{path}.{key}"), scope, check)?;
             }
             Ok(())
         }
@@ -248,73 +440,14 @@ fn validate_operand(
     }
 }
 
-fn validate_rule_reference(
-    expression: &str,
-    path: &str,
-    scope: RuleScope<'_>,
-) -> Result<(), DefinitionError> {
-    let common = matches!(
-        expression,
-        "$id" | "$entity" | "$version" | "$state" | "$to_state" | "$fields"
-    );
-    if common {
-        return Ok(());
-    }
-
-    if let Some(field_path) = expression.strip_prefix("$fields.") {
-        return validate_known_root_field(field_path, path, scope_fields(scope), "field");
-    }
-
-    match scope {
-        RuleScope::Invariant { .. } => invalid_rule(
-            path,
-            &format!(
-                "reference '{expression}' is not available in entity invariants; use current-state references such as $fields.* or $state"
-            ),
-        ),
-        RuleScope::Operation { fields, args } => {
-            if matches!(expression, "$from_state" | "$args" | "$old_fields") {
-                return Ok(());
-            }
-            if let Some(arg_path) = expression.strip_prefix("$args.") {
-                return validate_known_root_field(arg_path, path, args, "argument");
-            }
-            if let Some(field_path) = expression.strip_prefix("$old_fields.") {
-                return validate_known_root_field(field_path, path, fields, "field");
-            }
-            invalid_rule(path, &format!("unknown rule reference '{expression}'"))
-        }
-    }
-}
-
-fn scope_fields<'a>(scope: RuleScope<'a>) -> &'a ObjectSchema {
-    match scope {
-        RuleScope::Invariant { fields } | RuleScope::Operation { fields, .. } => fields,
-    }
-}
-
-fn validate_known_root_field(
-    reference_path: &str,
-    path: &str,
-    schema: &ObjectSchema,
-    kind: &str,
-) -> Result<(), DefinitionError> {
-    let root = reference_path.split('.').next().unwrap_or_default();
-    if root.is_empty() {
-        return invalid_rule(path, "reference path cannot be empty");
-    }
-    if !schema.additional_fields && !schema.fields.contains_key(root) {
-        return invalid_rule(path, &format!("unknown {kind} '{root}' in reference"));
-    }
-    Ok(())
-}
-
-fn invalid_rule(path: &str, message: &str) -> Result<(), DefinitionError> {
+fn invalid_rule(path: &str, message: impl Into<String>) -> Result<(), DefinitionError> {
     Err(DefinitionError::InvalidRule {
         path: path.to_owned(),
-        message: message.to_owned(),
+        message: message.into(),
     })
 }
+
+// --- Field definitions ---------------------------------------------------------------------------
 
 fn validate_schema_definition(schema: &ObjectSchema, path: &str) -> Result<(), DefinitionError> {
     for (name, field) in &schema.fields {
@@ -323,7 +456,47 @@ fn validate_schema_definition(schema: &ObjectSchema, path: &str) -> Result<(), D
     Ok(())
 }
 
+/// Which constraints a kind admits. A constraint outside its kind's list is refused rather than
+/// ignored, because an author who writes one believes it is enforced.
+fn validate_constraint_applicability(
+    field: &FieldDefinition,
+    path: &str,
+) -> Result<(), DefinitionError> {
+    let refuse = |constraint: &'static str, applies_to: &'static str| {
+        Err(DefinitionError::ConstraintNotApplicable {
+            path: path.to_owned(),
+            constraint,
+            kind: field.kind.as_str(),
+            applies_to,
+        })
+    };
+
+    if (field.min_length.is_some() || field.max_length.is_some()) && field.kind != FieldKind::String
+    {
+        return refuse("min_length/max_length", "a string field");
+    }
+    if (field.min.is_some() || field.max.is_some())
+        && !matches!(field.kind, FieldKind::Integer | FieldKind::Number)
+    {
+        return refuse("min/max", "an integer or number field");
+    }
+    if !field.values.is_empty() && field.kind != FieldKind::Enum {
+        return refuse("values", "an enum field");
+    }
+    if field.items.is_some() && field.kind != FieldKind::Array {
+        return refuse("items", "an array field");
+    }
+    if (!field.properties.is_empty() || field.additional_properties)
+        && field.kind != FieldKind::Object
+    {
+        return refuse("properties/additional_properties", "an object field");
+    }
+    Ok(())
+}
+
 fn validate_field_definition(field: &FieldDefinition, path: &str) -> Result<(), DefinitionError> {
+    validate_constraint_applicability(field, path)?;
+
     if let (Some(min), Some(max)) = (field.min_length, field.max_length) {
         if min > max {
             return Err(DefinitionError::InvalidField {
@@ -378,13 +551,48 @@ fn validate_field_definition(field: &FieldDefinition, path: &str) -> Result<(), 
     Ok(())
 }
 
+// --- Values --------------------------------------------------------------------------------------
+
+/// Fills in declared defaults, at every depth an object or array element already reaches.
+///
+/// A default inside an object that was not supplied at all is **not** materialised: filling it
+/// would invent an object the caller never sent. A default inside an object that *is* present —
+/// `{"address": {}}` — is filled, which is what a `default` on a nested property means.
 pub(crate) fn apply_defaults(schema: &ObjectSchema, object: &mut Map<String, Value>) {
-    for (name, definition) in &schema.fields {
+    apply_member_defaults(&schema.fields, object);
+}
+
+fn apply_member_defaults(
+    fields: &BTreeMap<String, FieldDefinition>,
+    object: &mut Map<String, Value>,
+) {
+    for (name, definition) in fields {
         if !object.contains_key(name) {
             if let Some(default) = &definition.default {
                 object.insert(name.clone(), default.clone());
             }
         }
+        if let Some(value) = object.get_mut(name) {
+            apply_nested_defaults(definition, value);
+        }
+    }
+}
+
+fn apply_nested_defaults(definition: &FieldDefinition, value: &mut Value) {
+    match definition.kind {
+        FieldKind::Object => {
+            if let Value::Object(map) = value {
+                apply_member_defaults(&definition.properties, map);
+            }
+        }
+        FieldKind::Array => {
+            if let (Some(items), Value::Array(values)) = (&definition.items, value) {
+                for element in values {
+                    apply_nested_defaults(items, element);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -394,30 +602,53 @@ pub(crate) fn validate_object(
     root_path: &str,
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
+    validate_members(
+        &schema.fields,
+        schema.additional_fields,
+        object,
+        root_path,
+        "field",
+        &mut errors,
+    );
+    errors
+}
 
-    for (name, definition) in &schema.fields {
-        let path = format!("{root_path}.{name}");
+/// The one membership check, used for a top-level schema and for a nested object alike.
+fn validate_members(
+    fields: &BTreeMap<String, FieldDefinition>,
+    additional: bool,
+    object: &Map<String, Value>,
+    root_path: &str,
+    noun: &str,
+    errors: &mut Vec<ValidationError>,
+) {
+    for (name, definition) in fields {
         match object.get(name) {
-            Some(value) => validate_value(definition, value, &path, &mut errors),
+            Some(value) => validate_value(definition, value, &member_path(root_path, name), errors),
             None if definition.required => {
-                errors.push(ValidationError::new(path, "required field is missing"));
+                errors.push(ValidationError::new(
+                    member_path(root_path, name),
+                    format!("required {noun} is missing"),
+                ));
             }
             None => {}
         }
     }
 
-    if !schema.additional_fields {
+    if !additional {
         for name in object.keys() {
-            if !schema.fields.contains_key(name) {
+            if !fields.contains_key(name) {
                 errors.push(ValidationError::new(
-                    format!("{root_path}.{name}"),
-                    "field is not declared in the schema",
+                    member_path(root_path, name),
+                    format!("{noun} is not declared in the schema"),
                 ));
             }
         }
     }
+}
 
-    errors
+fn member_path(root: &str, name: &str) -> String {
+    format!("{root}.{name}")
 }
 
 fn validate_value(
@@ -431,10 +662,16 @@ fn validate_value(
             Some(string) => validate_string(definition, string, path, errors),
             None => wrong_type(path, "string", errors),
         },
-        FieldKind::Integer => match value.as_i64().or_else(|| value.as_u64().map(|v| v as i64)) {
-            Some(integer) => validate_number(definition, integer as f64, path, errors),
-            None => wrong_type(path, "integer", errors),
-        },
+        // Integers are compared as f64 rather than coerced to i64: `as u64 as i64` wrapped
+        // 18446744073709551615 to -1, which passed a `max` bound and made a `min` message name a
+        // number nobody sent.
+        FieldKind::Integer => {
+            if value.is_i64() || value.is_u64() {
+                validate_number(definition, value.as_f64().unwrap_or_default(), path, errors);
+            } else {
+                wrong_type(path, "integer", errors);
+            }
+        }
         FieldKind::Number => match value.as_f64() {
             Some(number) => validate_number(definition, number, path, errors),
             None => wrong_type(path, "number", errors),
@@ -470,7 +707,14 @@ fn validate_value(
             None => wrong_type(path, "array", errors),
         },
         FieldKind::Object => match value.as_object() {
-            Some(object) => validate_inline_object(definition, object, path, errors),
+            Some(object) => validate_members(
+                &definition.properties,
+                definition.additional_properties,
+                object,
+                path,
+                "property",
+                errors,
+            ),
             None => wrong_type(path, "object", errors),
         },
         FieldKind::Json => {}
@@ -522,38 +766,6 @@ fn validate_number(
                 path,
                 format!("value {value} exceeds maximum {max}"),
             ));
-        }
-    }
-}
-
-fn validate_inline_object(
-    definition: &FieldDefinition,
-    object: &Map<String, Value>,
-    path: &str,
-    errors: &mut Vec<ValidationError>,
-) {
-    for (name, property) in &definition.properties {
-        let child_path = format!("{path}.{name}");
-        match object.get(name) {
-            Some(value) => validate_value(property, value, &child_path, errors),
-            None if property.required => {
-                errors.push(ValidationError::new(
-                    child_path,
-                    "required field is missing",
-                ));
-            }
-            None => {}
-        }
-    }
-
-    if !definition.additional_properties {
-        for name in object.keys() {
-            if !definition.properties.contains_key(name) {
-                errors.push(ValidationError::new(
-                    format!("{path}.{name}"),
-                    "property is not declared in the schema",
-                ));
-            }
         }
     }
 }

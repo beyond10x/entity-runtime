@@ -6,28 +6,39 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::BTreeMap;
 
 /// One instance of an entity type: which definition it was created under, its identity, where it
 /// is in its lifecycle, how many times it has changed, and its fields.
 ///
 /// The kernel never mutates one of these. An operation takes an instance by reference and returns
 /// a new one inside a [`Decision`]; the caller decides whether to keep it.
+///
+/// # What the kernel can and cannot check about an instance it is handed
+///
+/// The fields are public and the type is `Deserialize`, because an instance is *data* that a
+/// store round-trips. The kernel therefore cannot know whether the instance in front of it is one
+/// it produced — that is the shell's to know, and it is why storing an instance and appending its
+/// events is a single job. What the kernel does check is that the instance could exist at all:
+/// its `(entity, version)` must match the definition, and its `lifecycle_state` must be one the
+/// definition declares (else [`CoreError::UnknownState`]). Whatever state it legitimately claims,
+/// the next state is the kernel's alone — only [`create`] and [`execute`] write one.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EntityInstance {
     /// The definition's entity name.
     pub entity: String,
     /// The definition's version. Executed only against that definition.
     pub version: u32,
-    /// The instance's identity, supplied by the caller at creation. Opaque to the kernel.
+    /// The instance's identity, supplied by the caller at creation. Opaque to the kernel, and
+    /// never empty.
     pub id: String,
     /// The current lifecycle state. Written only by [`create`] and [`execute`].
     pub lifecycle_state: String,
     /// `1` after creation, `+1` per successful operation. What a store compares for optimistic
     /// concurrency.
     pub revision: u64,
-    /// The fields, in name order.
-    pub fields: BTreeMap<String, Value>,
+    /// The fields, in name order. A `serde_json::Map` without `preserve_order`, so iteration and
+    /// serialisation are sorted and two identical decisions produce identical bytes.
+    pub fields: Map<String, Value>,
 }
 
 /// A fact about what happened to an instance, materialised from an operation's event template.
@@ -131,8 +142,8 @@ impl<'a> Runtime<'a> {
 ///
 /// # Errors
 ///
-/// * [`CoreError::Validation`] — `fields` is not an object, or a value does not satisfy the schema;
-///   every failure is listed.
+/// * [`CoreError::Validation`] — `id` is empty, `fields` is not an object, or a value does not
+///   satisfy the schema; every field failure is listed.
 /// * [`CoreError::InvariantViolation`] — an invariant does not hold for the new instance.
 /// * [`CoreError::Template`] — the creation event references something that does not exist.
 pub fn create(
@@ -140,6 +151,13 @@ pub fn create(
     id: String,
     fields: Value,
 ) -> Result<Decision, CoreError> {
+    if id.trim().is_empty() {
+        return Err(CoreError::Validation(vec![crate::ValidationError::new(
+            "id",
+            "identity cannot be empty; the kernel generates none, so the caller supplies one",
+        )]));
+    }
+
     let mut object = into_object(fields, "fields")?;
     apply_defaults(&definition.schema, &mut object);
 
@@ -148,23 +166,21 @@ pub fn create(
         return Err(CoreError::Validation(validation));
     }
 
-    let fields = map_to_btree(object);
     let instance = EntityInstance {
         entity: definition.entity.clone(),
         version: definition.version,
         id,
         lifecycle_state: definition.lifecycle.initial.clone(),
         revision: 1,
-        fields,
+        fields: object,
     };
 
-    let empty_args = Map::new();
-    let empty_fields = BTreeMap::new();
+    let empty = Map::new();
     let context = TemplateContext {
         definition,
         id: &instance.id,
-        args: &empty_args,
-        old_fields: &empty_fields,
+        args: &empty,
+        old_fields: &empty,
         new_fields: &instance.fields,
         from_state: None,
         to_state: &instance.lifecycle_state,
@@ -182,15 +198,17 @@ pub fn create(
 
 /// Executes `operation_name` on `instance` under `definition`.
 ///
-/// The steps, in order: verify the instance matches the definition; find the operation; default
-/// and validate the arguments; select the transition from the current state; evaluate the
-/// preconditions; resolve every `set` assignment against the pre-operation fields; validate the
-/// resulting fields; construct the next instance; evaluate the invariants against it; materialise
-/// the events. A refusal at any step returns before the next, and `instance` is untouched.
+/// The steps, in order: verify the instance matches the definition and carries a declared state;
+/// find the operation; default and validate the arguments; select the transition from the current
+/// state; evaluate the preconditions; resolve every `set` assignment against the pre-operation
+/// fields; validate the resulting fields; construct the next instance; evaluate the invariants
+/// against it; materialise the events. A refusal at any step returns before the next, and
+/// `instance` is untouched.
 ///
 /// # Errors
 ///
 /// * [`CoreError::EntityMismatch`] — the instance was created under another definition.
+/// * [`CoreError::UnknownState`] — the instance claims a state the definition does not declare.
 /// * [`CoreError::OperationNotFound`] — no such operation.
 /// * [`CoreError::Validation`] — an argument, or a field after `set`, does not satisfy its schema.
 /// * [`CoreError::InvalidTransition`] — no transition starts from the current state.
@@ -234,34 +252,28 @@ pub fn execute(
             state: instance.lifecycle_state.clone(),
         })?;
 
-    let old_fields = instance.fields.clone();
+    // The pre-operation fields are borrowed, never copied: they are only ever read, and `set`
+    // resolves every assignment against them.
+    let old_fields = &instance.fields;
 
-    let precondition_context = TemplateContext {
+    let context = TemplateContext {
         definition,
         id: &instance.id,
         args: &args,
-        old_fields: &old_fields,
-        new_fields: &old_fields,
+        old_fields,
+        new_fields: old_fields,
         from_state: Some(&instance.lifecycle_state),
         to_state: &transition.to,
     };
-    check_preconditions(
-        operation_name,
-        &operation.preconditions,
-        &precondition_context,
-    )?;
+    check_preconditions(operation_name, &operation.preconditions, &context)?;
 
     let mut new_fields = old_fields.clone();
-
-    // Field assignments see the pre-operation fields. This makes a set block
-    // order-independent and therefore deterministic.
     for (field, template) in &operation.set {
-        let value = resolve_template(template, &precondition_context)?;
+        let value = resolve_template(template, &context)?;
         new_fields.insert(field.clone(), value);
     }
 
-    let object = btree_to_map(&new_fields);
-    let state_errors = validate_object(&definition.schema, &object, "fields");
+    let state_errors = validate_object(&definition.schema, &new_fields, "fields");
     if !state_errors.is_empty() {
         return Err(CoreError::Validation(state_errors));
     }
@@ -280,7 +292,7 @@ pub fn execute(
         definition,
         id: &instance.id,
         args: &args,
-        old_fields: &old_fields,
+        old_fields,
         new_fields: &next_instance.fields,
         from_state: Some(&instance.lifecycle_state),
         to_state: &next_instance.lifecycle_state,
@@ -360,12 +372,11 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::Not { not } => Ok(!evaluate_condition(not, context)?),
-        Condition::Exists { exists } => Ok(matches!(
-            resolve_operand(exists, context)?,
-            Operand::Present(_)
-        )),
-        Condition::Eq { eq } => compare_values(eq, context, |left, right| left == right),
-        Condition::Ne { ne } => compare_values(ne, context, |left, right| left != right),
+        Condition::Exists { exists } => Ok(resolve_operand(exists, context)?.is_some()),
+        Condition::Eq { eq } => compare_values(eq, context, values_equal),
+        Condition::Ne { ne } => {
+            compare_values(ne, context, |left, right| !values_equal(left, right))
+        }
         Condition::Gt { gt } => compare_numbers(gt, context, |left, right| left > right),
         Condition::Gte { gte } => compare_numbers(gte, context, |left, right| left >= right),
         Condition::Lt { lt } => compare_numbers(lt, context, |left, right| left < right),
@@ -373,8 +384,8 @@ fn evaluate_condition(
         Condition::In { values } => {
             let (needle, haystack) = resolve_pair(values, context)?;
             match (needle, haystack) {
-                (Operand::Present(needle), Operand::Present(Value::Array(values))) => {
-                    Ok(values.iter().any(|value| value == &needle))
+                (Some(needle), Some(Value::Array(values))) => {
+                    Ok(values.iter().any(|value| values_equal(value, &needle)))
                 }
                 _ => Ok(false),
             }
@@ -382,19 +393,49 @@ fn evaluate_condition(
         Condition::Contains { contains } => {
             let (container, needle) = resolve_pair(contains, context)?;
             match (container, needle) {
-                (Operand::Present(Value::Array(values)), Operand::Present(needle)) => {
-                    Ok(values.iter().any(|value| value == &needle))
+                (Some(Value::Array(values)), Some(needle)) => {
+                    Ok(values.iter().any(|value| values_equal(value, &needle)))
                 }
-                (
-                    Operand::Present(Value::String(value)),
-                    Operand::Present(Value::String(needle)),
-                ) => Ok(value.contains(&needle)),
-                (Operand::Present(Value::Object(value)), Operand::Present(Value::String(key))) => {
+                (Some(Value::String(value)), Some(Value::String(needle))) => {
+                    Ok(value.contains(&needle))
+                }
+                (Some(Value::Object(value)), Some(Value::String(key))) => {
                     Ok(value.contains_key(&key))
                 }
                 _ => Ok(false),
             }
         }
+    }
+}
+
+/// Equality that agrees with the ordering operators.
+///
+/// `serde_json`'s own `==` compares a number's *representation*, so `100` and `100.0` are unequal
+/// — while `gte`/`lte` compare through `f64` and call them equal. A definition tested with integer
+/// fixtures would then refuse the same document written with a decimal point. Numbers here compare
+/// numerically, at every depth; everything else compares structurally.
+fn values_equal(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Number(left), Value::Number(right)) => match (left.as_f64(), right.as_f64()) {
+            (Some(left), Some(right)) => left == right,
+            _ => left == right,
+        },
+        (Value::Array(left), Value::Array(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right.iter())
+                    .all(|(left, right)| values_equal(left, right))
+        }
+        (Value::Object(left), Value::Object(right)) => {
+            left.len() == right.len()
+                && left.iter().all(|(key, left)| {
+                    right
+                        .get(key)
+                        .is_some_and(|right| values_equal(left, right))
+                })
+        }
+        _ => left == right,
     }
 }
 
@@ -405,7 +446,7 @@ fn compare_values(
 ) -> Result<bool, CoreError> {
     let (left, right) = resolve_pair(pair, context)?;
     match (left, right) {
-        (Operand::Present(left), Operand::Present(right)) => Ok(predicate(&left, &right)),
+        (Some(left), Some(right)) => Ok(predicate(&left, &right)),
         _ => Ok(false),
     }
 }
@@ -417,12 +458,10 @@ fn compare_numbers(
 ) -> Result<bool, CoreError> {
     let (left, right) = resolve_pair(pair, context)?;
     match (left, right) {
-        (Operand::Present(left), Operand::Present(right)) => {
-            match (left.as_f64(), right.as_f64()) {
-                (Some(left), Some(right)) => Ok(predicate(left, right)),
-                _ => Ok(false),
-            }
-        }
+        (Some(left), Some(right)) => match (left.as_f64(), right.as_f64()) {
+            (Some(left), Some(right)) => Ok(predicate(left, right)),
+            _ => Ok(false),
+        },
         _ => Ok(false),
     }
 }
@@ -430,23 +469,22 @@ fn compare_numbers(
 fn resolve_pair(
     pair: &[Value; 2],
     context: &TemplateContext<'_>,
-) -> Result<(Operand, Operand), CoreError> {
+) -> Result<(Option<Value>, Option<Value>), CoreError> {
     Ok((
         resolve_operand(&pair[0], context)?,
         resolve_operand(&pair[1], context)?,
     ))
 }
 
-#[derive(Debug)]
-enum Operand {
-    Missing,
-    Present(Value),
-}
-
-fn resolve_operand(value: &Value, context: &TemplateContext<'_>) -> Result<Operand, CoreError> {
+/// Resolves an operand, where a reference that does not resolve is `None` rather than an error —
+/// which is what makes a comparison against a missing value `false` and `exists` meaningful.
+fn resolve_operand(
+    value: &Value,
+    context: &TemplateContext<'_>,
+) -> Result<Option<Value>, CoreError> {
     match value {
         Value::String(literal) if literal.starts_with("$$") => {
-            Ok(Operand::Present(Value::String(literal[1..].to_owned())))
+            Ok(Some(Value::String(literal[1..].to_owned())))
         }
         Value::String(expression) if expression.starts_with('$') => {
             resolve_expression_optional(expression, context)
@@ -455,25 +493,25 @@ fn resolve_operand(value: &Value, context: &TemplateContext<'_>) -> Result<Opera
             let mut resolved = Vec::with_capacity(values.len());
             for value in values {
                 match resolve_operand(value, context)? {
-                    Operand::Present(value) => resolved.push(value),
-                    Operand::Missing => return Ok(Operand::Missing),
+                    Some(value) => resolved.push(value),
+                    None => return Ok(None),
                 }
             }
-            Ok(Operand::Present(Value::Array(resolved)))
+            Ok(Some(Value::Array(resolved)))
         }
         Value::Object(values) => {
             let mut resolved = Map::new();
             for (key, value) in values {
                 match resolve_operand(value, context)? {
-                    Operand::Present(value) => {
+                    Some(value) => {
                         resolved.insert(key.clone(), value);
                     }
-                    Operand::Missing => return Ok(Operand::Missing),
+                    None => return Ok(None),
                 }
             }
-            Ok(Operand::Present(Value::Object(resolved)))
+            Ok(Some(Value::Object(resolved)))
         }
-        other => Ok(Operand::Present(other.clone())),
+        other => Ok(Some(other.clone())),
     }
 }
 
@@ -481,16 +519,28 @@ fn ensure_instance_matches(
     definition: &EntityDefinition,
     instance: &EntityInstance,
 ) -> Result<(), CoreError> {
-    if definition.entity == instance.entity && definition.version == instance.version {
-        return Ok(());
+    if definition.entity != instance.entity || definition.version != instance.version {
+        return Err(CoreError::EntityMismatch {
+            expected_entity: definition.entity.clone(),
+            expected_version: definition.version,
+            actual_entity: instance.entity.clone(),
+            actual_version: instance.version,
+        });
     }
 
-    Err(CoreError::EntityMismatch {
-        expected_entity: definition.entity.clone(),
-        expected_version: definition.version,
-        actual_entity: instance.entity.clone(),
-        actual_version: instance.version,
-    })
+    if !definition
+        .lifecycle
+        .states
+        .iter()
+        .any(|state| state == &instance.lifecycle_state)
+    {
+        return Err(CoreError::UnknownState {
+            entity: definition.entity.clone(),
+            state: instance.lifecycle_state.clone(),
+        });
+    }
+
+    Ok(())
 }
 
 fn materialize_event(
@@ -512,8 +562,8 @@ struct TemplateContext<'a> {
     definition: &'a EntityDefinition,
     id: &'a str,
     args: &'a Map<String, Value>,
-    old_fields: &'a BTreeMap<String, Value>,
-    new_fields: &'a BTreeMap<String, Value>,
+    old_fields: &'a Map<String, Value>,
+    new_fields: &'a Map<String, Value>,
     from_state: Option<&'a str>,
     to_state: &'a str,
 }
@@ -524,7 +574,13 @@ fn resolve_template(value: &Value, context: &TemplateContext<'_>) -> Result<Valu
             Ok(Value::String(literal[1..].to_owned()))
         }
         Value::String(expression) if expression.starts_with('$') => {
-            resolve_expression(expression, context)
+            match resolve_expression_optional(expression, context)? {
+                Some(value) => Ok(value),
+                None => Err(template_error(
+                    expression,
+                    "referenced value does not exist",
+                )),
+            }
         }
         Value::Array(values) => values
             .iter()
@@ -542,56 +598,32 @@ fn resolve_template(value: &Value, context: &TemplateContext<'_>) -> Result<Valu
     }
 }
 
-fn resolve_expression(expression: &str, context: &TemplateContext<'_>) -> Result<Value, CoreError> {
-    match resolve_expression_optional(expression, context)? {
-        Operand::Present(value) => Ok(value),
-        Operand::Missing => Err(template_error(
-            expression,
-            "referenced value does not exist",
-        )),
-    }
-}
-
 fn resolve_expression_optional(
     expression: &str,
     context: &TemplateContext<'_>,
-) -> Result<Operand, CoreError> {
+) -> Result<Option<Value>, CoreError> {
     match expression {
-        "$id" => Ok(Operand::Present(Value::String(context.id.to_owned()))),
-        "$entity" => Ok(Operand::Present(Value::String(
-            context.definition.entity.clone(),
-        ))),
-        "$version" => Ok(Operand::Present(Value::from(context.definition.version))),
-        "$from_state" => Ok(match context.from_state {
-            Some(state) => Operand::Present(Value::String(state.to_owned())),
-            None => Operand::Missing,
-        }),
-        "$to_state" | "$state" => Ok(Operand::Present(Value::String(context.to_state.to_owned()))),
-        "$args" => Ok(Operand::Present(Value::Object(context.args.clone()))),
-        "$fields" => Ok(Operand::Present(Value::Object(btree_to_map(
-            context.new_fields,
-        )))),
-        "$old_fields" => Ok(Operand::Present(Value::Object(btree_to_map(
-            context.old_fields,
-        )))),
+        "$id" => Ok(Some(Value::String(context.id.to_owned()))),
+        "$entity" => Ok(Some(Value::String(context.definition.entity.clone()))),
+        "$version" => Ok(Some(Value::from(context.definition.version))),
+        "$from_state" => Ok(context
+            .from_state
+            .map(|state| Value::String(state.to_owned()))),
+        "$to_state" | "$state" => Ok(Some(Value::String(context.to_state.to_owned()))),
+        "$args" => Ok(Some(Value::Object(context.args.clone()))),
+        "$fields" => Ok(Some(Value::Object(context.new_fields.clone()))),
+        "$old_fields" => Ok(Some(Value::Object(context.old_fields.clone()))),
         _ => {
-            if let Some(path) = expression.strip_prefix("$args.") {
-                return Ok(resolve_path_optional(
-                    Value::Object(context.args.clone()),
-                    path,
-                ));
-            }
-            if let Some(path) = expression.strip_prefix("$fields.") {
-                return Ok(resolve_path_optional(
-                    Value::Object(btree_to_map(context.new_fields)),
-                    path,
-                ));
-            }
-            if let Some(path) = expression.strip_prefix("$old_fields.") {
-                return Ok(resolve_path_optional(
-                    Value::Object(btree_to_map(context.old_fields)),
-                    path,
-                ));
+            for (prefix, map) in [
+                ("$args.", context.args),
+                ("$fields.", context.new_fields),
+                ("$old_fields.", context.old_fields),
+            ] {
+                if let Some(path) = expression.strip_prefix(prefix) {
+                    // Walk by reference and clone the leaf: a `$fields.x` reference used to copy
+                    // every field of the instance to read one of them.
+                    return Ok(lookup(map, path).cloned());
+                }
             }
 
             Err(template_error(expression, "unknown template expression"))
@@ -599,22 +631,17 @@ fn resolve_expression_optional(
     }
 }
 
-fn resolve_path_optional(mut value: Value, path: &str) -> Operand {
-    if path.is_empty() {
-        return Operand::Missing;
+fn lookup<'a>(root: &'a Map<String, Value>, path: &str) -> Option<&'a Value> {
+    let mut segments = path.split('.');
+    let first = segments.next()?;
+    if first.is_empty() {
+        return None;
     }
-
-    for segment in path.split('.') {
-        value = match value {
-            Value::Object(object) => match object.get(segment).cloned() {
-                Some(value) => value,
-                None => return Operand::Missing,
-            },
-            _ => return Operand::Missing,
-        };
+    let mut value = root.get(first)?;
+    for segment in segments {
+        value = value.as_object()?.get(segment)?;
     }
-
-    Operand::Present(value)
+    Some(value)
 }
 
 fn template_error(expression: &str, message: &str) -> CoreError {
@@ -632,14 +659,4 @@ fn into_object(value: Value, path: &str) -> Result<Map<String, Value>, CoreError
             "expected object",
         )])),
     }
-}
-
-fn map_to_btree(map: Map<String, Value>) -> BTreeMap<String, Value> {
-    map.into_iter().collect()
-}
-
-fn btree_to_map(map: &BTreeMap<String, Value>) -> Map<String, Value> {
-    map.iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect()
 }

@@ -84,15 +84,78 @@ pub enum DefinitionError {
         /// What is wrong.
         message: String,
     },
+    /// A constraint is declared on a field whose kind it does not apply to — `values` on a
+    /// `string`, `items` on an `object`, `min_length` on an `integer`.
+    ///
+    /// Refused rather than ignored: an author who writes a constraint believes it is enforced.
+    ConstraintNotApplicable {
+        /// Where, such as `schema.colour`.
+        path: String,
+        /// The constraint key, such as `values`.
+        constraint: &'static str,
+        /// The kind it was declared on.
+        kind: &'static str,
+        /// The kinds it does apply to.
+        applies_to: &'static str,
+    },
     /// A rule is inconsistent: an empty name or message, an empty `all` or `any`, or a reference
-    /// its scope cannot see — an invariant reading `$args.*`, or any rule reading an undeclared
-    /// field or argument.
+    /// its scope cannot see — an invariant reading `$args.*`, a precondition reading `$state`, or
+    /// any rule reading a field or argument the schema does not declare, at any depth.
     InvalidRule {
         /// Where, such as `invariants[0].assert.any[1]`.
         path: String,
         /// What is wrong.
         message: String,
     },
+    /// A `set` value or an event payload references something its scope cannot see, or uses an
+    /// expression that is not a reference at all.
+    ///
+    /// Refused at registration rather than at the first execution: a template that can never
+    /// resolve is a defect in the definition, not in the call.
+    InvalidTemplate {
+        /// Where, such as `operations.reject.set.rejection_reason`.
+        path: String,
+        /// What is wrong.
+        message: String,
+    },
+    /// A definition with this `(entity, version)` is already registered.
+    ///
+    /// Replacing one in place would let an instance created under the first be executed under the
+    /// second — the situation [`CoreError::EntityMismatch`] exists to refuse, made invisible. Use
+    /// [`Registry::replace`](crate::Registry::replace) to mean it.
+    DuplicateDefinition {
+        /// The entity.
+        entity: String,
+        /// The version.
+        version: u32,
+    },
+}
+
+impl DefinitionError {
+    /// The variant's name, for machine-readable output.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::EmptyEntityName => "empty_entity_name",
+            Self::ZeroVersion => "zero_version",
+            Self::EmptyLifecycle => "empty_lifecycle",
+            Self::EmptyLifecycleState => "empty_lifecycle_state",
+            Self::UnknownInitialState { .. } => "unknown_initial_state",
+            Self::DuplicateLifecycleState { .. } => "duplicate_lifecycle_state",
+            Self::EmptyOperationName => "empty_operation_name",
+            Self::NoTransitions { .. } => "no_transitions",
+            Self::EmptyFromStates { .. } => "empty_from_states",
+            Self::UnknownFromState { .. } => "unknown_from_state",
+            Self::UnknownToState { .. } => "unknown_to_state",
+            Self::AmbiguousTransition { .. } => "ambiguous_transition",
+            Self::UnknownSetField { .. } => "unknown_set_field",
+            Self::EmptyEventType { .. } => "empty_event_type",
+            Self::InvalidField { .. } => "invalid_field",
+            Self::ConstraintNotApplicable { .. } => "constraint_not_applicable",
+            Self::InvalidRule { .. } => "invalid_rule",
+            Self::InvalidTemplate { .. } => "invalid_template",
+            Self::DuplicateDefinition { .. } => "duplicate_definition",
+        }
+    }
 }
 
 impl fmt::Display for DefinitionError {
@@ -143,9 +206,27 @@ impl fmt::Display for DefinitionError {
             Self::InvalidField { path, message } => {
                 write!(f, "invalid field definition at '{path}': {message}")
             }
+            Self::ConstraintNotApplicable {
+                path,
+                constraint,
+                kind,
+                applies_to,
+            } => write!(
+                f,
+                "invalid field definition at '{path}': '{constraint}' does not apply to a {kind} \
+                 field; it applies to {applies_to}"
+            ),
             Self::InvalidRule { path, message } => {
                 write!(f, "invalid rule at '{path}': {message}")
             }
+            Self::InvalidTemplate { path, message } => {
+                write!(f, "invalid template at '{path}': {message}")
+            }
+            Self::DuplicateDefinition { entity, version } => write!(
+                f,
+                "entity '{entity}' version {version} is already registered; use `replace` to \
+                 change a registered definition"
+            ),
         }
     }
 }
@@ -211,6 +292,16 @@ pub enum CoreError {
         /// The instance's version.
         actual_version: u32,
     },
+    /// The instance claims a lifecycle state the definition does not declare.
+    ///
+    /// The kernel cannot tell whether an instance it is handed is one it produced — that is the
+    /// shell's to know — but it can refuse one that could never have existed.
+    UnknownState {
+        /// The entity.
+        entity: String,
+        /// The state the instance carries.
+        state: String,
+    },
     /// The definition declares no such operation.
     OperationNotFound {
         /// The operation.
@@ -239,8 +330,10 @@ pub enum CoreError {
         /// The rule's message, or a default.
         message: String,
     },
-    /// A `set` or event template referenced something that does not exist, or used an unknown
-    /// expression.
+    /// A `set` or event template referenced something that does not exist at run time.
+    ///
+    /// Registration refuses a reference the scope cannot see, so this is left for what only the
+    /// call knows: a path into a `json` field, or into a schema that admits additional fields.
     Template {
         /// The expression, such as `$args.reason`.
         expression: String,
@@ -258,6 +351,7 @@ impl CoreError {
             Self::Validation(_) => "validation",
             Self::EntityNotRegistered { .. } => "entity_not_registered",
             Self::EntityMismatch { .. } => "entity_mismatch",
+            Self::UnknownState { .. } => "unknown_state",
             Self::OperationNotFound { .. } => "operation_not_found",
             Self::InvalidTransition { .. } => "invalid_transition",
             Self::PreconditionFailed { .. } => "precondition_failed",
@@ -289,6 +383,10 @@ impl fmt::Display for CoreError {
             } => write!(
                 f,
                 "instance type mismatch: expected '{expected_entity}' v{expected_version}, got '{actual_entity}' v{actual_version}"
+            ),
+            Self::UnknownState { entity, state } => write!(
+                f,
+                "instance claims lifecycle state '{state}', which '{entity}' does not declare"
             ),
             Self::OperationNotFound { operation } => {
                 write!(f, "operation '{operation}' is not defined")

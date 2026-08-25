@@ -97,7 +97,7 @@ mod validation;
 pub use definition::{
     Condition, CreateDefinition, EntityDefinition, EventDefinition, FieldDefinition, FieldKind,
     LifecycleDefinition, ObjectSchema, OneOrMany, OperationDefinition, RuleDefinition,
-    TransitionDefinition,
+    TransitionDefinition, CONDITION_OPERATORS,
 };
 pub use error::{CoreError, DefinitionError, ValidationError};
 pub use registry::Registry;
