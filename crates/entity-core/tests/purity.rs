@@ -64,96 +64,10 @@ const BANNED_SEGMENTS: &[&str] = &[
 ///
 /// This is what makes the scan honest in both directions: prose about `std::fs` is not a breach,
 /// and `*slot = std::time::SystemTime::now();` is not skipped because a line-based filter mistook
-/// a dereference for a comment.
-fn code_only(text: &str) -> String {
-    let bytes: Vec<char> = text.chars().collect();
-    let mut out = String::with_capacity(text.len());
-    let mut index = 0usize;
-    let mut block_depth = 0usize;
-
-    while index < bytes.len() {
-        let current = bytes[index];
-        let next = bytes.get(index + 1).copied();
-
-        if block_depth > 0 {
-            match (current, next) {
-                ('*', Some('/')) => {
-                    block_depth -= 1;
-                    out.push_str("  ");
-                    index += 2;
-                }
-                ('/', Some('*')) => {
-                    block_depth += 1;
-                    out.push_str("  ");
-                    index += 2;
-                }
-                ('\n', _) => {
-                    out.push('\n');
-                    index += 1;
-                }
-                _ => {
-                    out.push(' ');
-                    index += 1;
-                }
-            }
-            continue;
-        }
-
-        match (current, next) {
-            ('/', Some('/')) => {
-                while index < bytes.len() && bytes[index] != '\n' {
-                    out.push(' ');
-                    index += 1;
-                }
-            }
-            ('/', Some('*')) => {
-                block_depth = 1;
-                out.push_str("  ");
-                index += 2;
-            }
-            ('"', _) => {
-                out.push(' ');
-                index += 1;
-                while index < bytes.len() {
-                    match bytes[index] {
-                        '\\' => {
-                            out.push_str("  ");
-                            index += 2;
-                        }
-                        '"' => {
-                            out.push(' ');
-                            index += 1;
-                            break;
-                        }
-                        '\n' => {
-                            out.push('\n');
-                            index += 1;
-                        }
-                        _ => {
-                            out.push(' ');
-                            index += 1;
-                        }
-                    }
-                }
-            }
-            _ => {
-                out.push(current);
-                index += 1;
-            }
-        }
-    }
-    out
-}
+use scan_support::code_only;
 
 /// Splits code into identifier-ish words, so `std::fs::read_to_string` yields `std`, `fs`,
-/// `read_to_string` and a substring match cannot fire on `Operand::` for `rand`.
-fn words(code: &str) -> impl Iterator<Item = (usize, &str)> {
-    code.lines().enumerate().flat_map(|(index, line)| {
-        line.split(|character: char| !(character.is_alphanumeric() || character == '_'))
-            .filter(|word| !word.is_empty())
-            .map(move |word| (index + 1, word))
-    })
-}
+use scan_support::words;
 
 /// Every path a `use` statement brings into scope, with `{}` groups expanded.
 fn use_paths(code: &str) -> Vec<String> {
@@ -347,7 +261,14 @@ fn the_kernel_depends_on_serialisation_and_nothing_else() {
         }
     }
 
-    let expected: BTreeSet<String> = ["serde", "serde_json"]
+    // Every table, dev-dependencies included, because a short list is worth more than a precise
+    // one: three names a reader can hold beats a rule about which tables link.
+    //
+    // `scan-support` is this workspace's own, `publish = false`, and used by nothing but the source
+    // scan above. It is here because that scanner was written twice and the second copy was weaker
+    // — it read the `"` inside a char literal as opening a string, so everything after it was
+    // invisible. One scanner, with the plantings beside it.
+    let expected: BTreeSet<String> = ["scan-support", "serde", "serde_json"]
         .iter()
         .map(|s| (*s).to_owned())
         .collect();

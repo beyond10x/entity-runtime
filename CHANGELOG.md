@@ -4,6 +4,41 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Fixed
+
+* **`entity-graph`'s boundary test enforced nothing.** An independent review of 0.4.0 added a real
+  `tokio` dependency *and* a real `std::fs::read_to_string` inside `escape()`, and all three of the
+  crate's own tests passed. Two holes: the scanner read the `"` inside a char literal as opening a
+  string, so everything after `if character == '"'` was invisible — which happened to be the entire
+  escaping function the test existed to protect; and the manifest check split on the literal
+  `[dependencies]` heading, so `[dependencies.tokio]` was not a dependency to it.
+
+  Both holes were ones `entity-core`'s purity scan documents closing. The crate shipped a weaker
+  hand-rewrite of a guard that already existed, which is the whole lesson: the scanner now lives
+  once, in `scan-support`, used by both crates' tests, with the review's two plantings beside it as
+  the proof it still works. Verified by planting both again and watching them fail.
+
+  Writing it a third time was the obvious move and the wrong one.
+
+* **R-95 was broken for SVG and HTML.** A state name carrying a control character produced a
+  document no XML parser and no browser accepts, from a definition `entity validate` had passed.
+  XML 1.0 permits no escape for most characters below `U+0020` — `&#1;` is as invalid as the raw
+  byte — so they are **replaced** with `U+FFFD`, which is visible in the drawing and valid in the
+  document. Dropping them silently would make two different names draw the same box. R-95's only
+  pin was for DOT; it now has one for each format.
+
+* **A reference graph could silently drop an edge.** `Graph::references` keyed its edges by display
+  label, so a nested ref `a` → `b` and a field literally named `a.b` collapsed into one and the
+  second overwrote the first — hiding a dangling reference that `Registry::validate_all` refuses,
+  which is the one thing that picture must never do. Array items now append `[]`, as
+  `entity-core`'s own `relation_targets` does, and edges are collected in a list.
+
+* **Layout and renderer disagreed about duplicate node ids** — the layout took the last, the
+  renderer the first, so an edge could leave one box and be drawn into another. Not reachable
+  through either constructor, but `Graph`'s fields are public. Both take the last now.
+
+* Two files declaring the same entity drew the same reference edge twice, with two overlaid labels.
+
 ### Added
 
 * **`before` and `after`, for ordering two instants.** ISO-8601 — `2026-08-25`, or

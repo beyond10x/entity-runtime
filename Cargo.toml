@@ -5,6 +5,7 @@ members = [
   "crates/entity-graph",
   "crates/entity-yaml",
   "crates/entity-cli",
+  "crates/scan-support",
 ]
 
 [workspace.package]

@@ -4,7 +4,7 @@
 //! state was would have to learn what an entity type was to draw the second picture, and then what
 //! the third one is. The two builders below are the only place this crate knows either.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use entity_core::{EntityDefinition, FieldDefinition, FieldKind, ObjectSchema};
 
@@ -121,7 +121,7 @@ impl Graph {
         let mut declared = BTreeSet::new();
         for definition in definitions {
             declared.insert(definition.entity.clone());
-            let mut found = BTreeMap::new();
+            let mut found = Vec::new();
             collect(&definition.schema, "", &mut found);
             for (name, operation) in &definition.operations {
                 collect(&operation.arguments, &format!("{name}: "), &mut found);
@@ -137,6 +137,8 @@ impl Graph {
         edges.sort_by(|left, right| {
             (&left.from, &left.label, &left.to).cmp(&(&right.from, &right.label, &right.to))
         });
+        // Two files declaring the same entity drew the same edge twice, and two overlaid labels.
+        edges.dedup();
 
         let mut ids: BTreeSet<String> = declared.clone();
         ids.extend(edges.iter().map(|edge| edge.to.clone()));
@@ -169,23 +171,28 @@ impl Graph {
 
 /// Every `ref` a schema declares, as `label -> target`, at any depth.
 ///
-/// A `BTreeMap` keyed by label: two references from one type to another through the same field name
-/// cannot happen, and two through different names are two edges, which is what a reader wants to
-/// see.
-fn collect(schema: &ObjectSchema, prefix: &str, found: &mut BTreeMap<String, String>) {
+/// A `Vec`, not a map keyed by label. A map dropped an edge whenever two references produced the
+/// same display label — a nested `a` → `b` and a field literally named `a.b` both read as `a.b`,
+/// and the second silently replaced the first. The drawing then hid a dangling reference that
+/// `Registry::validate_all` refuses, which is the one thing this picture must never do. Found by an
+/// independent review after 0.4.0 shipped.
+///
+/// Array items append `[]`, as `entity_core`'s own `relation_targets` does, so a list of refs and a
+/// bare ref of the same name are two labels rather than one.
+fn collect(schema: &ObjectSchema, prefix: &str, found: &mut Vec<(String, String)>) {
     for (name, field) in &schema.fields {
         collect_field(field, &format!("{prefix}{name}"), found);
     }
 }
 
-fn collect_field(field: &FieldDefinition, label: &str, found: &mut BTreeMap<String, String>) {
+fn collect_field(field: &FieldDefinition, label: &str, found: &mut Vec<(String, String)>) {
     if field.kind == FieldKind::Ref {
         if let Some(target) = &field.entity {
-            found.insert(label.to_owned(), target.clone());
+            found.push((label.to_owned(), target.clone()));
         }
     }
     if let Some(items) = &field.items {
-        collect_field(items, label, found);
+        collect_field(items, &format!("{label}[]"), found);
     }
     for (name, property) in &field.properties {
         collect_field(property, &format!("{label}.{name}"), found);

@@ -15,6 +15,9 @@ entity-core = { path = "../entity-core", version = "0.4.0" }
 
 [dev-dependencies]
 serde_json.workspace = true
+# The source scanner `tests/boundary.rs` reads this crate with. Shared rather than copied: the copy
+# it replaces was weaker than the original and enforced nothing.
+scan-support = { path = "../scan-support" }
 
 [lints]
 workspace = true
