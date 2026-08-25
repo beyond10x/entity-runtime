@@ -1,0 +1,29 @@
+# A commitment on a clock nobody here controls.
+#
+# Gap register :74. An adopter's overdue items mostly run on a statutory clock no engineering action
+# moves: a filing is due on a date the repository does not set, it is satisfied by a person, and the
+# one thing it must never do is block a commit. Blocking a commit cannot close one.
+#
+# So this is an artifact with its own ladder, and **not** a status on something else. Widening
+# `story` to hold `slipped` would have made every story's ladder carry a concept that belongs to a
+# few of them, and would have put a date nobody controls in the path of work everybody does.
+#
+# `slipped` is dated: it is unreachable until the obligation's own `due` has passed, which is what
+# makes *overdue* a fact about the calendar rather than somebody's opinion on a Monday.
+#
+# Note what is absent. `met` is terminal and `slipped` is not: an obligation that slipped can still
+# be met, and that is the whole point — escalation is not an ending. There is no `cancelled`, because
+# a commitment somebody withdrew is a decision, and decisions are recorded as artifacts of their own
+# rather than as a rung that quietly disposes of the evidence.
+kind: obligation
+initial: open
+
+transitions:
+  open: [met, slipped]
+  # Escalated, not finished.
+  slipped: [met]
+  met: []
+
+when:
+  slipped:
+    after: due

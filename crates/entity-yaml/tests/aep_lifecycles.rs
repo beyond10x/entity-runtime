@@ -257,6 +257,69 @@ fn a_rung_the_pinned_ladder_charges_for_is_charged_for_here_too() {
     );
 }
 
+/// The other half of the same claim: a rung the pinned ladder **dates** must be dated here too.
+///
+/// Paired by `(target status, frontmatter key)`. Without this, a definition could quietly drop the
+/// `before`/`after` precondition and only the upstream document would still say the rung waits.
+#[test]
+fn a_rung_the_pinned_ladder_dates_is_dated_here_too() {
+    let mut compared = 0;
+    for kind in pinned_kinds() {
+        let definition = definition(&kind);
+        for (state, key) in upstream_when(&kind) {
+            compared += 1;
+            let dated = definition
+                .operations
+                .values()
+                .filter(|operation| {
+                    operation
+                        .transitions
+                        .iter()
+                        .any(|transition| transition.to == state)
+                })
+                .any(|operation| {
+                    operation.preconditions.iter().any(|rule| {
+                        serde_json::to_string(&rule.condition)
+                            .unwrap_or_default()
+                            .contains(&key)
+                    })
+                });
+            assert!(
+                dated,
+                "{kind}: the pinned ladder opens `{state}` on `{key}`, and no operation reaching \
+                 it declares a precondition that reads it"
+            );
+        }
+    }
+    assert!(
+        compared >= 1,
+        "no pinned ladder dates a rung, so this compared nothing"
+    );
+}
+
+/// `(status, frontmatter key)` for every date guard the pinned ladder declares.
+fn upstream_when(kind: &str) -> Vec<(String, String)> {
+    let path = fixtures_dir().join(format!("{kind}.yaml"));
+    let text = fs::read_to_string(&path).expect("readable");
+    let value: Value = serde_yaml_ng::from_str(&text).expect("parses");
+    let Some(when) = value.get("when").and_then(Value::as_mapping) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for (status, guard) in when {
+        let status = status.as_str().expect("a status is a string").to_owned();
+        let Some(guard) = guard.as_mapping() else {
+            continue;
+        };
+        for edge in ["after", "before"] {
+            if let Some(key) = guard.get(edge).and_then(Value::as_str) {
+                found.push((status.clone(), key.to_owned()));
+            }
+        }
+    }
+    found
+}
+
 /// `(status, evidence kind)` for every requirement the pinned ladder declares.
 fn upstream_requires(kind: &str) -> Vec<(String, String)> {
     let path = fixtures_dir().join(format!("{kind}.yaml"));
