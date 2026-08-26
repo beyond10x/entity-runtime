@@ -559,3 +559,57 @@ fn a_stale_read_that_found_nothing_is_unreachable_rather_than_absent() {
     );
     assert_eq!(read.value, None);
 }
+
+#[test]
+fn with_the_remote_as_authority_a_refused_local_write_is_recorded_and_not_swallowed() {
+    // The mirror of `refusing_on_divergence_leaves_the_authority_untouched`, and it was missed when
+    // that one was fixed. The authority takes the write and the **local copy** refuses it — a full
+    // disk is enough. Returning the error alone left the two sides disagreeing with nothing
+    // recorded: `divergences()` empty, `catch_up()` a no-op, and every later write computing its
+    // expectation from the stale local revision and being refused by the authority for ever.
+    struct Unwritable;
+    impl entity_store::StateProvider for Unwritable {
+        fn load(&self, _: &str, _: &str) -> Result<Option<EntityInstance>, StoreError> {
+            Ok(None)
+        }
+    }
+    impl entity_store::EventProvider for Unwritable {
+        fn events(&self, _: &str, _: &str) -> Result<Vec<DomainEvent>, StoreError> {
+            Ok(Vec::new())
+        }
+    }
+    impl Store for Unwritable {
+        fn commit(&mut self, _: &Decision, _: Expect) -> Result<(), StoreError> {
+            Err(StoreError::Backend("no space left on device".to_owned()))
+        }
+    }
+
+    let registry = registry();
+    let mut store = Hybrid::new(
+        Unwritable,
+        remote(),
+        Policy::new(
+            Authority::Remote,
+            ReadPath::RemoteFirst,
+            WhenUnreachable::Refuse,
+            OnDivergence::Refuse,
+        ),
+    );
+
+    store
+        .commit(&opened(&registry), Expect::Absent)
+        .expect_err("the local copy could not take it");
+
+    assert_eq!(
+        store.divergences().len(),
+        1,
+        "the authority moved and the local copy did not; that is a divergence, not silence"
+    );
+    assert!(
+        store.divergences()[0]
+            .detail
+            .contains("the authority accepted"),
+        "and it says which way round: {}",
+        store.divergences()[0].detail
+    );
+}

@@ -6,6 +6,39 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.9.0] — 2026-08-26
+
+**A review of 0.8.0 — the release written to fix the previous review — found three more defects.**
+A fix release nobody reviewed is the same shape as the thing it was fixing, so it was reviewed.
+
+### Fixed
+
+* **With the remote as authority, a refused *local* write was swallowed.** 0.8.0 fixed exactly this
+  for `Authority::Local` and left the mirror case: the authority takes the write, the local copy
+  refuses it — a full disk is enough — and the caller got an error while `divergences()` stayed
+  empty and `catch_up()` was a no-op. Every later write then computed its expectation from the stale
+  local revision and was refused by the authority for ever, with no record of why. It is recorded as
+  a divergence now, saying which way round it happened.
+
+* **`catch_up` could never clear a divergence against a replica at revision 0.** `None` and
+  `Some(0)` were collapsed, so a replica genuinely holding a revision-0 instance was given
+  `Expect::Absent`, which cannot match. Unreachable through `entity-core`, which creates at revision
+  1 — and reachable for any third-party `Store` used as the replica, which is exactly who this
+  protocol is for.
+
+* **Three refusal messages had lost their line continuations** and carried 26 to 38 consecutive
+  spaces into what a person reads.
+
+### Changed
+
+* **The wire version is `entity.store/2`.** `Answer` is a tagged enum with `deny_unknown_fields`, so
+  adding a variant is a breaking wire change: a peer built against `/1` cannot decode
+  `{"answer":"refused"}`. 0.8.0 added `Refused` and `Unreachable` and left the version at `/1`,
+  which made the refusal undecodable by exactly the peer it exists to inform — it would have arrived
+  as a decode failure, which is the `Backend` outcome that change set out to avoid.
+
+  A `/1` peer is now refused by name, which is what a version is for.
+
 ## [0.8.0] — 2026-08-26
 
 **A review of 0.6.0 and 0.7.0 found that six of their published claims were false.** Two independent

@@ -41,7 +41,18 @@ pub use hybrid::{
 pub use loopback::LoopbackTransport;
 
 /// The wire format both sides speak.
-pub const WIRE_VERSION: &str = "entity.store/1";
+/// The protocol version this build speaks.
+///
+/// # Why this went to `/2` in 0.9.0
+///
+/// [`Answer`] is a tagged enum with `deny_unknown_fields`, so **adding a variant is a breaking wire
+/// change**: a peer built against `/1` cannot decode `{"answer":"refused"}`. 0.8.0 added
+/// [`Answer::Refused`] and [`Answer::Unreachable`] and left the version at `/1`, which made the
+/// refusal undecodable by exactly the peer it exists to inform — it would have arrived as a decode
+/// failure, which is the `Backend` outcome that change set out to avoid.
+///
+/// Bumping refuses an old peer outright instead, by name, which is what a version is for.
+pub const WIRE_VERSION: &str = "entity.store/2";
 
 /// What one side asks the other.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

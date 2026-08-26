@@ -68,9 +68,7 @@ pub fn rehydrate(
     if first.from_state.is_some() {
         return refuse(format!(
             "the first event is `{}`, which moved from `{}` — a history must begin with a creation \
-             event, and a definition that emits none on creation cannot be event-sourced",
-            first.event_type,
-            first.from_state.as_deref().unwrap_or_default()
+             event, and a definition that emits none on creation cannot be event-sourced", first.event_type, first.from_state.as_deref().unwrap_or_default()
         ));
     }
 
@@ -124,11 +122,7 @@ pub fn rehydrate(
             None if index == 0 => {
                 if event.to_state != definition.lifecycle.initial {
                     return refuse(format!(
-                        "event 0 (`{}`) creates `{}` in `{}`, but an instance begins in `{}`; a                          creation that enters any other state rebuilds an instance `create` would                          never have produced",
-                        event.event_type,
-                        definition.entity,
-                        event.to_state,
-                        definition.lifecycle.initial
+                        "event 0 (`{}`) creates `{}` in `{}`, but an instance begins in `{}`; a creation that enters any other state rebuilds an instance `create` would never have produced", event.event_type, definition.entity, event.to_state, definition.lifecycle.initial
                     ));
                 }
             }
