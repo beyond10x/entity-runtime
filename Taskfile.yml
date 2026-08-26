@@ -62,8 +62,13 @@ tasks:
       - python3 scripts/check-pin.py
 
   plan-check:
-    desc: the planning store validates
+    desc: the planning store validates, with a `protocol` new enough to be trusted with it
+    # The version first, and it is not ceremony. `protocol artifact` is the only thing that writes
+    # this store, and it is ambient — nothing here pins it. A build predating the store journal
+    # printed every status move it made and recorded none of them, and `artifact validate` stayed
+    # green because it reads the files and the files were fine.
     cmds:
+      - python3 scripts/check-protocol.py
       - protocol artifact validate
 
   fmt:
