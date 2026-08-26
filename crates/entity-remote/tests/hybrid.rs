@@ -3,12 +3,14 @@
 //! The cases worth pinning are the ones where a hybrid store usually goes quietly wrong: silence
 //! read as absence, and a losing write vanishing without a record.
 
-use entity_core::{Decision, Registry, Runtime};
+use entity_core::{Decision, DomainEvent, EntityInstance, Registry, Runtime};
 use entity_remote::{
     Authority, Hybrid, LoopbackTransport, OnDivergence, Policy, ReadPath, RemoteStore,
     WhenUnreachable,
 };
-use entity_store::{conformance, Expect, MemoryStore, StateProvider, Store};
+use entity_store::{
+    conformance, EventProvider, Expect, MemoryStore, StateProvider, Store, StoreError,
+};
 use serde_json::json;
 
 type Remote = RemoteStore<LoopbackTransport<MemoryStore>>;
@@ -23,6 +25,9 @@ fn registry() -> Registry {
         "version": 1,
         "schema": { "fields": { "title": { "type": "string", "required": true } } },
         "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+        // A creation event too, so a history has an event at every revision — which is what makes
+        // "only what the replica has not seen" a case with two revisions in it rather than one.
+        "create": { "emit": { "type": "TicketOpened", "payload": { "ticket": "$id" } } },
         "operations": {
             "close": {
                 "transitions": [{ "from": "open", "to": "closed" }],
@@ -326,4 +331,231 @@ fn catch_up_replays_what_the_local_store_holds_now_and_not_the_write_that_diverg
         "the replica lands on where the authority is now, not on where it was"
     );
     assert_eq!(replicated.lifecycle_state, "closed");
+}
+
+#[test]
+fn refusing_on_divergence_leaves_the_authority_untouched() {
+    // The hole this closes: `Refuse` used to write locally first and ask the replica afterwards,
+    // so a replica that refused left an accepted local write standing — unreplicated, unrecorded,
+    // and with the caller told the write had failed. `Refuse` says neither side moves.
+    let registry = registry();
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::Refuse,
+            OnDivergence::Refuse,
+        ),
+    );
+
+    store.remote().transport().go_dark("the replica is down");
+    store
+        .commit(&opened(&registry), Expect::Absent)
+        .expect_err("the replica could not take it, so neither side moves");
+
+    assert_eq!(
+        store.local().load("ticket", "one").expect("answers"),
+        None,
+        "the authority holds nothing: the write the caller was told failed did not half-happen"
+    );
+}
+
+#[test]
+fn catch_up_keeps_a_divergence_whose_local_side_cannot_be_read() {
+    // A local read that fails is a divergence that could not be examined, not one that went away.
+    // Treating it as "the write is gone" discarded the only record that it ever happened.
+    struct Unreadable;
+    impl entity_store::StateProvider for Unreadable {
+        fn load(&self, _: &str, _: &str) -> Result<Option<EntityInstance>, StoreError> {
+            Err(StoreError::Backend("the state file is corrupt".to_owned()))
+        }
+    }
+    impl entity_store::EventProvider for Unreadable {
+        fn events(&self, _: &str, _: &str) -> Result<Vec<DomainEvent>, StoreError> {
+            Ok(Vec::new())
+        }
+    }
+    impl Store for Unreadable {
+        fn commit(&mut self, _: &Decision, _: Expect) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
+    let registry = registry();
+    let mut store = Hybrid::new(
+        Unreadable,
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+
+    store.remote().transport().go_dark("on a train");
+    store
+        .commit(&opened(&registry), Expect::Absent)
+        .expect("accepted");
+    store.remote().transport().come_back();
+
+    assert_eq!(store.catch_up(), 1, "it is kept, not dropped");
+    assert!(
+        store.divergences()[0].detail.contains("could not be read"),
+        "and it says why: {}",
+        store.divergences()[0].detail
+    );
+}
+
+#[test]
+fn catch_up_refuses_to_overwrite_a_replica_that_moved_on_its_own() {
+    // The merge this crate says it does not perform. The expectation used to be taken from the
+    // replica's *own* current revision, which made a conflict structurally unreachable: whatever
+    // the replica held, the local copy simply won.
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+
+    store.remote().transport().go_dark("on a train");
+    let created = opened(&registry);
+    store.commit(&created, Expect::Absent).expect("accepted");
+
+    // While it was dark, the replica moved on its own — somebody else wrote to it.
+    let elsewhere = runtime
+        .execute(&created.instance, "close", json!({}))
+        .expect("permitted");
+    {
+        let transport = store.remote().transport();
+        transport.come_back();
+        transport
+            .store_mut()
+            .commit(&created, Expect::Absent)
+            .expect("accepted");
+        transport
+            .store_mut()
+            .commit(&elsewhere, Expect::Revision(1))
+            .expect("accepted");
+    }
+
+    assert_eq!(store.catch_up(), 1, "it stays outstanding for a person");
+    assert!(
+        store.divergences()[0].detail.contains("moved on its own"),
+        "and says so: {}",
+        store.divergences()[0].detail
+    );
+
+    let replica = store
+        .remote()
+        .load("ticket", "one")
+        .expect("answers")
+        .expect("held");
+    assert_eq!(
+        replica.lifecycle_state, "closed",
+        "the replica's own version was not overwritten"
+    );
+}
+
+#[test]
+fn catch_up_appends_only_what_the_replica_has_not_seen() {
+    // Replaying the whole local log appended events the replica already had, and a log with an
+    // event twice no longer folds.
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+
+    // The replica takes the first write, then goes dark for the second.
+    let created = opened(&registry);
+    store.commit(&created, Expect::Absent).expect("accepted");
+    assert_eq!(store.divergences().len(), 0, "the replica was up");
+
+    store.remote().transport().go_dark("on a train");
+    let closed = runtime
+        .execute(&created.instance, "close", json!({}))
+        .expect("permitted");
+    store
+        .commit(&closed, Expect::Revision(1))
+        .expect("accepted");
+    store.remote().transport().come_back();
+
+    assert_eq!(store.catch_up(), 0, "it catches up");
+
+    let events = store.remote().events("ticket", "one").expect("events");
+    let revisions: Vec<u64> = events.iter().map(|event| event.revision).collect();
+    assert_eq!(
+        revisions,
+        vec![1, 2],
+        "each revision once: a log with an event twice no longer folds"
+    );
+}
+
+#[test]
+fn a_hybrid_with_the_local_store_as_authority_conforms_like_any_other_store() {
+    // The other half of an acceptance line that named both authorities and tested one.
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::Refuse,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    let report = conformance::run(&mut store);
+    assert!(
+        report.is_clean(),
+        "Hybrid(local authority):\n{}",
+        report.summary()
+    );
+}
+
+#[test]
+fn a_stale_read_that_found_nothing_is_unreachable_rather_than_absent() {
+    // `Read` carries `was_stale`; the `StateProvider` trait has nowhere to put it. A stale answer
+    // that found nothing used to arrive at every generic caller as `Ok(None)` — the one thing an
+    // unreachable store must never say.
+    let store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Remote,
+            ReadPath::RemoteFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    store.remote().transport().go_dark("on a train");
+
+    let error = StateProvider::load(&store, "ticket", "one")
+        .expect_err("nothing was learned, so nothing is claimed");
+    assert!(error.is_unreachable(), "{error}");
+
+    let read = store
+        .load_read("ticket", "one")
+        .expect("the stale path answers");
+    assert!(
+        read.was_stale,
+        "and the inherent read still says it was stale"
+    );
+    assert_eq!(read.value, None);
 }

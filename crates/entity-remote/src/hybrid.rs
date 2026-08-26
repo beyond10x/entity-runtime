@@ -66,7 +66,18 @@ pub enum WhenUnreachable {
 /// What happens to a write the authoritative side refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnDivergence {
-    /// Refuse the whole write. Neither side moves.
+    /// Refuse the whole write rather than let one side move without the other.
+    ///
+    /// Under [`Authority::Local`] this reverses the write order — the replica is asked **first**,
+    /// because it is the side that can refuse for a reason the authority does not know about, and
+    /// a refusal there must leave the authority untouched.
+    ///
+    /// # The one case this does not cover, and why it is not claimed to
+    ///
+    /// If the replica accepts and the authority then refuses, the replica has moved and nothing
+    /// here can undo it. That is recorded as a [`Divergence`] and returned as an error, rather
+    /// than described as impossible: undoing it needs a two-phase commit and a durable intent log,
+    /// which this crate does not have and does not pretend to.
     Refuse,
     /// Write locally and record that the sides have diverged.
     ///
@@ -237,66 +248,111 @@ impl<L: Store, R: Store> Hybrid<L, R> {
     /// Replays every recorded divergence at the side that has not seen it.
     ///
     /// The catch-up path: a laptop that wrote while the replica was down comes back and the writes
-    /// go through. Returns what is *still* outstanding, and keeps it — a reconciliation that
-    /// cleared its own list on a partial success would report success and lose the rest.
+    /// go through. Returns how many are *still* outstanding, and keeps them — a reconciliation
+    /// that cleared its own list on a partial success would report success and lose the rest.
     ///
     /// # What this deliberately does not do
     ///
-    /// It replays; it does not merge. A divergence that comes back as a **conflict** rather than as
-    /// unreachable means the other side moved on its own, and no rule here can know whose version
-    /// is right. Those stay outstanding, with the conflict recorded, for a person — because the
-    /// alternative is a machine picking, and a machine picking is how the wrong version wins
-    /// silently.
+    /// It replays; it does not merge. A replica that moved on its own is **not** overwritten: if
+    /// it holds a revision this store's history does not account for, the divergence stays
+    /// outstanding with the conflict recorded, for a person. No rule here can know whose version
+    /// is right, and a machine picking is how the wrong version wins silently.
     ///
-    /// # Errors
+    /// Nothing is dropped. A local read that fails is a divergence that could not be *examined*,
+    /// not one that went away — treating an unreadable local store as "the write is gone" would
+    /// discard the only record that it happened.
     ///
-    /// Never: an outstanding divergence is a state, not a failure. What could not be replayed is in
-    /// the returned slice.
+    /// # What it compares, and what it therefore cannot catch
+    ///
+    /// Divergence is judged on the **revision** the replica holds, plus an equality check when the
+    /// two are at the same one. A replica that took somebody else's write at a revision this store
+    /// has already passed is not detected while it stays behind — detecting that needs the
+    /// definition, to fold this store's own history down to that revision and compare, and a store
+    /// does not hold definitions. It is caught as soon as the replica reaches this store's
+    /// revision, and the write itself is still protected: the replay is committed with
+    /// [`Expect::Revision`] of what the replica held, so a replica that moves in between refuses
+    /// it and the divergence stays outstanding.
     pub fn catch_up(&mut self) -> usize {
         let outstanding: Vec<Divergence> = std::mem::take(&mut self.divergences);
         let mut still = Vec::new();
 
         for divergence in outstanding {
-            let Some(instance) = self
-                .local
-                .load(&divergence.entity, &divergence.id)
-                .ok()
-                .flatten()
-            else {
-                // The local write is gone, so there is nothing left to replicate. Dropping the
-                // record is right here: it describes a write that no longer exists.
-                continue;
+            let keep = |detail: String| Divergence {
+                entity: divergence.entity.clone(),
+                id: divergence.id.clone(),
+                local_revision: divergence.local_revision,
+                detail,
             };
 
             // Replayed from what the local store actually holds now, not from the decision as it
             // was — the local side may have moved on since, and replicating a superseded revision
             // would push the replica to a state the authority has already left.
-            let decision = Decision {
-                instance: instance.clone(),
-                events: self
-                    .local
-                    .events(&divergence.entity, &divergence.id)
-                    .unwrap_or_default(),
-            };
-
-            let expect = match self.remote.load(&divergence.entity, &divergence.id) {
-                Ok(Some(held)) => Expect::Revision(held.revision),
-                Ok(None) => Expect::Absent,
+            let instance = match self.local.load(&divergence.entity, &divergence.id) {
+                Ok(Some(instance)) => instance,
+                Ok(None) => {
+                    // The instance is genuinely gone from the authority. There is nothing left to
+                    // replicate, and the record describes a write that no longer exists.
+                    continue;
+                }
                 Err(error) => {
-                    still.push(Divergence {
-                        detail: error.to_string(),
-                        ..divergence
-                    });
+                    still.push(keep(format!("the local store could not be read: {error}")));
                     continue;
                 }
             };
 
-            match self.remote.commit(&decision, expect) {
-                Ok(()) => {}
-                Err(error) => still.push(Divergence {
-                    detail: error.to_string(),
-                    ..divergence
-                }),
+            let events = match self.local.events(&divergence.entity, &divergence.id) {
+                Ok(events) => events,
+                Err(error) => {
+                    still.push(keep(format!("the local events could not be read: {error}")));
+                    continue;
+                }
+            };
+
+            let held = match self.remote.load(&divergence.entity, &divergence.id) {
+                Ok(held) => held,
+                Err(error) => {
+                    still.push(keep(error.to_string()));
+                    continue;
+                }
+            };
+            let at = held.as_ref().map_or(0, |held| held.revision);
+
+            // The replica already holds exactly what this store holds. Two divergences recorded
+            // for one instance are the ordinary case — a laptop that wrote twice while the replica
+            // was down — and replaying the history once satisfies both.
+            if at == instance.revision && held.as_ref() == Some(&instance) {
+                continue;
+            }
+
+            // The replica is at or ahead of us and is *not* what we hold. Replaying would
+            // overwrite a revision this store never produced — the merge this function refuses to
+            // perform.
+            if at >= instance.revision {
+                still.push(keep(format!(
+                    "the replica holds revision {at} and this store holds {}; it moved on its own \
+                     and no rule here can say whose version is right",
+                    instance.revision
+                )));
+                continue;
+            }
+
+            // Only what the replica has not seen. Replaying the whole log appends events it
+            // already holds, and a log with an event twice no longer folds.
+            let decision = Decision {
+                instance: instance.clone(),
+                events: events
+                    .into_iter()
+                    .filter(|event| event.revision > at)
+                    .collect(),
+            };
+            let expect = if at == 0 {
+                Expect::Absent
+            } else {
+                Expect::Revision(at)
+            };
+
+            if let Err(error) = self.remote.commit(&decision, expect) {
+                still.push(keep(error.to_string()));
             }
         }
 
@@ -306,8 +362,27 @@ impl<L: Store, R: Store> Hybrid<L, R> {
 }
 
 impl<L: Store, R: Store> StateProvider for Hybrid<L, R> {
+    /// # Absent means absent, even when the answer came from a stale copy
+    ///
+    /// [`Read`] carries `was_stale`; this trait has nowhere to put it. So a stale answer that
+    /// found **nothing** is not returned as `Ok(None)` — nothing was learned about whether the
+    /// instance exists, and `Ok(None)` is the one thing an unreachable store must never say. It
+    /// becomes [`StoreError::Unreachable`], which is what a caller with no `was_stale` field can
+    /// still act on correctly. A stale answer that found a value is returned: serving it is what
+    /// the policy asked for, and it is a fact about the data rather than about the network.
+    ///
+    /// Callers that need to know staleness while still getting the value use
+    /// [`Hybrid::load_read`].
     fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
-        self.load_read(entity, id).map(|read| read.value)
+        let read = self.load_read(entity, id)?;
+        match (read.was_stale, read.value) {
+            (true, None) => Err(StoreError::Unreachable {
+                provider: "hybrid".to_owned(),
+                detail: "the authority did not answer and the local copy holds nothing, so                          whether this instance exists is unknown"
+                    .to_owned(),
+            }),
+            (_, value) => Ok(value),
+        }
     }
 }
 
@@ -347,15 +422,44 @@ impl<L: Store, R: Store> Store for Hybrid<L, R> {
                 self.remote.commit(decision, expect)?;
                 self.local.commit(decision, expect)
             }
-            // The local store decides. It is written first, and the remote is a replica whose
-            // refusal is recorded rather than allowed to undo an accepted local write.
-            Authority::Local => {
-                self.local.commit(decision, expect)?;
-                match self.remote.commit(decision, expect) {
-                    Ok(()) => Ok(()),
-                    Err(error) => match self.policy.on_divergence {
-                        OnDivergence::Refuse => Err(error),
-                        OnDivergence::RecordDivergence => {
+            // The local store decides, and what "decides" means depends on what was declared for
+            // a divergence.
+            Authority::Local => match self.policy.on_divergence {
+                // `Refuse` promises neither side moves. That promise cannot be kept by writing the
+                // local store first and asking the replica afterwards: a replica that refuses
+                // leaves an accepted local write standing, unreplicated, with the caller told the
+                // write failed. So under `Refuse` the **replica is asked first** — the side that
+                // can refuse for a reason the authority does not know about.
+                OnDivergence::Refuse => {
+                    self.remote.commit(decision, expect)?;
+                    match self.local.commit(decision, expect) {
+                        Ok(()) => Ok(()),
+                        // The residual case, and the reason this is not two-phase commit: the
+                        // replica took the write and the authority then refused it. Nothing here
+                        // can undo the replica, so the fact is **recorded** rather than claimed
+                        // impossible — a divergence in the other direction, which `catch_up` will
+                        // report as a conflict for a person.
+                        Err(error) => {
+                            self.divergences.push(Divergence {
+                                entity,
+                                id,
+                                local_revision: decision.instance.revision,
+                                detail: format!(
+                                    "the replica accepted revision {} and this store refused it:                                      {error}",
+                                    decision.instance.revision
+                                ),
+                            });
+                            Err(error)
+                        }
+                    }
+                }
+                // The replica is a replica: it is written second and its refusal is recorded
+                // rather than allowed to undo an accepted authority write.
+                OnDivergence::RecordDivergence => {
+                    self.local.commit(decision, expect)?;
+                    match self.remote.commit(decision, expect) {
+                        Ok(()) => Ok(()),
+                        Err(error) => {
                             self.divergences.push(Divergence {
                                 entity,
                                 id,
@@ -364,9 +468,9 @@ impl<L: Store, R: Store> Store for Hybrid<L, R> {
                             });
                             Ok(())
                         }
-                    },
+                    }
                 }
-            }
+            },
         }
     }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Keep docs/requirements.md honest.
 
-Four checks, each of which has a failure mode that reads as success without it:
+Five checks, each of which has a failure mode that reads as success without it:
 
 1. every requirement id `R-nn` in the register is referenced at least once in a design document
    under docs/design/ — a requirement nobody designed for is a requirement nobody will notice

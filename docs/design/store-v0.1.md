@@ -73,6 +73,16 @@ Two answers are fixed there because they are the ones an implementation is most 
 differently: an instance nobody stored is **absent**, not an error — not being there is an answer —
 and a refused commit leaves **no trace at all**, neither state nor event.
 
+## 5. What is deliberately not here
+
+Search and blob providers. Each is a story of its own under
+`epic:the-shell`; naming them here is what stops this crate growing them by accident.
+
+Locking is also not here, and `FileStore` says so: two processes writing one root can both pass the
+revision check before either writes. The check makes concurrent writers visible *within* a process.
+Making them safe *across* processes is a database's job, which is a different provider behind the
+same traits — and is why these are traits.
+
 ## 6. The envelope: what a log needs and the kernel must not invent
 
 A `DomainEvent` is the domain fact. It carries no event id, no time, no correlation, no causation
@@ -202,13 +212,3 @@ its list on a partial success would report success and lose the rest.
 It **merges nothing**. A divergence that returns as a conflict means the other side moved on its
 own, and no rule here can know whose version is right. Those stay outstanding for a person, because
 the alternative is a machine picking — and a machine picking is how the wrong version wins silently.
-
-## 5. What is deliberately not here
-
-Search and blob providers. Each is a story of its own under
-`epic:the-shell`; naming them here is what stops this crate growing them by accident.
-
-Locking is also not here, and `FileStore` says so: two processes writing one root can both pass the
-revision check before either writes. The check makes concurrent writers visible *within* a process.
-Making them safe *across* processes is a database's job, which is a different provider behind the
-same traits — and is why these are traits.

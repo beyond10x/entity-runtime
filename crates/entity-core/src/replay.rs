@@ -35,6 +35,7 @@ use serde_json::Map;
 use crate::definition::EntityDefinition;
 use crate::error::CoreError;
 use crate::runtime::{DomainEvent, EntityInstance};
+use crate::validation::validate_object;
 
 /// Rebuilds an instance from its events, oldest first.
 ///
@@ -116,7 +117,21 @@ pub fn rehydrate(
         }
 
         match &event.from_state {
-            None if index == 0 => {}
+            // A creation event is not exempt from the lifecycle — it is held to the one state the
+            // definition says an instance begins in. Without this, a fold accepts a forged
+            // creation straight into any state `states` happens to contain, which is precisely the
+            // thing `execute` cannot do: `create` always enters `lifecycle.initial`.
+            None if index == 0 => {
+                if event.to_state != definition.lifecycle.initial {
+                    return refuse(format!(
+                        "event 0 (`{}`) creates `{}` in `{}`, but an instance begins in `{}`; a                          creation that enters any other state rebuilds an instance `create` would                          never have produced",
+                        event.event_type,
+                        definition.entity,
+                        event.to_state,
+                        definition.lifecycle.initial
+                    ));
+                }
+            }
             None => {
                 return refuse(format!(
                     "event {index} (`{}`) claims no previous state, but only the first event of a \
@@ -147,6 +162,21 @@ pub fn rehydrate(
         for (name, value) in &event.changed {
             instance.fields.insert(name.clone(), value.clone());
         }
+    }
+
+    // The fields an event carries are data like any other, and a fold that installed them
+    // unchecked would rebuild an instance the schema refuses — a field of the wrong type, or one
+    // the definition never declared. `execute` validates what it writes; so does replay.
+    let defects = validate_object(&definition.schema, &instance.fields, "$fields");
+    if !defects.is_empty() {
+        let detail = defects
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ");
+        return refuse(format!(
+            "the events fold to an instance the schema refuses: {detail}"
+        ));
     }
 
     Ok(instance)

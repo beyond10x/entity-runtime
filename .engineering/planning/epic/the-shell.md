@@ -4,7 +4,7 @@ id: epic:the-shell
 kind: epic
 status: implemented
 title: 'The shell: this repository can hold what it decides about'
-summary: entity-core decides and nothing here holds anything. R-80 describes a shell that loads, calls the kernel, then persists, appends, projects and publishes together; no such shell exists. R-82 places the provider interfaces outside the core and docs/requirements.md:175 says the crate does not exist yet.
+summary: 'Delivered in 0.6.0. It was opened because entity-core decided and nothing here held anything: R-80 described a shell that loads, calls the kernel, then persists, appends and projects together, and no such shell existed. entity-store and entity-sqlite are that shell, and the register line saying the crate does not exist was deleted by the same commit.'
 relations:
 - decomposes: initiative:entity-runtime
 revision: 4

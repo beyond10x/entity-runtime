@@ -31,6 +31,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use entity_core::{Decision, DomainEvent, EntityInstance};
 
@@ -101,6 +102,9 @@ impl EventProvider for FileStore {
     }
 }
 
+/// Distinguishes one write's temporary file from another's in the same process.
+static WRITES: AtomicU64 = AtomicU64::new(0);
+
 impl Store for FileStore {
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         let instance = &decision.instance;
@@ -114,29 +118,64 @@ impl Store for FileStore {
         fs::create_dir_all(&directory).map_err(|error| backend("creating", &directory, &error))?;
 
         // Events first: see the module's note on the crash window.
-        if !decision.events.is_empty() {
+        //
+        // **Appended once, however many times this is called.** Events land before the state, so a
+        // state write that fails leaves the expectation unchanged — and the retry any caller is
+        // entitled to make would append the same events a second time, producing a log that no
+        // longer folds. Only what the log has not already reached is written.
+        let already = self.events(entity, id)?;
+        let reached = already
+            .iter()
+            .map(|event| event.revision)
+            .max()
+            .unwrap_or(0);
+        let fresh: Vec<_> = decision
+            .events
+            .iter()
+            .filter(|event| event.revision > reached)
+            .collect();
+        if !fresh.is_empty() {
             let path = self.events_path(entity, id);
             let mut file = fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&path)
                 .map_err(|error| backend("opening", &path, &error))?;
-            for event in &decision.events {
+            for event in fresh {
                 let line = serde_json::to_string(event)
                     .map_err(|error| backend("serialising an event for", &path, &error))?;
                 writeln!(file, "{line}").map_err(|error| backend("appending to", &path, &error))?;
             }
-            file.flush()
-                .map_err(|error| backend("flushing", &path, &error))?;
+            // `flush` only empties this process's buffer. The module's recovery story is that a
+            // crash leaves an event whose state did not land, and replay reaches the state the
+            // event describes — which requires the event to actually be on the disk. Without this
+            // the ordering can invert: the state is installed by a rename the filesystem journals,
+            // and the event it explains is lost.
+            file.sync_all()
+                .map_err(|error| backend("syncing", &path, &error))?;
         }
 
         // Then the state, through a rename so no reader ever sees half of it.
+        //
+        // The temporary name carries this process's id and a counter, so two writers of the same
+        // instance never share one. A shared temporary is worse than no temporary: writer A's
+        // rename installs an inode writer B is still filling, and a reader sees B's bytes arrive
+        // in a file that was supposed to appear whole.
         let path = self.state_path(entity, id);
-        let temporary = path.with_extension("json.writing");
+        let temporary = path.with_extension(format!(
+            "json.writing.{}.{}",
+            std::process::id(),
+            WRITES.fetch_add(1, Ordering::Relaxed)
+        ));
         let text = serde_json::to_string_pretty(instance)
             .map_err(|error| backend("serialising", &path, &error))?;
-        fs::write(&temporary, format!("{text}\n"))
+        let mut file = fs::File::create(&temporary)
+            .map_err(|error| backend("creating", &temporary, &error))?;
+        file.write_all(format!("{text}\n").as_bytes())
             .map_err(|error| backend("writing", &temporary, &error))?;
+        file.sync_all()
+            .map_err(|error| backend("syncing", &temporary, &error))?;
+        drop(file);
         fs::rename(&temporary, &path).map_err(|error| {
             let _ = fs::remove_file(&temporary);
             backend("installing", &path, &error)
