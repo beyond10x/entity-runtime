@@ -6,6 +6,17 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Fixed
 
+- **A deliberate line break is no longer eaten by the reflow.** A line ending in two spaces is
+  Markdown's own way of asking for a break. The reflow ended the paragraph there, correctly, but
+  **dropped the two spaces** — so the break survived only because GFM turns a bare newline into a
+  `<br>`, which is the exact quirk this reflow exists to remove. Under any renderer that does not,
+  the author's break was simply gone.
+
+  Found by porting the tool to `engineering-protocols` and writing the self-test fresh. The case
+  existed here already and **asserted the wrong expectation**, so the suite was holding the defect
+  in place rather than catching it. A test that encodes a bug is worse than no test: it makes the
+  bug look decided.
+
 - **Release notes no longer break mid-sentence.** GitHub renders release bodies as **GFM**, and GFM
   turns a single newline into a `<br>`. `CHANGELOG.md` is hard-wrapped at 100 columns, so every one
   of those wraps was arriving as a literal line break — text snapping after "added" and before "the",
