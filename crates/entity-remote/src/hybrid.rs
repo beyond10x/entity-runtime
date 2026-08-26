@@ -275,7 +275,6 @@ impl<L: Store, R: Store> Hybrid<L, R> {
     pub fn catch_up(&mut self) -> usize {
         let outstanding: Vec<Divergence> = std::mem::take(&mut self.divergences);
         let mut still = Vec::new();
-
         for divergence in outstanding {
             let keep = |detail: String| Divergence {
                 entity: divergence.entity.clone(),
@@ -299,7 +298,6 @@ impl<L: Store, R: Store> Hybrid<L, R> {
                     continue;
                 }
             };
-
             let events = match self.local.events(&divergence.entity, &divergence.id) {
                 Ok(events) => events,
                 Err(error) => {
@@ -307,7 +305,6 @@ impl<L: Store, R: Store> Hybrid<L, R> {
                     continue;
                 }
             };
-
             let held = match self.remote.load(&divergence.entity, &divergence.id) {
                 Ok(held) => held,
                 Err(error) => {
@@ -315,21 +312,28 @@ impl<L: Store, R: Store> Hybrid<L, R> {
                     continue;
                 }
             };
-            let at = held.as_ref().map_or(0, |held| held.revision);
+            // `None` is absent; `Some(0)` is an instance at revision 0. Collapsing them and then
+            // deriving `Expect::Absent` from `0` would leave a replica that genuinely holds a
+            // revision-0 instance permanently conflicted: it is not absent, so the expectation
+            // never matches and the divergence never clears. `entity-core` creates at revision 1,
+            // so this is unreachable through it — and reachable for any third-party `Store` used as
+            // the replica, which is exactly who this protocol exists for.
+            let at = held.as_ref().map(|held| held.revision);
+            let behind = at.unwrap_or(0);
 
             // The replica already holds exactly what this store holds. Two divergences recorded
             // for one instance are the ordinary case — a laptop that wrote twice while the replica
             // was down — and replaying the history once satisfies both.
-            if at == instance.revision && held.as_ref() == Some(&instance) {
+            if behind == instance.revision && held.as_ref() == Some(&instance) {
                 continue;
             }
 
             // The replica is at or ahead of us and is *not* what we hold. Replaying would
             // overwrite a revision this store never produced — the merge this function refuses to
             // perform.
-            if at >= instance.revision {
+            if behind >= instance.revision {
                 still.push(keep(format!(
-                    "the replica holds revision {at} and this store holds {}; it moved on its own \
+                    "the replica holds revision {behind} and this store holds {}; it moved on its own \
                      and no rule here can say whose version is right",
                     instance.revision
                 )));
@@ -342,15 +346,13 @@ impl<L: Store, R: Store> Hybrid<L, R> {
                 instance: instance.clone(),
                 events: events
                     .into_iter()
-                    .filter(|event| event.revision > at)
+                    .filter(|event| event.revision > behind)
                     .collect(),
             };
-            let expect = if at == 0 {
-                Expect::Absent
-            } else {
-                Expect::Revision(at)
+            let expect = match at {
+                None => Expect::Absent,
+                Some(revision) => Expect::Revision(revision),
             };
-
             if let Err(error) = self.remote.commit(&decision, expect) {
                 still.push(keep(error.to_string()));
             }
@@ -377,8 +379,7 @@ impl<L: Store, R: Store> StateProvider for Hybrid<L, R> {
         let read = self.load_read(entity, id)?;
         match (read.was_stale, read.value) {
             (true, None) => Err(StoreError::Unreachable {
-                provider: "hybrid".to_owned(),
-                detail: "the authority did not answer and the local copy holds nothing, so                          whether this instance exists is unknown"
+                provider: "hybrid".to_owned(), detail: "the authority did not answer and the local copy holds nothing, so whether this instance exists is unknown"
                     .to_owned(),
             }),
             (_, value) => Ok(value),
@@ -413,14 +414,36 @@ impl<L: Store, R: Store> Store for Hybrid<L, R> {
             decision.instance.entity.clone(),
             decision.instance.id.clone(),
         );
-
         match self.policy.authority {
             // The remote decides. It is written first, and the local copy only follows a write that
             // was actually accepted — so a cache can never hold something the record of truth
             // refused.
             Authority::Remote => {
                 self.remote.commit(decision, expect)?;
-                self.local.commit(decision, expect)
+                match self.local.commit(decision, expect) {
+                    Ok(()) => Ok(()),
+                    // The mirror of the `Authority::Local` case, and it was missed when that one
+                    // was fixed: the authority took the write and the **local copy** refused it —
+                    // a full disk is enough. Returning the error alone left the two sides
+                    // disagreeing with nothing recorded, `divergences()` empty and `catch_up()` a
+                    // no-op, while every later write computed its expectation from the stale local
+                    // revision and was refused by the authority for ever.
+                    //
+                    // Recorded rather than described as impossible: nothing here can undo the
+                    // authority's write, and a divergence a person can see is the honest end of it.
+                    Err(error) => {
+                        self.divergences.push(Divergence {
+                            entity,
+                            id,
+                            local_revision: decision.instance.revision,
+                            detail: format!(
+                                "the authority accepted revision {} and the local copy refused it: \
+                                 {error}", decision.instance.revision
+                            ),
+                        });
+                        Err(error)
+                    }
+                }
             }
             // The local store decides, and what "decides" means depends on what was declared for
             // a divergence.
@@ -441,12 +464,8 @@ impl<L: Store, R: Store> Store for Hybrid<L, R> {
                         // report as a conflict for a person.
                         Err(error) => {
                             self.divergences.push(Divergence {
-                                entity,
-                                id,
-                                local_revision: decision.instance.revision,
-                                detail: format!(
-                                    "the replica accepted revision {} and this store refused it:                                      {error}",
-                                    decision.instance.revision
+                                entity, id, local_revision: decision.instance.revision, detail: format!(
+                                    "the replica accepted revision {} and this store refused it:                                      {error}", decision.instance.revision
                                 ),
                             });
                             Err(error)
