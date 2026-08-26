@@ -62,6 +62,21 @@ pub struct DomainEvent {
     #[serde(rename = "type")]
     pub event_type: String,
 
+    /// The state the instance was in before. `None` on a creation event: there was no before.
+    pub from_state: Option<String>,
+
+    /// The state it is in after. Written by the kernel when the operation was permitted, which is
+    /// what lets a fold set a lifecycle state without becoming a second way to set one (R-34).
+    pub to_state: String,
+
+    /// The fields this operation wrote, and only those. Every field on a creation event.
+    ///
+    /// Recorded because an event that says only *what happened* cannot be folded back into an
+    /// instance: `set:` assignments would be lost, and a rehydrated instance would silently differ
+    /// from the one the operations returned. An event that cannot rebuild what it describes is a
+    /// notification, not a record.
+    pub changed: Map<String, Value>,
+
     /// The payload, with every template reference resolved.
     pub payload: Value,
 }
@@ -684,8 +699,25 @@ fn materialize_event(
         id: context.id.to_owned(),
         revision,
         event_type: definition.event_type.clone(),
+        from_state: context.from_state.map(ToOwned::to_owned),
+        to_state: context.to_state.to_owned(),
+        changed: changed_fields(context),
         payload: resolve_template(&definition.payload, context)?,
     })
+}
+
+/// The fields this operation wrote: every one whose value differs from before it ran.
+///
+/// A creation has no "before", so every field it set is written. Derived from the two field maps
+/// rather than from the `set:` block, so a field an invariant or a default settled is recorded too
+/// — the record is what the instance *became*, not what the author remembered to list.
+fn changed_fields(context: &TemplateContext<'_>) -> Map<String, Value> {
+    context
+        .new_fields
+        .iter()
+        .filter(|(name, value)| context.old_fields.get(*name) != Some(*value))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect()
 }
 
 struct TemplateContext<'a> {

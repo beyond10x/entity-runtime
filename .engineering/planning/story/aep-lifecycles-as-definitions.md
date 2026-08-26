@@ -2,13 +2,13 @@
 format: aep.planning-md/1
 id: story:aep-lifecycles-as-definitions
 kind: story
-status: draft
+status: implemented
 title: 'Phase 1: the eight AEP lifecycles as entity definitions'
 summary: examples/aep/*.yaml, one operation per edge, and an equivalence test against artifacts/lifecycles/*.yaml at the pinned commit.
 relations:
 - derived_from: epic:drive-engineering-protocols
 - depends_on: story:aep-mapping-review
-revision: 4
+revision: 7
 ---
 # Story: Phase 1 — the eight AEP lifecycles as entity definitions
 

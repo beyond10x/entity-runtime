@@ -2,13 +2,13 @@
 format: aep.planning-md/1
 id: story:aep-open-status-vocabulary
 kind: story
-status: draft
+status: implemented
 title: 'Phase 4: an open status vocabulary'
 summary: correction-owed and the other rungs the closed ArtifactStatus enum cannot hold (gap register :70), added as data.
 relations:
 - derived_from: epic:drive-engineering-protocols
 - depends_on: story:aep-move-through-kernel
-revision: 3
+revision: 6
 ---
 # Story: Phase 4 — an open status vocabulary
 

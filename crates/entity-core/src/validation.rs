@@ -98,6 +98,38 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         ));
     }
 
+    // A projection naming a field the schema does not have, or a state the lifecycle does not
+    // declare, is refused where it is written rather than producing an empty read model at run time
+    // — an index that is silently always empty is the hardest kind of wrong to notice.
+    for (name, projection) in &definition.projections {
+        let path = format!("projections.{name}");
+        defects.check(
+            validate_reference(
+                &projection.key,
+                Scope {
+                    kind: ScopeKind::Invariant,
+                    fields: &definition.schema,
+                    args: None,
+                },
+            )
+            .map_err(|detail| DefinitionError::InvalidTemplate {
+                path: path.clone(),
+                message: format!("`key`: {detail}"),
+            }),
+        );
+
+        if let Some(state) = &projection.in_state {
+            if !definition.lifecycle.states.contains(state) {
+                defects.push(DefinitionError::InvalidRule {
+                    path: path.clone(),
+                    message: format!(
+                        "`in_state` names `{state}`, which the lifecycle does not declare"
+                    ),
+                });
+            }
+        }
+    }
+
     if let Some(event) = &definition.create.emit {
         defects.check(validate_event_definition(
             event,

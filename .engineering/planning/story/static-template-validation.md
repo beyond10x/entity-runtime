@@ -2,12 +2,12 @@
 format: aep.planning-md/1
 id: story:static-template-validation
 kind: story
-status: draft
+status: implemented
 title: Template paths are validated at registration
 summary: A set value or event payload that references an undeclared field or argument is refused when the definition is registered, as rule references already are.
 relations:
 - derived_from: epic:kernel
-revision: 2
+revision: 5
 ---
 # Story: Template paths are validated at registration
 

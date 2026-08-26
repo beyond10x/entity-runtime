@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
   "crates/entity-core",
+  "crates/entity-store",
+  "crates/entity-sqlite",
   "crates/entity-graph",
   "crates/entity-yaml",
   "crates/entity-cli",
@@ -9,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.3"
+version = "0.6.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/beyond10x/entity-runtime"

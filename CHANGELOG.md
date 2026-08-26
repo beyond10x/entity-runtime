@@ -6,6 +6,72 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.6.0] — 2026-08-26
+
+The shell. `entity-core` decided and this repository held nothing; R-80 described a shell that
+loads, calls the kernel, then persists, appends and projects together, and no such shell existed.
+Now three crates do, and the kernel is unchanged: the purity scan still finds no clock, no
+filesystem and no network inside it.
+
+### Added
+
+* **A store writes an instance and its events together.** `Store::commit` takes a whole `Decision`,
+  so a state cannot move without the event that explains it — there is no API that persists one
+  half. `StateProvider` and `EventProvider` are the read halves, and they live in `entity-store`,
+  outside the core, as R-82 said they must. R-83.
+
+* **Every write says what it expected to find.** `Expect` is an argument, not a convention: a store
+  holding a different revision refuses instead of overwriting, and the expectation is checked
+  before anything is written, so a refused commit leaves no trace at all. Two executions from one
+  revision leave exactly one accepted. R-84.
+
+* **One conformance suite, run against every provider.** It lives in the crate that owns the traits
+  and travels to each implementation, so `memory`, `file` and `sqlite` answer the same cases the
+  same way — including that an instance nobody stored is **absent**, not an error. The suite is
+  also run against a provider that is deliberately wrong, and has to both catch it and localise it,
+  because a suite that only ever passes is a description of the implementation it was written
+  against. R-85, R-101, R-102.
+
+* **`entity-sqlite`: one `BEGIN`, both writes, one `COMMIT`.** A trait that claims a state and its
+  events arrive together needs at least one implementor that a torn write can actually be tested
+  against. A refused commit rolls back both halves, and the store survives being closed and
+  reopened. R-103.
+
+* **An event envelope, supplied by the shell.** `event_id`, `recorded_at`, `correlation`,
+  `causation` and `actor`, outside `entity-core` because R-01 forbids the kernel to manufacture any
+  of them. Correlation and causation are separate fields answering separate questions — *which flow
+  was this* and *what caused this one event*. Identities are derived, so sealing one decision twice
+  produces the same ids without a clock or a random source. R-86, R-88.
+
+* **Replay: an instance rehydrated from its events.** A fold refuses any event whose transition the
+  definition does not declare, whose `from_state` is not where the fold reached, whose revision does
+  not follow, or which belongs to another instance — so replay can reach no state `execute` would
+  have refused. R-97.
+
+* **Projections are data the shell evaluates.** A definition declares `projections:` and performs
+  none of them, because a projection reads across instances and the kernel is handed one. A
+  projection naming a field the schema does not declare, or a state the lifecycle does not declare,
+  is refused at registration rather than producing a read model that is silently always empty
+  forever. A read model is the same bytes every run. R-98, R-99, R-100.
+
+### Fixed
+
+* **An event could not rebuild what it described.** `DomainEvent` recorded the operation but not
+  the fields it wrote, so a `set:` was lost and a fold produced an instance the original run never
+  had. An event that cannot rebuild what it describes is a notification, not a record.
+  `from_state`, `to_state` and `changed` are now on the event. R-89 is new, and it is the
+  requirement that makes replay meaningful rather than decorative.
+
+* **A missing envelope field asserted something instead of refusing.** `serde` defaults a missing
+  `Option` to `None`, so an envelope with no `actor` key deserialised as *nobody human caused this*
+  — a claim, made by an absence. Every envelope field is now required, and an absent actor
+  serialises as an explicit null rather than disappearing. R-87.
+
+* **Four requirements were registered and unchecked.** Rows numbered `R-90b`-style did not match
+  the requirement checker's `R-\d+` pattern, so they were invisible to `req-check` while looking
+  exactly as registered as every other row. Renumbered; the count the gate reports is now the count
+  it actually verifies.
+
 ## [0.5.3] — 2026-08-26
 
 ### Fixed

@@ -2,13 +2,13 @@
 format: aep.planning-md/1
 id: story:aep-evidence-preconditions
 kind: story
-status: draft
+status: implemented
 title: 'Phase 3: implemented and accepted require evidence'
 summary: Preconditions on the moves that today are claims nothing checks (gap register :39).
 relations:
 - derived_from: epic:drive-engineering-protocols
 - depends_on: story:aep-move-through-kernel
-revision: 3
+revision: 6
 ---
 # Story: Phase 3 — implemented and accepted require evidence
 

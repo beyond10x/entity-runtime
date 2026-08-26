@@ -55,6 +55,34 @@ pub struct EntityDefinition {
     /// The operations an instance accepts, by name.
     #[serde(default)]
     pub operations: BTreeMap<String, OperationDefinition>,
+
+    /// Read models this type declares, by name.
+    ///
+    /// Declared here and executed by the shell, which is the same split as everything else: the
+    /// kernel holds the statement as data and performs none of it. A projection touches no
+    /// instance the kernel was handed, so it could not be evaluated here even in principle.
+    #[serde(default)]
+    pub projections: BTreeMap<String, ProjectionDefinition>,
+}
+
+/// A read model: instances grouped by something they hold.
+///
+/// Deliberately one shape — group by a key, optionally over a subset. `by_status` is
+/// `key: $state`; `open_per_customer` is `key: $fields.customer` with `in_state: open`. That is
+/// what a read model is for, and it is the shape a store can build an index for.
+///
+/// The condition language grows operator by operator and never into a language, so this does not
+/// gain filters, joins or aggregates because they would be convenient. A projection that needs
+/// arithmetic is a consumer's job, over what this hands it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectionDefinition {
+    /// What to group by: `$state`, `$id`, `$entity`, or `$fields.<name>`.
+    pub key: String,
+
+    /// Only instances in this lifecycle state. Every instance when absent.
+    #[serde(default)]
+    pub in_state: Option<String>,
 }
 
 impl EntityDefinition {
