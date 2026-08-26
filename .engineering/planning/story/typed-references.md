@@ -2,12 +2,12 @@
 format: aep.planning-md/1
 id: story:typed-references
 kind: story
-status: draft
+status: implemented
 title: Typed references between entities
 summary: A field kind ref naming an entity type, with the checking boundary (kernel input vs shell) decided.
 relations:
 - derived_from: epic:kernel
-revision: 4
+revision: 7
 ---
 # Story: Typed references between entities
 

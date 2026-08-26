@@ -2,14 +2,14 @@
 format: aep.planning-md/1
 id: story:aep-move-through-kernel
 kind: story
-status: draft
+status: implemented
 title: 'Phase 2: protocol artifact move evaluated by the kernel'
 summary: Identical accept/refuse verdicts on the org's planning stores, behind the existing CLI.
 relations:
 - derived_from: epic:drive-engineering-protocols
 - depends_on: story:three-valued-conditions
 - depends_on: story:aep-lifecycles-as-definitions
-revision: 6
+revision: 9
 ---
 # Story: Phase 2 — protocol artifact move evaluated by the kernel
 

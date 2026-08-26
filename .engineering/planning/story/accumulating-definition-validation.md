@@ -2,12 +2,12 @@
 format: aep.planning-md/1
 id: story:accumulating-definition-validation
 kind: story
-status: draft
+status: implemented
 title: Definition validation accumulates every defect
 summary: Registry::register reports every DefinitionError of a document at once instead of the first.
 relations:
 - derived_from: epic:kernel
-revision: 3
+revision: 6
 ---
 # Story: Definition validation accumulates every defect
 

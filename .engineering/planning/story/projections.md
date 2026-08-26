@@ -2,12 +2,14 @@
 format: aep.planning-md/1
 id: story:projections
 kind: story
-status: draft
+status: implemented
 title: Projection definitions
 summary: Declared folds over events for search and read models, executed by the shell.
 relations:
 - derived_from: epic:kernel
-revision: 2
+- decomposes: epic:the-shell
+- depends_on: story:event-envelope
+revision: 7
 ---
 # Story: Projection definitions
 

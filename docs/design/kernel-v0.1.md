@@ -424,7 +424,35 @@ styles (R-81):
 | state persistence | the current instance | store the new instance; publish the events |
 | event sourcing | the event history → fold → instance | append the events; the instance is a cache |
 
-The fold does not exist yet. When it is added it must not become a second write path to
+### 10.1 The fold, and why it is not a second write path
+
+The fold exists now: `rehydrate(definition, events)`.
+
+R-34 says `lifecycle_state` is written by `create` and `execute` and by nothing else, and a fold
+plainly *does* set a state. What stops it being a second way in is two things together.
+
+**The state comes from the event, not from the caller.** R-89 puts `from_state`, `to_state` and the
+fields the operation wrote onto `DomainEvent`, because the kernel wrote them at the moment it
+permitted the operation. Without them a fold would have to guess: an operation's `set:` assignments
+would be lost, and a rehydrated instance would silently differ from the one the operations returned.
+An event that cannot rebuild what it describes is a notification, not a record.
+
+**Every step is re-checked against the definition.** R-97: the fold refuses an event whose
+transition no operation declares, whose `from_state` is not where the fold had reached, whose
+revision does not follow, or which is about another instance. An invented event therefore has to
+name a transition the definition already permits, from the state the instance is already in — which
+is precisely what `execute` would have allowed anyway.
+
+So a fold is not a way to reach a state that could not have been reached. It is a slower way to
+reach one that could.
+
+**A creation event is required**, and a definition emitting none cannot be event-sourced. Said by
+name rather than by conjuring an empty instance to fold onto: an instance built from no record would
+be the fold asserting something no event supports.
+
+The old note, kept because it still holds:
+
+When it was added it had to not become a second write path to
 `lifecycle_state`: replaying `OrderFulfilled` may set the state to `fulfilled` because the event was
 produced by an operation that was permitted to; nothing else may (R-34). `eventlog` — the org's
 event-sourcing kit — is the natural home for the append-only side; this crate stays the decider.

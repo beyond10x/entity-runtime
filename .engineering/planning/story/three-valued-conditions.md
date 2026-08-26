@@ -2,12 +2,12 @@
 format: aep.planning-md/1
 id: story:three-valued-conditions
 kind: story
-status: draft
+status: implemented
 title: 'Three-valued rule evaluation: unknown is not false'
 summary: A missing reference makes a rule Unknown, never False; a rule holds only when True; the refusal names which of the two it was.
 relations:
 - derived_from: epic:kernel
-revision: 5
+revision: 8
 ---
 # Story: Three-valued rule evaluation — unknown is not false
 

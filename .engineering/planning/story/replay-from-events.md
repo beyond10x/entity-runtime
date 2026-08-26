@@ -2,12 +2,14 @@
 format: aep.planning-md/1
 id: story:replay-from-events
 kind: story
-status: draft
+status: implemented
 title: Rehydrate an instance from its events
 summary: A fold from an event history to an instance, without opening a second write path to lifecycle_state; eventlog is the natural store.
 relations:
 - derived_from: epic:kernel
-revision: 2
+- decomposes: epic:the-shell
+- depends_on: story:event-envelope
+revision: 7
 ---
 # Story: Rehydrate an instance from its events
 

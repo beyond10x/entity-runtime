@@ -2,12 +2,13 @@
 format: aep.planning-md/1
 id: story:provider-spi
 kind: story
-status: draft
+status: implemented
 title: Provider SPI outside the core
 summary: State, event, search and blob provider traits in a crate that depends on entity-core, with optimistic concurrency on revision and an in-memory reference implementation.
 relations:
 - derived_from: epic:kernel
-revision: 2
+- decomposes: epic:the-shell
+revision: 6
 ---
 # Story: Provider SPI outside the core
 

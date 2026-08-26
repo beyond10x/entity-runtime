@@ -106,6 +106,7 @@
 mod definition;
 mod error;
 mod registry;
+mod replay;
 mod runtime;
 mod timestamp;
 mod truth;
@@ -118,5 +119,6 @@ pub use definition::{
 };
 pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
 pub use registry::Registry;
+pub use replay::rehydrate;
 pub use runtime::{create, execute, Decision, DomainEvent, EntityInstance, Runtime};
 pub use truth::Truth;

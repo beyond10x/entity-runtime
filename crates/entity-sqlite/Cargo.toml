@@ -1,0 +1,20 @@
+[package]
+name = "entity-sqlite"
+description = "A transactional entity store over SQLite: the provider that can write state and events atomically."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+entity-core = { path = "../entity-core", version = "0.6.0" }
+entity-store = { path = "../entity-store", version = "0.6.0" }
+serde_json.workspace = true
+# `bundled`: SQLite is compiled from vendored C rather than linked against whatever the machine
+# happens to have. A store whose behaviour depends on the host's library version is a store two
+# machines can disagree about, which is the one thing a provider must not be.
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[lints]
+workspace = true

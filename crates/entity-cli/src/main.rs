@@ -13,6 +13,7 @@ use entity_core::{
     CoreError, Decision, DefinitionErrors, EntityDefinition, EntityInstance, Registry, Runtime,
     ValidationError,
 };
+use entity_store::{Expect, FileStore, Recording, StateProvider, Store};
 use serde_json::{json, Value};
 use std::{
     fmt::Write as _,
@@ -91,6 +92,14 @@ enum Command {
         /// The fields, as inline JSON, `@<path>` or `-` for stdin.
         #[arg(long, default_value = "{}")]
         fields: String,
+        /// A directory to keep the result in, so the next command can find it.
+        ///
+        /// Without one this prints a `Decision` and forgets it, which is the kernel's own shape:
+        /// it decides and holds nothing. With one, the decision is committed — state and events
+        /// together — and `execute --store` can pick the instance up by id instead of being handed
+        /// it back on the command line.
+        #[arg(long)]
+        store: Option<PathBuf>,
         #[arg(long, value_enum, default_value_t = Format::Json)]
         format: Format,
     },
@@ -99,14 +108,41 @@ enum Command {
         #[command(flatten)]
         definition: DefinitionArg,
         /// The current instance (or a Decision holding one), as inline JSON, `@<path>` or `-`.
-        #[arg(long)]
-        instance: String,
+        ///
+        /// Not needed when `--store` and `--id` say where to find it.
+        #[arg(long, required_unless_present = "store")]
+        instance: Option<String>,
+        /// A directory holding the instance, written by an earlier `create --store`.
+        ///
+        /// The instance is loaded from it, the decision is committed back to it at the revision
+        /// that was loaded, and a concurrent writer is refused rather than overwritten.
+        #[arg(long, requires = "id")]
+        store: Option<PathBuf>,
+        /// Which instance in the store to act on.
+        #[arg(long, requires = "store")]
+        id: Option<String>,
+        /// Which type to act on, when several `--definition` files were given.
+        #[arg(long = "entity")]
+        wanted_entity: Option<String>,
         /// The operation name, as declared in the definition.
         #[arg(long)]
         operation: String,
         /// The arguments, as inline JSON, `@<path>` or `-` for stdin.
         #[arg(long, default_value = "{}")]
         arguments: String,
+        /// The flow these events belong to. Enveloping is all-or-nothing: give this and the
+        /// decision's events are printed sealed, with a time, a cause and an actor.
+        #[arg(long, requires = "recorded_at", requires = "causation")]
+        correlation: Option<String>,
+        /// When this was recorded, ISO-8601. Your clock: the kernel has none.
+        #[arg(long)]
+        recorded_at: Option<String>,
+        /// What immediately led to this — the step before it, not the whole flow.
+        #[arg(long)]
+        causation: Option<String>,
+        /// Who asked. Leave it out and the envelope records that nothing human did, explicitly.
+        #[arg(long)]
+        actor: Option<String>,
         #[arg(long, value_enum, default_value_t = Format::Json)]
         format: Format,
     },
@@ -145,6 +181,9 @@ enum GraphFormat {
 enum Failure {
     /// The kernel refused. Exit 1. The refusal is printed to stdout in JSON.
     Refused(CoreError),
+    /// The store refused. Exit 1, beside the kernel's refusals rather than beside a usage error:
+    /// a revision conflict is not a wrong invocation, it is somebody else having moved first.
+    StoreRefused(String),
     /// Already reported in full on stdout — `validate` prints a line per file. Exit 1.
     Reported,
     /// The invocation was wrong. Exit 2. Printed to stderr.
@@ -177,6 +216,23 @@ fn main() -> ExitCode {
                 serde_json::to_string_pretty(&refusal(&error)).expect("json")
             );
             eprintln!("refused: {error}");
+            ExitCode::from(1)
+        }
+        Err(Failure::StoreRefused(message)) => {
+            // Same shape as a kernel refusal — JSON on stdout for a pipeline, a sentence on stderr
+            // for a person — because to a caller it is the same class of answer: no, and here is
+            // exactly what was found instead.
+            let _ = writeln!(
+                out,
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "refused": true,
+                    "by": "store",
+                    "detail": message,
+                }))
+                .expect("json")
+            );
+            eprintln!("refused: {message}");
             ExitCode::from(1)
         }
         Err(Failure::Reported) => ExitCode::from(1),
@@ -227,31 +283,99 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             entity: wanted,
             id,
             fields,
+            store,
             format,
         } => {
             let registry = load_registry(&definition.definitions)?;
             let (entity, version) = chosen_type(&registry, wanted.as_deref())?;
             let fields = read_value(&fields, "--fields", &mut StdinOnce::default())?;
             let decision = Runtime::new(&registry).create(&entity, version, id, fields)?;
+            if let Some(root) = store {
+                // A creation expects nothing to be there. Committing a second one under the same
+                // identity is refused rather than overwriting the first.
+                commit(&root, &decision, Expect::Absent)?;
+            }
             write_decision(out, &decision, format)
         }
         Command::Execute {
             definition,
             instance,
+            store,
+            id,
+            wanted_entity,
             operation,
             arguments,
+            correlation,
+            recorded_at,
+            causation,
+            actor,
             format,
         } => {
             let registry = load_registry(&definition.definitions)?;
             // One reader, so a second `-` is refused rather than silently handed an empty
             // document: the caller's arguments would otherwise be consumed as the instance.
             let mut stdin = StdinOnce::default();
-            let instance = read_instance(&instance, &mut stdin)?;
+            let (instance, from_store) = match (&store, &id) {
+                (Some(root), Some(id)) => {
+                    let (entity, _) = chosen_type(&registry, wanted_entity.as_deref())?;
+                    let held = FileStore::open(root)
+                        .load(&entity, id)
+                        .map_err(|error| Failure::Usage(error.to_string()))?
+                        .ok_or_else(|| {
+                            Failure::Usage(format!(
+                                "the store at {} holds no {entity} with id {id}",
+                                root.display()
+                            ))
+                        })?;
+                    (held, true)
+                }
+                _ => {
+                    let source = instance.as_deref().expect("clap requires one of the two");
+                    (read_instance(source, &mut stdin)?, false)
+                }
+            };
             let arguments = read_value(&arguments, "--arguments", &mut stdin)?;
+            // The revision *as loaded*, so a writer that moved in between is refused rather than
+            // overwritten. Reading it before executing is the point: the decision's own revision is
+            // already one ahead.
+            let expected = Expect::Revision(instance.revision);
             let decision = Runtime::new(&registry).execute(&instance, &operation, arguments)?;
+            if from_store {
+                commit(store.as_ref().expect("checked above"), &decision, expected)?;
+            }
+            // Sealed only when the caller supplied what the kernel cannot know. Clap requires the
+            // three together, so there is no half-enveloped shape to interpret.
+            if let (Some(correlation), Some(recorded_at), Some(causation)) =
+                (correlation, recorded_at, causation)
+            {
+                let recording = Recording {
+                    recorded_at,
+                    correlation,
+                    causation,
+                    actor,
+                };
+                let sealed = recording.seal(&decision.events);
+                return write_all(
+                    out,
+                    &to_json(&json!({
+                        "instance": decision.instance,
+                        "events": sealed,
+                    }))?,
+                );
+            }
             write_decision(out, &decision, format)
         }
     }
+}
+
+/// Commits a decision to the store at `root`, turning a refusal into a usage failure.
+///
+/// Exit 1 rather than 2: a revision conflict is not a wrong invocation, it is the store answering
+/// that somebody else moved first — the same class of "no" as the kernel refusing an operation.
+fn commit(root: &Path, decision: &Decision, expect: Expect) -> Result<(), Failure> {
+    FileStore::open(root)
+        .commit(decision, expect)
+        .map_err(|error| Failure::StoreRefused(error.to_string()))
 }
 
 // --- Loading ---------------------------------------------------------------------------------------

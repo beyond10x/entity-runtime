@@ -644,3 +644,116 @@ fn two_definitions_of_the_same_type_and_version_are_refused() {
     assert_eq!(refusal["kind"], "definition");
     assert_eq!(refusal["defect"], "duplicate_definition");
 }
+
+/// A store carries the instance between commands, so `execute` needs no `--instance`.
+///
+/// This is the seam R-80 describes, end to end: the kernel decided, the shell kept it, and the next
+/// command found it. Before a store existed the caller had to catch the `Decision` and hand it back
+/// on the next command line, which works and is not something anybody would build a workflow on.
+#[test]
+fn a_store_carries_the_instance_from_create_to_execute() {
+    let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-store");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("scratch root");
+    let definition = root.join("ticket.yaml");
+    std::fs::write(
+        &definition,
+        "entity: ticket\nversion: 1\nschema:\n  fields:\n    title: { type: string, required: true }\nlifecycle:\n  initial: open\n  states: [open, closed]\noperations:\n  close:\n    transitions:\n      - from: open\n        to: closed\n    emits:\n      - type: TicketClosed\n        payload: { ticket: $id }\n",
+    )
+    .expect("a definition");
+    let store = root.join("store");
+
+    let created = entity()
+        .args(["create", "--definition"])
+        .arg(&definition)
+        .args([
+            "--id",
+            "one",
+            "--fields",
+            r#"{"title":"A ticket"}"#,
+            "--store",
+        ])
+        .arg(&store)
+        .output()
+        .expect("runs");
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+
+    // No `--instance`: the store is where it comes from.
+    let closed = entity()
+        .args(["execute", "--definition"])
+        .arg(&definition)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--id", "one", "--operation", "close"])
+        .output()
+        .expect("runs");
+    assert!(
+        closed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&closed.stderr)
+    );
+
+    let decision: serde_json::Value =
+        serde_json::from_slice(&closed.stdout).expect("a decision on stdout");
+    assert_eq!(decision["instance"]["lifecycle_state"], "closed");
+    assert_eq!(decision["instance"]["revision"], 2);
+    assert_eq!(decision["events"].as_array().expect("events").len(), 1);
+
+    // And it landed: state and events are both on disk.
+    assert!(store.join("ticket/one.json").is_file());
+    assert!(store.join("ticket/one.events.jsonl").is_file());
+}
+
+/// Creating twice under one identity is the store's refusal, not the kernel's, and says so.
+#[test]
+fn a_second_creation_of_one_identity_is_refused_by_the_store() {
+    let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-store-twice");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("scratch root");
+    let definition = root.join("ticket.yaml");
+    std::fs::write(
+        &definition,
+        "entity: ticket\nversion: 1\nschema:\n  fields:\n    title: { type: string, required: true }\nlifecycle:\n  initial: open\n  states: [open, closed]\noperations: {}\n",
+    )
+    .expect("a definition");
+    let store = root.join("store");
+
+    let create = || {
+        entity()
+            .args(["create", "--definition"])
+            .arg(&definition)
+            .args([
+                "--id",
+                "one",
+                "--fields",
+                r#"{"title":"A ticket"}"#,
+                "--store",
+            ])
+            .arg(&store)
+            .output()
+            .expect("runs")
+    };
+
+    assert!(create().status.success());
+    let again = create();
+    assert_eq!(
+        again.status.code(),
+        Some(1),
+        "a store refusal exits 1, beside the kernel's"
+    );
+
+    let refusal: serde_json::Value =
+        serde_json::from_slice(&again.stdout).expect("the refusal is JSON");
+    assert_eq!(refusal["by"], "store", "it says which side said no");
+    assert!(
+        refusal["detail"]
+            .as_str()
+            .expect("a detail")
+            .contains("expected absent, found revision 1"),
+        "the refusal says what was expected and what was found: {refusal}"
+    );
+}

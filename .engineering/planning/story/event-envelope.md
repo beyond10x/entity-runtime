@@ -2,12 +2,14 @@
 format: aep.planning-md/1
 id: story:event-envelope
 kind: story
-status: draft
+status: implemented
 title: A reference event envelope type
 summary: event_id, recorded_at, correlation, causation and actor around a DomainEvent — defined outside entity-core, so shells agree on the shape without the kernel touching a clock.
 relations:
 - derived_from: epic:kernel
-revision: 2
+- decomposes: epic:the-shell
+- depends_on: story:provider-spi
+revision: 7
 ---
 # Story: A reference event envelope type
 
