@@ -139,6 +139,10 @@ prints is accepted back as the next `--instance`.
 | a rule or template cannot read what its scope forbids | refused at registration, whole path checked — `$fields.address.countri` never reaches run time |
 | a key nobody reads cannot silence a rule | every definition struct denies unknown fields; a condition carries exactly one operator |
 | every public item is documented, no `unsafe` | `missing_docs` + `unsafe_code = "forbid"` in `[workspace.lints]`, fatal under the gate's `-D warnings` |
+| a store writes an instance and its events together | `Store::commit` takes a whole `Decision`; there is no API that persists one half. Three providers pass one conformance suite, which is also run against a **deliberately wrong** provider it has to catch and localise |
+| a store that could not be reached is never *absent* | `StoreError::Unreachable` is its own variant and survives the wire. *Absent* is a fact about the data; silence is a fact about the network, and a provider that confuses them is how a synchronisation deletes something |
+| a hybrid's behaviour is four words somebody typed | `Policy::new` takes authority, read path, unreachable behaviour and divergence behaviour, and has **no `Default`** — a default policy is one nobody chose applied to somebody's data |
+| replay reaches no state `execute` would refuse | the fold checks the transition, the previous state, revision continuity, instance identity, that a creation enters `lifecycle.initial`, and validates the result against the schema |
 | every requirement is pinned | `scripts/check-requirements.py` fails the gate when a row cites a test that does not exist |
 
 Numbers compare numerically everywhere, so `eq: [$fields.total, 100]` holds for `100.0` too. A key
@@ -161,7 +165,7 @@ reproduction and its disposition, is
 
 | repo | relationship |
 |---|---|
-| [engineering-protocols](https://github.com/beyond10x/engineering-protocols) | the intended first adopter: its artifact model — kinds, lifecycles, moves, events — expressed as definitions this kernel executes. [`docs/design/engineering-protocols-adoption-v0.1.md`](docs/design/engineering-protocols-adoption-v0.1.md) |
+| [engineering-protocols](https://github.com/beyond10x/engineering-protocols) | the first adopter, and no longer only intended: it takes `entity-core` as a dependency, its eight lifecycles are expressed as definitions this kernel executes, and its `aep-backend-sqlite` is an adapter over `entity-sqlite`. The arrow points one way — nothing of theirs appears here. [`docs/design/engineering-protocols-adoption-v0.1.md`](docs/design/engineering-protocols-adoption-v0.1.md) |
 | [eventlog](https://github.com/beyond10x/eventlog) | the append-only side: this decides, that stores |
 | [atlas](https://github.com/beyond10x/atlas) | the map of the `beyond10x` estate this sits in |
 
@@ -187,8 +191,12 @@ this file.
 
 | | |
 |---|---|
-| [`crates/entity-core/`](crates/entity-core/) | the kernel |
+| [`crates/entity-core/`](crates/entity-core/) | the kernel — decides, stores nothing |
 | [`crates/entity-yaml/`](crates/entity-yaml/) | `&str → EntityDefinition` |
+| [`crates/entity-store/`](crates/entity-store/) | the provider traits, memory and file stores, the event envelope, projections, and one conformance suite that travels to each |
+| [`crates/entity-sqlite/`](crates/entity-sqlite/) | one `BEGIN`, both writes, one `COMMIT` — the promise a file store cannot make |
+| [`crates/entity-remote/`](crates/entity-remote/) | a store somewhere else, and a hybrid over a local one whose policy is four required words with no default |
+| [`crates/entity-graph/`](crates/entity-graph/) | a definition, drawn |
 | [`crates/entity-cli/`](crates/entity-cli/) | the `entity` command |
 | [`examples/`](examples/) | definitions the gate validates |
 | [`docs/guide/`](docs/guide/) | getting started · the definition language · the command · the library |
