@@ -84,9 +84,12 @@ def reflow(text: str) -> str:
             pending.append(line.rstrip())
             continue
 
-        # Two trailing spaces is Markdown asking for a break. Honour it.
+        # Two trailing spaces is Markdown asking for a break. Honour it — and keep the spaces,
+        # not just the line ending: a bare newline renders as `<br>` under GFM today, so dropping
+        # them would leave the author's deliberate break standing on the very quirk this reflow
+        # exists to remove.
         if line.endswith("  "):
-            pending.append(line.strip())
+            pending.append(line if not pending else stripped + "  ")
             flush()
             continue
 
@@ -128,7 +131,7 @@ def _self_test() -> int:
         (
             "two trailing spaces is an author asking for a break, and is kept",
             "keep this break  \nnext line\n",
-            "keep this break\nnext line\n",
+            "keep this break  \nnext line\n",
         ),
     ]
     failures = []
