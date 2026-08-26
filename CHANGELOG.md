@@ -6,6 +6,104 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.8.0] — 2026-08-26
+
+**A review of 0.6.0 and 0.7.0 found that six of their published claims were false.** Two independent
+reviewers, run against the released commits; four defects were found by both. This release fixes
+them and corrects the record. Nothing in 0.6.0 or 0.7.0 has been rewritten — a published section
+stays as it was published, and the corrections are here.
+
+### Corrections to 0.6.0 and 0.7.0
+
+* **0.6.0's `### Fixed` section described two defects that never shipped.** *"Four requirements were
+  registered and unchecked"* — the `R-90b` spelling it names exists nowhere in this repository's
+  history except in that changelog entry; at 0.5.3 every row already matched the checker's pattern,
+  and the four rows in question were **added** by 0.6.0, correctly numbered. *"A missing envelope
+  field asserted something instead of refusing"* — `envelope.rs` did not exist before 0.6.0, so
+  nothing released could have had the defect. Both describe things caught while the wave was being
+  built, which the tag message says correctly and the changelog did not. The third entry, about an
+  event that could not rebuild what it described, is genuine.
+
+* **0.6.0 changed the CLI and said nothing.** `create` gained `--store`; `execute` gained `--store`,
+  `--id`, `--entity`, `--correlation`, `--recorded-at`, `--causation` and `--actor`; `--instance`
+  went from required to optional; and a store refusal now exits 1 with
+  `{"refused": true, "by": "store", …}`. R-91 to R-93 are updated to match.
+
+* **`catch_up` did not merge nothing — it merged by machine.** The claim appears five times across
+  0.7.0's changelog, its tag, R-108 and the module's own documentation. See below for what it does
+  now.
+
+### Fixed
+
+* **A forged creation event could enter any state, carrying any fields.** The first event of a
+  history was exempt from every lifecycle check, so a fold reached a state `create` never produces —
+  and installed fields of the wrong type, or fields the schema does not declare, without looking. A
+  creation event is now held to `lifecycle.initial`, and the folded instance is validated against
+  the schema. This was R-97's headline claim: *replay can reach no state `execute` would have
+  refused.* R-97 gains five pins, including the two branches it claimed and nothing asserted.
+
+* **`OnDivergence::Refuse` moved the local store and recorded nothing.** It wrote locally first and
+  asked the replica second, so a replica that refused left an accepted write standing — unreplicated,
+  unrecorded, and with the caller told the write had failed. Under `Refuse` the replica is now asked
+  **first**: it is the side that can refuse for a reason the authority does not know about. The one
+  case that remains — the replica accepts and the authority then refuses — is **recorded as a
+  divergence** and documented, rather than described as impossible; undoing it needs a two-phase
+  commit this crate does not have.
+
+* **`catch_up` overwrote a replica that had moved on its own.** The expectation was derived from the
+  replica's *current* revision, which made a conflict structurally unreachable: whatever the replica
+  held, the local copy won and the function reported success. It now refuses to replay onto a replica
+  at or ahead of this store's revision, and says so. What it cannot yet catch is stated in its own
+  documentation rather than left for a reader to discover.
+
+* **`catch_up` dropped divergences it could not examine, and duplicated events.** A local read that
+  failed was treated as *the write is gone* — discarding the only record it happened. And the whole
+  local log was replayed regardless of what the replica already held, producing a log with an event
+  twice, which no longer folds. It now keeps what it could not read, and sends only what the replica
+  has not seen.
+
+* **A stale read that found nothing was reported as absent.** `Read` carries `was_stale`; the
+  `StateProvider` trait has nowhere to put it, so every generic caller — including a hybrid nested
+  inside another — saw `Ok(None)` where nothing had been learned. It is now
+  `Unreachable`. A stale read that found a *value* still returns it: that is what the policy asked
+  for.
+
+* **A wire-version refusal was reported as unreachable.** A live, answering peer that refuses a
+  version this build does not speak is not a peer you cannot reach — and a `ServeStale` policy would
+  serve stale data for ever against a remote that is up and saying no. `Answer::Refused` is new.
+
+* **`Unreachable` did not survive the wire.** A far side that could not reach *its own* store
+  arrived here as an ordinary backend failure, so every `WhenUnreachable` policy downstream stopped
+  applying. `Answer::Unreachable` is new, and carries the far side's provider name.
+
+* **`entity-sqlite` failed roughly half of all concurrent writes, including writes to unrelated
+  instances.** The transaction was `DEFERRED`, so the read took a shared lock that could not upgrade
+  when two writers had both got that far; and with no busy timeout the loser was refused
+  immediately. Worse, ~70% of genuine conflicts arrived as `Backend`, which this crate's own
+  documentation tells callers means *stop retrying*. Now `IMMEDIATE`, with a five-second busy
+  timeout: a second writer waits, and a real clash arrives as `RevisionConflict`.
+
+* **A retried commit appended its events twice.** `FileStore` writes events before the state, so a
+  failed state write left the expectation unchanged — and the retry any caller is entitled to make
+  produced a log that no longer folds. ENOSPC was enough. The append is now idempotent.
+
+* **`FileStore` could install a half-written file, and did not sync.** Every writer of one instance
+  shared a temporary path, so one writer's rename could install an inode another was still filling.
+  The name now carries the process id and a counter. Both the event append and the state write are
+  now `fsync`ed — without which the module's stated recovery story inverts: the state lands and the
+  event explaining it is lost.
+
+### Changed
+
+* **`entity-sqlite`'s rollback test now tears a write.** It asserted a refusal at the *pre-check*,
+  which happens before either write — so there were no halves to roll back, and the assertion passed
+  verbatim against `FileStore`, the provider whose documentation says it cannot make this promise.
+  It now makes the event write fail after the instance write has landed. A second test asserts that
+  `FileStore` **does** fail that case, so the first cannot quietly stop being evidence.
+
+* `LoopbackTransport::store_mut` — so a test can move the far side independently, which is the only
+  way to write a reconciliation test whose replica can actually conflict.
+
 ## [0.7.0] — 2026-08-26
 
 Storage that is somewhere else, and storage that is in two places at once. The network lives in the

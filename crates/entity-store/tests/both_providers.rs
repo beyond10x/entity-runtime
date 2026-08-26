@@ -1,4 +1,9 @@
-//! One suite, run against every provider.
+//! One suite, run against every provider in this crate.
+//!
+//! Two of the three, to be exact: `entity-sqlite` depends on this crate, so it cannot be a
+//! dependency of these tests. It runs the same suite against itself, in
+//! `crates/entity-sqlite/tests/conformance.rs`. The suite is the shared thing; where it is invoked
+//! from is not.
 //!
 //! The SPI's whole value is that a caller can swap the thing underneath. That is a claim about
 //! *agreement*, and a claim about agreement checked against one implementation is not checked at
@@ -204,4 +209,74 @@ fn the_file_store_survives_being_reopened() {
     assert_eq!(loaded.lifecycle_state, "closed");
     assert_eq!(loaded.revision, 2);
     assert_eq!(reopened.events("ticket", "one").expect("events").len(), 1);
+}
+
+#[test]
+fn a_retried_commit_appends_its_events_once() {
+    // `FileStore` writes events before the state, so a state write that fails leaves the
+    // expectation unchanged — and the retry any caller is entitled to make used to append the same
+    // events a second time, producing a log that no longer folds. ENOSPC or EIO is enough.
+    let directory = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("retry-once");
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).expect("a directory");
+
+    // Its own definition: this case needs an event at revision 1, and the shared fixture emits
+    // none on create.
+    let definition = serde_json::from_value(serde_json::json!({
+        "entity": "ticket",
+        "version": 1,
+        "schema": { "fields": { "title": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+        "create": { "emit": { "type": "TicketOpened", "payload": { "ticket": "$id" } } },
+        "operations": {
+            "close": { "transitions": [{ "from": "open", "to": "closed" }] }
+        }
+    }))
+    .expect("the definition parses");
+    let mut registry = Registry::new();
+    registry.register(definition).expect("it validates");
+    let runtime = Runtime::new(&registry);
+    let mut store = FileStore::open(&directory);
+
+    let created = runtime
+        .create(
+            "ticket",
+            1,
+            "one",
+            serde_json::json!({ "title": "A ticket" }),
+        )
+        .expect("permitted");
+
+    // The first attempt: make the state write fail while the event append succeeds.
+    use std::os::unix::fs::PermissionsExt as _;
+    let entity_directory = directory.join("ticket");
+    std::fs::create_dir_all(&entity_directory).expect("a directory");
+    // Seed the events file so appending needs no new directory entry.
+    std::fs::write(entity_directory.join("one.events.jsonl"), "").expect("seeded");
+    let mut locked = std::fs::metadata(&entity_directory)
+        .expect("metadata")
+        .permissions();
+    locked.set_mode(0o555);
+    std::fs::set_permissions(&entity_directory, locked).expect("read-only");
+
+    store
+        .commit(&created, Expect::Absent)
+        .expect_err("the state write cannot land");
+
+    let mut open = std::fs::metadata(&entity_directory)
+        .expect("metadata")
+        .permissions();
+    open.set_mode(0o755);
+    std::fs::set_permissions(&entity_directory, open).expect("writable again");
+
+    // The retry, which is what a caller seeing a backend failure is entitled to do.
+    store.commit(&created, Expect::Absent).expect("accepted");
+
+    let events = store.events("ticket", "one").expect("events");
+    let revisions: Vec<u64> = events.iter().map(|event| event.revision).collect();
+    assert_eq!(
+        revisions,
+        vec![1],
+        "the retry appended nothing the log already had"
+    );
 }

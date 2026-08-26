@@ -94,3 +94,9 @@
 {"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:offline-and-catch-up","kind":"story","revision":3,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
 {"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:offline-and-catch-up","kind":"story","revision":3,"change":{"change":"evidence","kind":"test_result","source":"task check 2026-08-26","reference":"nine steps, 185 tests, 83 requirements, exit 0"}}
 {"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:offline-and-catch-up","kind":"story","revision":4,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{"recorded":{"test_result":1}}}}
+{"at":"2026-08-26T08:31:14Z","actor":"timo","artifact":"epic:the-shell","kind":"epic","revision":2,"change":{"change":"moved","from":"draft","to":"proposed","decided_on":{}}}
+{"at":"2026-08-26T08:31:14Z","actor":"timo","artifact":"epic:the-shell","kind":"epic","revision":3,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
+{"at":"2026-08-26T08:31:14Z","actor":"timo","artifact":"epic:the-shell","kind":"epic","revision":4,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{}}}
+{"at":"2026-08-26T08:31:14Z","actor":"timo","artifact":"epic:centralized-and-hybrid-storage","kind":"epic","revision":2,"change":{"change":"moved","from":"draft","to":"proposed","decided_on":{}}}
+{"at":"2026-08-26T08:31:14Z","actor":"timo","artifact":"epic:centralized-and-hybrid-storage","kind":"epic","revision":3,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
+{"at":"2026-08-26T08:31:14Z","actor":"timo","artifact":"epic:centralized-and-hybrid-storage","kind":"epic","revision":4,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{}}}

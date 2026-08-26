@@ -1,9 +1,11 @@
 //! The remote store, held to the same suite as every local one — and to the one thing only it has
 //! to get right: telling *unreachable* from *absent*.
 
-use entity_core::{Registry, Runtime};
-use entity_remote::{Ask, LoopbackTransport, RemoteStore, Request, WIRE_VERSION};
-use entity_store::{conformance, EventProvider, Expect, MemoryStore, StateProvider, Store};
+use entity_core::{Decision, DomainEvent, EntityInstance, Registry, Runtime};
+use entity_remote::{Answer, Ask, LoopbackTransport, RemoteStore, Request, WIRE_VERSION};
+use entity_store::{
+    conformance, EventProvider, Expect, MemoryStore, StateProvider, Store, StoreError,
+};
 use serde_json::json;
 
 fn remote() -> RemoteStore<LoopbackTransport<MemoryStore>> {
@@ -106,11 +108,86 @@ fn a_request_at_a_wire_version_this_build_does_not_know_is_refused_by_name() {
     request.version = "entity.store/99".to_owned();
 
     use entity_remote::Transport as _;
-    let error = transport
-        .call(&request)
-        .expect_err("an unknown version is refused");
-    assert!(error.contains("entity.store/99"), "{error}");
-    assert!(error.contains(WIRE_VERSION), "{error}");
+    let answered = transport.call(&request).expect("the peer answered");
+    let Answer::Refused { detail } = answered else {
+        panic!("an unknown version is refused by name, not {answered:?}");
+    };
+    assert!(detail.contains("entity.store/99"), "{detail}");
+    assert!(detail.contains(WIRE_VERSION), "{detail}");
+}
+
+#[test]
+fn a_version_refusal_is_not_reported_as_unreachable() {
+    // The peer answered. Calling that unreachable would have a `ServeStale` hybrid serve a stale
+    // copy for ever against a remote that is up and saying no.
+    struct WrongVersion(LoopbackTransport<MemoryStore>);
+    impl entity_remote::Transport for WrongVersion {
+        fn name(&self) -> String {
+            "wrong-version".to_owned()
+        }
+        fn call(&self, request: &Request) -> Result<Answer, String> {
+            let mut bumped = request.clone();
+            bumped.version = "entity.store/99".to_owned();
+            self.0.call(&bumped)
+        }
+    }
+
+    let store = RemoteStore::new(WrongVersion(LoopbackTransport::new(MemoryStore::new())));
+    let error = store
+        .load("ticket", "one")
+        .expect_err("a version this build does not speak is refused");
+    assert!(
+        !error.is_unreachable(),
+        "a peer that answered is not unreachable: {error}"
+    );
+    assert!(
+        error.to_string().contains("entity.store/99"),
+        "the refusal names the version: {error}"
+    );
+}
+
+#[test]
+fn an_unreachable_store_on_the_far_side_stays_unreachable_on_this_one() {
+    // The third value has to survive the wire. Flattened into a backend failure, every
+    // `WhenUnreachable` policy downstream stops applying to it.
+    struct DeadStore;
+    impl entity_store::StateProvider for DeadStore {
+        fn load(&self, _: &str, _: &str) -> Result<Option<EntityInstance>, StoreError> {
+            Err(StoreError::Unreachable {
+                provider: "the-far-side-store".to_owned(),
+                detail: "no route to host".to_owned(),
+            })
+        }
+    }
+    impl entity_store::EventProvider for DeadStore {
+        fn events(&self, _: &str, _: &str) -> Result<Vec<DomainEvent>, StoreError> {
+            Err(StoreError::Unreachable {
+                provider: "the-far-side-store".to_owned(),
+                detail: "no route to host".to_owned(),
+            })
+        }
+    }
+    impl Store for DeadStore {
+        fn commit(&mut self, _: &Decision, _: Expect) -> Result<(), StoreError> {
+            Err(StoreError::Unreachable {
+                provider: "the-far-side-store".to_owned(),
+                detail: "no route to host".to_owned(),
+            })
+        }
+    }
+
+    let store = RemoteStore::new(LoopbackTransport::new(DeadStore));
+    let error = store
+        .load("ticket", "one")
+        .expect_err("the far side could not reach its own store");
+    assert!(
+        error.is_unreachable(),
+        "unreachable one hop out is still unreachable here: {error}"
+    );
+    assert!(
+        error.to_string().contains("the-far-side-store"),
+        "the far side's provider name survives: {error}"
+    );
 }
 
 #[test]

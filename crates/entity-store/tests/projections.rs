@@ -133,3 +133,59 @@ fn a_projection_naming_a_state_the_lifecycle_does_not_have_is_refused_at_registr
         "{error}"
     );
 }
+
+#[test]
+fn an_instance_whose_key_resolves_to_nothing_is_left_out_rather_than_filed_under_an_empty_key() {
+    // R-100's second clause, which had no test: the registry the other tests use declares
+    // `customer` required, so a null key could never arise in them. A key that resolves to nothing
+    // must drop the instance from the read model — filing it under `""` invents a group nobody
+    // asked for, and it is the group everything broken ends up in.
+    let definition = serde_json::from_value(json!({
+        "entity": "ticket",
+        "version": 1,
+        "schema": {
+            "fields": {
+                "title": { "type": "string", "required": true },
+                "customer": { "type": "string" }
+            }
+        },
+        "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+        "operations": {
+            "close": { "transitions": [{ "from": "open", "to": "closed" }] }
+        },
+        "projections": {
+            "by_customer": { "key": "$fields.customer" }
+        }
+    }))
+    .expect("parses");
+    let mut registry = Registry::new();
+    registry.register(definition).expect("validates");
+    let runtime = Runtime::new(&registry);
+
+    let with_key = runtime
+        .create(
+            "ticket",
+            1,
+            "has-one",
+            json!({ "title": "A", "customer": "acme" }),
+        )
+        .expect("permitted");
+    let without = runtime
+        .create("ticket", 1, "has-none", json!({ "title": "B" }))
+        .expect("permitted");
+
+    let definition = registry.get("ticket", 1).expect("registered");
+    let instances: Vec<EntityInstance> = vec![with_key.instance, without.instance];
+    let projected = project(definition, &instances);
+    let by_customer = projected.get("by_customer").expect("declared");
+
+    assert_eq!(
+        by_customer.keys().collect::<Vec<_>>(),
+        vec!["acme"],
+        "only the instance whose key resolved appears"
+    );
+    assert!(
+        !by_customer.contains_key(""),
+        "and nothing was filed under an empty key"
+    );
+}

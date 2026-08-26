@@ -37,7 +37,7 @@ use std::path::Path;
 
 use entity_core::{Decision, DomainEvent, EntityInstance};
 use entity_store::{check, EventProvider, Expect, StateProvider, Store, StoreError};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 /// A [`Store`] over one SQLite database.
 pub struct SqliteStore {
@@ -73,6 +73,15 @@ impl SqliteStore {
     }
 
     fn prepare(connection: Connection) -> Result<Self, StoreError> {
+        // A second writer waits its turn rather than failing. Without this the default is zero:
+        // the loser of a race gets `SQLITE_BUSY` immediately, which arrives at the caller as
+        // `Backend` — "the system is broken, stop retrying" — for what is only contention. Five
+        // seconds is long enough that a writer holding the lock for one small transaction is never
+        // the cause, and short enough that a genuinely stuck writer still surfaces.
+        connection
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|error| backend("setting the busy timeout", &error))?;
+
         // Foreign keys off, journal default: nothing here needs either, and a pragma nobody needs
         // is a difference between two deployments waiting to be discovered.
         connection
@@ -158,9 +167,17 @@ impl Store for SqliteStore {
         let instance = &decision.instance;
         let (entity, id) = (instance.entity.as_str(), instance.id.as_str());
 
+        // `Immediate`, not the default `Deferred`. A deferred transaction takes a *shared* lock on
+        // the first read and tries to upgrade it at the first write, and two writers that both got
+        // that far cannot both upgrade — SQLite refuses one with `SQLITE_BUSY` and no amount of
+        // waiting helps, because neither will let go. It refuses writers to *unrelated* rows the
+        // same way, since the lock is over the database. Taking the write lock up front makes the
+        // second writer wait (see `busy_timeout` in `prepare`) rather than fail, and a genuine
+        // clash then arrives as `RevisionConflict` — something the caller is told to retry —
+        // instead of `Backend`, which this crate documents as "stop retrying".
         let transaction = self
             .connection
-            .transaction()
+            .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| backend("beginning the transaction", &error))?;
 
         // Read inside the transaction, so what is checked is what is written against — a check

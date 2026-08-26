@@ -49,6 +49,20 @@ impl<S: Store> LoopbackTransport<S> {
     pub fn store(&self) -> std::cell::Ref<'_, S> {
         self.store.borrow()
     }
+
+    /// The store behind it, writable — for a test that needs the far side to move **on its own**.
+    ///
+    /// The case this exists for: a replica that somebody else wrote to while this side was dark.
+    /// Without a way to move it independently, every reconciliation test is a test of a replica
+    /// that only ever received what this side sent it, which is the case that cannot conflict.
+    ///
+    /// # Panics
+    ///
+    /// If the store is already borrowed — which, in a single-threaded test, means a `store()`
+    /// still held in scope.
+    pub fn store_mut(&self) -> std::cell::RefMut<'_, S> {
+        self.store.borrow_mut()
+    }
 }
 
 impl<S: Store> Transport for LoopbackTransport<S> {

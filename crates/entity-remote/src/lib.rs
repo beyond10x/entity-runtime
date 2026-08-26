@@ -157,6 +157,27 @@ pub enum Answer {
         /// What went wrong.
         detail: String,
     },
+    /// The far side answered, and refused the request itself.
+    ///
+    /// Kept apart from [`Answer::Failed`] because a protocol disagreement is not a broken store: a
+    /// request at a wire version this build does not speak is a **refusal by a reachable peer**,
+    /// and reporting it as unreachable would have a `ServeStale` policy serve stale data forever
+    /// against a remote that is up and answering.
+    Refused {
+        /// Why, in the far side's words.
+        detail: String,
+    },
+    /// The far side could not reach *its* store.
+    ///
+    /// The third value has to survive the wire. Without this variant an unreachable store one hop
+    /// out arrives as an ordinary backend failure, and every [`crate::hybrid::WhenUnreachable`]
+    /// policy downstream stops applying to it.
+    Unreachable {
+        /// Which provider, on the far side.
+        provider: String,
+        /// What went wrong reaching it.
+        detail: String,
+    },
 }
 
 /// How a request reaches the other side.
@@ -213,6 +234,20 @@ fn unexpected(answer: &Answer) -> StoreError {
     ))
 }
 
+/// The answers every request can receive, whatever it asked.
+///
+/// [`Answer::Refused`] is a [`StoreError::Backend`] and **not** `Unreachable`: the peer answered.
+/// [`Answer::Unreachable`] stays unreachable, so the third value survives the hop with the far
+/// side's provider name intact rather than being flattened into this one's.
+fn common(answer: Answer) -> StoreError {
+    match answer {
+        Answer::Failed { detail } => StoreError::Backend(detail),
+        Answer::Refused { detail } => StoreError::Backend(format!("the remote refused: {detail}")),
+        Answer::Unreachable { provider, detail } => StoreError::Unreachable { provider, detail },
+        other => unexpected(&other),
+    }
+}
+
 impl<T: Transport> StateProvider for RemoteStore<T> {
     fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
         match self.ask(Ask::Load {
@@ -220,8 +255,7 @@ impl<T: Transport> StateProvider for RemoteStore<T> {
             id: id.to_owned(),
         })? {
             Answer::Instance { instance } => Ok(instance.map(|boxed| *boxed)),
-            Answer::Failed { detail } => Err(StoreError::Backend(detail)),
-            other => Err(unexpected(&other)),
+            other => Err(common(other)),
         }
     }
 }
@@ -233,8 +267,7 @@ impl<T: Transport> EventProvider for RemoteStore<T> {
             id: id.to_owned(),
         })? {
             Answer::Events { events } => Ok(events),
-            Answer::Failed { detail } => Err(StoreError::Backend(detail)),
-            other => Err(unexpected(&other)),
+            other => Err(common(other)),
         }
     }
 }
@@ -257,8 +290,7 @@ impl<T: Transport> Store for RemoteStore<T> {
                 expected: expected.into(),
                 found,
             }),
-            Answer::Failed { detail } => Err(StoreError::Backend(detail)),
-            other => Err(unexpected(&other)),
+            other => Err(common(other)),
         }
     }
 }
@@ -275,10 +307,13 @@ impl<T: Transport> Store for RemoteStore<T> {
 /// refusal: a conflict is something the store decided, not a failure of the exchange.
 pub fn answer(store: &mut dyn Store, request: &Request) -> Result<Answer, String> {
     if request.version != WIRE_VERSION {
-        return Err(format!(
-            "this build speaks `{WIRE_VERSION}`, not `{}`",
-            request.version
-        ));
+        // A refusal, not a failure of the exchange: the peer answered, and said no by name.
+        return Ok(Answer::Refused {
+            detail: format!(
+                "this build speaks `{WIRE_VERSION}`, not `{}`",
+                request.version
+            ),
+        });
     }
 
     Ok(match &request.ask {
@@ -286,15 +321,11 @@ pub fn answer(store: &mut dyn Store, request: &Request) -> Result<Answer, String
             Ok(instance) => Answer::Instance {
                 instance: instance.map(Box::new),
             },
-            Err(error) => Answer::Failed {
-                detail: error.to_string(),
-            },
+            Err(error) => failure(error),
         },
         Ask::Events { entity, id } => match store.events(entity, id) {
             Ok(events) => Answer::Events { events },
-            Err(error) => Answer::Failed {
-                detail: error.to_string(),
-            },
+            Err(error) => failure(error),
         },
         Ask::Commit { decision, expect } => match store.commit(decision, (*expect).into()) {
             Ok(()) => Answer::Committed,
@@ -309,9 +340,20 @@ pub fn answer(store: &mut dyn Store, request: &Request) -> Result<Answer, String
                 expected: expected.into(),
                 found,
             },
-            Err(error) => Answer::Failed {
-                detail: error.to_string(),
-            },
+            Err(error) => failure(error),
         },
     })
+}
+
+/// One store failure, as the wire spells it.
+///
+/// [`StoreError::Unreachable`] keeps its own variant so the third value survives the hop; every
+/// other failure is [`Answer::Failed`].
+fn failure(error: StoreError) -> Answer {
+    match error {
+        StoreError::Unreachable { provider, detail } => Answer::Unreachable { provider, detail },
+        other => Answer::Failed {
+            detail: other.to_string(),
+        },
+    }
 }

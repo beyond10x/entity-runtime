@@ -4,7 +4,7 @@
 //! events, equals the instance the operations returned — and an invented event whose transition the
 //! lifecycle does not permit is refused rather than replayed.
 
-use entity_core::{rehydrate, Registry, Runtime};
+use entity_core::{rehydrate, DomainEvent, Registry, Runtime};
 use serde_json::json;
 
 /// A ticket that opens, closes, and can be reopened — with an event on every step including create.
@@ -188,4 +188,126 @@ fn a_history_belonging_to_another_instance_is_refused() {
             .contains("one history describes one instance"),
         "{error}"
     );
+}
+
+#[test]
+fn a_creation_event_into_a_state_that_is_not_the_initial_one_is_refused() {
+    // The hole this closes: the first event used to be exempt from every lifecycle check, so a
+    // forged creation walked straight into any state `states` happened to list. `create` always
+    // enters `lifecycle.initial`, so a fold that reached anything else rebuilt an instance the
+    // kernel could not have produced.
+    let registry = registry();
+    let definition = registry.get("ticket", 1).expect("registered");
+
+    let forged = vec![DomainEvent {
+        entity: "ticket".to_owned(),
+        version: 1,
+        id: "one".to_owned(),
+        revision: 1,
+        event_type: "TicketOpened".to_owned(),
+        from_state: None,
+        to_state: "closed".to_owned(),
+        changed: serde_json::from_value(json!({ "title": "A ticket" })).expect("an object"),
+        payload: json!({}),
+    }];
+
+    let error = rehydrate(definition, &forged).expect_err("a creation may only enter `open`");
+    let message = error.to_string();
+    assert!(message.contains("closed"), "{message}");
+    assert!(message.contains("open"), "{message}");
+}
+
+#[test]
+fn an_event_carrying_a_field_the_schema_does_not_declare_is_refused() {
+    // An event's `changed` is data like any other. Installed unchecked, a fold rebuilds an
+    // instance the schema refuses — a field of the wrong type, or one nobody declared.
+    let registry = registry();
+    let definition = registry.get("ticket", 1).expect("registered");
+
+    let forged = vec![DomainEvent {
+        entity: "ticket".to_owned(),
+        version: 1,
+        id: "one".to_owned(),
+        revision: 1,
+        event_type: "TicketOpened".to_owned(),
+        from_state: None,
+        to_state: "open".to_owned(),
+        changed: serde_json::from_value(json!({ "title": "A ticket", "invented": "nope" }))
+            .expect("an object"),
+        payload: json!({}),
+    }];
+
+    let error = rehydrate(definition, &forged).expect_err("`invented` is not a declared field");
+    assert!(error.to_string().contains("invented"), "{error}");
+}
+
+#[test]
+fn an_event_carrying_a_field_of_the_wrong_type_is_refused() {
+    let registry = registry();
+    let definition = registry.get("ticket", 1).expect("registered");
+
+    let forged = vec![DomainEvent {
+        entity: "ticket".to_owned(),
+        version: 1,
+        id: "one".to_owned(),
+        revision: 1,
+        event_type: "TicketOpened".to_owned(),
+        from_state: None,
+        to_state: "open".to_owned(),
+        changed: serde_json::from_value(json!({ "title": 12345 })).expect("an object"),
+        payload: json!({}),
+    }];
+
+    rehydrate(definition, &forged).expect_err("`title` is a string");
+}
+
+#[test]
+fn a_history_whose_revisions_skip_a_number_is_refused() {
+    // R-97's revision-gap clause. It was pinned by a test that asserts a different branch — the
+    // one about a history that does not begin with a creation — so the gap itself was checked by
+    // nothing.
+    let registry = registry();
+    let definition = registry.get("ticket", 1).expect("registered");
+    let runtime = Runtime::new(&registry);
+
+    let created = runtime
+        .create("ticket", 1, "one", json!({ "title": "A ticket" }))
+        .expect("permitted");
+    let closed = runtime
+        .execute(&created.instance, "close", json!({ "who": "timo" }))
+        .expect("permitted");
+
+    let mut gapped = created.events.clone();
+    let mut later = closed.events[0].clone();
+    later.revision = 7;
+    gapped.push(later);
+
+    let error = rehydrate(definition, &gapped).expect_err("revision 7 does not follow revision 1");
+    let message = error.to_string();
+    assert!(
+        message.contains('7'),
+        "the message names the revision: {message}"
+    );
+    assert!(message.contains("gap"), "{message}");
+}
+
+#[test]
+fn a_second_creation_event_partway_through_a_history_is_refused() {
+    // The other branch R-97 claims and nothing asserted: only the first event of a history may be
+    // a creation.
+    let registry = registry();
+    let definition = registry.get("ticket", 1).expect("registered");
+    let runtime = Runtime::new(&registry);
+
+    let created = runtime
+        .create("ticket", 1, "one", json!({ "title": "A ticket" }))
+        .expect("permitted");
+
+    let mut twice = created.events.clone();
+    let mut second = created.events[0].clone();
+    second.revision = 2;
+    twice.push(second);
+
+    let error = rehydrate(definition, &twice).expect_err("only the first event may be a creation");
+    assert!(error.to_string().contains("creation"), "{error}");
 }
