@@ -6,6 +6,23 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.9.1] — 2026-08-26
+
+### Changed
+
+* **The README described a three-crate workspace that has eight.** `entity-store`, `entity-sqlite`,
+  `entity-remote` and `entity-graph` — the whole storage half, shipped across 0.6.0 and 0.7.0 — were
+  absent from *Where everything is*, so a reader arriving at the front page saw a kernel and a CLI
+  and no way to keep anything.
+
+* **Four guarantees added to *What holds*,** each with what pins it: state and events written
+  together, `Unreachable` never reading as absent, a hybrid's policy being four words somebody typed
+  with no `Default`, and replay reaching no state `execute` would refuse.
+
+* `engineering-protocols` is described as the first adopter rather than the *intended* one. It takes
+  `entity-core` as a dependency, expresses its eight lifecycles as definitions this kernel executes,
+  and its `aep-backend-sqlite` is an adapter over `entity-sqlite`. The arrow still points one way.
+
 ## [0.9.0] — 2026-08-26
 
 **A review of 0.8.0 — the release written to fix the previous review — found three more defects.**
