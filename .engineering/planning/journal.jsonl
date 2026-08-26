@@ -73,3 +73,24 @@
 {"at":"2026-08-26T02:51:09Z","actor":"timo","artifact":"story:provider-conformance","kind":"story","revision":3,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
 {"at":"2026-08-26T02:51:09Z","actor":"timo","artifact":"story:provider-conformance","kind":"story","revision":3,"change":{"change":"evidence","kind":"test_result","source":"task check 2026-08-26","reference":"nine steps, 171 tests, 78 requirements, exit 0"}}
 {"at":"2026-08-26T02:51:09Z","actor":"timo","artifact":"story:provider-conformance","kind":"story","revision":4,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{"recorded":{"test_result":1}}}}
+{"at":"2026-08-26T01:37:16Z","actor":"timo","artifact":"epic:centralized-and-hybrid-storage","kind":"epic","revision":1,"change":{"change":"created","status":"draft"}}
+{"at":"2026-08-26T01:37:42Z","actor":"timo","artifact":"story:remote-provider","kind":"story","revision":1,"change":{"change":"created","status":"draft"}}
+{"at":"2026-08-26T01:37:42Z","actor":"timo","artifact":"story:hybrid-provider","kind":"story","revision":1,"change":{"change":"created","status":"draft"}}
+{"at":"2026-08-26T01:37:42Z","actor":"timo","artifact":"story:authority-and-conflict","kind":"story","revision":1,"change":{"change":"created","status":"draft"}}
+{"at":"2026-08-26T01:37:42Z","actor":"timo","artifact":"story:offline-and-catch-up","kind":"story","revision":1,"change":{"change":"created","status":"draft"}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:remote-provider","kind":"story","revision":2,"change":{"change":"moved","from":"draft","to":"proposed","decided_on":{}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:remote-provider","kind":"story","revision":3,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:remote-provider","kind":"story","revision":3,"change":{"change":"evidence","kind":"test_result","source":"task check 2026-08-26","reference":"nine steps, 185 tests, 83 requirements, exit 0"}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:remote-provider","kind":"story","revision":4,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{"recorded":{"test_result":1}}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:hybrid-provider","kind":"story","revision":2,"change":{"change":"moved","from":"draft","to":"proposed","decided_on":{}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:hybrid-provider","kind":"story","revision":3,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:hybrid-provider","kind":"story","revision":3,"change":{"change":"evidence","kind":"test_result","source":"task check 2026-08-26","reference":"nine steps, 185 tests, 83 requirements, exit 0"}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:hybrid-provider","kind":"story","revision":4,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{"recorded":{"test_result":1}}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:authority-and-conflict","kind":"story","revision":2,"change":{"change":"moved","from":"draft","to":"proposed","decided_on":{}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:authority-and-conflict","kind":"story","revision":3,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:authority-and-conflict","kind":"story","revision":3,"change":{"change":"evidence","kind":"test_result","source":"task check 2026-08-26","reference":"nine steps, 185 tests, 83 requirements, exit 0"}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:authority-and-conflict","kind":"story","revision":4,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{"recorded":{"test_result":1}}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:offline-and-catch-up","kind":"story","revision":2,"change":{"change":"moved","from":"draft","to":"proposed","decided_on":{}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:offline-and-catch-up","kind":"story","revision":3,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:offline-and-catch-up","kind":"story","revision":3,"change":{"change":"evidence","kind":"test_result","source":"task check 2026-08-26","reference":"nine steps, 185 tests, 83 requirements, exit 0"}}
+{"at":"2026-08-26T02:56:10Z","actor":"timo","artifact":"story:offline-and-catch-up","kind":"story","revision":4,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{"recorded":{"test_result":1}}}}

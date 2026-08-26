@@ -6,6 +6,46 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.7.0] — 2026-08-26
+
+Storage that is somewhere else, and storage that is in two places at once. The network lives in the
+shell and nowhere else: `entity-core` is untouched, and this repository still opens no socket.
+
+### Added
+
+* **`entity-remote`: a store whose record of truth is a server.** The protocol is versioned and
+  transport-agnostic — a request at a wire version this build does not know is refused **by name**,
+  and a conflict crosses the wire as a conflict rather than flattening into a generic failure. A
+  remote store passes the same conformance suite a local one does. R-105.
+
+* **A store that could not be reached answers `Unreachable`, never absent.** *Absent* is a fact
+  about the data; silence is a fact about the network. A provider that answers the first when it
+  means the second is how a synchronisation deletes something. A silent remote refuses. R-104.
+
+* **A hybrid store, whose behaviour is entirely the policy you typed.**
+  `Policy::new(authority, read_path, when_unreachable, on_divergence)` — four words, all required,
+  and **no `Default`**. A default here is a policy nobody chose being applied to somebody's data, so
+  its absence is a requirement rather than a convention. With the remote as authority a refused
+  remote write never reaches the local copy; refusing on divergence lets no write stand
+  unreplicated. R-106.
+
+* **A stale answer says it was stale, and a losing write is kept.** Serving a stale copy is
+  something the policy asked for, and the answer carries `was_stale` at the point of use rather than
+  leaving the caller to work it out. With the local store as authority, a replica write that loses
+  becomes a recorded `Divergence` instead of being swallowed. R-107.
+
+* **`catch_up` replays what the authority holds now.** Not what it held when the divergence was
+  recorded. It keeps what it could not replay rather than reporting success, and it **merges
+  nothing** — a divergence that comes back as a conflict stays outstanding for a person, because
+  choosing between two conflicting values is a question about a domain this crate does not have.
+  R-108.
+
+### Notes
+
+* **There is no HTTP client in this repository, deliberately.** `Transport` is the caller's to
+  implement, which is what keeps the gate network-free; `LoopbackTransport` says in its own
+  documentation that it stands in for exactly that and is not one.
+
 ## [0.6.0] — 2026-08-26
 
 The shell. `entity-core` decided and this repository held nothing; R-80 described a shell that
