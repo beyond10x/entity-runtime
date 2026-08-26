@@ -4,6 +4,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.3] — 2026-08-26
+
 ### Fixed
 
 - **A deliberate line break is no longer eaten by the reflow.** A line ending in two spaces is
