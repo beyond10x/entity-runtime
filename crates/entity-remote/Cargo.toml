@@ -1,6 +1,6 @@
 [package]
-name = "entity-store"
-description = "Provider interfaces for keeping entity instances and their events, outside the kernel."
+name = "entity-remote"
+description = "An entity store over a wire: the protocol, transport-agnostic, with the network at the edge."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 entity-core = { path = "../entity-core", version = "0.7.0" }
+entity-store = { path = "../entity-store", version = "0.7.0" }
 serde.workspace = true
 serde_json.workspace = true
 
