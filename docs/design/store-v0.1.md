@@ -109,11 +109,15 @@ caused this* — and an absent key must not be able to make it. Serde's derive r
 was not caution: the test asserting it **failed on its first run**, against code whose own comment
 said the opposite.
 
-**R-88**: the derived identity is `<entity>:<id>@<revision>#<index>` — coordinates that are already
-unique, because a revision is reached once and an index is a position within it. No clock, no random
-source, so sealing one decision twice gives the same identities: a test can assert on one, and a
-replay can recognise what it has already seen. A shell needing opaque ids builds the envelope
-itself; this is the default, not the only way.
+**R-88**: the derived identity is `<entity>:<id>@<revision>#<index>~<args>` — coordinates that are
+already unique, because a revision is reached once and an index is a position within it, and a
+digest of what the event was decided on (R-110), so two events differing only in their arguments
+have different identities and a log deduplicating by id cannot keep a forgery in place of the fact.
+No clock, no random source, so sealing one decision twice gives the same identities: a test can
+assert on one, and a replay can recognise what it has already seen. The digest is FNV-1a over the
+arguments' canonical JSON, hand-rolled: an identity component, not a security boundary, and not
+worth a dependency. A shell needing opaque ids builds the envelope itself; this is the default, not
+the only way.
 
 ## 7. Projections: declared here, evaluated there
 

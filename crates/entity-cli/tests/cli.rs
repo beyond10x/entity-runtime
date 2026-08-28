@@ -277,6 +277,10 @@ fn create_then_execute_through_a_pipe_and_a_refusal_with_its_typed_reason() {
     assert_eq!(decision["instance"]["lifecycle_state"], "draft");
     assert_eq!(decision["instance"]["revision"], 1);
     assert_eq!(decision["events"][0]["type"], "OrderCreated");
+    assert_eq!(
+        decision["events"][0]["args"]["customer_id"], "c-1",
+        "the printed event carries what it was decided on"
+    );
 
     // The whole Decision goes back in as --instance via stdin; the command takes its instance.
     let submitted = run(
@@ -825,4 +829,67 @@ fn list_says_what_a_store_holds_and_nothing_for_a_type_nobody_stored() {
         String::from_utf8_lossy(&nobody.stderr)
     );
     assert!(nobody.stdout.is_empty(), "and the answer is nothing");
+}
+
+#[test]
+fn implement_records_the_evidence_it_was_decided_on() {
+    // The adopter's own ladder: `implement` costs a test result, and the printed event says which
+    // count it was decided on — so *what made this done* is in the log, not only in the shell.
+    let story = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/aep/story.yaml");
+    let story = story.to_str().expect("a printable path");
+    let mut instance = stdout(&run(
+        &[
+            "create",
+            "--definition",
+            story,
+            "--id",
+            "s-1",
+            "--fields",
+            r#"{"title": "One"}"#,
+        ],
+        None,
+    ));
+    for operation in ["propose", "activate"] {
+        let moved = run(
+            &[
+                "execute",
+                "--definition",
+                story,
+                "--instance",
+                "-",
+                "--operation",
+                operation,
+                "--arguments",
+                r#"{"actor": "timo"}"#,
+            ],
+            Some(&instance),
+        );
+        assert_eq!(moved.status.code(), Some(0), "{}", stderr(&moved));
+        instance = stdout(&moved);
+    }
+    let implemented = run(
+        &[
+            "execute",
+            "--definition",
+            story,
+            "--instance",
+            "-",
+            "--operation",
+            "implement",
+            "--arguments",
+            r#"{"actor": "timo", "evidence": {"test_result": 1}}"#,
+        ],
+        Some(&instance),
+    );
+    assert_eq!(
+        implemented.status.code(),
+        Some(0),
+        "{}",
+        stderr(&implemented)
+    );
+    let decision: serde_json::Value =
+        serde_json::from_str(&stdout(&implemented)).expect("a JSON decision");
+    assert_eq!(decision["instance"]["lifecycle_state"], "implemented");
+    assert_eq!(decision["events"][0]["args"]["evidence"]["test_result"], 1);
+    assert_eq!(decision["events"][0]["args"]["actor"], "timo");
 }

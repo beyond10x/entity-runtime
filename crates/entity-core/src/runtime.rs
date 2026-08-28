@@ -77,6 +77,16 @@ pub struct DomainEvent {
     /// notification, not a record.
     pub changed: Map<String, Value>,
 
+    /// The arguments the operation was decided on — what the rules read when they permitted it —
+    /// verbatim, after defaults and schema validation. On a creation event, the creation's fields.
+    ///
+    /// The kernel has no clock and no lookup (R-62): what the world knew entered as `$args`, and
+    /// a precondition that read `$args.evidence.test_result >= 1` left an event that could not say
+    /// what the count was. Now it can, and a fold checks it (R-97): a replayed history whose
+    /// arguments would not have satisfied the preconditions is refused. Required when parsed —
+    /// an event with no `args` key is not an event this kernel wrote.
+    pub args: Map<String, Value>,
+
     /// The payload, with every template reference resolved.
     pub payload: Value,
 }
@@ -206,7 +216,14 @@ pub fn create(
 
     let mut events = Vec::new();
     if let Some(event) = &definition.create.emit {
-        events.push(materialize_event(event, &context, instance.revision)?);
+        // A creation's arguments are its fields: that is what the caller presented and what the
+        // schema checked, so that is what the event records it was decided on.
+        events.push(materialize_event(
+            event,
+            &context,
+            instance.revision,
+            &instance.fields,
+        )?);
     }
 
     Ok(Decision { instance, events })
@@ -318,7 +335,7 @@ pub fn execute(
 
     let mut events = Vec::with_capacity(operation.emits.len());
     for event in &operation.emits {
-        events.push(materialize_event(event, &context, next_revision)?);
+        events.push(materialize_event(event, &context, next_revision, &args)?);
     }
 
     Ok(Decision {
@@ -333,7 +350,7 @@ pub fn execute(
 /// and without repeats, so a reference read by three operands is named once.
 type Unobserved = BTreeSet<String>;
 
-fn check_preconditions(
+pub(crate) fn check_preconditions(
     operation: &str,
     rules: &[RuleDefinition],
     context: &TemplateContext<'_>,
@@ -692,6 +709,7 @@ fn materialize_event(
     definition: &EventDefinition,
     context: &TemplateContext<'_>,
     revision: u64,
+    args: &Map<String, Value>,
 ) -> Result<DomainEvent, CoreError> {
     Ok(DomainEvent {
         entity: context.definition.entity.clone(),
@@ -702,6 +720,7 @@ fn materialize_event(
         from_state: context.from_state.map(ToOwned::to_owned),
         to_state: context.to_state.to_owned(),
         changed: changed_fields(context),
+        args: args.clone(),
         payload: resolve_template(&definition.payload, context)?,
     })
 }
@@ -720,14 +739,14 @@ fn changed_fields(context: &TemplateContext<'_>) -> Map<String, Value> {
         .collect()
 }
 
-struct TemplateContext<'a> {
-    definition: &'a EntityDefinition,
-    id: &'a str,
-    args: &'a Map<String, Value>,
-    old_fields: &'a Map<String, Value>,
-    new_fields: &'a Map<String, Value>,
-    from_state: Option<&'a str>,
-    to_state: &'a str,
+pub(crate) struct TemplateContext<'a> {
+    pub(crate) definition: &'a EntityDefinition,
+    pub(crate) id: &'a str,
+    pub(crate) args: &'a Map<String, Value>,
+    pub(crate) old_fields: &'a Map<String, Value>,
+    pub(crate) new_fields: &'a Map<String, Value>,
+    pub(crate) from_state: Option<&'a str>,
+    pub(crate) to_state: &'a str,
 }
 
 fn resolve_template(value: &Value, context: &TemplateContext<'_>) -> Result<Value, CoreError> {

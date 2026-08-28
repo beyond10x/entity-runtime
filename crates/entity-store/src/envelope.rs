@@ -110,11 +110,12 @@ pub struct Recording {
 impl Recording {
     /// Seals every event of a decision, giving each a derived identity.
     ///
-    /// The identity is `<entity>:<id>@<revision>#<index>` — the event's own coordinates, which are
-    /// already unique because a revision is reached once and an index is a position within it. It
-    /// needs no random source and no clock, so two runs over the same decision produce the same
-    /// ids, which is what lets a test assert on them and a replay recognise what it has already
-    /// seen.
+    /// The identity is `<entity>:<id>@<revision>#<index>~<args>` — the event's own coordinates,
+    /// which are already unique because a revision is reached once and an index is a position
+    /// within it, and a digest of what the event was decided on, so two events differing only in
+    /// their arguments have different identities. It needs no random source and no clock, so two
+    /// runs over the same decision produce the same ids, which is what lets a test assert on them
+    /// and a replay recognise what it has already seen.
     ///
     /// A shell that needs opaque ids builds [`Envelope::new`] itself; this is the default, not the
     /// only way.
@@ -137,10 +138,33 @@ impl Recording {
     }
 }
 
-/// `<entity>:<id>@<revision>#<index>` — an event's coordinates, which are already unique.
+/// `<entity>:<id>@<revision>#<index>~<args>` — an event's coordinates, which are already unique,
+/// and a digest of the arguments it was decided on.
+///
+/// The digest is FNV-1a over the arguments' canonical JSON (`serde_json::Map` is ordered, so the
+/// text is the same for equal maps). Hand-rolled rather than a hashing crate: this is an identity
+/// component, not a security boundary, and the workspace takes no dependency for something a
+/// dozen lines carry — the same reasoning as every other refusal of a crate here.
 #[must_use]
 pub fn derived_id(event: &DomainEvent, index: usize) -> String {
-    format!("{}:{}@{}#{index}", event.entity, event.id, event.revision)
+    format!(
+        "{}:{}@{}#{index}~{:016x}",
+        event.entity,
+        event.id,
+        event.revision,
+        digest(&event.args)
+    )
+}
+
+/// FNV-1a, 64-bit, over the canonical JSON of what an event was decided on.
+fn digest(args: &serde_json::Map<String, serde_json::Value>) -> u64 {
+    let text = serde_json::to_string(args).unwrap_or_default();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash
 }
 
 #[cfg(test)]
@@ -157,6 +181,7 @@ mod tests {
             from_state: Some("open".to_owned()),
             to_state: "closed".to_owned(),
             changed: serde_json::Map::new(),
+            args: serde_json::Map::new(),
             payload: serde_json::json!({}),
         }
     }
@@ -177,8 +202,34 @@ mod tests {
         assert_eq!(sealed.len(), 2);
         assert_eq!(sealed[0].correlation, sealed[1].correlation, "one flow");
         assert_ne!(sealed[0].event_id, sealed[1].event_id, "two events");
-        assert_eq!(sealed[0].event_id, "ticket:one@2#0");
-        assert_eq!(sealed[1].event_id, "ticket:one@2#1");
+        assert!(
+            sealed[0].event_id.starts_with("ticket:one@2#0~"),
+            "{}",
+            sealed[0].event_id
+        );
+        assert!(
+            sealed[1].event_id.starts_with("ticket:one@2#1~"),
+            "{}",
+            sealed[1].event_id
+        );
+    }
+
+    #[test]
+    fn two_events_differing_only_in_what_they_were_decided_on_have_different_identities() {
+        // R-88 the other way round: an identity that ignored the arguments would give a forged
+        // event decided on `test_result: 0` the same id as the honest one decided on `1`, and a
+        // log deduplicating by id would keep whichever arrived first.
+        let honest = event(2, "TicketClosed");
+        let mut forged = honest.clone();
+        forged
+            .args
+            .insert("test_result".to_owned(), serde_json::json!(0));
+        assert_ne!(derived_id(&honest, 0), derived_id(&forged, 0));
+        assert_eq!(
+            derived_id(&honest, 0),
+            derived_id(&honest.clone(), 0),
+            "and it is stable"
+        );
     }
 
     #[test]

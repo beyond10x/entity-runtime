@@ -208,6 +208,7 @@ fn a_creation_event_into_a_state_that_is_not_the_initial_one_is_refused() {
         from_state: None,
         to_state: "closed".to_owned(),
         changed: serde_json::from_value(json!({ "title": "A ticket" })).expect("an object"),
+        args: serde_json::Map::new(),
         payload: json!({}),
     }];
 
@@ -234,6 +235,7 @@ fn an_event_carrying_a_field_the_schema_does_not_declare_is_refused() {
         to_state: "open".to_owned(),
         changed: serde_json::from_value(json!({ "title": "A ticket", "invented": "nope" }))
             .expect("an object"),
+        args: serde_json::Map::new(),
         payload: json!({}),
     }];
 
@@ -255,6 +257,7 @@ fn an_event_carrying_a_field_of_the_wrong_type_is_refused() {
         from_state: None,
         to_state: "open".to_owned(),
         changed: serde_json::from_value(json!({ "title": 12345 })).expect("an object"),
+        args: serde_json::Map::new(),
         payload: json!({}),
     }];
 
@@ -310,4 +313,120 @@ fn a_second_creation_event_partway_through_a_history_is_refused() {
 
     let error = rehydrate(definition, &twice).expect_err("only the first event may be a creation");
     assert!(error.to_string().contains("creation"), "{error}");
+}
+
+/// A story whose `implement` costs evidence — the adopter's own ladder, reduced to one rung.
+fn gated_registry() -> Registry {
+    let definition = serde_json::from_value(json!({
+        "entity": "story",
+        "version": 1,
+        "schema": { "fields": { "title": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "active", "states": ["active", "implemented"] },
+        "create": { "emit": { "type": "StoryCreated", "payload": { "story": "$id" } } },
+        "operations": {
+            "implement": {
+                "arguments": { "fields": { "evidence": { "type": "json" } } },
+                "preconditions": [{
+                    "name": "evidence: test_result",
+                    "message": "an implemented story carries at least one test result",
+                    "assert": { "gte": ["$args.evidence.test_result", 1] }
+                }],
+                "transitions": [{ "from": "active", "to": "implemented" }],
+                "emits": [{ "type": "StoryImplemented", "payload": { "story": "$id" } }]
+            }
+        }
+    }))
+    .expect("the definition parses");
+    let mut registry = Registry::new();
+    registry.register(definition).expect("it validates");
+    registry
+}
+
+#[test]
+fn an_event_records_the_arguments_it_was_decided_on_and_a_creation_records_its_fields() {
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("ticket", 1, "one", json!({ "title": "A ticket" }))
+        .expect("permitted");
+    assert_eq!(
+        created.events[0].args,
+        json!({ "title": "A ticket" })
+            .as_object()
+            .cloned()
+            .expect("an object"),
+        "a creation event carries the creation's fields as its arguments"
+    );
+    let closed = runtime
+        .execute(&created.instance, "close", json!({ "who": "timo" }))
+        .expect("permitted");
+    assert_eq!(
+        closed.events[0].args,
+        json!({ "who": "timo" })
+            .as_object()
+            .cloned()
+            .expect("an object"),
+        "an operation's event carries the arguments it was decided on, verbatim"
+    );
+}
+
+#[test]
+fn a_replayed_event_whose_arguments_would_not_have_satisfied_the_preconditions_is_refused() {
+    // The forgery R-97 did not yet catch: a transition the definition declares, from the state the
+    // fold is at, at the next revision — decided on evidence that would have been refused.
+    let registry = gated_registry();
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("story", 1, "s-1", json!({ "title": "One" }))
+        .expect("permitted");
+    let implemented = runtime
+        .execute(
+            &created.instance,
+            "implement",
+            json!({ "evidence": { "test_result": 1 } }),
+        )
+        .expect("one test result is enough");
+
+    let honest = [created.events[0].clone(), implemented.events[0].clone()];
+    let definition = registry.get("story", 1).expect("registered");
+    assert_eq!(
+        rehydrate(definition, &honest).expect("the honest history folds"),
+        implemented.instance
+    );
+
+    let mut forged = honest.clone();
+    forged[1].args = json!({ "evidence": { "test_result": 0 } })
+        .as_object()
+        .cloned()
+        .expect("an object");
+    let error = rehydrate(definition, &forged).expect_err("zero test results do not implement");
+    let message = error.to_string();
+    assert!(
+        message.contains("evidence: test_result"),
+        "the refusal names the rule: {message}"
+    );
+    assert!(
+        message.contains("decided on arguments"),
+        "and says what kind of forgery it is: {message}"
+    );
+
+    // And the unobservable case is refused too: no evidence at all is not a count of zero, but it
+    // is not a count of one either.
+    let mut unobserved = honest;
+    unobserved[1].args = serde_json::Map::new();
+    assert!(rehydrate(definition, &unobserved).is_err());
+}
+
+#[test]
+fn an_event_missing_its_arguments_is_refused_when_parsed() {
+    // The same rule as the envelope (R-87): a key nobody wrote must not read as "decided on
+    // nothing". An event written by an older kernel, or by hand, is refused rather than defaulted.
+    let text = json!({
+        "entity": "ticket", "version": 1, "id": "one", "revision": 1,
+        "type": "TicketOpened", "from_state": null, "to_state": "open",
+        "changed": { "title": "A ticket" }, "payload": {}
+    });
+    let parsed: Result<DomainEvent, _> = serde_json::from_value(text);
+    let error = parsed.expect_err("an event with no `args` is not one this kernel wrote");
+    assert!(error.to_string().contains("args"), "{error}");
 }

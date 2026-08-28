@@ -23,6 +23,16 @@
 //! So a fold is not a way to reach a state that could not have been reached. It is a slower way to
 //! reach one that could.
 //!
+//! # The arguments are checked too
+//!
+//! An event carries `args` — what the rules read when the operation was permitted. A fold re-asks
+//! the question: for an event some operation emits on that transition, the operation's
+//! preconditions are evaluated against the event's arguments and the fields as they stood, and a
+//! history whose arguments would not have satisfied them is refused. Without this a forged event
+//! could carry `test_result: 0` into `implemented` and the fold would accept what `execute` would
+//! have refused. Where no operation declares the event type on that transition — an event the
+//! definition has since stopped emitting — only the transition is checked, as before.
+//!
 //! # Why a creation event is required
 //!
 //! A fold has to start somewhere, and the only honest start is the event that says the instance
@@ -34,7 +44,7 @@ use serde_json::Map;
 
 use crate::definition::EntityDefinition;
 use crate::error::CoreError;
-use crate::runtime::{DomainEvent, EntityInstance};
+use crate::runtime::{check_preconditions, DomainEvent, EntityInstance, TemplateContext};
 use crate::validation::validate_object;
 
 /// Rebuilds an instance from its events, oldest first.
@@ -43,7 +53,8 @@ use crate::validation::validate_object;
 ///
 /// [`CoreError::Validation`] naming the event that broke the chain: an empty history, a first event
 /// that is not a creation, a revision that does not follow, a `from_state` that is not where the
-/// fold had reached, or a transition the definition does not declare.
+/// fold had reached, a transition the definition does not declare, or arguments the emitting
+/// operation's preconditions would have refused.
 ///
 /// [`CoreError::EntityMismatch`] when an event belongs to another definition, and
 /// [`CoreError::UnknownState`] when it names a state the definition does not have.
@@ -148,6 +159,14 @@ pub fn rehydrate(
                         event.event_type, event.to_state, definition.entity
                     ));
                 }
+                if let Some(failure) = arguments_refused(definition, &instance, event, from) {
+                    return refuse(format!(
+                        "event {index} (`{}`) was decided on arguments its operation's \
+                         preconditions would have refused — {failure}; replaying it would reach a \
+                         state `execute` would not have permitted",
+                        event.event_type
+                    ));
+                }
             }
         }
 
@@ -174,6 +193,52 @@ pub fn rehydrate(
     }
 
     Ok(instance)
+}
+
+/// Why every operation that emits `event` on this transition refuses the event's arguments, or
+/// `None` when one accepts them — or when none emits it, in which case only the transition is
+/// checked and there is nothing more a fold can ask.
+///
+/// The preconditions see what they saw when the operation ran: the arguments the event carries, the
+/// fields as they stood before it, the transition it took.
+fn arguments_refused(
+    definition: &EntityDefinition,
+    before: &EntityInstance,
+    event: &DomainEvent,
+    from: &str,
+) -> Option<String> {
+    let mut refusals = Vec::new();
+    for (name, operation) in &definition.operations {
+        let declares = operation.transitions.iter().any(|transition| {
+            transition.from.as_slice().iter().any(|state| state == from)
+                && transition.to == event.to_state
+        });
+        let emits = operation
+            .emits
+            .iter()
+            .any(|emitted| emitted.event_type == event.event_type);
+        if !declares || !emits {
+            continue;
+        }
+        let context = TemplateContext {
+            definition,
+            id: &event.id,
+            args: &event.args,
+            old_fields: &before.fields,
+            new_fields: &before.fields,
+            from_state: Some(from),
+            to_state: &event.to_state,
+        };
+        match check_preconditions(name, &operation.preconditions, &context) {
+            Ok(()) => return None,
+            Err(error) => refusals.push(format!("`{name}`: {error}")),
+        }
+    }
+    if refusals.is_empty() {
+        None
+    } else {
+        Some(refusals.join("; "))
+    }
 }
 
 /// Whether any operation of `definition` declares a transition from `from` to `to`.

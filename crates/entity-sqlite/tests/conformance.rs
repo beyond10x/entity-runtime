@@ -120,6 +120,7 @@ fn a_refused_commit_rolls_back_both_halves() {
             from_state: Some("open".to_owned()),
             to_state: "closed".to_owned(),
             changed: serde_json::Map::new(),
+            args: serde_json::Map::new(),
             payload: json!({ "ticket": "one" }),
         }],
     };
