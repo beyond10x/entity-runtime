@@ -1,16 +1,64 @@
 # Roadmap — driving `engineering-protocols`
 
-**Status: proposed sequencing, not requirements.** The requirements register
-([`requirements.md`](requirements.md)) says what 0.2.1 guarantees; the design
+**Status: a record of a sequencing that is now done, not requirements.** The requirements register
+([`requirements.md`](requirements.md)) says what 0.13.0 guarantees; the design
 ([`design/engineering-protocols-adoption-v0.1.md`](design/engineering-protocols-adoption-v0.1.md))
 says what the adoption would look like; the planning store (`protocol artifact list`) holds the work.
-This page says **in what order, blocked on what, and why that order**. Nothing here is accepted by
-`engineering-protocols`.
+This page says **in what order, blocked on what, and why that order**.
 
-Evidence dates: this tree at `4b6f2a1`, `engineering-protocols` at `79b641c` (its `main` head on
-2026-08-25 — the same commit the adoption design pins).
+*Until 2026-08-28 this paragraph ended "Nothing here is accepted by `engineering-protocols`."* That
+is no longer true and is the reason this page was rewritten: phases 0–4 have shipped, the mapping has
+a verdict on their side, and five crates of this repository are in their manifest. § 1 is the current
+reading; what it replaced is kept under it.
 
-## 1. The blocking fact
+Evidence dates: **re-read 2026-08-28** against this tree at `ddee747` (tag `0.13.0`) and
+`engineering-protocols` at tag `0.31.0` (`1419f1c`); their `main` moved again the same day, so the tag is what is cited rather than a head. Every date and count
+below was checked against those two trees; where one had gone stale it is corrected in place and the
+superseded text is kept rather than deleted. The previous reading — this tree at `4b6f2a1`,
+`engineering-protocols` at `79b641c`, 2026-08-25 — is three days old and predates their 0.13.0, the
+release that took the dependency; every tag from `0.13.0` to `0.31.0` has been cut since. That
+`79b641c` is on none of their branches today is its own small lesson about citing a bare commit
+across a repository boundary: a tag survives a history rewrite and a hash does not.
+
+## 1. Where this stands — verified 2026-08-28
+
+**Phases 0 to 4 of the adoption design have shipped, and `engineering-protocols` depends on this
+repository.** The programme this page was written to sequence is done; what is left is the storage
+layer, which is § 6.
+
+| fact | evidence |
+|---|---|
+| `engineering-protocols` takes **five** crates of this repository | `engineering-protocols/Cargo.toml:112-116` — `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres`, `entity-remote`, declared once in `[workspace.dependencies]` |
+| all five at **one pin**, the release tag `0.13.0` | the same five lines; their gate's `dep-check` (`cargo xtask deps`) fails if the lockfile ever resolves two pins or two versions, after two kernels were compiled side by side there for two releases |
+| the arrow is **one way**, and permanent | no `Cargo.toml` in this repository names a crate of theirs — `grep -rn 'aep-\|engineering-protocols' --include=Cargo.toml .` returns nothing. [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md): *"`entity-runtime` takes nothing from `engineering-protocols`, at any version, forever"* |
+| **phase 0** — the mapping has a verdict | **accepted in part**, 2026-08-28, in `engineering-protocols`' own store: `story:entity-runtime-mapping` § *Verdict — 2026-08-28*. Accepted for states, initial states and edges; **explicitly not for the verbs** — the eleven operation names in [`examples/aep/`](https://github.com/beyond10x/entity-runtime/tree/main/examples/aep) stay ours and unendorsed |
+| the verdict has a test on **their** side too | `engineering-protocols/crates/aep-backend-markdown/tests/entity_runtime_equivalence.rs` — our `examples/aep/*.yaml`, pinned at our tag `0.13.0`, compared against their `artifacts/lifecycles/*.yaml`; six tests, eleven kinds, **77 edges** in both directions. Each repository now holds a pinned copy of the other's documents |
+| **phase 1** — every ladder as a definition | shipped: 11 definitions, 77 edges, **14 tests** (`cargo test -p entity-yaml --test aep_lifecycles`), against their `artifacts/lifecycles/*.yaml` pinned at `3de6e07`. In the gate through `test`, `example-check` and `pin-check` |
+| **phase 2** — `protocol artifact move` decided by this kernel | shipped there in `engineering-protocols` 0.13.0, 2026-08-25 (`f20c9d6`), with `crates/aep-backend-markdown/tests/kernel_equivalence.rs` holding the kernel's verdict identical to the lookup it replaced over all 800 ordered status pairs |
+| **phase 3** — a rung may cost evidence | shipped on both sides: `requires:` per rung upstream, three-valued rules here (R-57, R-58), and `PreconditionUnobservable` naming every address nobody supplied. Their gap register `:39` closed its mechanism half 2026-08-25 and its provenance half 2026-08-26 |
+| **phase 4** — the status vocabulary opened | shipped in `engineering-protocols` 0.13.0: `ArtifactStatus` carries `Other(String)` and the *ladder* gates a status write instead of the enum. Their gap register `:70`'s vocabulary half, and the last instance of `:76` |
+
+**One correction to how it happened.** The ADR's order of moves put the verdict (its step 3) before
+the manifest line (step 4). It went the other way: the operator instructed phase 2 directly, the
+dependency landed on 2026-08-25, and the verdict was written on 2026-08-28 — three days behind the
+thing it was meant to gate. The ADR records the departure itself, in its § *Taken, 2026-08-25*. The
+cost of that ordering was bounded and stayed bounded: removing the dependency is *"deleting one
+module and one manifest line"*, and nothing was built on either side that a refusal would have
+stranded.
+
+### Superseded 2026-08-28 — the old § 1, kept verbatim
+
+The section below is what this page said until 2026-08-28. It is kept because it records the
+sequencing decision that followed from it — build phase 1 first and send it as the evidence (§ 5) —
+and a page that quietly deletes the premise of its own decisions cannot be audited. **Its central
+claim is false and has been since 2026-08-25.** The grep it prints returns their README, their
+`AGENTS.md`, two `Cargo.toml`s, a concepts page and release posts; the zero-hit result was true when
+it was run and stopped being true the same week.
+
+<details>
+<summary>The blocking fact — as written, and now wrong</summary>
+
+#### 1. The blocking fact
 
 `engineering-protocols` **has never been told this repository exists.**
 
@@ -26,20 +74,26 @@ not *awaiting a verdict* — it has not been **put** to the other side. Every la
 decision nobody there has been asked to make, so the whole programme currently has exactly one live
 edge, and it is a document that has not been sent.
 
+</details>
+
 ## 2. Critical path
 
-Four items. **All four were decided on 2026-08-25** (§ 7); what remains is order of work.
+Four items. **All four were decided on 2026-08-25** (§ 7), and **all four are now done** —
+re-read 2026-08-28. Kept as the record of what was on the critical path and how each left it.
 
 | # | item | state | reversible until |
 |---|---|---|---|
-| **D** | phase 1: every lifecycle as a definition | **shipped** — 9 definitions, 73 edges, 11 tests, in the gate; refreshed to `engineering-protocols` 0.14.0 | always, it is `examples/` |
+| **D** | phase 1: every lifecycle as a definition | **shipped** — 11 definitions, 77 edges, 14 tests, in the gate; refreshed to `engineering-protocols` `3de6e07` (0.18.0). *(Read 9/73/11 until 2026-08-28; the counts were a release behind two more ladders.)* | always, it is `examples/` |
 | **C** | `story:three-valued-conditions` — the one semantics change | **shipped** — `Truth`, two new refusals, R-57/R-58 | it ships in a release |
-| **A** | put the mapping to `engineering-protocols`, carrying D as evidence | decided; sent after D | it is a document |
-| **B** | the dependency arrow | **taken** — `entity-core` is a git-pinned dependency of `aep-backend-markdown`; [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | — the manifest line exists |
+| **A** | put the mapping to `engineering-protocols`, carrying D as evidence | **done, and answered** — `story:entity-runtime-mapping` § *Verdict — 2026-08-28*: accepted in part, and not for the verbs | it is a document |
+| **B** | the dependency arrow | **taken, and widened** — five crates now, one tag, one way: `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres`, `entity-remote` at `0.13.0` (`engineering-protocols/Cargo.toml:112-116`); [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | — the manifest lines exist |
 
 Phase 3 is **done** on both sides — a ladder may declare what a rung costs, and the refusal tells
-*nobody looked* from *it does not hold*. Phase 2 is **done**: `protocol artifact move` is decided by this kernel, with an 800-pair verdict
-equivalence test in their repository. Phases 3 and 4 are next, in that order.
+*nobody looked* from *it does not hold*. Phase 2 is **done**: `protocol artifact move` is decided by
+this kernel, with an 800-pair verdict equivalence test in their repository. **Phase 4 is done too**,
+and this sentence used to say it and phase 3 were next: `ArtifactStatus` carries `Other(String)` and
+the ladder gates the write, shipped in their 0.13.0. Nothing of phases 0–4 is outstanding; § 6 is
+what follows.
 
 ## 3. What to send, and where it lands
 
@@ -60,7 +114,7 @@ own open rows are "a Rust enum cannot say this"*:
 |---|---|---|
 | gap register :70 | `correction-owed`; `expired`/`failed`/`blocked` flatten onto other rungs | phase 4 |
 | gap register :73 | a decision with a default and an expiry; time-based transitions; a typed blocker | § 6, phase 6 |
-| gap register :77 | custom kinds cannot share a lifecycle ladder (`parent()` is over built-ins) | definition reuse |
+| ~~gap register :77~~ | ~~custom kinds cannot share a lifecycle ladder (`parent()` is over built-ins)~~ | **closed there, not here.** `parent()` resolves a custom kind through its hyphen lineage (`crates/aep-domain/src/artifact.rs:529`); the row is now at `:102` of their register and carries its *closed by code* line as of 2026-08-28 |
 | gap register :39 | a story's `implemented` is a claim nothing checks | phase 3 |
 | `story:open-vocabulary-audit` | the meta-defect itself | the mapping |
 
@@ -76,7 +130,10 @@ twice.
 ## 4. § 4 of the design — reviewed
 
 The design's § 4 names three things that must change here before phase 2. Reviewed against the code
-at `4b6f2a1`:
+at `4b6f2a1`; **all three have since shipped, re-read at `ddee747` on 2026-08-28** — three-valued
+rules as R-57/R-58 and `PreconditionUnobservable`, accumulating validation as `DefinitionErrors`, and
+typed references as `type: ref` with `entity`, `inverse` and `acyclic` (R-27/R-28). The table below
+is the review as it read when the work was owed:
 
 | § 4 item | verdict |
 |---|---|
@@ -124,12 +181,15 @@ small before the type ships and expensive after:
   `story:aep-move-through-kernel` says *"this repository's visibility is undecided"* — it has been
   public since 2026-08-25 (`atlas/log/2026-08-25.md`). Both repositories are public; the question is
   now only arrow direction, and `atlas/architecture/adr/` holds one ADR to pattern it on.
-* **The pin is held by prose.** Every cross-repo claim in the adoption design cites
-  `engineering-protocols@79b641c` by file and line, and **nothing checks it** — this repository pins
-  requirements to tests mechanically (`scripts/check-requirements.py`) and pins this by hand.
-  Phase 1's story already requires a committed fixture rather than a sibling checkout; **commit that
-  fixture now** (`artifacts/lifecycles/*.yaml` plus the sha) and the pin becomes a thing
-  the gate can hold.
+* ~~**The pin is held by prose.**~~ **Done, and then done twice.** Every cross-repo claim in the
+  adoption design cited `engineering-protocols@79b641c` by file and line with nothing checking it.
+  The fixture is now committed — `crates/entity-yaml/tests/fixtures/aep-lifecycles/` with a
+  `PIN.md` the gate's `pin-check` recomputes on every run, and `.github/workflows/upstream-pin.yml`
+  asking weekly whether the copy is still what upstream ships, outside the gate so nothing here
+  reaches the network. As of 2026-08-28 **they hold the mirror image**:
+  `engineering-protocols/crates/aep-backend-markdown/tests/fixtures/entity-runtime-aep/`, our
+  `examples/aep/*.yaml` pinned at our tag `0.13.0`, with its own sha per file. Neither repository can
+  now move its half of the mapping without the other's gate saying so.
 * **An `explain` verb is *not* needed for phase 2.** Worth stating because it looks like it is:
   `execute` is pure and a refusal changes nothing (R-04), so attempting the move *is* a safe dry run.
   `story:explain-verb` stays an ergonomics item.
@@ -143,35 +203,49 @@ A paper review of a mapping table is weak evidence. Eight definitions plus an eq
 proves *the definitions yield exactly the transitions your YAML declares* is the artefact that makes
 the review decidable — and it costs `examples/` in this tree, changes nothing in theirs, and is
 thrown away for free if the verdict is no. Phase 1 ships **as** phase 0's evidence, and it has:
-[`examples/aep/`](https://github.com/beyond10x/entity-runtime/tree/main/examples/aep) — 8
-definitions, 64 edges, 11 tests, `example-check` and `cargo test` both in `task check`. The
-equivalence was verified in both directions by breaking it: an invented edge fails naming the edge,
-and a rung added to the pinned fixture fails naming what the definitions do not express.
+[`examples/aep/`](https://github.com/beyond10x/entity-runtime/tree/main/examples/aep) — **11
+definitions, 77 edges, 14 tests** (read 8/64/11 until 2026-08-28, when three more ladders had
+landed), `example-check` and `cargo test` both in `task check`. The equivalence was verified in both
+directions by breaking it: an invented edge fails naming the edge, and a rung added to the pinned
+fixture fails naming what the definitions do not express.
+
+**It worked.** The verdict came back on 2026-08-28 accepting exactly what the test pins — states,
+initial states and edges — and refusing exactly what it could not pin: the verbs. A paper review
+would have had no way to draw that line.
 
 The old edge is still in the store: `protocol artifact` has `relate` and no `unrelate`, so an edge
 can be added and never removed. `story:aep-mapping-review informed_by
 story:aep-lifecycles-as-definitions` records the real order beside it. Small, and worth carrying into
 the phase-0 message — *nothing is deleted* is their principle, and this is where it bites an author.
 
-## 6. The higher roadmap
+## 6. What follows — `epic:the-store-an-adopter-runs-on`
 
-Phases 0–4 are the design's. Two more follow from their gap register and are written down nowhere:
+Phases 0–4 are the design's and are done (§ 1). **What comes next is not another phase of the
+adoption; it is the storage layer**, and it is tracked as
+[`epic:the-store-an-adopter-runs-on`](https://github.com/beyond10x/entity-runtime/blob/main/.engineering/planning/epic/the-store-an-adopter-runs-on.md)
+in this repository's own store, with its plan page at
+[`plan/next-waves-the-adopters-store.md`](plan/next-waves-the-adopters-store.md) (accepted
+2026-08-28) and the adopter's side at `engineering-protocols/docs/plan/store-waves-f-g-h.md`. Three
+capabilities, each with no `aep` in it: say what a store holds, record what an operation was decided
+on, and run on a server. **Read that epic, not this section, for what is being built.**
 
-| phase | what | why it follows |
-|---|---|---|
-| **5** | the kernel's `Decision.events` become the markdown store's journal | D-P3 there: the store *"has no journal, no audit join and no history"*. The kernel already emits an event per operation; phase 2 puts it on the write path anyway |
-| **6** | the four lifecycle concepts their protocol cannot express (gap register :73) | three of the four are lifecycle-shaped — a decision with a default and an expiry, time-based transitions, a typed blocker. The clock stays the shell's (R-05); the *shape* is a definition |
+The two phases below were written here before that epic existed. Kept, with what happened to each:
+
+| phase | what | why it follows | 2026-08-28 |
+|---|---|---|---|
+| **5** | the kernel's `Decision.events` become the markdown store's journal | D-P3 there: the store *"has no journal, no audit join and no history"*. The kernel already emits an event per operation; phase 2 puts it on the write path anyway | **overtaken, and mostly done there.** They built the journal themselves first (`ab48bc8`, their 0.19.0) and the `CommandService` envelopes behind it (their 0.27.0, wave D). Wave H is where history moves onto an event log this repository supplies — `story:events-carry-what-they-were-decided-on` under the epic above |
+| **6** | the four lifecycle concepts their protocol cannot express (gap register :73) | three of the four are lifecycle-shaped — a decision with a default and an expiry, time-based transitions, a typed blocker. The clock stays the shell's (R-05); the *shape* is a definition | **two of the four have landed upstream as ladders**, not as kernel work: `obligation` (`ac30a24`) and `blocker` (`6409587`), both expressed in `examples/aep/` and compared by the equivalence test. The decision-with-default and the expiry still need a clock read at the edge |
 
 ### Kernel work, ranked by whether the adopter forces it
 
 | story | forced by | when |
 |---|---|---|
-| `three-valued-conditions` | their invariant 5 | now — critical path |
+| `three-valued-conditions` | their invariant 5 | **shipped** — `Truth`, R-57/R-58; it was the only blocker they owned |
 | `accumulating-definition-validation` | their invariant 3 | **shipped** |
 | `typed-references` | `artifacts/relations/relations.yaml` | **shipped** — `type: ref` with `entity`, `inverse` and `acyclic`; R-27/R-28 |
 | `event-envelope` | their `DomainEvent` correlation/causation | phase 5 |
-| `explain-verb` | their `protocol explain` UX parity | after phase 2 |
-| `schema-fragments` | gap register :77, shared ladders | phase 4, authoring |
+| `explain-verb` | their `protocol explain` UX parity | still open; phase 2 shipped without it, as § 4b predicted |
+| `schema-fragments` | ~~gap register :77~~, shared ladders | **not forced any more** — they closed the shared-ladder gap themselves through kind lineage (`artifact.rs:529`). Authoring convenience only |
 | `definition-json-schema` | their `cargo xtask schema` convention | any time |
 | `projections`, `replay-from-events`, `definition-migrations`, `provider-spi`, `named-predicates`, `static-template-validation`, `pedantic-lints` | nothing there | after adoption is real |
 
