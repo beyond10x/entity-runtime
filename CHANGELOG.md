@@ -6,6 +6,32 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.11.0] — 2026-08-28
+
+### Added
+
+* **An event records what it was decided on.** `DomainEvent::args` is the operation's arguments,
+  verbatim after defaults and validation — a creation event carries its fields. Written by the
+  kernel, never defaulted, refused when missing. A precondition that read
+  `$args.evidence.test_result >= 1` now leaves an event that says what the count was, so *what made
+  this done* is in the log and not only in the shell that asked. R-110.
+
+* **Replay checks the arguments.** A fold evaluates the emitting operation's preconditions against
+  the event's arguments and the fields as they stood, and refuses a history whose arguments would
+  have been refused — a forged `test_result: 0` does not reach `implemented` by the back door.
+  R-97, extended.
+
+### Changed
+
+* **`DomainEvent` has a new required field.** An event written by 0.10.0 or earlier, or by hand,
+  no longer parses; there is deliberately no default, because a key nobody wrote must not read as
+  *decided on nothing*. A store holding pre-0.11.0 events is a store to migrate, not to read past.
+
+* **Derived event identities carry a digest of the arguments**: `<entity>:<id>@<revision>#<index>~<args>`.
+  Two events differing only in what they were decided on have different identities; sealing one
+  decision twice still gives the same ones. Anything that pinned the old `#<index>`-terminated form
+  changes.
+
 ## [0.10.0] — 2026-08-28
 
 ### Added
