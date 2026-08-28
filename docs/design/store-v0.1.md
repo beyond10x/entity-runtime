@@ -246,3 +246,29 @@ Three rules make the answer one a shell can act on:
 Not here: filters, pages, queries. An enumeration is the primitive a projection or a search index
 folds from, and the fold is the shell's (R-98). The wire carries it as `Ask::Ids`, which is why the
 protocol is `entity.store/3`; the CLI as `entity list --store <root> --entity <type>`.
+
+## 12. Postgres: the provider an organisation runs, and a gate that says when it did not run
+
+**R-111**: `entity-postgres` is `Store` over a PostgreSQL connection the caller opens. The same two
+tables as `entity-sqlite`, for the same reasons, and the same promise — one transaction, both halves
+— where two writers to one instance is the normal case rather than the exception.
+
+Writers of one instance are serialised by a row lock: `commit` reads the held revision `FOR UPDATE`,
+so the second writer waits on the first and then sees the revision the first wrote; its stale
+`Expect` is refused as `RevisionConflict` naming that revision (R-84 under real concurrency). Two
+writers *creating* one identity have no row to lock; both read absent, both insert, and the second
+insert fails the primary key — turned into the same conflict, naming the revision the first landed,
+by re-reading after the refused insert. `READ COMMITTED` is enough for this and was chosen over
+`SERIALIZABLE`, which would refuse with a serialization failure the caller has to retry for a case a
+row lock resolves with an answer. `migrate` creates both tables idempotently and is the only DDL:
+schema creation is a command, not a README instruction.
+
+The constraint that shapes the provider is this repository's own: the gate reaches no network, and a
+provider that cannot be tested without a server cannot be in `task check` unconditionally — while a
+provider whose tests silently skip reads exactly like a tested one. So the tests run when
+`ENTITY_POSTGRES_URL` names a server, each in a schema of its own so a shared database and parallel
+tests do not meet, and the gate's `postgres-check` step prints `postgres-check: skipped,
+ENTITY_POSTGRES_URL unset` when they did not. When the variable is set and the server does not
+answer, the tests fail: a variable somebody set is a claim that the server is there. CI sets it,
+against a service container. The connection is the caller's — no TLS backend, no pool, no
+authentication beyond the URL is chosen on an adopter's behalf.

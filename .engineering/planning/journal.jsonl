@@ -129,3 +129,7 @@
 {"at":"2026-08-28T15:29:19Z","actor":"human:timo","artifact":"story:events-carry-what-they-were-decided-on","kind":"story","revision":5,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
 {"at":"2026-08-28T15:29:19Z","actor":"human:timo","artifact":"story:events-carry-what-they-were-decided-on","kind":"story","revision":6,"change":{"change":"body_replaced"}}
 {"at":"2026-08-28T15:29:55Z","actor":"human:timo","artifact":"story:events-carry-what-they-were-decided-on","kind":"story","revision":7,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{}}}
+{"at":"2026-08-28T16:03:32Z","actor":"human:timo","artifact":"story:postgres-provider","kind":"story","revision":6,"change":{"change":"moved","from":"draft","to":"proposed","decided_on":{}}}
+{"at":"2026-08-28T16:03:32Z","actor":"human:timo","artifact":"story:postgres-provider","kind":"story","revision":7,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
+{"at":"2026-08-28T16:07:44Z","actor":"human:timo","artifact":"story:postgres-provider","kind":"story","revision":8,"change":{"change":"body_replaced"}}
+{"at":"2026-08-28T16:09:02Z","actor":"human:timo","artifact":"story:postgres-provider","kind":"story","revision":9,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{}}}

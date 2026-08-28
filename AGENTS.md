@@ -110,12 +110,14 @@ somewhere. Do not write an enforcement here that you cannot point at.
 task check
 ```
 
-Eight steps, in this order: `fmt-check` · `clippy` (`--workspace --all-targets --locked
+Ten steps, in this order: `fmt-check` · `clippy` (`--workspace --all-targets --locked
 -D warnings`, which is what makes `missing_docs` fatal) · `test` · `doc-check`
 (`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml` and
 `examples/aep/*.yaml`, `examples/references/*.yaml`) · `req-check` · `pin-check` (every `PIN.md` under `crates/` still hashes to
 what it records, in both directions — a moved copy and an unpinned file beside it) ·
-`plan-check` (`protocol artifact validate`). Every cargo step runs `--locked`, so the gate judges the dependency
+`plan-check` (`protocol artifact validate`) · `postgres-check` (the Postgres provider's tests
+against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they did not run) ·
+`notes-check`. Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
 
 One check is deliberately **outside** the gate. `pin-check` holds the AEP fixture against its own
@@ -159,7 +161,9 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 * **The shell owns IO.** `entity-cli` reads files and stdin and prints; nothing else here does.
   If a new verb needs a clock, the clock is read in the CLI and passed in as an argument.
 * **No step of `task check` calls a network service of its own** — nothing downloads a schema,
-  resolves a remote `$ref` or calls an API — and no step spends money. Cargo may still populate its
+  resolves a remote `$ref` or calls an API — and no step spends money. The one exception is
+  opted into by name: `postgres-check` talks to the server `ENTITY_POSTGRES_URL` names and to
+  nothing when it is unset, and says which. Cargo may still populate its
   registry cache on a cold machine; `--locked` is what keeps that from changing what is built.
   `task site-build` is excluded from `check` because `npm ci` genuinely fetches.
 * **Never commit a credential, a token or anything adopter-internal.**
@@ -219,8 +223,9 @@ state: propose them and wait for the operator unless the operator asked for the 
 * **Task runner is `Taskfile.yml`** (go-task). Do not add a Makefile.
 * **Comments explain why.** Doc comments on public items say what the type is *for*, and where a
   design decision is embedded in it, why.
-* **Dependencies.** The workspace has four direct third-party crates: `serde`, `serde_json`,
-  `serde_yaml_ng`, `clap`. The kernel may use the first two — `crates/entity-core/tests/purity.rs`
+* **Dependencies.** The workspace has five direct third-party crates: `serde`, `serde_json`,
+  `serde_yaml_ng`, `clap`, and `postgres` in `entity-postgres` alone (no default features; the
+  manifest says why). The kernel may use the first two — `crates/entity-core/tests/purity.rs`
   fails if that changes. `serde_yaml_ng` replaced `serde_yaml`, whose last release marks itself
   deprecated and receives no fixes; the reason is in the workspace manifest beside the line. Prefer
   no dependency, and justify a new one in the manifest beside the line that adds it.

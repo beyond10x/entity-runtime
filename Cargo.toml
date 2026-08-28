@@ -4,6 +4,7 @@ members = [
   "crates/entity-core",
   "crates/entity-store",
   "crates/entity-sqlite",
+  "crates/entity-postgres",
   "crates/entity-remote",
   "crates/entity-graph",
   "crates/entity-yaml",
@@ -12,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.11.0"
+version = "0.12.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/beyond10x/entity-runtime"
