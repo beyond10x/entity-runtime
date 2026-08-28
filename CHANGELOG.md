@@ -4,6 +4,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.10.0] — 2026-08-28
+
 ### Added
 
 * **A store can say what it holds.** `StateProvider::ids(entity)` lists every identity stored under
