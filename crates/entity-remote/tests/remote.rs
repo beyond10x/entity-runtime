@@ -158,6 +158,12 @@ fn an_unreachable_store_on_the_far_side_stays_unreachable_on_this_one() {
                 detail: "no route to host".to_owned(),
             })
         }
+        fn ids(&self, _: &str) -> Result<Vec<String>, StoreError> {
+            Err(StoreError::Unreachable {
+                provider: "the-far-side-store".to_owned(),
+                detail: "no route to host".to_owned(),
+            })
+        }
     }
     impl entity_store::EventProvider for DeadStore {
         fn events(&self, _: &str, _: &str) -> Result<Vec<DomainEvent>, StoreError> {
@@ -231,4 +237,57 @@ fn registry() -> Registry {
     let mut registry = Registry::new();
     registry.register(definition).expect("validates");
     registry
+}
+
+#[test]
+fn ids_cross_the_wire_intact() {
+    // Enumeration is what lets a shell rebuild from a store it did not write, and a remote is the
+    // store a shell is least likely to have written itself.
+    let registry = registry();
+    let mut store = remote();
+    for id in ["two", "one"] {
+        let created = Runtime::new(&registry)
+            .create("ticket", 1, id, json!({ "title": "A ticket" }))
+            .expect("permitted");
+        store.commit(&created, Expect::Absent).expect("accepted");
+    }
+    assert_eq!(
+        store.ids("ticket").expect("answers"),
+        ["one", "two"],
+        "sorted on the far side, sorted on this one"
+    );
+    assert!(
+        store.ids("nobody").expect("answers").is_empty(),
+        "a type nobody stored under is an empty list, not a failure"
+    );
+
+    store.transport().go_dark("cable pulled");
+    let error = store
+        .ids("ticket")
+        .expect_err("a store that cannot be reached has not answered");
+    assert!(
+        error.is_unreachable(),
+        "silence must not be reported as an empty store: {error}"
+    );
+}
+
+#[test]
+fn a_peer_at_the_previous_wire_version_is_refused_by_name() {
+    // `Ask::Ids` and `Answer::Ids` are new variants on tagged enums with `deny_unknown_fields`, so
+    // a `/2` peer cannot decode either. The rule 0.9.0 applied when `Answer` grew applies again:
+    // the version moves, and the old peer is told so rather than handed a decode failure.
+    assert_eq!(WIRE_VERSION, "entity.store/3");
+    let transport = LoopbackTransport::new(MemoryStore::new());
+    let mut request = Request::new(Ask::Ids {
+        entity: "ticket".to_owned(),
+    });
+    request.version = "entity.store/2".to_owned();
+
+    use entity_remote::Transport as _;
+    let answered = transport.call(&request).expect("the peer answered");
+    let Answer::Refused { detail } = answered else {
+        panic!("the previous version is refused by name, not {answered:?}");
+    };
+    assert!(detail.contains("entity.store/2"), "{detail}");
+    assert!(detail.contains("entity.store/3"), "{detail}");
 }

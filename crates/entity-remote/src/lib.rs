@@ -24,7 +24,7 @@
 //!
 //! # The wire is JSON and versioned
 //!
-//! Both sides speak `entity.store/1`. A request naming a version this build does not know is
+//! Both sides speak [`WIRE_VERSION`]. A request naming a version this build does not know is
 //! refused by name rather than parsed as much as possible — a partial read of a protocol nobody
 //! agreed on is how two deployments come to disagree quietly.
 
@@ -52,7 +52,13 @@ pub use loopback::LoopbackTransport;
 /// failure, which is the `Backend` outcome that change set out to avoid.
 ///
 /// Bumping refuses an old peer outright instead, by name, which is what a version is for.
-pub const WIRE_VERSION: &str = "entity.store/2";
+///
+/// # And to `/3` for enumeration
+///
+/// [`Ask::Ids`] and [`Answer::Ids`] are new variants on the same two tagged enums, so the same rule
+/// applies: a `/2` peer cannot decode either, and is told so by name rather than handed a decode
+/// failure (`story:store-enumeration`).
+pub const WIRE_VERSION: &str = "entity.store/3";
 
 /// What one side asks the other.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,7 +81,7 @@ impl Request {
     }
 }
 
-/// The three things a store is ever asked.
+/// The four things a store is ever asked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "ask", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Ask {
@@ -85,6 +91,11 @@ pub enum Ask {
         entity: String,
         /// The identity.
         id: String,
+    },
+    /// Every identity held under this entity type, sorted.
+    Ids {
+        /// The entity type.
+        entity: String,
     },
     /// Every event for this identity, oldest first.
     Events {
@@ -149,6 +160,11 @@ pub enum Answer {
     Events {
         /// What was found.
         events: Vec<DomainEvent>,
+    },
+    /// The identities held, sorted.
+    Ids {
+        /// What was found.
+        ids: Vec<String>,
     },
     /// The write landed.
     Committed,
@@ -269,6 +285,15 @@ impl<T: Transport> StateProvider for RemoteStore<T> {
             other => Err(common(other)),
         }
     }
+
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        match self.ask(Ask::Ids {
+            entity: entity.to_owned(),
+        })? {
+            Answer::Ids { ids } => Ok(ids),
+            other => Err(common(other)),
+        }
+    }
 }
 
 impl<T: Transport> EventProvider for RemoteStore<T> {
@@ -336,6 +361,10 @@ pub fn answer(store: &mut dyn Store, request: &Request) -> Result<Answer, String
         },
         Ask::Events { entity, id } => match store.events(entity, id) {
             Ok(events) => Answer::Events { events },
+            Err(error) => failure(error),
+        },
+        Ask::Ids { entity } => match store.ids(entity) {
+            Ok(ids) => Answer::Ids { ids },
             Err(error) => failure(error),
         },
         Ask::Commit { decision, expect } => match store.commit(decision, (*expect).into()) {

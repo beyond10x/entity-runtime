@@ -757,3 +757,72 @@ fn a_second_creation_of_one_identity_is_refused_by_the_store() {
         "the refusal says what was expected and what was found: {refusal}"
     );
 }
+
+#[test]
+fn list_says_what_a_store_holds_and_nothing_for_a_type_nobody_stored() {
+    let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-list");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("scratch root");
+    let definition = root.join("ticket.yaml");
+    std::fs::write(
+        &definition,
+        "entity: ticket\nversion: 1\nschema:\n  fields:\n    title: { type: string, required: true }\nlifecycle:\n  initial: open\n  states: [open, closed]\noperations:\n  close:\n    transitions:\n      - from: open\n        to: closed\n",
+    )
+    .expect("a definition");
+    let store = root.join("store");
+
+    // Created in the order a sort would not produce.
+    for id in ["two", "one"] {
+        let created = entity()
+            .args(["create", "--definition"])
+            .arg(&definition)
+            .args(["--id", id, "--fields", r#"{"title":"A ticket"}"#, "--store"])
+            .arg(&store)
+            .output()
+            .expect("runs");
+        assert!(
+            created.status.success(),
+            "{}",
+            String::from_utf8_lossy(&created.stderr)
+        );
+    }
+
+    let listed = entity()
+        .args(["list", "--store"])
+        .arg(&store)
+        .args(["--entity", "ticket"])
+        .output()
+        .expect("runs");
+    assert!(
+        listed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&listed.stdout),
+        "one\ntwo\n",
+        "one per line, sorted"
+    );
+
+    let json = entity()
+        .args(["list", "--store"])
+        .arg(&store)
+        .args(["--entity", "ticket", "--format", "json"])
+        .output()
+        .expect("runs");
+    let parsed: serde_json::Value = serde_json::from_slice(&json.stdout).expect("JSON on stdout");
+    assert_eq!(parsed, serde_json::json!(["one", "two"]));
+
+    let nobody = entity()
+        .args(["list", "--store"])
+        .arg(&store)
+        .args(["--entity", "nobody"])
+        .output()
+        .expect("runs");
+    assert!(
+        nobody.status.success(),
+        "a type nobody stored under is an answer, not a failure: {}",
+        String::from_utf8_lossy(&nobody.stderr)
+    );
+    assert!(nobody.stdout.is_empty(), "and the answer is nothing");
+}

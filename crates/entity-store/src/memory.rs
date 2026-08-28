@@ -58,6 +58,17 @@ impl StateProvider for MemoryStore {
             .get(&(entity.to_owned(), id.to_owned()))
             .cloned())
     }
+
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        // The map is ordered by `(entity, id)`, so the ids of one entity come out sorted already;
+        // sorting is what the trait promises, and a `BTreeMap` is how this provider keeps it.
+        Ok(self
+            .instances
+            .keys()
+            .filter(|(held, _)| held == entity)
+            .map(|(_, id)| id.clone())
+            .collect())
+    }
 }
 
 impl EventProvider for MemoryStore {

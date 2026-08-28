@@ -4,7 +4,28 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+* **A store can say what it holds.** `StateProvider::ids(entity)` lists every identity stored under
+  an entity type, sorted, so a shell can open a store it did not write and rebuild from it — the one
+  question the SPI could not answer, and the reason `engineering-protocols`' SQLite backend refused
+  any row it had not written itself. Every provider implements it: `MemoryStore`, `FileStore`,
+  `SqliteStore`, `RemoteStore` and `Hybrid` (through its read path — an unreachable authority is
+  `Unreachable`, never an empty list). The conformance suite gained three cases, and `Broken` now
+  also lists an id it does not hold, so the suite is shown to catch that too. R-109.
+
+* **`entity list --store <root> --entity <type>`** prints what a store holds, one id per line, or as
+  JSON or YAML. A type nobody stored under prints nothing and exits 0.
+
+### Changed
+
+* **The wire is `entity.store/3`.** `Ask::Ids` and `Answer::Ids` are new variants on tagged enums a
+  `/2` peer cannot decode, so the version moved and a `/2` peer is refused by name — the same rule
+  0.9.0 applied when `Answer` grew. Both ends of a deployment upgrade together.
+
+* **`StateProvider` has a new required method.** A provider outside this repository must implement
+  `ids`; there is deliberately no default, because a default returning an empty list would let a
+  provider claim to hold nothing while holding everything.
 
 ## [0.9.1] — 2026-08-26
 

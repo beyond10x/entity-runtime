@@ -83,6 +83,42 @@ impl StateProvider for FileStore {
             .map(Some)
             .map_err(|error| backend("parsing", &path, &error))
     }
+
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        self.ids_under(entity)
+    }
+}
+
+impl FileStore {
+    /// The identities under `<root>/<entity>/`: one `<id>.json` per instance.
+    ///
+    /// `<id>.events.jsonl` sits beside each and is not an instance; an event log whose state file
+    /// never landed (the crash window in the module doc) is therefore **not** listed — what is
+    /// listed is what `load` would answer, and nothing else.
+    fn ids_under(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        let directory = self.root.join(entity);
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(backend("listing", &directory, &error)),
+        };
+        let mut ids = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|error| backend("listing", &directory, &error))?;
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else {
+                continue;
+            };
+            if name.ends_with(".events.jsonl") {
+                continue;
+            }
+            if let Some(id) = name.strip_suffix(".json") {
+                ids.push(id.to_owned());
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
 }
 
 impl EventProvider for FileStore {

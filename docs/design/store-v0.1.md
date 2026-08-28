@@ -175,7 +175,10 @@ what `LoopbackTransport` is, labelled as such. It runs the *real* JSON round tri
 against the *real* `answer` a server would run; what it stands in for is the network alone.
 
 The wire is versioned, and a request at an unknown version is refused by name. A partial read of a
-protocol nobody agreed on is how two deployments come to disagree quietly.
+protocol nobody agreed on is how two deployments come to disagree quietly. The version moves
+whenever a tagged enum on the wire grows a variant — `/2` when `Answer` gained `Refused` and
+`Unreachable`, `/3` when `Ask` and `Answer` gained `Ids` — because a peer built against the older
+shape cannot decode the new variant and must be told so rather than handed a decode failure.
 
 **R-104** is the one that matters most. Every failure to reach the far side becomes
 `StoreError::Unreachable`, never a `None`. A remote that did not answer has said **nothing** about
@@ -212,3 +215,30 @@ its list on a partial success would report success and lose the rest.
 It **merges nothing**. A divergence that returns as a conflict means the other side moved on its
 own, and no rule here can know whose version is right. Those stay outstanding for a person, because
 the alternative is a machine picking — and a machine picking is how the wrong version wins silently.
+
+## 11. Enumeration: a store can say what it holds
+
+**R-109**: `StateProvider::ids(entity)` is every identity held under one entity type, sorted.
+
+Every other question in this crate needs an `(entity, id)` the caller already knows. A shell that
+did not write a store — a second process, a rebuild after a crash, an adopter's process hydrating
+from a file another run wrote — has no id to ask with, and until this section the honest thing it
+could do was refuse. `engineering-protocols`' SQLite backend did exactly that: it refused any row it
+had not written itself and told people to point it at an empty database.
+
+Three rules make the answer one a shell can act on:
+
+* **Sorted, byte for byte.** Two calls agree, and two providers agree, so a hydration is the same
+  order every run and a test can assert on it. `MemoryStore` walks an ordered map; `FileStore` sorts
+  the directory; `SqliteStore` says `ORDER BY id`, whose default collation is byte order.
+* **Nothing is an answer; silence is not.** A type nobody stored under is `Ok(vec![])`. A store that
+  could not be asked is `Unreachable` — a hybrid whose authority did not answer says so, and only a
+  `ServeStale` policy somebody typed turns that into the local copy's listing. An empty list from a
+  store that was never asked would rebuild an empty process and call it current.
+* **Only what is held.** Every id listed is one `load` answers for. The suite checks this against a
+  provider that lists a phantom (`Broken`), because the failure it produces — a shell fetching
+  instances that are not there — looks like a bug in the shell.
+
+Not here: filters, pages, queries. An enumeration is the primitive a projection or a search index
+folds from, and the fold is the shell's (R-98). The wire carries it as `Ask::Ids`, which is why the
+protocol is `entity.store/3`; the CLI as `entity list --store <root> --entity <type>`.
