@@ -89,9 +89,14 @@ fn a_refused_commit_rolls_back_both_halves() {
     // the provider whose own documentation says it cannot make this promise. This asserts the case
     // that does: the instance write lands, the event write then fails, and neither survives.
     //
-    // The event write is made to fail by handing the commit an event whose `(entity, id, revision,
-    // position)` is already in the table. The instance row has been written by then.
-    let mut store = SqliteStore::in_memory().expect("a database");
+    // The event write is made to fail by a trigger on the events table, added through a second
+    // connection once the instance holds two revisions: the instance row has been written by the
+    // time the append runs, and the trigger refuses it. (It used to be made to fail by planting an
+    // event at a `(revision, position)` the commit would reuse; positions now continue from what
+    // the log holds, so nothing planted can collide.)
+    let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("rollback.sqlite3");
+    let _ = std::fs::remove_file(&path);
+    let mut store = SqliteStore::open(&path).expect("a database");
     let registry = registry();
     let runtime = Runtime::new(&registry);
 
@@ -106,7 +111,15 @@ fn a_refused_commit_rolls_back_both_halves() {
         .commit(&closed, Expect::Revision(1))
         .expect("accepted");
 
-    // Revision 3, carrying an event that collides with the one revision 2 already wrote.
+    rusqlite::Connection::open(&path)
+        .expect("a second connection")
+        .execute_batch(
+            "CREATE TRIGGER refuse_events BEFORE INSERT ON events \
+             BEGIN SELECT RAISE(ABORT, 'the events table refuses'); END;",
+        )
+        .expect("the trigger is created");
+
+    // Revision 3, carrying the event the trigger will refuse.
     let mut moved = closed.instance.clone();
     moved.revision = 3;
     let colliding = Decision {
@@ -115,9 +128,9 @@ fn a_refused_commit_rolls_back_both_halves() {
             entity: "ticket".to_owned(),
             version: 1,
             id: "one".to_owned(),
-            revision: 2,
+            revision: 3,
             event_type: "TicketClosed".to_owned(),
-            from_state: Some("open".to_owned()),
+            from_state: Some("closed".to_owned()),
             to_state: "closed".to_owned(),
             changed: serde_json::Map::new(),
             args: serde_json::Map::new(),
@@ -127,7 +140,7 @@ fn a_refused_commit_rolls_back_both_halves() {
 
     let error = store
         .commit(&colliding, Expect::Revision(2))
-        .expect_err("the event write collides with the row already there");
+        .expect_err("the event write is refused by the trigger");
     assert!(
         !matches!(error, StoreError::RevisionConflict { .. }),
         "this is not a conflict: the check passed and the failure came after it: {error}"
@@ -141,7 +154,7 @@ fn a_refused_commit_rolls_back_both_halves() {
     assert_eq!(
         store.events("ticket", "one").expect("events").len(),
         2,
-        "and the colliding event was not left behind beside the two that were already there"
+        "and the refused event was not left behind beside the two that were already there"
     );
 }
 

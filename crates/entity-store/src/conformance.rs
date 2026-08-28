@@ -17,7 +17,7 @@
 //! This is the same move `engineering-protocols` made at `0.2.0-wave-3` and has held since: prove
 //! the checker before trusting the check.
 
-use entity_core::{Registry, Runtime};
+use entity_core::{Decision, Registry, Runtime};
 use serde_json::json;
 
 use crate::{Expect, StateProvider, Store, StoreError};
@@ -123,6 +123,10 @@ const CASES: &[Case] = &[
         run: together,
     },
     Case {
+        name: "an observation lands at an unchanged revision, and so does the next",
+        run: observations_land,
+    },
+    Case {
         name: "a stale write is refused",
         run: stale_refused,
     },
@@ -206,6 +210,64 @@ fn together(store: &mut dyn Store, registry: &Registry) -> Result<(), String> {
         return Err(format!(
             "the state moved but {} event(s) landed; state and events must arrive together",
             events.len()
+        ));
+    }
+    Ok(())
+}
+
+/// An observation is a fact *about* an instance, not a change *to* it: the instance as it stands,
+/// with one more event at its current revision. A store that keyed events by revision alone, or
+/// dropped an event at a revision it had reached, would lose the second observation — or the
+/// first — and a shell counting what was observed (evidence about a plan's story, say) would count
+/// short with nothing saying so.
+fn observations_land(store: &mut dyn Store, registry: &Registry) -> Result<(), String> {
+    let created = opened(store, registry, "observed")?;
+    let observed = |what: &str| {
+        let args = serde_json::Map::from_iter([("what".to_owned(), json!(what))]);
+        Decision {
+            instance: created.clone(),
+            events: vec![entity_core::DomainEvent {
+                entity: created.entity.clone(),
+                version: created.version,
+                id: created.id.clone(),
+                revision: created.revision,
+                event_type: "TicketObserved".to_owned(),
+                from_state: Some(created.lifecycle_state.clone()),
+                to_state: created.lifecycle_state.clone(),
+                changed: serde_json::Map::new(),
+                args,
+                payload: json!({ "what": what }),
+            }],
+        }
+    };
+    for what in ["first", "second"] {
+        store
+            .commit(&observed(what), Expect::Revision(created.revision))
+            .map_err(|error| format!("the {what} observation was refused: {error}"))?;
+    }
+
+    let loaded = store
+        .load("conformance-ticket", "observed")
+        .map_err(|error| format!("load failed: {error}"))?
+        .ok_or("the instance vanished")?;
+    if loaded.revision != created.revision {
+        return Err(format!(
+            "an observation moved the revision to {}; it must stay at {}",
+            loaded.revision, created.revision
+        ));
+    }
+    let events = store
+        .events("conformance-ticket", "observed")
+        .map_err(|error| format!("event read failed: {error}"))?;
+    let seen: Vec<&str> = events
+        .iter()
+        .filter(|event| event.event_type == "TicketObserved")
+        .filter_map(|event| event.args.get("what").and_then(|what| what.as_str()))
+        .collect();
+    if seen != ["first", "second"] {
+        return Err(format!(
+            "two observations were committed and the log holds {seen:?}; an observation at a \
+             revision the log has reached must still land, and in order"
         ));
     }
     Ok(())
