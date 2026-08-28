@@ -371,6 +371,9 @@ fn catch_up_keeps_a_divergence_whose_local_side_cannot_be_read() {
         fn load(&self, _: &str, _: &str) -> Result<Option<EntityInstance>, StoreError> {
             Err(StoreError::Backend("the state file is corrupt".to_owned()))
         }
+        fn ids(&self, _: &str) -> Result<Vec<String>, StoreError> {
+            Err(StoreError::Backend("the state file is corrupt".to_owned()))
+        }
     }
     impl entity_store::EventProvider for Unreadable {
         fn events(&self, _: &str, _: &str) -> Result<Vec<DomainEvent>, StoreError> {
@@ -572,6 +575,9 @@ fn with_the_remote_as_authority_a_refused_local_write_is_recorded_and_not_swallo
         fn load(&self, _: &str, _: &str) -> Result<Option<EntityInstance>, StoreError> {
             Ok(None)
         }
+        fn ids(&self, _: &str) -> Result<Vec<String>, StoreError> {
+            Ok(Vec::new())
+        }
     }
     impl entity_store::EventProvider for Unwritable {
         fn events(&self, _: &str, _: &str) -> Result<Vec<DomainEvent>, StoreError> {
@@ -611,5 +617,56 @@ fn with_the_remote_as_authority_a_refused_local_write_is_recorded_and_not_swallo
             .contains("the authority accepted"),
         "and it says which way round: {}",
         store.divergences()[0].detail
+    );
+}
+
+#[test]
+fn an_unreachable_authority_lists_unreachable_never_nothing() {
+    // A shell hydrating from an empty list rebuilds an empty process and calls it current. So a
+    // listing the authority could not answer is `Unreachable`, and only a policy somebody typed
+    // turns it into the local copy's answer.
+    let registry = registry();
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Remote,
+            ReadPath::RemoteFirst,
+            WhenUnreachable::Refuse,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    store
+        .commit(&opened(&registry), Expect::Absent)
+        .expect("accepted");
+    assert_eq!(store.ids("ticket").expect("answers"), ["one"]);
+
+    store.remote().transport().go_dark("on a train");
+    let error = store
+        .ids("ticket")
+        .expect_err("the authority did not answer");
+    assert!(
+        error.is_unreachable(),
+        "an unreachable authority must not read as an empty store: {error}"
+    );
+
+    let mut stale = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Remote,
+            ReadPath::RemoteFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    stale
+        .commit(&opened(&registry), Expect::Absent)
+        .expect("accepted");
+    stale.remote().transport().go_dark("on a train");
+    assert_eq!(
+        stale.ids("ticket").expect("served from the local copy"),
+        ["one"],
+        "serving the local listing is a choice the policy made"
     );
 }

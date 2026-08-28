@@ -138,6 +138,20 @@ impl StateProvider for SqliteStore {
             .map_err(|error| backend("reading a revision", &error))
             .map(|found| found.map(|revision| revision as u64))
     }
+
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        // `ORDER BY id` is the sort the trait promises; SQLite's default text collation is byte
+        // order, which is what `Vec<String>::sort` produces, so every provider agrees.
+        let mut statement = self
+            .connection
+            .prepare("SELECT id FROM instances WHERE entity = ?1 ORDER BY id")
+            .map_err(|error| backend("preparing the listing", &error))?;
+        let rows = statement
+            .query_map(params![entity], |row| row.get::<_, String>(0))
+            .map_err(|error| backend("listing instances", &error))?;
+        rows.map(|row| row.map_err(|error| backend("reading an id", &error)))
+            .collect()
+    }
 }
 
 impl EventProvider for SqliteStore {

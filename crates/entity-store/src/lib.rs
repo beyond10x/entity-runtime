@@ -35,9 +35,11 @@
 //!
 //! # What is deliberately not here yet
 //!
-//! Search and blob providers, projections, replay, and an event envelope carrying an id, a recorded
-//! time, correlation and causation. Each is its own story; naming them here is what stops this
-//! crate growing them by accident.
+//! Search and blob providers. Enumeration is here — [`StateProvider::ids`] says what a store holds
+//! for one entity type, sorted, and nothing more: no filter, no page, no query. An enumeration is
+//! the primitive a projection or a search index folds from, and the fold is the shell's (R-98).
+//! Each of the rest is its own story; naming them here is what stops this crate growing them by
+//! accident.
 
 #![doc(html_root_url = "https://github.com/beyond10x/entity-runtime")]
 
@@ -161,6 +163,25 @@ pub trait StateProvider {
     fn revision_of(&self, entity: &str, id: &str) -> Result<Option<u64>, StoreError> {
         Ok(self.load(entity, id)?.map(|instance| instance.revision))
     }
+
+    /// Every identity the store holds for `entity`, sorted, so two calls and two providers agree
+    /// byte for byte.
+    ///
+    /// This is what lets a shell open a store it did not write and rebuild from it. Every other
+    /// question here needs an `(entity, id)` the caller already knows; a process hydrating from a
+    /// populated store has no id to ask with — which is why the first adopter's SQLite backend
+    /// refused any row it had not written itself and told people to point it at an empty database.
+    ///
+    /// Required rather than defaulted: a default that returned an empty list would let a provider
+    /// claim to hold nothing while holding everything, and a store answering *nothing* about a
+    /// question it cannot answer is the one thing this crate refuses everywhere else.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError::Backend`] when the provider itself fails, and [`StoreError::Unreachable`] when
+    /// it could not be asked. A type nobody stored under is `Ok(vec![])`: not being there is an
+    /// answer, not a failure.
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError>;
 }
 
 /// Reading and appending an instance's events.

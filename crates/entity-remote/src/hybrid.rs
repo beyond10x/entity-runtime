@@ -385,6 +385,33 @@ impl<L: Store, R: Store> StateProvider for Hybrid<L, R> {
             (_, value) => Ok(value),
         }
     }
+
+    /// # Through the read path, and an unreachable authority is `Unreachable`, never an empty list
+    ///
+    /// The same shape as [`EventProvider::events`] on this type: `RemoteOnly` asks the remote and
+    /// fails as it fails; `RemoteFirst` asks the remote and, when it cannot be reached, does what
+    /// [`WhenUnreachable`] says — refuse, or list the local copy; `LocalFirst` lists the local copy
+    /// and asks the remote only when it holds nothing. What is refused is the shape where a store
+    /// that could not be asked reads as a store that holds nothing: a shell hydrating from an
+    /// empty list would rebuild an empty process and call it current.
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        match self.policy.read_path {
+            ReadPath::RemoteOnly => self.remote.ids(entity),
+            ReadPath::RemoteFirst => match self.remote.ids(entity) {
+                Ok(ids) => Ok(ids),
+                Err(error) if error.is_unreachable() => match self.policy.when_unreachable {
+                    WhenUnreachable::Refuse => Err(error),
+                    WhenUnreachable::ServeStale => self.local.ids(entity),
+                },
+                Err(error) => Err(error),
+            },
+            ReadPath::LocalFirst => match self.local.ids(entity) {
+                Ok(ids) if !ids.is_empty() => Ok(ids),
+                Ok(_) => self.remote.ids(entity),
+                Err(error) => Err(error),
+            },
+        }
+    }
 }
 
 impl<L: Store, R: Store> EventProvider for Hybrid<L, R> {

@@ -138,6 +138,18 @@ const CASES: &[Case] = &[
         name: "an instance nobody stored is absent",
         run: absent_is_not_an_error,
     },
+    Case {
+        name: "what a store holds is listed, sorted, and only that",
+        run: holdings_are_listed,
+    },
+    Case {
+        name: "an entity type nobody stored under lists nothing, not an error",
+        run: nothing_stored_lists_nothing,
+    },
+    Case {
+        name: "a refused commit adds nothing to the listing",
+        run: refusal_lists_nothing,
+    },
 ];
 
 /// Creates `id` in `store` and returns the stored instance.
@@ -293,12 +305,86 @@ fn absent_is_not_an_error(store: &mut dyn Store, _registry: &Registry) -> Result
     }
 }
 
-/// A provider that ignores the revision it was given.
+fn holdings_are_listed(store: &mut dyn Store, registry: &Registry) -> Result<(), String> {
+    // Two, created in the order a sort would *not* produce, so "sorted" is tested rather than
+    // inherited from insertion order.
+    opened(store, registry, "listed-b")?;
+    opened(store, registry, "listed-a")?;
+    let ids = store
+        .ids("conformance-ticket")
+        .map_err(|error| format!("listing failed: {error}"))?;
+
+    let mut sorted = ids.clone();
+    sorted.sort();
+    if ids != sorted {
+        return Err(format!(
+            "the listing is not sorted: {ids:?}; two calls and two providers must agree byte for byte"
+        ));
+    }
+    for wanted in ["listed-a", "listed-b"] {
+        if !ids.iter().any(|id| id == wanted) {
+            return Err(format!(
+                "`{wanted}` was committed and is not listed: {ids:?}"
+            ));
+        }
+    }
+    // Every id listed must be one `load` answers for. A provider that lists what it does not hold
+    // sends a hydrating shell to fetch instances that are not there.
+    for id in &ids {
+        if store
+            .load("conformance-ticket", id)
+            .map_err(|error| format!("load failed: {error}"))?
+            .is_none()
+        {
+            return Err(format!(
+                "`{id}` is listed and `load` answers absent; a listing must name only what is held"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn nothing_stored_lists_nothing(store: &mut dyn Store, _registry: &Registry) -> Result<(), String> {
+    match store.ids("nobody-stored-this-type") {
+        Ok(ids) if ids.is_empty() => Ok(()),
+        Ok(ids) => Err(format!(
+            "{} id(s) listed for an entity type nobody stored under: {ids:?}",
+            ids.len()
+        )),
+        Err(error) => Err(format!(
+            "nothing stored must be an answer, not a failure: {error}"
+        )),
+    }
+}
+
+fn refusal_lists_nothing(store: &mut dyn Store, registry: &Registry) -> Result<(), String> {
+    let created = Runtime::new(registry)
+        .create(
+            "conformance-ticket",
+            1,
+            "listed-refused",
+            json!({ "title": "Never landed" }),
+        )
+        .map_err(|error| format!("the kernel refused a creation: {error}"))?;
+    if store.commit(&created, Expect::Revision(7)).is_ok() {
+        return Err("a creation expecting revision 7 was accepted".to_owned());
+    }
+    let ids = store
+        .ids("conformance-ticket")
+        .map_err(|error| format!("listing failed: {error}"))?;
+    if ids.iter().any(|id| id == "listed-refused") {
+        return Err("a refused commit is listed as held".to_owned());
+    }
+    Ok(())
+}
+
+/// A provider that ignores the revision it was given, and lists an id it does not hold.
 ///
-/// Deliberately wrong, and wrong in the one way that matters most: every write is accepted, so a
-/// concurrent writer silently replaces another's work. The suite is run against it to prove the
-/// suite would catch that — a conformance suite nobody has watched fail is a suite nobody knows the
-/// reach of.
+/// Deliberately wrong, and wrong in the two ways that matter most: every write is accepted, so a
+/// concurrent writer silently replaces another's work; and the listing names a phantom, so a shell
+/// hydrating from it goes looking for an instance that is not there. The suite is run against it to
+/// prove the suite would catch both — a conformance suite nobody has watched fail is a suite nobody
+/// knows the reach of.
 #[derive(Debug, Default)]
 pub struct Broken {
     inner: crate::MemoryStore,
@@ -311,6 +397,14 @@ impl StateProvider for Broken {
         id: &str,
     ) -> Result<Option<entity_core::EntityInstance>, StoreError> {
         self.inner.load(entity, id)
+    }
+
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        // The second defect: an id nobody stored, listed as if it were held.
+        let mut ids = self.inner.ids(entity)?;
+        ids.push("ghost-nobody-stored".to_owned());
+        ids.sort();
+        Ok(ids)
     }
 }
 

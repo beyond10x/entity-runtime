@@ -11,7 +11,7 @@ fn the_memory_provider_conforms() {
     let mut store = MemoryStore::new();
     let report = conformance::run(&mut store);
     assert!(report.is_clean(), "MemoryStore:\n{}", report.summary());
-    assert_eq!(report.outcomes.len(), 6);
+    assert_eq!(report.outcomes.len(), 9);
 }
 
 #[test]
@@ -27,7 +27,8 @@ fn the_file_provider_conforms() {
 fn a_broken_provider_is_caught() {
     // The case that gives the suite its meaning. `Broken` ignores the revision it is handed and
     // writes anyway, so a concurrent writer silently replaces another's work — the single defect a
-    // store must not have. A suite that passed it would be telling nobody anything.
+    // store must not have — and it lists an id it does not hold, which sends a hydrating shell to
+    // fetch an instance that is not there. A suite that passed it would be telling nobody anything.
     let mut store = Broken::default();
     let report = conformance::run(&mut store);
 
@@ -43,6 +44,10 @@ fn a_broken_provider_is_caught() {
     assert!(
         caught.contains(&"a second creation of one identity is refused"),
         "a second creation replacing the first must also be caught: {caught:?}"
+    );
+    assert!(
+        caught.contains(&"what a store holds is listed, sorted, and only that"),
+        "a provider listing an id it does not hold must be caught: {caught:?}"
     );
 
     // And it fails *only* where it is broken: a suite that failed everything against one defect

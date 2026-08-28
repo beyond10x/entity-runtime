@@ -146,6 +146,21 @@ enum Command {
         #[arg(long, value_enum, default_value_t = Format::Json)]
         format: Format,
     },
+    /// List what a store holds for one entity type: every identity, sorted, one per line.
+    ///
+    /// The question `create --store` and `execute --store` could not answer: they can act on an
+    /// instance whose id you already know, and nothing could say which ids there are. A shell that
+    /// did not write a store has to be able to ask it what it holds before it can do anything else.
+    List {
+        /// The directory an earlier `create --store` wrote into.
+        #[arg(long)]
+        store: PathBuf,
+        /// Which entity type to list.
+        #[arg(long)]
+        entity: String,
+        #[arg(long, value_enum, default_value_t = Format::Text)]
+        format: Format,
+    },
 }
 
 #[derive(Args)]
@@ -364,6 +379,26 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                 );
             }
             write_decision(out, &decision, format)
+        }
+        Command::List {
+            store,
+            entity,
+            format,
+        } => {
+            // A store that cannot be read is a wrong invocation — the path, most likely — and is
+            // reported as one; the store answering "nothing" for a type nobody stored under is an
+            // answer, printed as an empty list with exit 0.
+            let ids = FileStore::open(&store)
+                .ids(&entity)
+                .map_err(|error| Failure::Usage(error.to_string()))?;
+            match format {
+                Format::Text => {
+                    let text: String = ids.iter().map(|id| format!("{id}\n")).collect();
+                    write_all(out, &text)
+                }
+                Format::Json => write_all(out, &to_json(&ids)?),
+                Format::Yaml => write_all(out, &to_yaml(&ids)?),
+            }
         }
     }
 }

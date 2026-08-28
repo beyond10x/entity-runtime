@@ -280,3 +280,40 @@ fn a_retried_commit_appends_its_events_once() {
         "the retry appended nothing the log already had"
     );
 }
+
+#[test]
+fn every_provider_lists_what_it_holds_sorted() {
+    // Created in the order a sort would not produce, so "sorted" is tested rather than inherited.
+    let registry = registry();
+    for_each_provider("ids", |store, provider| {
+        assert!(
+            store
+                .ids("ticket")
+                .unwrap_or_else(|error| panic!("{provider}: {error}"))
+                .is_empty(),
+            "{provider}: an empty store lists nothing"
+        );
+        for id in ["two", "one"] {
+            let created = Runtime::new(&registry)
+                .create("ticket", 1, id, serde_json::json!({ "title": "A ticket" }))
+                .expect("creation is permitted");
+            store
+                .commit(&created, Expect::Absent)
+                .unwrap_or_else(|error| panic!("{provider}: {error}"));
+        }
+        assert_eq!(
+            store
+                .ids("ticket")
+                .unwrap_or_else(|error| panic!("{provider}: {error}")),
+            ["one", "two"],
+            "{provider}: sorted, byte for byte"
+        );
+        assert!(
+            store
+                .ids("nobody")
+                .unwrap_or_else(|error| panic!("{provider}: {error}"))
+                .is_empty(),
+            "{provider}: a type nobody stored under is an empty list, not an error"
+        );
+    });
+}
