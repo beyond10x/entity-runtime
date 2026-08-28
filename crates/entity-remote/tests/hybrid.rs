@@ -5,7 +5,7 @@
 
 use entity_core::{Decision, DomainEvent, EntityInstance, Registry, Runtime};
 use entity_remote::{
-    Authority, Hybrid, LoopbackTransport, OnDivergence, Policy, ReadPath, RemoteStore,
+    Authority, Divergence, Hybrid, LoopbackTransport, OnDivergence, Policy, ReadPath, RemoteStore,
     WhenUnreachable,
 };
 use entity_store::{
@@ -668,5 +668,89 @@ fn an_unreachable_authority_lists_unreachable_never_nothing() {
         stale.ids("ticket").expect("served from the local copy"),
         ["one"],
         "serving the local listing is a choice the policy made"
+    );
+}
+
+#[test]
+fn a_divergence_survives_the_process_that_recorded_it() {
+    // A command-line shell runs one process per command. The divergence a write recorded is data:
+    // it serialises, and the next process hands it back with `remember`, where `catch_up` finds it
+    // — otherwise every divergence would die with the process and `catch_up` would have nothing to
+    // do, ever, in exactly the shell that needs it most.
+    /// A replica that is down: every call is `Unreachable`.
+    #[derive(Debug)]
+    struct Down;
+    impl StateProvider for Down {
+        fn load(&self, _: &str, _: &str) -> Result<Option<EntityInstance>, StoreError> {
+            Err(down())
+        }
+        fn ids(&self, _: &str) -> Result<Vec<String>, StoreError> {
+            Err(down())
+        }
+    }
+    impl EventProvider for Down {
+        fn events(&self, _: &str, _: &str) -> Result<Vec<DomainEvent>, StoreError> {
+            Err(down())
+        }
+    }
+    impl Store for Down {
+        fn commit(&mut self, _: &Decision, _: Expect) -> Result<(), StoreError> {
+            Err(down())
+        }
+    }
+    fn down() -> StoreError {
+        StoreError::Unreachable {
+            provider: "down".to_owned(),
+            detail: "the replica is not answering".to_owned(),
+        }
+    }
+
+    let registry = registry();
+    let created = opened(&registry);
+
+    // Process 1: the replica is down for the write, so the divergence is recorded.
+    let mut first = Hybrid::new(
+        MemoryStore::new(),
+        Down,
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    first
+        .commit(&created, Expect::Absent)
+        .expect("the authority takes it");
+    assert_eq!(first.divergences().len(), 1);
+    let written = serde_json::to_string(first.divergences()).expect("divergences serialise");
+    let local = first.local().clone();
+    drop(first);
+
+    // Process 2: the replica is back; the record is handed back and replayed.
+    let remembered: Vec<Divergence> = serde_json::from_str(&written).expect("they read back");
+    let mut second = Hybrid::new(
+        local,
+        MemoryStore::new(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    for divergence in remembered.iter().cloned().chain(remembered.iter().cloned()) {
+        second.remember(divergence);
+    }
+    assert_eq!(
+        second.divergences().len(),
+        1,
+        "the same divergence handed back twice is one divergence"
+    );
+    assert_eq!(second.catch_up(), 0, "the replica took the replay");
+    assert_eq!(
+        second.remote().load("ticket", "one").expect("answers"),
+        Some(created.instance),
+        "and now holds what the authority holds"
     );
 }

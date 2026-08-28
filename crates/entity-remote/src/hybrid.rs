@@ -151,7 +151,12 @@ impl<T> Read<T> {
 }
 
 /// One recorded disagreement between the two sides.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Data, deliberately: it serialises, so a shell whose process ends after every command — a
+/// command-line tool — can write what diverged beside the plan and hand it back to the next
+/// process with [`Hybrid::remember`], where `catch_up` finds it. A divergence that lived only as
+/// long as the process that recorded it would be a divergence nobody could act on.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Divergence {
     /// The entity type.
     pub entity: String,
@@ -194,6 +199,17 @@ impl<L: Store, R: Store> Hybrid<L, R> {
     /// to get one, and it is a choice somebody typed.
     pub fn divergences(&self) -> &[Divergence] {
         &self.divergences
+    }
+
+    /// Hands back a divergence an earlier process recorded, so [`Hybrid::catch_up`] replays it.
+    ///
+    /// The same divergence remembered twice is held once: two processes that both wrote the record
+    /// down, or one that read its own file back after recording, must not turn one disagreement
+    /// into two outstanding ones.
+    pub fn remember(&mut self, divergence: Divergence) {
+        if !self.divergences.contains(&divergence) {
+            self.divergences.push(divergence);
+        }
     }
 
     /// The local side, for a caller reconciling by hand.
