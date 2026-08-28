@@ -2,12 +2,12 @@
 format: aep.planning-md/1
 id: task:roadmap-page-is-current
 kind: task
-status: draft
+status: implemented
 title: docs/roadmap.md states a fact that stopped being true
 summary: § 1 'The blocking fact' says engineering-protocols has never heard of this repository; it has three of its crates. Rewrite with the old section kept as superseded.
 relations:
 - decomposes: epic:the-store-an-adopter-runs-on
-revision: 3
+revision: 6
 ---
 # Task: `docs/roadmap.md` states a fact that stopped being true
 
