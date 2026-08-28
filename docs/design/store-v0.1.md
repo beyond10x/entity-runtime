@@ -220,6 +220,11 @@ It **merges nothing**. A divergence that returns as a conflict means the other s
 own, and no rule here can know whose version is right. Those stay outstanding for a person, because
 the alternative is a machine picking — and a machine picking is how the wrong version wins silently.
 
+A `Divergence` is **data**: it serialises, and `Hybrid::remember` hands one back. A shell that runs
+one process per command — a command-line tool over a plan — writes what diverged beside the plan and
+gives it to the next process, where `catch_up` finds it. A divergence that lived only as long as the
+process that recorded it would be one nobody could act on, in exactly the shell that needs it most.
+
 ## 11. Enumeration: a store can say what it holds
 
 **R-109**: `StateProvider::ids(entity)` is every identity held under one entity type, sorted.

@@ -6,6 +6,17 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.13.0] — 2026-08-28
+
+### Added
+
+* **A divergence survives the process that recorded it.** `Divergence` serialises, and
+  `Hybrid::remember` hands one back to a fresh `Hybrid` over the same stores, where `catch_up`
+  replays it; the same divergence remembered twice is held once. For a shell that runs one process
+  per command — a command-line tool keeping a plan in two stores — the divergence a write recorded
+  can now be written beside the plan and acted on by the next command, rather than dying with the
+  process that saw it.
+
 ## [0.12.2] — 2026-08-28
 
 ### Fixed
