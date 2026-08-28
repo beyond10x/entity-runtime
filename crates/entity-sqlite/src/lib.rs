@@ -216,14 +216,25 @@ impl Store for SqliteStore {
             )
             .map_err(|error| backend("writing the instance", &error))?;
 
-        for (position, event) in decision.events.iter().enumerate() {
+        // The position continues from what the log already holds at that revision, not from zero:
+        // an observation is an event at a revision the log has reached, and the second observation
+        // about one instance must not collide with the first on the primary key.
+        for event in &decision.events {
             let document = serde_json::to_string(event)
                 .map_err(|error| backend("serialising an event", &error))?;
+            let position: i64 = transaction
+                .query_row(
+                    "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
+                     WHERE entity = ?1 AND id = ?2 AND revision = ?3",
+                    params![entity, id, event.revision as i64],
+                    |row| row.get(0),
+                )
+                .map_err(|error| backend("reading the event position", &error))?;
             transaction
                 .execute(
                     "INSERT INTO events (entity, id, revision, position, document) \
                      VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![entity, id, event.revision as i64, position as i64, document],
+                    params![entity, id, event.revision as i64, position, document],
                 )
                 .map_err(|error| backend("appending an event", &error))?;
         }

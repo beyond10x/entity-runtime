@@ -300,16 +300,28 @@ impl Store for PostgresStore {
             return Err(backend("writing the instance", &error));
         }
 
-        for (position, event) in decision.events.iter().enumerate() {
+        // The position continues from what the log already holds at that revision, not from zero:
+        // an observation is an event at a revision the log has reached, and the second observation
+        // about one instance must not collide with the first on the primary key.
+        for event in &decision.events {
             let document = serde_json::to_string(event)
                 .map_err(|error| backend("serialising an event", &error))?;
-            let position = i64::try_from(position)
-                .map_err(|_| StoreError::Backend("too many events".to_owned()))?;
+            let at_revision = i64::try_from(event.revision).map_err(|_| {
+                StoreError::Backend("the revision does not fit a BIGINT".to_owned())
+            })?;
+            let position: i64 = transaction
+                .query_one(
+                    "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
+                     WHERE entity = $1 AND id = $2 AND revision = $3",
+                    &[&entity, &id, &at_revision],
+                )
+                .map_err(|error| backend("reading the event position", &error))?
+                .get(0);
             transaction
                 .execute(
                     "INSERT INTO events (entity, id, revision, position, document) \
                      VALUES ($1, $2, $3, $4, $5)",
-                    &[&entity, &id, &revision, &position, &document],
+                    &[&entity, &id, &at_revision, &position, &document],
                 )
                 .map_err(|error| backend("appending an event", &error))?;
         }

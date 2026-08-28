@@ -6,6 +6,20 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.12.2] — 2026-08-28
+
+### Fixed
+
+* **An observation could not land.** A commit of an instance *as it stands* with one more event at
+  its current revision — something seen about it, not a change to it — was lost by three of the
+  four providers: `SqliteStore` and `PostgresStore` keyed events by `(revision, position in the
+  decision)`, so the second observation at one revision failed the primary key and the caller was
+  told the store was broken; `FileStore` appended only events past the highest revision it had
+  reached, so an observation was dropped with nothing said. The position now continues from what
+  the log holds at that revision, the file log deduplicates by the event itself, and the provider
+  conformance suite has a tenth case — two observations at one revision must both land, in order —
+  so no provider can pass the suite without them.
+
 ## [0.12.1] — 2026-08-28
 
 ### Fixed

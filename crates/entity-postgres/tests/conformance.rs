@@ -67,7 +67,7 @@ fn the_postgres_provider_conforms() {
     let report = conformance::run(&mut store);
     store.drop_schema(&schema).expect("dropped");
     assert!(report.is_clean(), "PostgresStore:\n{}", report.summary());
-    assert_eq!(report.outcomes.len(), 9);
+    assert_eq!(report.outcomes.len(), 10);
 }
 
 /// The runtime's `Broken`, written over this provider: every write accepted whatever was expected.

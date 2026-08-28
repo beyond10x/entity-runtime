@@ -8,8 +8,8 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.12.1" }
-entity-store = { path = "../entity-store", version = "0.12.1" }
+entity-core = { path = "../entity-core", version = "0.12.2" }
+entity-store = { path = "../entity-store", version = "0.12.2" }
 serde_json.workspace = true
 # The fifth direct third-party crate in this workspace, and the first that talks to a server. The
 # synchronous client, because the SPI is synchronous and stays so (`Store::commit` is a plain call);

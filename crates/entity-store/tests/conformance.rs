@@ -11,7 +11,7 @@ fn the_memory_provider_conforms() {
     let mut store = MemoryStore::new();
     let report = conformance::run(&mut store);
     assert!(report.is_clean(), "MemoryStore:\n{}", report.summary());
-    assert_eq!(report.outcomes.len(), 9);
+    assert_eq!(report.outcomes.len(), 10);
 }
 
 #[test]

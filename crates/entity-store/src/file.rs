@@ -158,17 +158,15 @@ impl Store for FileStore {
         // **Appended once, however many times this is called.** Events land before the state, so a
         // state write that fails leaves the expectation unchanged — and the retry any caller is
         // entitled to make would append the same events a second time, producing a log that no
-        // longer folds. Only what the log has not already reached is written.
+        // longer folds. Only what the log does not already hold is written — judged by the event
+        // itself and not by its revision, because an *observation* is a new event at a revision the
+        // log has already reached (something was seen about the instance; the instance did not
+        // change), and a guard on the revision alone would drop it silently.
         let already = self.events(entity, id)?;
-        let reached = already
-            .iter()
-            .map(|event| event.revision)
-            .max()
-            .unwrap_or(0);
         let fresh: Vec<_> = decision
             .events
             .iter()
-            .filter(|event| event.revision > reached)
+            .filter(|event| !already.contains(event))
             .collect();
         if !fresh.is_empty() {
             let path = self.events_path(entity, id);
