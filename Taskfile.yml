@@ -13,7 +13,13 @@ tasks:
       - task: req-check
       - task: pin-check
       - task: plan-check
+      - task: postgres-check
       - task: notes-check
+
+  postgres-check:
+    desc: the Postgres provider's tests, against the server ENTITY_POSTGRES_URL names — or one line saying they did not run
+    cmds:
+      - scripts/postgres-check.sh
 
   notes-check:
     desc: The release-notes reflow still handles tables, fences and list boundaries.

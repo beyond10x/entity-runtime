@@ -1,0 +1,25 @@
+[package]
+name = "entity-postgres"
+description = "A transactional entity store over PostgreSQL: the provider an organisation actually runs, with a gate that says when it did not run."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+entity-core = { path = "../entity-core", version = "0.12.0" }
+entity-store = { path = "../entity-store", version = "0.12.0" }
+serde_json.workspace = true
+# The fifth direct third-party crate in this workspace, and the first that talks to a server. The
+# synchronous client, because the SPI is synchronous and stays so (`Store::commit` is a plain call);
+# `postgres` wraps `tokio-postgres` in a blocking runtime of its own, so nothing async reaches the
+# provider's callers. `default-features = false`: no TLS backend is chosen on an adopter's behalf —
+# the caller opens the connection (`Client::connect` with `NoTls` here; TLS is the caller's story) —
+# and no type-conversion feature is pulled, because instances and events travel as text this crate
+# parses itself. Nothing in the gate reaches a network to test this: the tests run when
+# `ENTITY_POSTGRES_URL` names a server and say so when they did not.
+postgres = { version = "0.19", default-features = false }
+
+[lints]
+workspace = true

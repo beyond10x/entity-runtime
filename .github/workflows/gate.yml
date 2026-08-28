@@ -20,6 +20,24 @@ jobs:
     name: Gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The one provider that needs a server gets one here, and nowhere else: `task check` on a
+    # laptop prints that the Postgres tests were skipped, and this job is where they run.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: entity
+          POSTGRES_PASSWORD: entity
+          POSTGRES_DB: entity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U entity"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ENTITY_POSTGRES_URL: postgres://entity:entity@127.0.0.1:5432/entity
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -52,6 +70,9 @@ jobs:
 
       - name: Requirements
         run: python3 scripts/check-requirements.py
+
+      - name: Postgres provider
+        run: scripts/postgres-check.sh
 
   msrv:
     name: MSRV 1.85
