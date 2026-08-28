@@ -6,6 +6,39 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.12.1] — 2026-08-28
+
+### Fixed
+
+* **0.12.0 could not be consumed as a git dependency.** The workspace was cut at 0.12.0 with every
+  crate's path dependencies still requiring `0.11.0`; the gate passed on a working tree whose
+  manifests were bumped and left uncommitted, so `entity-store 0.12.0` required an `entity-core`
+  the same tag no longer had. The manifests are committed at 0.12.1, and a test now reads every
+  `path = "../…", version = "…"` line against the workspace version, so a tag cannot leave with
+  its own crates disagreeing about which release they are.
+
+## [0.12.0] — 2026-08-28
+
+### Added
+
+* **`entity-postgres`: a provider with a server.** `PostgresStore` implements `Store` over a
+  PostgreSQL connection the caller opens: one transaction per commit, a row lock serialising writers
+  of one instance, so two writers from one revision leave exactly one accepted and one
+  `RevisionConflict` naming the revision it lost to — and a racing creation's key violation arrives
+  as the same conflict. `migrate` is the only DDL and is idempotent. The conformance suite, the
+  broken-provider check and a real two-thread test pass against a server. R-111.
+
+* **A gate step that says when it did not run.** `task check` gains `postgres-check`: the provider's
+  tests run when `ENTITY_POSTGRES_URL` names a server and the step prints
+  `postgres-check: skipped, ENTITY_POSTGRES_URL unset` when it does not, so a green gate cannot read
+  as a tested provider. CI runs them against a service container.
+
+### Changed
+
+* The workspace has five direct third-party crates: `postgres` joins `serde`, `serde_json`,
+  `serde_yaml_ng` and `clap`, without default features, justified in the manifest. `entity-core`'s
+  own dependency list is unchanged and its purity scan still pins it.
+
 ## [0.11.0] — 2026-08-28
 
 ### Added
