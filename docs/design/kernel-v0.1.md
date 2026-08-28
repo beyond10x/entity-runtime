@@ -446,6 +446,17 @@ is precisely what `execute` would have allowed anyway.
 So a fold is not a way to reach a state that could not have been reached. It is a slower way to
 reach one that could.
 
+**The arguments are on the event, and the fold re-asks the question.** R-110: `DomainEvent::args`
+is what the rules read when the operation was permitted — the arguments as presented to `execute`,
+after defaults and validation; on a creation event, the fields. Written by the kernel, never
+defaulted, refused when missing (the envelope's rule, R-87, applied to the fact itself). Without it
+an event left by `implement` with a precondition on `$args.evidence.test_result` could not say what
+the count was, and the adopter kept that count beside its events by hand. With it the fold checks
+what `execute` checked (R-97, extended): for an event some operation emits on that transition, the
+operation's preconditions are evaluated against the event's arguments and the fields as they stood,
+and a history whose arguments would have been refused is refused. A forged `test_result: 0` does
+not reach `implemented` by the back door.
+
 **A creation event is required**, and a definition emitting none cannot be event-sourced. Said by
 name rather than by conjuring an empty instance to fold onto: an instance built from no record would
 be the fold asserting something no event supports.

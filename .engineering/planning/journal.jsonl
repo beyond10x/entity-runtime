@@ -125,3 +125,7 @@
 {"at":"2026-08-28T14:52:02Z","actor":"human:timo","artifact":"story:the-store-keeps-the-envelope","kind":"story","revision":3,"change":{"change":"body_replaced"}}
 {"at":"2026-08-28T14:53:26Z","actor":"human:timo","artifact":"story:store-enumeration","kind":"story","revision":6,"change":{"change":"body_replaced"}}
 {"at":"2026-08-28T14:54:08Z","actor":"human:timo","artifact":"story:store-enumeration","kind":"story","revision":7,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{}}}
+{"at":"2026-08-28T15:29:19Z","actor":"human:timo","artifact":"story:events-carry-what-they-were-decided-on","kind":"story","revision":4,"change":{"change":"moved","from":"draft","to":"proposed","decided_on":{}}}
+{"at":"2026-08-28T15:29:19Z","actor":"human:timo","artifact":"story:events-carry-what-they-were-decided-on","kind":"story","revision":5,"change":{"change":"moved","from":"proposed","to":"active","decided_on":{}}}
+{"at":"2026-08-28T15:29:19Z","actor":"human:timo","artifact":"story:events-carry-what-they-were-decided-on","kind":"story","revision":6,"change":{"change":"body_replaced"}}
+{"at":"2026-08-28T15:29:55Z","actor":"human:timo","artifact":"story:events-carry-what-they-were-decided-on","kind":"story","revision":7,"change":{"change":"moved","from":"active","to":"implemented","decided_on":{}}}
