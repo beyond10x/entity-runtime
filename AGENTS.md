@@ -2,7 +2,7 @@
 
 The contract for changing **this** repository. Read it before changing anything.
 
-Org-wide rules — repo naming, the former-brand rule and the rule that a change to bytes another
+Org-wide rules — repo naming, the language rule (anything that runs is Rust, not Python), the former-brand rule and the rule that a change to bytes another
 repo verifies is a coordinated migration with an ADR — live in `atlas/AGENTS.md` and are not
 restated here.
 
