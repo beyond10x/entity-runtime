@@ -167,6 +167,15 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
   registry cache on a cold machine; `--locked` is what keeps that from changing what is built.
   `task site-build` is excluded from `check` because `npm ci` genuinely fetches.
 * **Never commit a credential, a token or anything adopter-internal.**
+* **This repository is not a live-evaluation subject today, and that is a fact rather than a
+  policy.** It carries a planning store under `.engineering/` and could be driven, but it ships no
+  step map — `engineering-protocols` owns `drivers/development/default.yaml` and is the subject the
+  harness comparison actually runs against. If you are ever asked to drive a harness against this
+  repository, do not rediscover the machinery: `metaharness`' `AGENTS.md` § *Live-evaluating our
+  own harness* has the procedure, the reinstall-before-you-run rule and the traps that each cost a
+  paid model run, and `engineering-protocols`' `AGENTS.md` § *Being the subject of a live harness
+  evaluation* has what a subject repository has to get right. Both are paid runs; neither belongs
+  in `task check`, whose no-money rule above would forbid it anyway.
 
 ## The website
 
