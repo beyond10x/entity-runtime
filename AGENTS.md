@@ -8,6 +8,16 @@ restated here.
 
 `README.md` orients a reader. This file says what must not break.
 
+## Serves
+
+The objectives of the collection this repository moves, by id from `atlas/ROADMAP.md` — the only
+cross-repository roadmap, and the page that says what each id means and which evidence closes it:
+
+- **O2 — decisions as data, with evidence.** State, lifecycle, legal moves, rules and events as data an IO-free kernel decides; the protocol's artifact model runs on it (atlas ADR 0002).
+
+A change here that moves none of these is a question for the operator, not a task.
+`atlas/scripts/check-map.sh` fails a repository whose `AGENTS.md` names no objective.
+
 ## What this repository is
 
 A **library and a command**: `entity-core`, an IO-free deterministic kernel that executes entity

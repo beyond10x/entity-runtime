@@ -1,5 +1,7 @@
 # Roadmap — driving `engineering-protocols`
 
+Serves **O2** of `atlas/ROADMAP.md`, the collection's objectives; this page orders the work inside this repository.
+
 **Status: a record of a sequencing that is now done, not requirements.** The requirements register
 ([`requirements.md`](requirements.md)) says what 0.13.0 guarantees; the design
 ([`design/engineering-protocols-adoption-v0.1.md`](design/engineering-protocols-adoption-v0.1.md))
