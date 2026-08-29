@@ -45,7 +45,7 @@ outranks one that only makes the software awkward.
 - `Assembly::get()` returns `None` for both `Ambiguous` and `Absent` — finding 4 is upstream, in which members reach the assembly at all.
 - `checked_store` / `MemberName` validation: absolute paths, `~`, `:`, `\` and `..` all refused.
 
-Probe sources under `/home/operator/.cache/review-probe/` and `/home/operator/.cache/ws-probe*`. Nothing was written to either repo.
+Probe sources under `~/.cache/review-probe/` and `~/.cache/ws-probe*`. Nothing was written to either repo.
 
 ## Reviewer 2 — 13 findings + 8 minor, all CONFIRMED
 
