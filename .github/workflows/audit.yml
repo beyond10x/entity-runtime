@@ -35,4 +35,25 @@ jobs:
 
       - name: Audit
         working-directory: website
-        run: npm audit --audit-level=critical
+        run: |
+          set -euo pipefail
+          npm audit --json > audit.json || status=$?
+          status="${status:-0}"
+          today="$(date -u +%F)"
+          if [[ "$today" > "2026-09-30" ]]; then
+            echo 'The image-size advisory exception expired on 2026-09-30.' >&2
+            exit 1
+          fi
+          unexpected="$(jq -r '
+            [.vulnerabilities | to_entries[]
+             | select(.value.severity == "high" or .value.severity == "critical")
+             | .value.via[]
+             | select(type == "object")
+             | select(.source != 1138808 and .source != 1138809)
+             | .source] | unique | .[]?' audit.json)"
+          if [[ -n "$unexpected" ]]; then
+            echo "Unexpected high/critical npm advisories: $unexpected" >&2
+            exit 1
+          fi
+          echo 'Only image-size GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq remain; exception expires 2026-09-30.'
+          test "$status" -eq 1

@@ -45,7 +45,9 @@
 
 use std::fmt;
 
-use entity_core::{Decision, DomainEvent, EntityInstance};
+use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub mod conformance;
 pub mod envelope;
@@ -53,8 +55,8 @@ pub mod file;
 pub mod memory;
 pub mod projection;
 
-pub use envelope::{derived_id, Envelope, Recording};
-pub use file::FileStore;
+pub use envelope::{Envelope, EnvelopeError, Recording};
+pub use file::{migrate_file_store_v1, FileMigrationReport, FileStore};
 pub use memory::MemoryStore;
 pub use projection::{project, Grouping, Projections};
 
@@ -118,6 +120,11 @@ pub enum StoreError {
     /// at once — and is retried by re-reading; a backend failure is the system broken, and retrying
     /// it in a loop is how an outage becomes a longer outage.
     Backend(String),
+    /// A retry reused one record id for different bytes.
+    RecordConflict {
+        /// The caller-supplied identity.
+        record_id: String,
+    },
 }
 
 impl fmt::Display for StoreError {
@@ -139,6 +146,9 @@ impl fmt::Display for StoreError {
                 write!(f, "{provider} could not be reached: {detail}")
             }
             Self::Backend(detail) => write!(f, "the store failed: {detail}"),
+            Self::RecordConflict { record_id } => {
+                write!(f, "record id {record_id:?} already names different bytes")
+            }
         }
     }
 }
@@ -194,6 +204,28 @@ pub trait EventProvider {
     fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError>;
 }
 
+/// Reading the durable decision and observation history for one subject.
+pub trait HistoryProvider {
+    /// Complete decision envelopes, oldest first.
+    ///
+    /// # Errors
+    ///
+    /// Provider failures as [`StoreError`].
+    fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError>;
+
+    /// Non-state-changing observations, oldest first.
+    ///
+    /// # Errors
+    ///
+    /// Provider failures as [`StoreError`].
+    fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError>;
+}
+
+/// The complete 0.15 provider surface: current state, events and recorded history.
+pub trait RecordedStore: Store + HistoryProvider {}
+
+impl<T: Store + HistoryProvider + ?Sized> RecordedStore for T {}
+
 /// A provider that keeps state and events, and writes both together.
 pub trait Store: StateProvider + EventProvider {
     /// Writes a decision: the instance and its events, as one step.
@@ -207,6 +239,135 @@ pub trait Store: StateProvider + EventProvider {
     /// [`StoreError::RevisionConflict`] when the store holds something other than `expect`, and
     /// [`StoreError::Backend`] when the provider itself fails.
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError>;
+
+    /// Writes a decision with mandatory durable provenance.
+    ///
+    /// Providers predating recorded history may use the default as a compatibility bridge; v2
+    /// providers override it and persist the envelope itself.
+    ///
+    /// # Errors
+    ///
+    /// Invalid metadata, a record/instance mismatch, conflict or provider failure.
+    fn commit_recorded(
+        &mut self,
+        commit: &RecordedCommit,
+        expect: Expect,
+    ) -> Result<(), StoreError> {
+        commit.validate()?;
+        self.commit(&commit.as_decision(), expect)
+    }
+
+    /// Appends evidence about a subject without changing its revision.
+    ///
+    /// # Errors
+    ///
+    /// Providers without recorded-history support return [`StoreError::Backend`].
+    fn observe(&mut self, _observation: &RecordedObservation) -> Result<(), StoreError> {
+        Err(StoreError::Backend(
+            "this provider does not support recorded observations".to_owned(),
+        ))
+    }
+}
+
+/// One state-changing decision and its durable envelope.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecordedCommit {
+    /// The resulting state.
+    pub instance: EntityInstance,
+    /// The complete record and its caller-supplied provenance.
+    pub envelope: Envelope<DecisionRecord>,
+}
+
+impl RecordedCommit {
+    /// Seals a kernel decision with caller-supplied recording metadata.
+    ///
+    /// # Errors
+    ///
+    /// Invalid envelope metadata.
+    pub fn new(decision: Decision, recording: &Recording) -> Result<Self, EnvelopeError> {
+        Ok(Self {
+            instance: decision.instance,
+            envelope: recording.seal(decision.record)?,
+        })
+    }
+
+    /// Checks that the envelope and resulting instance describe the same decision.
+    ///
+    /// # Errors
+    ///
+    /// Invalid envelope metadata or a record/instance mismatch.
+    pub fn validate(&self) -> Result<(), StoreError> {
+        self.envelope
+            .validate()
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        let record = &self.envelope.record;
+        if record.entity != self.instance.entity
+            || record.id != self.instance.id
+            || record.revision != self.instance.revision
+            || record.to_state != self.instance.lifecycle_state
+            || record.result != self.instance
+        {
+            return Err(StoreError::Backend(
+                "recorded decision does not describe its resulting instance".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn as_decision(&self) -> Decision {
+        Decision {
+            instance: self.instance.clone(),
+            record: self.envelope.record.clone(),
+            events: self.envelope.record.events.clone(),
+        }
+    }
+
+    /// A transient kernel decision view for compatibility providers.
+    #[must_use]
+    pub fn decision(&self) -> Decision {
+        self.as_decision()
+    }
+}
+
+/// Non-state-changing evidence appended at a subject's current revision.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecordedObservation {
+    /// The subject entity type.
+    pub entity: String,
+    /// The subject identity.
+    pub id: String,
+    /// The revision this was observed about.
+    pub revision: u64,
+    /// Provenance and observation document.
+    pub envelope: Envelope<Value>,
+}
+
+impl RecordedObservation {
+    /// Checks the subject and envelope metadata before a provider writes anything.
+    ///
+    /// # Errors
+    ///
+    /// Blank subject data, an unsupported revision, or invalid envelope metadata.
+    pub fn validate(&self) -> Result<(), StoreError> {
+        self.envelope
+            .validate()
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        if self.entity.trim().is_empty() || self.id.trim().is_empty() {
+            return Err(StoreError::Backend(
+                "a recorded observation requires a non-empty entity and id".to_owned(),
+            ));
+        }
+        if self.revision == 0 || self.revision > i64::MAX as u64 {
+            return Err(StoreError::Backend(format!(
+                "observation revision {} is outside the supported 1..={} range",
+                self.revision,
+                i64::MAX
+            )));
+        }
+        Ok(())
+    }
 }
 
 /// One decision in an [`AtomicBatchStore`] transaction, paired with what it expects to find.
@@ -214,7 +375,7 @@ pub trait Store: StateProvider + EventProvider {
 /// Expectations are evaluated in slice order against the transaction-local state. That makes two
 /// decisions for one identity meaningful: the second may expect the revision the first produces,
 /// while another process still observes either the state before the batch or the state after it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AtomicCommit {
     /// The state and events to persist.
     pub decision: Decision,

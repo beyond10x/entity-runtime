@@ -35,6 +35,7 @@ const BANNED_WORDS: &[&str] = &[
     "libc",
     "include_str",
     "include_bytes",
+    "include",
     "println",
     "print",
     "eprintln",
@@ -158,9 +159,17 @@ fn offences(text: &str) -> Vec<String> {
 
 #[test]
 fn the_kernel_reaches_no_clock_filesystem_network_or_random_source() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest_root.join("src");
     let mut files = Vec::new();
     sources(&root, &mut files);
+    let build = manifest_root.join("build.rs");
+    if build.exists() {
+        files.push((
+            build.display().to_string(),
+            fs::read_to_string(&build).expect("build script is readable"),
+        ));
+    }
     assert!(
         files.len() >= 5,
         "expected the kernel's source files, found {}",

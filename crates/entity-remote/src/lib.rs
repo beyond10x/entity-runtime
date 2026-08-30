@@ -28,15 +28,19 @@
 //! refused by name rather than parsed as much as possible — a partial read of a protocol nobody
 //! agreed on is how two deployments come to disagree quietly.
 
-use entity_core::{Decision, DomainEvent, EntityInstance};
-use entity_store::{EventProvider, Expect, StateProvider, Store, StoreError};
+use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
+use entity_store::{
+    Envelope, EventProvider, Expect, HistoryProvider, RecordedCommit, RecordedObservation,
+    RecordedStore, StateProvider, Store, StoreError,
+};
 use serde::{Deserialize, Serialize};
 
 pub mod hybrid;
 pub mod loopback;
 
 pub use hybrid::{
-    Authority, Divergence, Hybrid, OnDivergence, Policy, Read, ReadPath, WhenUnreachable,
+    Authority, Divergence, Freshness, Hybrid, OnDivergence, Policy, Read, ReadPath, StoreSide,
+    WhenUnreachable,
 };
 pub use loopback::LoopbackTransport;
 
@@ -58,10 +62,34 @@ pub use loopback::LoopbackTransport;
 /// [`Ask::Ids`] and [`Answer::Ids`] are new variants on the same two tagged enums, so the same rule
 /// applies: a `/2` peer cannot decode either, and is told so by name rather than handed a decode
 /// failure (`story:store-enumeration`).
-pub const WIRE_VERSION: &str = "entity.store/3";
+pub const WIRE_VERSION: &str = "entity.store/4";
+
+/// A wire-owned JSON document.
+///
+/// Runtime and provider structs never occur in protocol variants, so an internal field addition
+/// cannot silently change this enum's shape. Endpoints convert explicitly.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WireDocument {
+    /// Canonical JSON for the transported value.
+    pub document: serde_json::Value,
+}
+
+impl WireDocument {
+    fn encode<T: Serialize>(value: &T) -> Result<Self, StoreError> {
+        serde_json::to_value(value)
+            .map(|document| Self { document })
+            .map_err(|error| StoreError::Backend(format!("encoding a wire document: {error}")))
+    }
+
+    fn decode<T: serde::de::DeserializeOwned>(self) -> Result<T, StoreError> {
+        serde_json::from_value(self.document)
+            .map_err(|error| StoreError::Backend(format!("decoding a wire document: {error}")))
+    }
+}
 
 /// What one side asks the other.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
     /// The wire format. Refused when it is not one this build knows.
@@ -82,7 +110,7 @@ impl Request {
 }
 
 /// The four things a store is ever asked.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "ask", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Ask {
     /// The instance under this identity, if any.
@@ -104,12 +132,38 @@ pub enum Ask {
         /// The identity.
         id: String,
     },
+    /// Complete decision envelopes for this identity, oldest first.
+    Records {
+        /// The entity type.
+        entity: String,
+        /// The identity.
+        id: String,
+    },
+    /// Complete observation envelopes for this identity, oldest first.
+    Observations {
+        /// The entity type.
+        entity: String,
+        /// The identity.
+        id: String,
+    },
     /// Write a decision, if the store holds what was expected.
     Commit {
         /// The decision to write.
-        decision: Box<Decision>,
+        decision: WireDocument,
         /// What the writer expected to find.
         expect: Expectation,
+    },
+    /// Write a complete decision envelope.
+    CommitRecorded {
+        /// The recorded commit.
+        commit: WireDocument,
+        /// What the writer expected to find.
+        expect: Expectation,
+    },
+    /// Append a non-state-changing recorded observation.
+    Observe {
+        /// The observation to append.
+        observation: WireDocument,
     },
 }
 
@@ -148,18 +202,23 @@ impl From<Expectation> for Expect {
 }
 
 /// What the other side answers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "answer", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Answer {
     /// The instance, or `None` when nothing is stored.
     Instance {
         /// What was found.
-        instance: Option<Box<EntityInstance>>,
+        instance: Option<WireDocument>,
     },
     /// The events, oldest first.
     Events {
         /// What was found.
-        events: Vec<DomainEvent>,
+        events: Vec<WireDocument>,
+    },
+    /// Ordered decision or observation documents.
+    Documents {
+        /// What was found.
+        documents: Vec<WireDocument>,
     },
     /// The identities held, sorted.
     Ids {
@@ -178,6 +237,11 @@ pub enum Answer {
         expected: Expectation,
         /// What was there.
         found: Option<u64>,
+    },
+    /// One idempotency identity was reused for different bytes.
+    RecordConflict {
+        /// The conflicting caller-supplied identity.
+        record_id: String,
     },
     /// The far side failed for a reason of its own.
     Failed {
@@ -281,7 +345,7 @@ impl<T: Transport> StateProvider for RemoteStore<T> {
             entity: entity.to_owned(),
             id: id.to_owned(),
         })? {
-            Answer::Instance { instance } => Ok(instance.map(|boxed| *boxed)),
+            Answer::Instance { instance } => instance.map(WireDocument::decode).transpose(),
             other => Err(common(other)),
         }
     }
@@ -302,7 +366,33 @@ impl<T: Transport> EventProvider for RemoteStore<T> {
             entity: entity.to_owned(),
             id: id.to_owned(),
         })? {
-            Answer::Events { events } => Ok(events),
+            Answer::Events { events } => events.into_iter().map(WireDocument::decode).collect(),
+            other => Err(common(other)),
+        }
+    }
+}
+
+impl<T: Transport> HistoryProvider for RemoteStore<T> {
+    fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
+        match self.ask(Ask::Records {
+            entity: entity.to_owned(),
+            id: id.to_owned(),
+        })? {
+            Answer::Documents { documents } => {
+                documents.into_iter().map(WireDocument::decode).collect()
+            }
+            other => Err(common(other)),
+        }
+    }
+
+    fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
+        match self.ask(Ask::Observations {
+            entity: entity.to_owned(),
+            id: id.to_owned(),
+        })? {
+            Answer::Documents { documents } => {
+                documents.into_iter().map(WireDocument::decode).collect()
+            }
             other => Err(common(other)),
         }
     }
@@ -311,7 +401,7 @@ impl<T: Transport> EventProvider for RemoteStore<T> {
 impl<T: Transport> Store for RemoteStore<T> {
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         match self.ask(Ask::Commit {
-            decision: Box::new(decision.clone()),
+            decision: WireDocument::encode(decision)?,
             expect: expect.into(),
         })? {
             Answer::Committed => Ok(()),
@@ -329,6 +419,55 @@ impl<T: Transport> Store for RemoteStore<T> {
             other => Err(common(other)),
         }
     }
+
+    fn commit_recorded(
+        &mut self,
+        commit: &RecordedCommit,
+        expect: Expect,
+    ) -> Result<(), StoreError> {
+        commit.validate()?;
+        match self.ask(Ask::CommitRecorded {
+            commit: WireDocument::encode(commit)?,
+            expect: expect.into(),
+        })? {
+            Answer::Committed => Ok(()),
+            Answer::Conflict {
+                entity,
+                id,
+                expected,
+                found,
+            } => Err(StoreError::RevisionConflict {
+                entity,
+                id,
+                expected: expected.into(),
+                found,
+            }),
+            Answer::RecordConflict { record_id } => Err(StoreError::RecordConflict { record_id }),
+            other => Err(common(other)),
+        }
+    }
+
+    fn observe(&mut self, observation: &RecordedObservation) -> Result<(), StoreError> {
+        observation.validate()?;
+        match self.ask(Ask::Observe {
+            observation: WireDocument::encode(observation)?,
+        })? {
+            Answer::Committed => Ok(()),
+            Answer::Conflict {
+                entity,
+                id,
+                expected,
+                found,
+            } => Err(StoreError::RevisionConflict {
+                entity,
+                id,
+                expected: expected.into(),
+                found,
+            }),
+            Answer::RecordConflict { record_id } => Err(StoreError::RecordConflict { record_id }),
+            other => Err(common(other)),
+        }
+    }
 }
 
 /// Answers a request from a local store: the far side of the wire, wherever it runs.
@@ -341,7 +480,7 @@ impl<T: Transport> Store for RemoteStore<T> {
 ///
 /// Only a version this build does not know. Every other outcome is an [`Answer`], including a
 /// refusal: a conflict is something the store decided, not a failure of the exchange.
-pub fn answer(store: &mut dyn Store, request: &Request) -> Result<Answer, String> {
+pub fn answer(store: &mut dyn RecordedStore, request: &Request) -> Result<Answer, String> {
     if request.version != WIRE_VERSION {
         // A refusal, not a failure of the exchange: the peer answered, and said no by name.
         return Ok(Answer::Refused {
@@ -355,33 +494,116 @@ pub fn answer(store: &mut dyn Store, request: &Request) -> Result<Answer, String
     Ok(match &request.ask {
         Ask::Load { entity, id } => match store.load(entity, id) {
             Ok(instance) => Answer::Instance {
-                instance: instance.map(Box::new),
+                instance: match instance
+                    .map(|instance| WireDocument::encode(&instance))
+                    .transpose()
+                {
+                    Ok(instance) => instance,
+                    Err(error) => return Ok(failure(error)),
+                },
             },
             Err(error) => failure(error),
         },
         Ask::Events { entity, id } => match store.events(entity, id) {
-            Ok(events) => Answer::Events { events },
+            Ok(events) => match events
+                .iter()
+                .map(WireDocument::encode)
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(events) => Answer::Events { events },
+                Err(error) => failure(error),
+            },
+            Err(error) => failure(error),
+        },
+        Ask::Records { entity, id } => match store.records(entity, id) {
+            Ok(records) => match records
+                .iter()
+                .map(WireDocument::encode)
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(documents) => Answer::Documents { documents },
+                Err(error) => failure(error),
+            },
+            Err(error) => failure(error),
+        },
+        Ask::Observations { entity, id } => match store.observations(entity, id) {
+            Ok(observations) => match observations
+                .iter()
+                .map(WireDocument::encode)
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(documents) => Answer::Documents { documents },
+                Err(error) => failure(error),
+            },
             Err(error) => failure(error),
         },
         Ask::Ids { entity } => match store.ids(entity) {
             Ok(ids) => Answer::Ids { ids },
             Err(error) => failure(error),
         },
-        Ask::Commit { decision, expect } => match store.commit(decision, (*expect).into()) {
-            Ok(()) => Answer::Committed,
-            Err(StoreError::RevisionConflict {
-                entity,
-                id,
-                expected,
-                found,
-            }) => Answer::Conflict {
-                entity,
-                id,
-                expected: expected.into(),
-                found,
-            },
-            Err(error) => failure(error),
-        },
+        Ask::Commit { decision, expect } => {
+            let decision: Decision = match decision.clone().decode() {
+                Ok(decision) => decision,
+                Err(error) => return Ok(failure(error)),
+            };
+            match store.commit(&decision, (*expect).into()) {
+                Ok(()) => Answer::Committed,
+                Err(StoreError::RevisionConflict {
+                    entity,
+                    id,
+                    expected,
+                    found,
+                }) => Answer::Conflict {
+                    entity,
+                    id,
+                    expected: expected.into(),
+                    found,
+                },
+                Err(error) => failure(error),
+            }
+        }
+        Ask::CommitRecorded { commit, expect } => {
+            let commit: RecordedCommit = match commit.clone().decode() {
+                Ok(commit) => commit,
+                Err(error) => return Ok(failure(error)),
+            };
+            match store.commit_recorded(&commit, (*expect).into()) {
+                Ok(()) => Answer::Committed,
+                Err(StoreError::RevisionConflict {
+                    entity,
+                    id,
+                    expected,
+                    found,
+                }) => Answer::Conflict {
+                    entity,
+                    id,
+                    expected: expected.into(),
+                    found,
+                },
+                Err(error) => failure(error),
+            }
+        }
+        Ask::Observe { observation } => {
+            let observation: RecordedObservation = match observation.clone().decode() {
+                Ok(observation) => observation,
+                Err(error) => return Ok(failure(error)),
+            };
+            match store.observe(&observation) {
+                Ok(()) => Answer::Committed,
+                Err(StoreError::RevisionConflict {
+                    entity,
+                    id,
+                    expected,
+                    found,
+                }) => Answer::Conflict {
+                    entity,
+                    id,
+                    expected: expected.into(),
+                    found,
+                },
+                Err(error) => failure(error),
+            }
+        }
     })
 }
 
@@ -392,6 +614,7 @@ pub fn answer(store: &mut dyn Store, request: &Request) -> Result<Answer, String
 fn failure(error: StoreError) -> Answer {
     match error {
         StoreError::Unreachable { provider, detail } => Answer::Unreachable { provider, detail },
+        StoreError::RecordConflict { record_id } => Answer::RecordConflict { record_id },
         other => Answer::Failed {
             detail: other.to_string(),
         },

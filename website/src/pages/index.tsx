@@ -33,8 +33,8 @@ const holds = [
   },
   {
     title: 'Every requirement is pinned',
-    text: 'Fifty rows, each naming the test, type or manifest that holds it. The gate fails when a cited test stops existing.',
-    pin: 'check-requirements.py',
+    text: 'Every row names the test, type or manifest that holds it. The gate fails when a cited test stops existing.',
+    pin: 'requirements gate',
   },
 ];
 
@@ -56,8 +56,8 @@ const neighbours = [
   {
     number: '01',
     title: 'engineering-protocols',
-    text: 'The intended first adopter. Its artifact model — kinds, lifecycles, legal moves, events — expressed as definitions this kernel executes, so a new status is a line of YAML rather than a Rust release.',
-    signal: 'Proposed · phased 0–4',
+    text: 'The first adopter. Its artifact model — kinds, lifecycles, legal moves and events — is expressed as definitions this kernel executes.',
+    signal: 'Adopter · one-way dependency',
     to: '/docs/design/engineering-protocols-adoption-v0.1',
   },
   {
@@ -65,7 +65,7 @@ const neighbours = [
     title: 'eventlog',
     text: 'The append-only side. This crate decides and emits events; that one stores, folds and projects them. Neither pretends to be the other.',
     signal: 'Decides · stores',
-    to: '/docs/design/kernel-v0.1#10-event-sourcing-without-mandating-it',
+    to: '/docs/design/kernel-v0.2#2-a-decision-is-replay-evidence',
   },
   {
     number: '03',
@@ -135,18 +135,18 @@ export default function Home(): ReactNode {
                 <Link className={styles.primaryAction} to="/docs/guide/getting-started">
                   Get started <span aria-hidden="true">↗</span>
                 </Link>
-                <Link className={styles.secondaryAction} to="/docs/design/kernel-v0.1">
+                <Link className={styles.secondaryAction} to="/docs/design/kernel-v0.2">
                   Read the design
                 </Link>
               </div>
               <div className={styles.metrics} aria-label="At a glance">
                 <div>
-                  <strong>3</strong>
-                  <span>crates: kernel · yaml · cli</span>
+                  <strong>IO-free</strong>
+                  <span>kernel; storage stays outside</span>
                 </div>
                 <div>
-                  <strong>13</strong>
-                  <span>condition operators, no code</span>
+                  <strong>Data</strong>
+                  <span>schema · lifecycle · rules · events</span>
                 </div>
                 <div>
                   <strong>0</strong>

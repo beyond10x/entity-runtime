@@ -15,11 +15,39 @@ $ entity --help
 | `validate <file>...` | check each definition; print `valid`/`invalid` per file **whatever went wrong with the one before it**; summarise; exit 1 if any is invalid |
 | `inspect <file> [--format text\|json\|yaml]` | fields, states, rules and operations of one definition |
 | `graph <file> [--format text\|dot]` | the lifecycle as `from --operation--> to` lines, or Graphviz DOT |
-| `create --definition <file> --id <id> [--fields <value>] [--format …]` | a Decision for a new instance |
-| `execute --definition <file> --instance <value> --operation <op> [--arguments <value>] [--format …]` | a Decision, or a typed refusal |
+| `create --definition <file> --id <id> [--fields <value>] [--format …]` | a Decision for a new instance; with `--store`, a recorded commit |
+| `execute --definition <file> --instance <value> --operation <op> [--arguments <value>] [--format …]` | a Decision or typed refusal; `--store --id` loads and records it |
+| `list --store <root> --entity <type>` | sorted identities held under one type |
+| `store migrate-file --from OLD --to NEW [--dry-run]` | validate or perform the out-of-place File Store v2 migration |
+| `skill [--out PATH] [--force]` | render the version-stamped Agent Skill for this CLI |
 
-`--definition` may be repeated for `execute` (several types or versions at once). `create` takes
-exactly one, so the type to create is unambiguous.
+`--definition` may be repeated. When several registered definitions make creation ambiguous, pass
+`--entity` or provide only the version being created.
+
+## Stored commands
+
+A stored create or execute requires provenance the kernel cannot invent:
+
+```console
+entity create --definition examples/order.yaml --id ord-1 \
+  --fields '{"customer_id":"c-1","total_cents":2599}' \
+  --store ./entities --record-id command-001 \
+  --recorded-at 2026-08-31T12:00:00Z --actor alice
+```
+
+Supply exactly one of `--actor <id>` and `--no-actor`. `--correlation` and `--causation` are
+optional but distinct. Partial metadata is an invocation error (exit 2); invalid timestamps are
+also refused. JSON/YAML output is the exact `RecordedCommit` persisted, including the envelope and
+decision record. The record id is an idempotency key: identical bytes are success, while reuse for
+different bytes is a store refusal.
+
+File Store v2 is documented in the [migration runbook](file-store-migration.md).
+
+## Render the CLI skill
+
+`entity skill` prints a deterministic Agent Skills document stamped with the installed binary's
+version. `entity skill --out .agents/skills/entity/SKILL.md` writes identical bytes and creates
+parents. An existing file is untouched unless `--force` explicitly authorizes that exact path.
 
 ## Values
 
@@ -123,10 +151,8 @@ $ echo $?
 
 ## What the command does not do
 
-It holds no state between invocations, so `execute` needs the instance every time — and it cannot
-know whether the instance you hand it is one the kernel produced. It checks what it can (the type,
-the version, and that the state is one the definition declares) and trusts the rest, which is why a
-real shell stores the instance and its events together. It does not persist the Decision, append the
-events or publish them — a shell that does is the next thing to
-build on the [library](library.md). It has no clock: an operation that needs one declares an
-argument and you pass the value.
+Without `--store`, it holds no state between invocations and trusts the instance you supply after
+checking its type, version and declared state. With `--store`, it persists current state and the
+complete recorded decision together. It does not publish events, read a clock, mint ids, contact a
+network or choose provenance: those values remain caller inputs. See the [library](library.md) for
+embedding the same boundary in another shell.

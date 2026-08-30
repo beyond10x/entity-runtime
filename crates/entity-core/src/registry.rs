@@ -2,6 +2,47 @@
 
 use crate::{DefinitionError, DefinitionErrors, EntityDefinition};
 use std::collections::BTreeMap;
+use std::ops::Deref;
+
+/// A definition that passed complete registration validation.
+///
+/// The inner value is intentionally private: execution accepts this handle rather than a raw
+/// [`EntityDefinition`], making the validation boundary part of the type system instead of a
+/// convention every caller has to remember.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidatedDefinition(EntityDefinition);
+
+impl ValidatedDefinition {
+    /// Validates `definition` and returns the executable handle.
+    ///
+    /// # Errors
+    ///
+    /// Every independent definition defect found.
+    pub fn new(definition: EntityDefinition) -> Result<Self, DefinitionErrors> {
+        definition.validate()?;
+        Ok(Self(definition))
+    }
+
+    /// The validated definition data, for inspection and deterministic storage.
+    #[must_use]
+    pub const fn as_definition(&self) -> &EntityDefinition {
+        &self.0
+    }
+
+    /// Returns the validated definition data.
+    #[must_use]
+    pub fn into_definition(self) -> EntityDefinition {
+        self.0
+    }
+}
+
+impl Deref for ValidatedDefinition {
+    type Target = EntityDefinition;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 /// Validated entity definitions, keyed by `(entity, version)`.
 ///
@@ -16,7 +57,7 @@ use std::collections::BTreeMap;
 /// catch. [`Registry::replace`] is how a caller says they mean it.
 #[derive(Debug, Clone, Default)]
 pub struct Registry {
-    definitions: BTreeMap<String, BTreeMap<u32, EntityDefinition>>,
+    definitions: BTreeMap<String, BTreeMap<u32, ValidatedDefinition>>,
 }
 
 impl Registry {
@@ -53,7 +94,7 @@ impl Registry {
     /// Every defect the document has. Nothing is stored, and nothing is removed, when validation
     /// fails.
     pub fn replace(&mut self, definition: EntityDefinition) -> Result<(), DefinitionErrors> {
-        definition.validate()?;
+        let definition = ValidatedDefinition::new(definition)?;
         self.definitions
             .entry(definition.entity.clone())
             .or_default()
@@ -99,12 +140,12 @@ impl Registry {
     }
 
     /// The definition registered under `(entity, version)`, if any.
-    pub fn get(&self, entity: &str, version: u32) -> Option<&EntityDefinition> {
+    pub fn get(&self, entity: &str, version: u32) -> Option<&ValidatedDefinition> {
         self.definitions.get(entity)?.get(&version)
     }
 
     /// Every version of `entity`, oldest first.
-    pub fn versions(&self, entity: &str) -> impl Iterator<Item = &EntityDefinition> {
+    pub fn versions(&self, entity: &str) -> impl Iterator<Item = &ValidatedDefinition> {
         self.definitions
             .get(entity)
             .into_iter()
@@ -112,7 +153,7 @@ impl Registry {
     }
 
     /// Every registered definition, in `(entity, version)` order.
-    pub fn iter(&self) -> impl Iterator<Item = &EntityDefinition> {
+    pub fn iter(&self) -> impl Iterator<Item = &ValidatedDefinition> {
         self.definitions.values().flat_map(BTreeMap::values)
     }
 

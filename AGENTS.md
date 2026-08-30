@@ -31,6 +31,10 @@ workflow engine or a scripting runtime, and it holds no credential and reaches n
   a manifest that pins it; `design` alone marks a gap and is a story.
 * [`docs/design/kernel-v0.1.md`](docs/design/kernel-v0.1.md) — the kernel's semantics. Where code
   and this document disagree, the document wins until a later revision says otherwise.
+* [`docs/design/kernel-v0.2.md`](docs/design/kernel-v0.2.md) and
+  [`docs/design/store-v0.2.md`](docs/design/store-v0.2.md) — the normative 0.15 changes: validated
+  execution handles, verifiable decision records, recorded provider history and File Store v2.
+  They supersede the matching v0.1 sections.
 
 [`docs/design/engineering-protocols-adoption-v0.1.md`](docs/design/engineering-protocols-adoption-v0.1.md)
 is **proposed**: it is accepted only by a plan page or a story in `engineering-protocols`, and this

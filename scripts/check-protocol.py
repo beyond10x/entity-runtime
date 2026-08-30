@@ -52,6 +52,11 @@ def main() -> int:
         print(f"protocol at {binary} could not be run: {error}")
         return 2
 
+    if result.returncode != 0:
+        print(f"protocol at {binary} exited {result.returncode} while reporting its version:")
+        print(f"  {result.stdout.strip() or result.stderr.strip()!r}")
+        return 1
+
     version = parse(result.stdout) or parse(result.stderr)
     if version is None:
         print(f"protocol at {binary} printed no version this check can read:")

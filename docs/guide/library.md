@@ -16,17 +16,20 @@ entity-yaml = { git = "https://github.com/beyond10x/entity-runtime", package = "
 | type | is |
 |---|---|
 | `EntityDefinition` | the definition model; deserialises from YAML/JSON; validated on registration |
+| `ValidatedDefinition` | capability returned by successful validation; the only definition accepted by kernel entry points |
 | `Registry` | validated definitions keyed by `(entity, version)` |
 | `Runtime<'_>` | the kernel over a `Registry`; `create` and `execute` |
 | `EntityInstance` | `{ entity, version, id, lifecycle_state, revision, fields }`; `fields` is a name-ordered `serde_json::Map` |
 | `DomainEvent` | `{ entity, version, id, revision, type, payload }` — the fact, no envelope |
-| `Decision` | `{ instance, events }` — the only thing the kernel produces |
+| `DecisionRecord` | normalized command, definition snapshot, complete result, changes and events; verified by `replay` |
+| `Decision` | `{ instance, record, events }` — the kernel result; `events` is the compatibility view of `record.events` |
 | `DefinitionError` | the definition is malformed (at registration) |
 | `ValidationError` | one value failed its schema; always in a `Vec` |
 | `CoreError` | every run-time refusal, one variant each |
 
-The free functions `create(&definition, id, fields)` and `execute(&definition, &instance, op,
-args)` do the same as the `Runtime` methods without a registry lookup.
+The free functions `create(&validated, id, fields)` and `execute(&validated, &instance, op, args)`
+do the same as the `Runtime` methods without a registry lookup. Raw parsed definitions cannot
+bypass validation.
 
 ## A round trip
 
@@ -66,7 +69,7 @@ The kernel decides; the shell acts. The shape every shell has:
 load definition(s) ─┐
 load instance ──────┤                                        ┌─ store decision.instance
 gather ids/time ────┴─▶ Runtime::execute(&instance, op, args) ─┼─ append decision.events (+ envelope)
-                          │                                   ├─ update projections / search
+                          │                                   ├─ persist the recorded envelope
                           └─ Err(refusal) ─▶ record it; change nothing   └─ publish
 ```
 
@@ -78,13 +81,16 @@ Four rules the kernel cannot enforce for you:
    somewhere you trust is the shell's job — which is the same reason storing the instance and its
    events is one job.
 
-2. **Store the instance and the events together.** A transaction, an outbox, or an event store
-   that is also the state store — how is yours; that they land together is the contract.
+2. **Store one recorded decision.** `RecordedCommit::new(decision, &recording)` binds the complete
+   result to caller-supplied provenance. `Store::commit_recorded` persists it atomically.
 3. **Compare `revision` before you store.** The kernel numbers revisions; an optimistic-concurrency
    check (`WHERE revision = expected`) is one line in the shell and catches two shells racing.
-4. **Add the envelope at the edge.** `DomainEvent` carries the fact only. Event id, recorded-at
-   time, correlation, causation and actor are yours to stamp when you record it, because the kernel
-   could only have invented them.
+4. **Add the envelope at the edge.** Record id, recorded-at time, correlation, causation and actor
+   are yours to stamp, because the kernel could only have invented them.
+
+`HistoryProvider` returns decision envelopes and observations in append order. `entity-core::replay`
+reruns complete decision records and compares every resulting field and event; legacy event-only
+`rehydrate` is retained for migration and cannot make an imported prefix verified from genesis.
 
 Time and identity enter as arguments. An operation that needs `occurred_at` declares it in its
 `arguments` schema; the shell reads the clock and passes the value.
@@ -123,9 +129,6 @@ let definition: entity_core::EntityDefinition = serde_json::from_value(json!({
 `entity-yaml` exists only so the kernel never links a YAML parser; it is `from_str(&str)` and
 nothing more.
 
-## What is not here yet
-
-Typed references between entities, replay from an event history, a provider SPI with an in-memory
-store, an event envelope type, `explain` (per-rule verdicts without executing), and three-valued
-rules. Each is a story in the repository's planning store; the
-[kernel design § 11](../design/kernel-v0.1.md#11-crates) says where each will live.
+Provider contracts and File Store v2 are specified by the
+[store design](../design/store-v0.2.md). Search/blob providers and `explain` remain separate work;
+they do not belong in the IO-free kernel.

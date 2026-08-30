@@ -43,8 +43,13 @@ def collect_tests() -> tuple[set[str], set[str]]:
     live: set[str] = set()
     ignored: set[str] = set()
     for path in sorted(CRATES.rglob("*.rs")):
-        for attributes, name in TEST_FN.findall(path.read_text(encoding="utf-8")):
-            if "ignore" in attributes:
+        source = path.read_text(encoding="utf-8")
+        # A commented-out test is not executable evidence. Remove comments while preserving
+        # newlines before applying the deliberately small function-pattern check.
+        source = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), source, flags=re.S)
+        source = re.sub(r"//[^\n]*", "", source)
+        for attributes, name in TEST_FN.findall(source):
+            if "ignore" in attributes or re.search(r"cfg\s*\(\s*(?:false|any\s*\(\s*\))", attributes):
                 ignored.add(name)
             else:
                 live.add(name)

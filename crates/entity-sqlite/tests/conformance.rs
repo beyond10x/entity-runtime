@@ -3,9 +3,7 @@
 
 use entity_core::{Decision, DomainEvent, Registry, Runtime};
 use entity_sqlite::SqliteStore;
-use entity_store::{
-    conformance, EventProvider, Expect, FileStore, StateProvider, Store, StoreError,
-};
+use entity_store::{conformance, EventProvider, Expect, StateProvider, Store, StoreError};
 use serde_json::json;
 
 /// The one definition these tests use.
@@ -34,6 +32,7 @@ fn the_sqlite_provider_conforms() {
     let mut store = SqliteStore::in_memory().expect("a database");
     let report = conformance::run(&mut store);
     assert!(report.is_clean(), "SqliteStore:\n{}", report.summary());
+    conformance::verify_recorded(&mut store).expect("SqliteStore recorded history");
     let batch = conformance::run_atomic(&mut store);
     assert!(batch.is_clean(), "SqliteStore batch:\n{}", batch.summary());
 }
@@ -124,9 +123,9 @@ fn a_refused_commit_rolls_back_both_halves() {
     // Revision 3, carrying the event the trigger will refuse.
     let mut moved = closed.instance.clone();
     moved.revision = 3;
-    let colliding = Decision {
-        instance: moved,
-        events: vec![DomainEvent {
+    let colliding = Decision::legacy_import(
+        moved,
+        vec![DomainEvent {
             entity: "ticket".to_owned(),
             version: 1,
             id: "one".to_owned(),
@@ -138,7 +137,7 @@ fn a_refused_commit_rolls_back_both_halves() {
             args: serde_json::Map::new(),
             payload: json!({ "ticket": "one" }),
         }],
-    };
+    );
 
     let error = store
         .commit(&colliding, Expect::Revision(2))
@@ -157,59 +156,5 @@ fn a_refused_commit_rolls_back_both_halves() {
         store.events("ticket", "one").expect("events").len(),
         2,
         "and the refused event was not left behind beside the two that were already there"
-    );
-}
-
-#[test]
-fn the_rollback_case_is_one_a_non_transactional_store_actually_fails() {
-    // The guard on the test above: it must assert something only a transactional store can do.
-    // `FileStore` appends events *before* the state write, so a torn write there leaves the event
-    // of a commit that did not land. If this test ever starts passing, the one above has stopped
-    // being evidence.
-    let directory = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("torn-file-store");
-    let _ = std::fs::remove_dir_all(&directory);
-    std::fs::create_dir_all(&directory).expect("a directory");
-
-    let mut store = FileStore::open(&directory);
-    let registry = registry();
-    let runtime = Runtime::new(&registry);
-
-    let created = runtime
-        .create("ticket", 1, "one", json!({ "title": "A ticket" }))
-        .expect("permitted");
-    store.commit(&created, Expect::Absent).expect("accepted");
-
-    // The state write cannot land, while the event append still can: the instance's directory is
-    // made read-only, so the existing events file can still be opened for append but the temporary
-    // file the state write renames from cannot be created.
-    use std::os::unix::fs::PermissionsExt as _;
-    let instance_directory = directory.join("ticket");
-    let mut permissions = std::fs::metadata(&instance_directory)
-        .expect("metadata")
-        .permissions();
-    permissions.set_mode(0o555);
-    std::fs::set_permissions(&instance_directory, permissions).expect("read-only");
-
-    let closed = runtime
-        .execute(&created.instance, "close", json!({}))
-        .expect("permitted");
-    store
-        .commit(&closed, Expect::Revision(1))
-        .expect_err("the state write cannot land");
-
-    let events = store.events("ticket", "one").expect("events");
-
-    // Put it back before asserting, so a failure here does not leave an unremovable directory.
-    let mut permissions = std::fs::metadata(&instance_directory)
-        .expect("metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&instance_directory, permissions).expect("writable again");
-
-    assert_eq!(
-        events.len(),
-        2,
-        "FileStore kept the event of a commit that did not land — the promise it documents that it \
-         cannot make, and the one the SQLite test above is evidence for"
     );
 }

@@ -19,6 +19,7 @@ fn a_remote_store_conforms_like_a_local_one() {
     let mut store = remote();
     let report = conformance::run(&mut store);
     assert!(report.is_clean(), "RemoteStore:\n{}", report.summary());
+    conformance::verify_recorded(&mut store).expect("RemoteStore recorded history");
 }
 
 #[test]
@@ -173,6 +174,29 @@ fn an_unreachable_store_on_the_far_side_stays_unreachable_on_this_one() {
             })
         }
     }
+    impl entity_store::HistoryProvider for DeadStore {
+        fn records(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Vec<entity_store::Envelope<entity_core::DecisionRecord>>, StoreError> {
+            Err(StoreError::Unreachable {
+                provider: "the-far-side-store".to_owned(),
+                detail: "no route to host".to_owned(),
+            })
+        }
+
+        fn observations(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Vec<entity_store::RecordedObservation>, StoreError> {
+            Err(StoreError::Unreachable {
+                provider: "the-far-side-store".to_owned(),
+                detail: "no route to host".to_owned(),
+            })
+        }
+    }
     impl Store for DeadStore {
         fn commit(&mut self, _: &Decision, _: Expect) -> Result<(), StoreError> {
             Err(StoreError::Unreachable {
@@ -273,21 +297,20 @@ fn ids_cross_the_wire_intact() {
 
 #[test]
 fn a_peer_at_the_previous_wire_version_is_refused_by_name() {
-    // `Ask::Ids` and `Answer::Ids` are new variants on tagged enums with `deny_unknown_fields`, so
-    // a `/2` peer cannot decode either. The rule 0.9.0 applied when `Answer` grew applies again:
-    // the version moves, and the old peer is told so rather than handed a decode failure.
-    assert_eq!(WIRE_VERSION, "entity.store/3");
+    // Recorded documents are carried as explicit wire values in /4, so a /3 peer cannot decode
+    // them. The version moves, and the old peer is told so rather than handed a decode failure.
+    assert_eq!(WIRE_VERSION, "entity.store/4");
     let transport = LoopbackTransport::new(MemoryStore::new());
     let mut request = Request::new(Ask::Ids {
         entity: "ticket".to_owned(),
     });
-    request.version = "entity.store/2".to_owned();
+    request.version = "entity.store/3".to_owned();
 
     use entity_remote::Transport as _;
     let answered = transport.call(&request).expect("the peer answered");
     let Answer::Refused { detail } = answered else {
         panic!("the previous version is refused by name, not {answered:?}");
     };
-    assert!(detail.contains("entity.store/2"), "{detail}");
     assert!(detail.contains("entity.store/3"), "{detail}");
+    assert!(detail.contains("entity.store/4"), "{detail}");
 }

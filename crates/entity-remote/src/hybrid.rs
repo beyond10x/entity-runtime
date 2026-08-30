@@ -28,16 +28,29 @@
 //! choice somebody typed, and the result says it was stale. What is refused is the shape where
 //! silence quietly becomes an answer.
 
-use entity_core::{Decision, DomainEvent, EntityInstance};
-use entity_store::{EventProvider, Expect, StateProvider, Store, StoreError};
+use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
+use entity_store::{
+    Envelope, EventProvider, Expect, HistoryProvider, RecordedCommit, RecordedObservation,
+    StateProvider, Store, StoreError,
+};
 
 /// Which side is the record of truth.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Authority {
     /// The remote. The local copy is a cache and may be rebuilt from it.
     Remote,
     /// The local store. The remote is a replica, and a conflict there does not stop the local write.
     Local,
+}
+
+/// One physical side of a hybrid store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StoreSide {
+    /// The local provider.
+    Local,
+    /// The remote provider.
+    Remote,
 }
 
 /// Where a read goes first.
@@ -124,6 +137,17 @@ pub struct Read<T> {
     pub value: T,
     /// `true` when the remote could not be reached and the local copy answered instead.
     pub was_stale: bool,
+    /// The explicit freshness contract.
+    pub freshness: Freshness,
+}
+
+/// Whether a provider can establish that a read came from the authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Freshness {
+    /// Read directly from the declared authority.
+    Current,
+    /// Read from a replica that may be behind.
+    PotentiallyStale,
 }
 
 impl<T> Read<T> {
@@ -132,6 +156,7 @@ impl<T> Read<T> {
         Self {
             value,
             was_stale: false,
+            freshness: Freshness::Current,
         }
     }
 
@@ -140,6 +165,7 @@ impl<T> Read<T> {
         Self {
             value,
             was_stale: true,
+            freshness: Freshness::PotentiallyStale,
         }
     }
 
@@ -164,6 +190,12 @@ pub struct Divergence {
     pub id: String,
     /// The revision written locally.
     pub local_revision: u64,
+    /// The side whose accepted write is the source for catch-up.
+    pub source: StoreSide,
+    /// The side that still needs the record.
+    pub destination: StoreSide,
+    /// The durable record identity, when this was a recorded commit.
+    pub record_id: Option<String>,
     /// Why the other side did not take it.
     pub detail: String,
 }
@@ -235,11 +267,24 @@ impl<L: Store, R: Store> Hybrid<L, R> {
     ) -> Result<Read<Option<EntityInstance>>, StoreError> {
         match self.policy.read_path {
             ReadPath::LocalFirst => match self.local.load(entity, id)? {
-                Some(instance) => Ok(Read::fresh(Some(instance))),
-                None => self.read_via_remote(entity, id),
+                Some(instance) => Ok(match self.policy.authority {
+                    Authority::Local => Read::fresh(Some(instance)),
+                    Authority::Remote => Read::stale(Some(instance)),
+                }),
+                None => match self.policy.authority {
+                    Authority::Local => Ok(Read::fresh(None)),
+                    Authority::Remote => self.read_via_remote(entity, id),
+                },
             },
             ReadPath::RemoteFirst => self.read_via_remote(entity, id),
-            ReadPath::RemoteOnly => self.remote.load(entity, id).map(Read::fresh),
+            ReadPath::RemoteOnly => {
+                self.remote
+                    .load(entity, id)
+                    .map(|value| match self.policy.authority {
+                        Authority::Remote => Read::fresh(value),
+                        Authority::Local => Read::stale(value),
+                    })
+            }
         }
     }
 
@@ -250,12 +295,18 @@ impl<L: Store, R: Store> Hybrid<L, R> {
         id: &str,
     ) -> Result<Read<Option<EntityInstance>>, StoreError> {
         match self.remote.load(entity, id) {
-            Ok(instance) => Ok(Read::fresh(instance)),
+            Ok(instance) => Ok(match self.policy.authority {
+                Authority::Remote => Read::fresh(instance),
+                Authority::Local => Read::stale(instance),
+            }),
             Err(error) if error.is_unreachable() => match self.policy.when_unreachable {
                 // Nothing was learned, and the caller is told so rather than handed a `None` that
                 // reads exactly like "there is no such thing".
                 WhenUnreachable::Refuse => Err(error),
-                WhenUnreachable::ServeStale => Ok(Read::stale(self.local.load(entity, id)?)),
+                WhenUnreachable::ServeStale => Ok(match self.policy.authority {
+                    Authority::Local => Read::fresh(self.local.load(entity, id)?),
+                    Authority::Remote => Read::stale(self.local.load(entity, id)?),
+                }),
             },
             Err(error) => Err(error),
         }
@@ -296,87 +347,75 @@ impl<L: Store, R: Store> Hybrid<L, R> {
                 entity: divergence.entity.clone(),
                 id: divergence.id.clone(),
                 local_revision: divergence.local_revision,
+                source: divergence.source,
+                destination: divergence.destination,
+                record_id: divergence.record_id.clone(),
                 detail,
             };
-
-            // Replayed from what the local store actually holds now, not from the decision as it
-            // was — the local side may have moved on since, and replicating a superseded revision
-            // would push the replica to a state the authority has already left.
-            let instance = match self.local.load(&divergence.entity, &divergence.id) {
-                Ok(Some(instance)) => instance,
-                Ok(None) => {
-                    // The instance is genuinely gone from the authority. There is nothing left to
-                    // replicate, and the record describes a write that no longer exists.
-                    continue;
-                }
-                Err(error) => {
-                    still.push(keep(format!("the local store could not be read: {error}")));
-                    continue;
-                }
+            let outcome = match divergence.source {
+                StoreSide::Local => reconcile(
+                    &self.local,
+                    &mut self.remote,
+                    &divergence.entity,
+                    &divergence.id,
+                ),
+                StoreSide::Remote => reconcile(
+                    &self.remote,
+                    &mut self.local,
+                    &divergence.entity,
+                    &divergence.id,
+                ),
             };
-            let events = match self.local.events(&divergence.entity, &divergence.id) {
-                Ok(events) => events,
-                Err(error) => {
-                    still.push(keep(format!("the local events could not be read: {error}")));
-                    continue;
-                }
-            };
-            let held = match self.remote.load(&divergence.entity, &divergence.id) {
-                Ok(held) => held,
-                Err(error) => {
-                    still.push(keep(error.to_string()));
-                    continue;
-                }
-            };
-            // `None` is absent; `Some(0)` is an instance at revision 0. Collapsing them and then
-            // deriving `Expect::Absent` from `0` would leave a replica that genuinely holds a
-            // revision-0 instance permanently conflicted: it is not absent, so the expectation
-            // never matches and the divergence never clears. `entity-core` creates at revision 1,
-            // so this is unreachable through it — and reachable for any third-party `Store` used as
-            // the replica, which is exactly who this protocol exists for.
-            let at = held.as_ref().map(|held| held.revision);
-            let behind = at.unwrap_or(0);
-
-            // The replica already holds exactly what this store holds. Two divergences recorded
-            // for one instance are the ordinary case — a laptop that wrote twice while the replica
-            // was down — and replaying the history once satisfies both.
-            if behind == instance.revision && held.as_ref() == Some(&instance) {
-                continue;
-            }
-
-            // The replica is at or ahead of us and is *not* what we hold. Replaying would
-            // overwrite a revision this store never produced — the merge this function refuses to
-            // perform.
-            if behind >= instance.revision {
-                still.push(keep(format!(
-                    "the replica holds revision {behind} and this store holds {}; it moved on its own \
-                     and no rule here can say whose version is right",
-                    instance.revision
-                )));
-                continue;
-            }
-
-            // Only what the replica has not seen. Replaying the whole log appends events it
-            // already holds, and a log with an event twice no longer folds.
-            let decision = Decision {
-                instance: instance.clone(),
-                events: events
-                    .into_iter()
-                    .filter(|event| event.revision > behind)
-                    .collect(),
-            };
-            let expect = match at {
-                None => Expect::Absent,
-                Some(revision) => Expect::Revision(revision),
-            };
-            if let Err(error) = self.remote.commit(&decision, expect) {
-                still.push(keep(error.to_string()));
+            if let Err(detail) = outcome {
+                still.push(keep(detail));
             }
         }
 
         self.divergences = still;
         self.divergences.len()
     }
+}
+
+fn reconcile<S: Store, D: Store>(
+    source: &S,
+    destination: &mut D,
+    entity: &str,
+    id: &str,
+) -> Result<(), String> {
+    let instance = source
+        .load(entity, id)
+        .map_err(|error| format!("the source could not be read: {error}"))?
+        .ok_or_else(|| {
+            "the source holds no instance; absence cannot prove a recorded divergence vanished"
+                .to_owned()
+        })?;
+    let events = source
+        .events(entity, id)
+        .map_err(|error| format!("the source history could not be read: {error}"))?;
+    let held = destination
+        .load(entity, id)
+        .map_err(|error| format!("the destination could not be read: {error}"))?;
+    let at = held.as_ref().map(|held| held.revision);
+    let behind = at.unwrap_or(0);
+    if held.as_ref() == Some(&instance) {
+        return Ok(());
+    }
+    if behind >= instance.revision {
+        return Err(format!(
+            "the destination moved on its own: it holds revision {behind} and the source holds {}; no merge rule exists",
+            instance.revision
+        ));
+    }
+    let decision = Decision::legacy_import(
+        instance,
+        events
+            .into_iter()
+            .filter(|event| event.revision > behind)
+            .collect(),
+    );
+    destination
+        .commit(&decision, at.map_or(Expect::Absent, Expect::Revision))
+        .map_err(|error| error.to_string())
 }
 
 impl<L: Store, R: Store> StateProvider for Hybrid<L, R> {
@@ -423,7 +462,10 @@ impl<L: Store, R: Store> StateProvider for Hybrid<L, R> {
             },
             ReadPath::LocalFirst => match self.local.ids(entity) {
                 Ok(ids) if !ids.is_empty() => Ok(ids),
-                Ok(_) => self.remote.ids(entity),
+                Ok(ids) => match self.policy.authority {
+                    Authority::Local => Ok(ids),
+                    Authority::Remote => self.remote.ids(entity),
+                },
                 Err(error) => Err(error),
             },
         }
@@ -444,9 +486,32 @@ impl<L: Store, R: Store> EventProvider for Hybrid<L, R> {
             },
             ReadPath::LocalFirst => match self.local.events(entity, id) {
                 Ok(events) if !events.is_empty() => Ok(events),
-                Ok(_) => self.remote.events(entity, id),
+                Ok(events) => match self.policy.authority {
+                    Authority::Local => Ok(events),
+                    Authority::Remote => self.remote.events(entity, id),
+                },
                 Err(error) => Err(error),
             },
+        }
+    }
+}
+
+impl<L, R> HistoryProvider for Hybrid<L, R>
+where
+    L: Store + HistoryProvider,
+    R: Store + HistoryProvider,
+{
+    fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
+        match self.policy.authority {
+            Authority::Local => self.local.records(entity, id),
+            Authority::Remote => self.remote.records(entity, id),
+        }
+    }
+
+    fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
+        match self.policy.authority {
+            Authority::Local => self.local.observations(entity, id),
+            Authority::Remote => self.remote.observations(entity, id),
         }
     }
 }
@@ -479,6 +544,9 @@ impl<L: Store, R: Store> Store for Hybrid<L, R> {
                             entity,
                             id,
                             local_revision: decision.instance.revision,
+                            source: StoreSide::Remote,
+                            destination: StoreSide::Local,
+                            record_id: None,
                             detail: format!(
                                 "the authority accepted revision {} and the local copy refused it: \
                                  {error}", decision.instance.revision
@@ -507,7 +575,11 @@ impl<L: Store, R: Store> Store for Hybrid<L, R> {
                         // report as a conflict for a person.
                         Err(error) => {
                             self.divergences.push(Divergence {
-                                entity, id, local_revision: decision.instance.revision, detail: format!(
+                                entity, id, local_revision: decision.instance.revision,
+                                source: StoreSide::Remote,
+                                destination: StoreSide::Local,
+                                record_id: None,
+                                detail: format!(
                                     "the replica accepted revision {} and this store refused it:                                      {error}", decision.instance.revision
                                 ),
                             });
@@ -526,8 +598,144 @@ impl<L: Store, R: Store> Store for Hybrid<L, R> {
                                 entity,
                                 id,
                                 local_revision: decision.instance.revision,
+                                source: StoreSide::Local,
+                                destination: StoreSide::Remote,
+                                record_id: None,
                                 detail: error.to_string(),
                             });
+                            Ok(())
+                        }
+                    }
+                }
+            },
+        }
+    }
+
+    fn commit_recorded(
+        &mut self,
+        commit: &RecordedCommit,
+        expect: Expect,
+    ) -> Result<(), StoreError> {
+        commit.validate()?;
+        let entity = commit.instance.entity.clone();
+        let id = commit.instance.id.clone();
+        let revision = commit.instance.revision;
+        let record_id = Some(commit.envelope.record_id.clone());
+        match self.policy.authority {
+            Authority::Remote => {
+                self.remote.commit_recorded(commit, expect)?;
+                match self.local.commit_recorded(commit, expect) {
+                    Ok(()) => Ok(()),
+                    Err(error) => {
+                        self.divergences.push(Divergence {
+                            entity,
+                            id,
+                            local_revision: revision,
+                            source: StoreSide::Remote,
+                            destination: StoreSide::Local,
+                            record_id,
+                            detail: format!(
+                                "the authority accepted record at revision {revision} and the local copy refused it: {error}"
+                            ),
+                        });
+                        Err(error)
+                    }
+                }
+            }
+            Authority::Local => match self.policy.on_divergence {
+                OnDivergence::Refuse => {
+                    self.remote.commit_recorded(commit, expect)?;
+                    match self.local.commit_recorded(commit, expect) {
+                        Ok(()) => Ok(()),
+                        Err(error) => {
+                            self.divergences.push(Divergence {
+                                entity,
+                                id,
+                                local_revision: revision,
+                                source: StoreSide::Remote,
+                                destination: StoreSide::Local,
+                                record_id,
+                                detail: format!(
+                                    "the replica accepted record at revision {revision} and the authority refused it: {error}"
+                                ),
+                            });
+                            Err(error)
+                        }
+                    }
+                }
+                OnDivergence::RecordDivergence => {
+                    self.local.commit_recorded(commit, expect)?;
+                    match self.remote.commit_recorded(commit, expect) {
+                        Ok(()) => Ok(()),
+                        Err(error) => {
+                            self.divergences.push(Divergence {
+                                entity,
+                                id,
+                                local_revision: revision,
+                                source: StoreSide::Local,
+                                destination: StoreSide::Remote,
+                                record_id,
+                                detail: error.to_string(),
+                            });
+                            Ok(())
+                        }
+                    }
+                }
+            },
+        }
+    }
+
+    fn observe(&mut self, observation: &RecordedObservation) -> Result<(), StoreError> {
+        observation.validate()?;
+        let divergence = |source, destination, detail: String| Divergence {
+            entity: observation.entity.clone(),
+            id: observation.id.clone(),
+            local_revision: observation.revision,
+            source,
+            destination,
+            record_id: Some(observation.envelope.record_id.clone()),
+            detail,
+        };
+        match self.policy.authority {
+            Authority::Remote => {
+                self.remote.observe(observation)?;
+                match self.local.observe(observation) {
+                    Ok(()) => Ok(()),
+                    Err(error) => {
+                        self.divergences.push(divergence(
+                            StoreSide::Remote,
+                            StoreSide::Local,
+                            error.to_string(),
+                        ));
+                        Err(error)
+                    }
+                }
+            }
+            Authority::Local => match self.policy.on_divergence {
+                OnDivergence::Refuse => {
+                    self.remote.observe(observation)?;
+                    match self.local.observe(observation) {
+                        Ok(()) => Ok(()),
+                        Err(error) => {
+                            self.divergences.push(divergence(
+                                StoreSide::Remote,
+                                StoreSide::Local,
+                                error.to_string(),
+                            ));
+                            Err(error)
+                        }
+                    }
+                }
+                OnDivergence::RecordDivergence => {
+                    self.local.observe(observation)?;
+                    match self.remote.observe(observation) {
+                        Ok(()) => Ok(()),
+                        Err(error) => {
+                            self.divergences.push(divergence(
+                                StoreSide::Local,
+                                StoreSide::Remote,
+                                error.to_string(),
+                            ));
                             Ok(())
                         }
                     }

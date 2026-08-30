@@ -49,9 +49,10 @@
 
 use std::sync::Mutex;
 
-use entity_core::{Decision, DomainEvent, EntityInstance};
+use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 use entity_store::{
-    check, AtomicBatchStore, AtomicCommit, EventProvider, Expect, StateProvider, Store, StoreError,
+    check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
+    RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
 };
 use postgres::{Client, NoTls};
 
@@ -75,13 +76,43 @@ fn backend(operation: &str, error: &impl std::fmt::Display) -> StoreError {
     StoreError::Backend(format!("{operation}: {error}"))
 }
 
+/// Classifies failures after connection establishment. A PostgreSQL error response proves the
+/// server answered; a driver/transport error proves no such thing and remains `Unreachable`.
+fn database(operation: &str, error: &postgres::Error) -> StoreError {
+    if error.as_db_error().is_some() {
+        backend(operation, error)
+    } else {
+        StoreError::Unreachable {
+            provider: "postgres".to_owned(),
+            detail: format!("{operation}: {error}"),
+        }
+    }
+}
+
 /// A revision as PostgreSQL holds it (`BIGINT`), or the refusal a negative one earns.
 fn revision_of(value: i64) -> Result<u64, StoreError> {
     u64::try_from(value).map_err(|_| StoreError::Backend(format!("revision {value} is negative")))
 }
 
 impl PostgresStore {
-    /// Connects to `url` without TLS and prepares the schema.
+    /// Uses a caller-configured client and prepares the schema.
+    ///
+    /// TLS policy, certificates, connection parameters and authentication belong to the caller;
+    /// this constructor accepts the resulting connection without narrowing those choices.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError::Unreachable`] when the connection is lost, and [`StoreError::Backend`] when
+    /// the server refuses the schema.
+    pub fn from_client(client: Client) -> Result<Self, StoreError> {
+        let mut store = Self {
+            client: Mutex::new(client),
+        };
+        store.migrate()?;
+        Ok(store)
+    }
+
+    /// Connects to `url` explicitly without TLS and prepares the schema.
     ///
     /// `url` is a libpq-style connection string or URL, such as
     /// `postgres://user:password@host:5432/database`.
@@ -91,26 +122,32 @@ impl PostgresStore {
     /// [`StoreError::Unreachable`] when the server does not answer — nothing was learned, and a
     /// caller must not read that as an empty store — and [`StoreError::Backend`] when the schema
     /// cannot be established.
-    pub fn connect(url: &str) -> Result<Self, StoreError> {
+    pub fn connect_no_tls(url: &str) -> Result<Self, StoreError> {
         let client = Client::connect(url, NoTls).map_err(|error| StoreError::Unreachable {
             provider: "postgres".to_owned(),
             detail: error.to_string(),
         })?;
-        let mut store = Self {
-            client: Mutex::new(client),
-        };
-        store.migrate()?;
-        Ok(store)
+        Self::from_client(client)
     }
 
-    /// Connects as [`Self::connect`] and keeps everything under `schema`, creating it if needed.
+    /// Compatibility spelling for [`Self::connect_no_tls`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::connect_no_tls`].
+    #[deprecated(note = "use connect_no_tls to make transport policy explicit")]
+    pub fn connect(url: &str) -> Result<Self, StoreError> {
+        Self::connect_no_tls(url)
+    }
+
+    /// Connects as [`Self::connect_no_tls`] and keeps everything under `schema`, creating it if needed.
     ///
     /// For a test that needs a store of its own on a shared server, and for a deployment that
     /// keeps several plans in one database. The schema name is quoted as an identifier.
     ///
     /// # Errors
     ///
-    /// As [`Self::connect`].
+    /// As [`Self::connect_no_tls`].
     pub fn connect_in_schema(url: &str, schema: &str) -> Result<Self, StoreError> {
         let mut client = Client::connect(url, NoTls).map_err(|error| StoreError::Unreachable {
             provider: "postgres".to_owned(),
@@ -121,7 +158,7 @@ impl PostgresStore {
             .batch_execute(&format!(
                 "CREATE SCHEMA IF NOT EXISTS {quoted}; SET search_path TO {quoted};"
             ))
-            .map_err(|error| backend("selecting the schema", &error))?;
+            .map_err(|error| database("selecting the schema", &error))?;
         let mut store = Self {
             client: Mutex::new(client),
         };
@@ -154,9 +191,24 @@ impl PostgresStore {
                      position BIGINT NOT NULL,
                      document TEXT   NOT NULL,
                      PRIMARY KEY (entity, id, revision, position)
+                 );
+                 CREATE TABLE IF NOT EXISTS history (
+                     entity    TEXT   NOT NULL,
+                     id        TEXT   NOT NULL,
+                     position  BIGINT NOT NULL,
+                     kind      TEXT   NOT NULL CHECK (kind IN ('decision', 'observation')),
+                     record_id TEXT   NOT NULL UNIQUE,
+                     document  TEXT   NOT NULL,
+                     PRIMARY KEY (entity, id, position)
+                 );
+                 CREATE TABLE IF NOT EXISTS legacy_origins (
+                     entity   TEXT   NOT NULL,
+                     id       TEXT   NOT NULL,
+                     revision BIGINT NOT NULL,
+                     PRIMARY KEY (entity, id)
                  );",
             )
-            .map_err(|error| backend("establishing the schema", &error))
+            .map_err(|error| database("establishing the schema", &error))
     }
 
     /// Drops everything under `schema`. For a test cleaning up after itself; a deployment does not
@@ -171,7 +223,7 @@ impl PostgresStore {
                 "DROP SCHEMA IF EXISTS {} CASCADE;",
                 quote_identifier(schema)
             ))
-            .map_err(|error| backend("dropping the schema", &error))
+            .map_err(|error| database("dropping the schema", &error))
     }
 }
 
@@ -189,7 +241,7 @@ impl StateProvider for PostgresStore {
                 "SELECT document FROM instances WHERE entity = $1 AND id = $2",
                 &[&entity, &id],
             )
-            .map_err(|error| backend("reading an instance", &error))?;
+            .map_err(|error| database("reading an instance", &error))?;
         row.map(|row| {
             let text: String = row.get(0);
             serde_json::from_str(&text).map_err(|error| backend("parsing an instance", &error))
@@ -204,7 +256,7 @@ impl StateProvider for PostgresStore {
                 "SELECT revision FROM instances WHERE entity = $1 AND id = $2",
                 &[&entity, &id],
             )
-            .map_err(|error| backend("reading a revision", &error))?
+            .map_err(|error| database("reading a revision", &error))?
             .map(|row| revision_of(row.get::<_, i64>(0)))
             .transpose()
     }
@@ -218,7 +270,7 @@ impl StateProvider for PostgresStore {
                 "SELECT id FROM instances WHERE entity = $1 ORDER BY id COLLATE \"C\"",
                 &[&entity],
             )
-            .map_err(|error| backend("listing instances", &error))?;
+            .map_err(|error| database("listing instances", &error))?;
         Ok(rows.iter().map(|row| row.get::<_, String>(0)).collect())
     }
 }
@@ -232,13 +284,29 @@ impl EventProvider for PostgresStore {
                  ORDER BY revision, position",
                 &[&entity, &id],
             )
-            .map_err(|error| backend("reading events", &error))?;
-        rows.iter()
+            .map_err(|error| database("reading events", &error))?;
+        let mut events: Vec<DomainEvent> = rows
+            .iter()
             .map(|row| {
                 let text: String = row.get(0);
                 serde_json::from_str(&text).map_err(|error| backend("parsing an event", &error))
             })
-            .collect()
+            .collect::<Result<_, _>>()?;
+        drop(client);
+        for record in self.records(entity, id)? {
+            events.extend(record.record.events);
+        }
+        Ok(events)
+    }
+}
+
+impl HistoryProvider for PostgresStore {
+    fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
+        self.read_history(entity, id, "decision")
+    }
+
+    fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
+        self.read_history(entity, id, "observation")
     }
 }
 
@@ -246,6 +314,7 @@ fn write_decision(
     transaction: &mut postgres::Transaction<'_>,
     decision: &Decision,
     expect: Expect,
+    include_legacy_events: bool,
 ) -> Result<(), StoreError> {
     let instance = &decision.instance;
     let (entity, id) = (instance.entity.as_str(), instance.id.as_str());
@@ -257,7 +326,7 @@ fn write_decision(
             "SELECT revision FROM instances WHERE entity = $1 AND id = $2 FOR UPDATE",
             &[&entity, &id],
         )
-        .map_err(|error| backend("reading the current revision", &error))?
+        .map_err(|error| database("reading the current revision", &error))?
         .map(|row| revision_of(row.get::<_, i64>(0)))
         .transpose()?;
     check(entity, id, expect, found)?;
@@ -277,7 +346,7 @@ fn write_decision(
             &[&entity, &id, &revision, &document],
         ),
     }
-    .map_err(|error| backend("writing the instance", &error))?;
+    .map_err(|error| database("writing the instance", &error))?;
 
     // Two concurrent creations have no row to lock. `ON CONFLICT DO NOTHING` waits for the other
     // transaction without poisoning this one, so the whole batch can still roll back and report
@@ -288,7 +357,7 @@ fn write_decision(
                 "SELECT revision FROM instances WHERE entity = $1 AND id = $2",
                 &[&entity, &id],
             )
-            .map_err(|error| backend("reading the revision that landed", &error))?
+            .map_err(|error| database("reading the revision that landed", &error))?
             .map(|row| revision_of(row.get::<_, i64>(0)))
             .transpose()?;
         return Err(StoreError::RevisionConflict {
@@ -299,7 +368,17 @@ fn write_decision(
         });
     }
 
-    for event in &decision.events {
+    if !include_legacy_events {
+        return Ok(());
+    }
+    transaction
+        .execute(
+            "INSERT INTO legacy_origins (entity, id, revision) VALUES ($1, $2, $3) \
+             ON CONFLICT (entity, id) DO NOTHING",
+            &[&entity, &id, &revision],
+        )
+        .map_err(|error| database("marking the legacy snapshot boundary", &error))?;
+    for event in &decision.record.events {
         let document = serde_json::to_string(event)
             .map_err(|error| backend("serialising an event", &error))?;
         let at_revision = i64::try_from(event.revision)
@@ -310,7 +389,7 @@ fn write_decision(
                  WHERE entity = $1 AND id = $2 AND revision = $3",
                 &[&entity, &id, &at_revision],
             )
-            .map_err(|error| backend("reading the event position", &error))?
+            .map_err(|error| database("reading the event position", &error))?
             .get(0);
         transaction
             .execute(
@@ -318,7 +397,7 @@ fn write_decision(
                  VALUES ($1, $2, $3, $4, $5)",
                 &[&entity, &id, &at_revision, &position, &document],
             )
-            .map_err(|error| backend("appending an event", &error))?;
+            .map_err(|error| database("appending an event", &error))?;
     }
     Ok(())
 }
@@ -327,6 +406,127 @@ impl Store for PostgresStore {
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         self.commit_batch(&[AtomicCommit::new(decision.clone(), expect)])
     }
+
+    fn commit_recorded(
+        &mut self,
+        commit: &RecordedCommit,
+        expect: Expect,
+    ) -> Result<(), StoreError> {
+        commit.validate()?;
+        let mut client = self.client()?;
+        let mut transaction = client
+            .transaction()
+            .map_err(|error| database("beginning the recorded transaction", &error))?;
+        let document = serde_json::to_string(&commit.envelope)
+            .map_err(|error| backend("serialising the decision envelope", &error))?;
+        if let Some(row) = transaction
+            .query_opt(
+                "SELECT document FROM history WHERE record_id = $1",
+                &[&commit.envelope.record_id],
+            )
+            .map_err(|error| database("checking the record id", &error))?
+        {
+            let existing: String = row.get(0);
+            if existing == document {
+                transaction
+                    .commit()
+                    .map_err(|error| database("committing the retry", &error))?;
+                return Ok(());
+            }
+            return Err(StoreError::RecordConflict {
+                record_id: commit.envelope.record_id.clone(),
+            });
+        }
+        write_decision(&mut transaction, &commit.decision(), expect, false)?;
+        let position: i64 = transaction
+            .query_one(
+                "SELECT COALESCE(MAX(position) + 1, 0) FROM history WHERE entity = $1 AND id = $2",
+                &[&commit.instance.entity, &commit.instance.id],
+            )
+            .map_err(|error| database("reading the history position", &error))?
+            .get(0);
+        transaction
+            .execute(
+                "INSERT INTO history (entity, id, position, kind, record_id, document) \
+                 VALUES ($1, $2, $3, 'decision', $4, $5)",
+                &[
+                    &commit.instance.entity,
+                    &commit.instance.id,
+                    &position,
+                    &commit.envelope.record_id,
+                    &document,
+                ],
+            )
+            .map_err(|error| database("appending the decision record", &error))?;
+        transaction
+            .commit()
+            .map_err(|error| database("committing the recorded decision", &error))
+    }
+
+    fn observe(&mut self, observation: &RecordedObservation) -> Result<(), StoreError> {
+        observation.validate()?;
+        let mut client = self.client()?;
+        let mut transaction = client
+            .transaction()
+            .map_err(|error| database("beginning the observation transaction", &error))?;
+        let document = serde_json::to_string(observation)
+            .map_err(|error| backend("serialising the observation", &error))?;
+        if let Some(row) = transaction
+            .query_opt(
+                "SELECT document FROM history WHERE record_id = $1",
+                &[&observation.envelope.record_id],
+            )
+            .map_err(|error| database("checking the observation id", &error))?
+        {
+            let existing: String = row.get(0);
+            if existing == document {
+                transaction
+                    .commit()
+                    .map_err(|error| database("committing the observation retry", &error))?;
+                return Ok(());
+            }
+            return Err(StoreError::RecordConflict {
+                record_id: observation.envelope.record_id.clone(),
+            });
+        }
+        let found = transaction
+            .query_opt(
+                "SELECT revision FROM instances WHERE entity = $1 AND id = $2 FOR UPDATE",
+                &[&observation.entity, &observation.id],
+            )
+            .map_err(|error| database("reading the observed revision", &error))?
+            .map(|row| revision_of(row.get::<_, i64>(0)))
+            .transpose()?;
+        check(
+            &observation.entity,
+            &observation.id,
+            Expect::Revision(observation.revision),
+            found,
+        )?;
+        let position: i64 = transaction
+            .query_one(
+                "SELECT COALESCE(MAX(position) + 1, 0) FROM history WHERE entity = $1 AND id = $2",
+                &[&observation.entity, &observation.id],
+            )
+            .map_err(|error| database("reading the history position", &error))?
+            .get(0);
+        transaction
+            .execute(
+                "INSERT INTO history (entity, id, position, kind, record_id, document) \
+                 VALUES ($1, $2, $3, 'observation', $4, $5)",
+                &[
+                    &observation.entity,
+                    &observation.id,
+                    &position,
+                    &observation.envelope.record_id,
+                    &document,
+                ],
+            )
+            .map_err(|error| database("appending the observation", &error))?;
+        transaction
+            .commit()
+            .map_err(|error| database("committing the observation", &error))
+    }
 }
 
 impl AtomicBatchStore for PostgresStore {
@@ -334,19 +534,42 @@ impl AtomicBatchStore for PostgresStore {
         let mut client = self.client()?;
         let mut transaction = client
             .transaction()
-            .map_err(|error| backend("beginning the transaction", &error))?;
+            .map_err(|error| database("beginning the transaction", &error))?;
         for commit in commits {
-            write_decision(&mut transaction, &commit.decision, commit.expect)?;
+            write_decision(&mut transaction, &commit.decision, commit.expect, true)?;
         }
 
         // Every instance and event lands here or none does.
         transaction
             .commit()
-            .map_err(|error| backend("committing", &error))
+            .map_err(|error| database("committing", &error))
     }
 }
 
 impl PostgresStore {
+    fn read_history<T: serde::de::DeserializeOwned>(
+        &self,
+        entity: &str,
+        id: &str,
+        kind: &str,
+    ) -> Result<Vec<T>, StoreError> {
+        let mut client = self.client()?;
+        let rows = client
+            .query(
+                "SELECT document FROM history WHERE entity = $1 AND id = $2 AND kind = $3 \
+                 ORDER BY position",
+                &[&entity, &id, &kind],
+            )
+            .map_err(|error| database("reading history", &error))?;
+        rows.into_iter()
+            .map(|row| {
+                let text: String = row.get(0);
+                serde_json::from_str(&text)
+                    .map_err(|error| backend("parsing a history record", &error))
+            })
+            .collect()
+    }
+
     /// The connection, for one statement or one transaction.
     fn client(&self) -> Result<std::sync::MutexGuard<'_, Client>, StoreError> {
         self.client.lock().map_err(|_| {

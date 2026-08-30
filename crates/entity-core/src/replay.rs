@@ -42,10 +42,82 @@
 
 use serde_json::Map;
 
-use crate::definition::EntityDefinition;
 use crate::error::CoreError;
-use crate::runtime::{check_preconditions, DomainEvent, EntityInstance, TemplateContext};
+use crate::runtime::{
+    check_preconditions, create, execute, DecisionCommand, DecisionRecord, DomainEvent,
+    EntityInstance, TemplateContext,
+};
 use crate::validation::validate_object;
+use crate::ValidatedDefinition;
+
+/// Replays complete decision records and verifies every byte-producing kernel choice.
+///
+/// Unlike legacy event folding, this reruns defaults, schemas, transition selection,
+/// preconditions, `set`, invariants and event templates. Recorded `changed` fields and event types
+/// are comparison evidence, never instructions trusted to mutate state.
+///
+/// # Errors
+///
+/// A typed kernel refusal when the recorded command no longer evaluates, or
+/// [`CoreError::Validation`] naming the first record that differs from recomputation.
+pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
+    let refuse = |index: usize, detail: &str| {
+        CoreError::Validation(vec![crate::ValidationError::new(
+            format!("records[{index}]"),
+            detail,
+        )])
+    };
+    let mut instance: Option<EntityInstance> = None;
+    for (index, record) in records.iter().enumerate() {
+        let definition = record
+            .definition
+            .clone()
+            .ok_or_else(|| {
+                refuse(
+                    index,
+                    "legacy import has no definition snapshot and cannot be replayed from genesis",
+                )
+            })
+            .and_then(|definition| ValidatedDefinition::new(definition).map_err(CoreError::from))?;
+        let decision =
+            match &record.command {
+                DecisionCommand::Create { fields } if instance.is_none() => create(
+                    &definition,
+                    record.id.clone(),
+                    serde_json::Value::Object(fields.clone()),
+                )?,
+                DecisionCommand::Create { .. } => {
+                    return Err(refuse(index, "creation may only be the first record"))
+                }
+                DecisionCommand::Execute {
+                    operation,
+                    arguments,
+                } => {
+                    let before = instance.as_ref().ok_or_else(|| {
+                        refuse(index, "history begins with an operation, not creation")
+                    })?;
+                    execute(
+                        &definition,
+                        before,
+                        operation,
+                        serde_json::Value::Object(arguments.clone()),
+                    )?
+                }
+                DecisionCommand::LegacyImport => return Err(refuse(
+                    index,
+                    "legacy import marks a snapshot boundary and cannot be replayed from genesis",
+                )),
+            };
+        if decision.record != *record {
+            return Err(refuse(
+                index,
+                "record differs from the decision recomputed from its definition and command",
+            ));
+        }
+        instance = Some(decision.instance);
+    }
+    instance.ok_or_else(|| refuse(0, "an instance cannot be replayed from no decision records"))
+}
 
 /// Rebuilds an instance from its events, oldest first.
 ///
@@ -59,7 +131,7 @@ use crate::validation::validate_object;
 /// [`CoreError::EntityMismatch`] when an event belongs to another definition, and
 /// [`CoreError::UnknownState`] when it names a state the definition does not have.
 pub fn rehydrate(
-    definition: &EntityDefinition,
+    definition: &ValidatedDefinition,
     events: &[DomainEvent],
 ) -> Result<EntityInstance, CoreError> {
     let refuse = |detail: String| {
@@ -116,7 +188,15 @@ pub fn rehydrate(
 
         // A revision is reached once and follows the one before it. A gap means events are missing,
         // and folding over a gap would produce an instance nothing ever was.
-        let expected_revision = instance.revision + 1;
+        let expected_revision = instance
+            .revision
+            .checked_add(1)
+            .filter(|revision| *revision <= i64::MAX as u64)
+            .ok_or_else(|| CoreError::RevisionExhausted {
+                entity: instance.entity.clone(),
+                id: instance.id.clone(),
+                revision: instance.revision,
+            })?;
         if event.revision != expected_revision {
             return refuse(format!(
                 "event {index} (`{}`) is at revision {}, but the fold had reached {}; a history \
@@ -202,7 +282,7 @@ pub fn rehydrate(
 /// The preconditions see what they saw when the operation ran: the arguments the event carries, the
 /// fields as they stood before it, the transition it took.
 fn arguments_refused(
-    definition: &EntityDefinition,
+    definition: &ValidatedDefinition,
     before: &EntityInstance,
     event: &DomainEvent,
     from: &str,
@@ -242,7 +322,7 @@ fn arguments_refused(
 }
 
 /// Whether any operation of `definition` declares a transition from `from` to `to`.
-fn permits(definition: &EntityDefinition, from: &str, to: &str) -> bool {
+fn permits(definition: &ValidatedDefinition, from: &str, to: &str) -> bool {
     definition.operations.values().any(|operation| {
         operation.transitions.iter().any(|transition| {
             transition.from.as_slice().iter().any(|state| state == from) && transition.to == to

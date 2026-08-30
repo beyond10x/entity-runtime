@@ -35,6 +35,10 @@ impl Defects {
         }
     }
 
+    fn extend(&mut self, defects: impl IntoIterator<Item = DefinitionError>) {
+        self.0.extend(defects);
+    }
+
     fn into_result(self) -> Result<(), DefinitionErrors> {
         if self.0.is_empty() {
             Ok(())
@@ -83,7 +87,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         });
     }
 
-    defects.check(validate_schema_definition(&definition.schema, "schema"));
+    defects.extend(validate_schema_definition(&definition.schema, "schema"));
 
     let invariant_scope = Scope {
         kind: ScopeKind::Invariant,
@@ -153,7 +157,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
             });
         }
 
-        defects.check(validate_schema_definition(
+        defects.extend(validate_schema_definition(
             &operation.arguments,
             &format!("operations.{operation_name}.arguments"),
         ));
@@ -530,11 +534,12 @@ fn invalid_rule(path: &str, message: impl Into<String>) -> Result<(), Definition
 
 // --- Field definitions ---------------------------------------------------------------------------
 
-fn validate_schema_definition(schema: &ObjectSchema, path: &str) -> Result<(), DefinitionError> {
+fn validate_schema_definition(schema: &ObjectSchema, path: &str) -> Vec<DefinitionError> {
+    let mut defects = Vec::new();
     for (name, field) in &schema.fields {
-        validate_field_definition(field, &format!("{path}.{name}"))?;
+        validate_field_definition(field, &format!("{path}.{name}"), &mut defects);
     }
-    Ok(())
+    defects
 }
 
 /// Which constraints a kind admits. A constraint outside its kind's list is refused rather than
@@ -620,20 +625,26 @@ fn validate_constraint_applicability(
     Ok(())
 }
 
-fn validate_field_definition(field: &FieldDefinition, path: &str) -> Result<(), DefinitionError> {
-    validate_constraint_applicability(field, path)?;
+fn validate_field_definition(
+    field: &FieldDefinition,
+    path: &str,
+    defects: &mut Vec<DefinitionError>,
+) {
+    if let Err(defect) = validate_constraint_applicability(field, path) {
+        defects.push(defect);
+    }
 
     if let (Some(min), Some(max)) = (field.min_length, field.max_length) {
         if min > max {
-            return Err(DefinitionError::InvalidField {
+            defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
                 message: "min_length cannot exceed max_length".into(),
             });
         }
     }
-    if let (Some(min), Some(max)) = (field.min, field.max) {
-        if min > max {
-            return Err(DefinitionError::InvalidField {
+    if let (Some(min), Some(max)) = (&field.min, &field.max) {
+        if crate::number::compare(min, max).is_gt() {
+            defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
                 message: "min cannot exceed max".into(),
             });
@@ -642,13 +653,13 @@ fn validate_field_definition(field: &FieldDefinition, path: &str) -> Result<(), 
 
     match field.kind {
         FieldKind::Enum if field.values.is_empty() => {
-            return Err(DefinitionError::InvalidField {
+            defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
                 message: "enum must declare at least one value".into(),
             });
         }
         FieldKind::Array if field.items.is_none() => {
-            return Err(DefinitionError::InvalidField {
+            defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
                 message: "array must declare 'items'".into(),
             });
@@ -661,7 +672,7 @@ fn validate_field_definition(field: &FieldDefinition, path: &str) -> Result<(), 
                 .as_deref()
                 .is_none_or(|entity| entity.trim().is_empty()) =>
         {
-            return Err(DefinitionError::InvalidField {
+            defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
                 message: "ref must declare 'entity', the type it points at".into(),
             });
@@ -672,7 +683,7 @@ fn validate_field_definition(field: &FieldDefinition, path: &str) -> Result<(), 
                 .as_deref()
                 .is_some_and(|label| label.trim().is_empty()) =>
         {
-            return Err(DefinitionError::InvalidField {
+            defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
                 message: "'inverse' is a label and cannot be blank; leave it out instead".into(),
             });
@@ -681,24 +692,24 @@ fn validate_field_definition(field: &FieldDefinition, path: &str) -> Result<(), 
     }
 
     if let Some(items) = &field.items {
-        validate_field_definition(items, &format!("{path}[]"))?;
+        validate_field_definition(items, &format!("{path}[]"), defects);
     }
     for (name, property) in &field.properties {
-        validate_field_definition(property, &format!("{path}.{name}"))?;
+        validate_field_definition(property, &format!("{path}.{name}"), defects);
     }
 
-    if let Some(default) = &field.default {
+    if let Some(default) = field.default.as_value() {
+        let mut default = default.clone();
+        apply_nested_defaults(field, &mut default);
         let mut errors = Vec::new();
-        validate_value(field, default, path, &mut errors);
-        if let Some(error) = errors.into_iter().next() {
-            return Err(DefinitionError::InvalidField {
+        validate_value(field, &default, path, &mut errors);
+        for error in errors {
+            defects.push(DefinitionError::InvalidField {
                 path: error.path,
                 message: format!("invalid default: {}", error.message),
             });
         }
     }
-
-    Ok(())
 }
 
 // --- Values --------------------------------------------------------------------------------------
@@ -718,7 +729,7 @@ fn apply_member_defaults(
 ) {
     for (name, definition) in fields {
         if !object.contains_key(name) {
-            if let Some(default) = &definition.default {
+            if let Some(default) = definition.default.as_value() {
                 object.insert(name.clone(), default.clone());
             }
         }
@@ -817,12 +828,12 @@ fn validate_value(
         // number nobody sent.
         FieldKind::Integer => {
             if value.is_i64() || value.is_u64() {
-                validate_number(definition, value.as_f64().unwrap_or_default(), path, errors);
+                validate_number(definition, value.as_number().expect("number"), path, errors);
             } else {
                 wrong_type(path, "integer", errors);
             }
         }
-        FieldKind::Number => match value.as_f64() {
+        FieldKind::Number => match value.as_number() {
             Some(number) => validate_number(definition, number, path, errors),
             None => wrong_type(path, "number", errors),
         },
@@ -909,20 +920,20 @@ fn validate_string(
 
 fn validate_number(
     definition: &FieldDefinition,
-    value: f64,
+    value: &serde_json::Number,
     path: &str,
     errors: &mut Vec<ValidationError>,
 ) {
-    if let Some(min) = definition.min {
-        if value < min {
+    if let Some(min) = &definition.min {
+        if crate::number::compare(value, min).is_lt() {
             errors.push(ValidationError::new(
                 path,
                 format!("value {value} is below minimum {min}"),
             ));
         }
     }
-    if let Some(max) = definition.max {
-        if value > max {
+    if let Some(max) = &definition.max {
+        if crate::number::compare(value, max).is_gt() {
             errors.push(ValidationError::new(
                 path,
                 format!("value {value} exceeds maximum {max}"),

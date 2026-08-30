@@ -9,15 +9,7 @@ name: Publish documentation
 on:
   push:
     branches: [main]
-    paths:
-      - .github/workflows/pages.yml
-      - docs/**
-      - website/**
   pull_request:
-    paths:
-      - .github/workflows/pages.yml
-      - docs/**
-      - website/**
   workflow_dispatch:
 
 permissions:
@@ -61,6 +53,14 @@ jobs:
       - name: Type-check website
         working-directory: website
         run: npm run typecheck
+
+      - name: Refuse image formats exposed to the temporary image-size advisory exception
+        run: |
+          set -euo pipefail
+          if find docs website/static -type f \( -iname '*.icns' -o -iname '*.jxl' -o -iname '*.heif' -o -iname '*.heic' \) -print -quit | grep -q .; then
+            echo 'ICNS, JXL and HEIF/HEIC assets are forbidden while the image-size exception is active.' >&2
+            exit 1
+          fi
 
       - name: Build website
         working-directory: website

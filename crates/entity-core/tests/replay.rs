@@ -4,7 +4,7 @@
 //! events, equals the instance the operations returned — and an invented event whose transition the
 //! lifecycle does not permit is refused rather than replayed.
 
-use entity_core::{rehydrate, DomainEvent, Registry, Runtime};
+use entity_core::{rehydrate, replay as replay_records, DomainEvent, Registry, Runtime};
 use serde_json::json;
 
 /// A ticket that opens, closes, and can be reopened — with an event on every step including create.
@@ -71,6 +71,47 @@ fn a_create_and_two_operations_fold_back_into_the_instance_they_produced() {
         folded, reopened.instance,
         "state, revision and fields all come back — including `closed_by`, which only a `set:` \
          assignment ever wrote"
+    );
+}
+
+#[test]
+fn complete_decision_records_recompute_the_instance_from_genesis() {
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("ticket", 1, "recorded", json!({ "title": "A ticket" }))
+        .expect("permitted");
+    let closed = runtime
+        .execute(&created.instance, "close", json!({ "who": "timo" }))
+        .expect("permitted");
+    let records = [created.record, closed.record];
+    assert_eq!(
+        replay_records(&records).expect("verified replay"),
+        closed.instance
+    );
+}
+
+#[test]
+fn changing_any_recorded_result_is_refused_instead_of_becoming_state() {
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("ticket", 1, "forged", json!({ "title": "A ticket" }))
+        .expect("permitted");
+    let closed = runtime
+        .execute(&created.instance, "close", json!({ "who": "timo" }))
+        .expect("permitted");
+    let mut records = [created.record, closed.record];
+    records[1]
+        .result
+        .fields
+        .insert("closed_by".to_owned(), json!("mallory"));
+    let error = replay_records(&records).expect_err("forged output is comparison evidence");
+    assert!(
+        error
+            .to_string()
+            .contains("differs from the decision recomputed"),
+        "{error}"
     );
 }
 

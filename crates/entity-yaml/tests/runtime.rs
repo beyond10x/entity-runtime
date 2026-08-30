@@ -258,3 +258,31 @@ operations:
     assert_eq!(created.instance.lifecycle_state, "open");
     assert_eq!(created.instance.revision, 1);
 }
+
+#[test]
+fn duplicate_dynamic_keys_and_yaml_merges_are_refused_before_validation() {
+    let duplicate = r#"
+entity: ticket
+schema:
+  fields:
+    title: { type: string }
+    title: { type: integer }
+lifecycle: { initial: open, states: [open] }
+operations: {}
+"#;
+    let error = entity_yaml::from_str(duplicate).expect_err("last-key-wins is ambiguous");
+    assert!(
+        error.to_string().contains("duplicate mapping key"),
+        "{error}"
+    );
+
+    let merged = r#"
+entity: ticket
+schema: &schema { fields: {} }
+lifecycle: { initial: open, states: [open] }
+operations: {}
+<<: { schema: *schema }
+"#;
+    let error = entity_yaml::from_str(merged).expect_err("merge order is not a definition rule");
+    assert!(error.to_string().contains("merge keys"), "{error}");
+}

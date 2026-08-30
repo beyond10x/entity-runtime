@@ -6,6 +6,47 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 Nothing yet.
 
+## [0.15.0] — 2026-08-31
+
+### Added
+
+* **Decisions are durable, replay-verifiable records.** Each kernel result carries its normalized
+  command, exact validated definition snapshot, complete result, changed fields and ordered events.
+  `replay` reruns the command and refuses altered input, output or event evidence rather than
+  trusting it as state.
+* **Every durable write can carry complete provenance.** File, memory, SQLite, PostgreSQL, Remote
+  and Hybrid providers preserve decision envelopes and non-state-changing observations in append
+  order. Caller-supplied record ids are idempotent for identical bytes and conflict globally when
+  reused for different bytes.
+* **`entity skill` renders the installed CLI's Agent Skill.** Standard output and `--out` are
+  byte-identical and version stamped; an existing file is refused unless `--force` names that
+  replacement explicitly.
+* **File Store v2 and its out-of-place migrator.** `entity store migrate-file --from OLD --to NEW`
+  validates legacy split files, confines arbitrary entity names and ids to encoded paths, writes
+  state and history as one atomically replaced subject document, and leaves the source untouched.
+  `--dry-run` performs the complete validation without creating the destination.
+
+### Changed
+
+* Kernel entry points accept only `ValidatedDefinition` handles produced by successful
+  registration. Definition validation accumulates independent schema/default defects, rejects
+  duplicate YAML mapping keys and merge keys, preserves explicit `null` defaults, compares JSON
+  numbers without `f64` precision loss, and refuses revision overflow.
+* The remote protocol is `entity.store/4`; runtime structs cross it as explicitly converted JSON
+  documents, including recorded decisions, observations and history reads.
+* Stored `entity create` and `entity execute` calls require `--record-id`, a valid `--recorded-at`,
+  and exactly one of `--actor` or `--no-actor`. The record printed is the record committed.
+* `PostgresStore::connect_no_tls` now names the transport choice explicitly; the old `connect`
+  spelling is deprecated. Driver/transport failures are `Unreachable`, while database refusals
+  remain backend errors.
+
+### Fixed
+
+* Nested projection paths now resolve at every depth, impossible calendar dates and non-ASCII time
+  tails are refused without panicking, SQLite/PostgreSQL revision conversions are checked, and
+  hybrid reads report freshness against the declared authority. Directional divergences retain
+  their source, destination and record id instead of being cleared when the source cannot be read.
+
 ## [0.14.0] — 2026-08-31
 
 ### Added

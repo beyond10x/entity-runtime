@@ -678,6 +678,14 @@ fn a_store_carries_the_instance_from_create_to_execute() {
             "--store",
         ])
         .arg(&store)
+        .args([
+            "--record-id",
+            "create-one",
+            "--recorded-at",
+            "2026-08-31T12:00:00Z",
+            "--actor",
+            "cli-test",
+        ])
         .output()
         .expect("runs");
     assert!(
@@ -692,7 +700,18 @@ fn a_store_carries_the_instance_from_create_to_execute() {
         .arg(&definition)
         .args(["--store"])
         .arg(&store)
-        .args(["--id", "one", "--operation", "close"])
+        .args([
+            "--id",
+            "one",
+            "--operation",
+            "close",
+            "--record-id",
+            "close-one",
+            "--recorded-at",
+            "2026-08-31T12:01:00Z",
+            "--actor",
+            "cli-test",
+        ])
         .output()
         .expect("runs");
     assert!(
@@ -705,11 +724,22 @@ fn a_store_carries_the_instance_from_create_to_execute() {
         serde_json::from_slice(&closed.stdout).expect("a decision on stdout");
     assert_eq!(decision["instance"]["lifecycle_state"], "closed");
     assert_eq!(decision["instance"]["revision"], 2);
-    assert_eq!(decision["events"].as_array().expect("events").len(), 1);
+    assert_eq!(
+        decision["envelope"]["record"]["events"]
+            .as_array()
+            .expect("events")
+            .len(),
+        1
+    );
 
     // And it landed: state and events are both on disk.
-    assert!(store.join("ticket/one.json").is_file());
-    assert!(store.join("ticket/one.events.jsonl").is_file());
+    assert!(store.join(".entity-store-format").is_file());
+    assert_eq!(
+        std::fs::read_dir(store.join("subjects"))
+            .expect("subject directory")
+            .count(),
+        1
+    );
 }
 
 /// Creating twice under one identity is the store's refusal, not the kernel's, and says so.
@@ -726,7 +756,7 @@ fn a_second_creation_of_one_identity_is_refused_by_the_store() {
     .expect("a definition");
     let store = root.join("store");
 
-    let create = || {
+    let create = |record_id: &str| {
         entity()
             .args(["create", "--definition"])
             .arg(&definition)
@@ -738,12 +768,19 @@ fn a_second_creation_of_one_identity_is_refused_by_the_store() {
                 "--store",
             ])
             .arg(&store)
+            .args([
+                "--record-id",
+                record_id,
+                "--recorded-at",
+                "2026-08-31T12:00:00Z",
+                "--no-actor",
+            ])
             .output()
             .expect("runs")
     };
 
-    assert!(create().status.success());
-    let again = create();
+    assert!(create("create-one").status.success());
+    let again = create("create-one-again");
     assert_eq!(
         again.status.code(),
         Some(1),
@@ -782,6 +819,13 @@ fn list_says_what_a_store_holds_and_nothing_for_a_type_nobody_stored() {
             .arg(&definition)
             .args(["--id", id, "--fields", r#"{"title":"A ticket"}"#, "--store"])
             .arg(&store)
+            .args([
+                "--record-id",
+                &format!("create-{id}"),
+                "--recorded-at",
+                "2026-08-31T12:00:00Z",
+                "--no-actor",
+            ])
             .output()
             .expect("runs");
         assert!(
@@ -892,4 +936,137 @@ fn implement_records_the_evidence_it_was_decided_on() {
     assert_eq!(decision["instance"]["lifecycle_state"], "implemented");
     assert_eq!(decision["events"][0]["args"]["evidence"]["test_result"], 1);
     assert_eq!(decision["events"][0]["args"]["actor"], "timo");
+}
+
+#[test]
+fn skill_stdout_and_file_are_identical_and_replacement_is_explicit() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-skill");
+    let _ = fs::remove_dir_all(&root);
+    let output_path = root.join("nested/SKILL.md");
+    let printed = run(&["skill"], None);
+    assert_eq!(printed.status.code(), Some(0), "{}", stderr(&printed));
+    let text = stdout(&printed);
+    assert!(text.starts_with("---\nname: entity\n"));
+    assert!(text.contains(concat!(
+        "Generated for `entity ",
+        env!("CARGO_PKG_VERSION"),
+        "`"
+    )));
+
+    let written = entity()
+        .args(["skill", "--out"])
+        .arg(&output_path)
+        .output()
+        .expect("runs");
+    assert!(
+        written.status.success(),
+        "{}",
+        String::from_utf8_lossy(&written.stderr)
+    );
+    assert_eq!(fs::read_to_string(&output_path).expect("written"), text);
+
+    fs::write(&output_path, "keep me\n").expect("replace fixture");
+    let refused = entity()
+        .args(["skill", "--out"])
+        .arg(&output_path)
+        .output()
+        .expect("runs");
+    assert_eq!(refused.status.code(), Some(2));
+    assert_eq!(
+        fs::read_to_string(&output_path).expect("untouched"),
+        "keep me\n"
+    );
+
+    let replaced = entity()
+        .args(["skill", "--out"])
+        .arg(&output_path)
+        .arg("--force")
+        .output()
+        .expect("runs");
+    assert!(
+        replaced.status.success(),
+        "{}",
+        String::from_utf8_lossy(&replaced.stderr)
+    );
+    assert_eq!(fs::read_to_string(output_path).expect("replaced"), text);
+}
+
+#[test]
+fn file_store_migration_is_out_of_place_and_dry_run_writes_nothing() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-file-migration");
+    let _ = fs::remove_dir_all(&root);
+    let source = root.join("old");
+    let destination = root.join("new");
+    let entity_dir = source.join("ticket");
+    fs::create_dir_all(&entity_dir).expect("legacy entity directory");
+    let definition = root.join("ticket.yaml");
+    fs::write(
+        &definition,
+        "entity: ticket\nversion: 1\nschema: { fields: { title: { type: string, required: true } } }\nlifecycle: { initial: open, states: [open] }\ncreate: { emit: { type: TicketOpened, payload: { ticket: $id } } }\noperations: {}\n",
+    )
+    .expect("definition");
+    let created = entity()
+        .args(["create", "--definition"])
+        .arg(&definition)
+        .args(["--id", "one", "--fields", r#"{"title":"A ticket"}"#])
+        .output()
+        .expect("runs");
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let decision: serde_json::Value = serde_json::from_slice(&created.stdout).expect("decision");
+    fs::write(
+        entity_dir.join("one.json"),
+        serde_json::to_vec_pretty(&decision["instance"]).expect("instance JSON"),
+    )
+    .expect("legacy state");
+    let mut event = serde_json::to_vec(&decision["events"][0]).expect("event JSON");
+    event.push(b'\n');
+    fs::write(entity_dir.join("one.events.jsonl"), event).expect("legacy event");
+    let source_before = fs::read(entity_dir.join("one.json")).expect("source bytes");
+
+    let dry = entity()
+        .args(["store", "migrate-file", "--from"])
+        .arg(&source)
+        .arg("--to")
+        .arg(&destination)
+        .arg("--dry-run")
+        .output()
+        .expect("runs");
+    assert!(
+        dry.status.success(),
+        "{}",
+        String::from_utf8_lossy(&dry.stderr)
+    );
+    assert!(!destination.exists(), "dry-run writes no destination bytes");
+
+    let migrated = entity()
+        .args(["store", "migrate-file", "--from"])
+        .arg(&source)
+        .arg("--to")
+        .arg(&destination)
+        .output()
+        .expect("runs");
+    assert!(
+        migrated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&migrated.stderr)
+    );
+    assert_eq!(
+        fs::read(entity_dir.join("one.json")).expect("source remains"),
+        source_before
+    );
+    assert_eq!(
+        fs::read_to_string(destination.join(".entity-store-format")).expect("marker"),
+        "entity.file-store/2\n"
+    );
+    let listed = entity()
+        .args(["list", "--store"])
+        .arg(&destination)
+        .args(["--entity", "ticket"])
+        .output()
+        .expect("runs");
+    assert_eq!(String::from_utf8_lossy(&listed.stdout), "one\n");
 }

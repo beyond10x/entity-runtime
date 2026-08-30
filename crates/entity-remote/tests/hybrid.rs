@@ -61,6 +61,7 @@ fn a_hybrid_with_the_remote_as_authority_conforms_like_any_other_store() {
     );
     let report = conformance::run(&mut store);
     assert!(report.is_clean(), "Hybrid:\n{}", report.summary());
+    conformance::verify_recorded(&mut store).expect("Hybrid recorded history");
 }
 
 #[test]

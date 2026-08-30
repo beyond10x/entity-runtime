@@ -10,6 +10,7 @@ const sidebars: SidebarsConfig = {
       items: [
         {type: 'doc', id: 'guide/definitions', label: 'The definition language'},
         {type: 'doc', id: 'guide/cli', label: 'The entity command'},
+        {type: 'doc', id: 'guide/file-store-migration', label: 'File Store migration'},
         {type: 'doc', id: 'guide/library', label: 'The library'},
       ],
     },
@@ -26,7 +27,8 @@ const sidebars: SidebarsConfig = {
       label: 'Design',
       collapsed: false,
       items: [
-        {type: 'doc', id: 'design/kernel-v0.1', label: 'The kernel (normative)'},
+        {type: 'doc', id: 'design/kernel-v0.2', label: 'The kernel v0.2 (normative)'},
+        {type: 'doc', id: 'design/store-v0.2', label: 'The store v0.2 (normative)'},
         {
           type: 'doc',
           id: 'design/engineering-protocols-adoption-v0.1',

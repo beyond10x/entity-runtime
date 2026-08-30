@@ -11,7 +11,7 @@
 //! would silently enforce less than it says, so it is refused where it is read.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Number, Value};
 use std::collections::BTreeMap;
 
 fn default_version() -> u32 {
@@ -130,8 +130,13 @@ pub struct FieldDefinition {
 
     /// The value used when none is supplied. Validated against this field at registration, and
     /// applied at every depth — a default on a nested `properties` entry is filled in too.
-    #[serde(default)]
-    pub default: Option<Value>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_declared_default",
+        serialize_with = "serialize_declared_default",
+        skip_serializing_if = "DeclaredDefault::is_absent"
+    )]
+    pub default: DeclaredDefault,
 
     /// Minimum length in characters. `string` only.
     #[serde(default)]
@@ -143,11 +148,11 @@ pub struct FieldDefinition {
 
     /// Minimum value. `integer` and `number` only.
     #[serde(default)]
-    pub min: Option<f64>,
+    pub min: Option<Number>,
 
     /// Maximum value. `integer` and `number` only.
     #[serde(default)]
-    pub max: Option<f64>,
+    pub max: Option<Number>,
 
     /// The permitted values. `enum` only, and required there.
     #[serde(default)]
@@ -197,6 +202,55 @@ pub struct FieldDefinition {
     /// writes. Declaring it here is what turns a rule written in prose into one a shell can read.
     #[serde(default)]
     pub acyclic: Option<bool>,
+}
+
+/// Whether a field omitted `default`, or declared a value including an explicit JSON `null`.
+///
+/// `Option<Value>` cannot represent that distinction under Serde: both a missing key and
+/// `default: null` deserialize as `None`. Definitions are data, so erasing a key the author wrote
+/// is not an acceptable interpretation.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum DeclaredDefault {
+    /// The definition did not declare a default.
+    #[default]
+    Absent,
+    /// The exact value declared, including [`Value::Null`].
+    Value(Value),
+}
+
+impl DeclaredDefault {
+    /// The declared value, if the key was present.
+    #[must_use]
+    pub const fn as_value(&self) -> Option<&Value> {
+        match self {
+            Self::Absent => None,
+            Self::Value(value) => Some(value),
+        }
+    }
+
+    fn is_absent(&self) -> bool {
+        matches!(self, Self::Absent)
+    }
+}
+
+fn deserialize_declared_default<'de, D>(deserializer: D) -> Result<DeclaredDefault, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Value::deserialize(deserializer).map(DeclaredDefault::Value)
+}
+
+fn serialize_declared_default<S>(
+    default: &DeclaredDefault,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match default {
+        DeclaredDefault::Absent => serializer.serialize_unit(),
+        DeclaredDefault::Value(value) => value.serialize(serializer),
+    }
 }
 
 impl FieldDefinition {
