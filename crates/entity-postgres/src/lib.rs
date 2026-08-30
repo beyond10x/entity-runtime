@@ -50,7 +50,9 @@
 use std::sync::Mutex;
 
 use entity_core::{Decision, DomainEvent, EntityInstance};
-use entity_store::{check, EventProvider, Expect, StateProvider, Store, StoreError};
+use entity_store::{
+    check, AtomicBatchStore, AtomicCommit, EventProvider, Expect, StateProvider, Store, StoreError,
+};
 use postgres::{Client, NoTls};
 
 /// A [`Store`] over one PostgreSQL connection.
@@ -240,93 +242,104 @@ impl EventProvider for PostgresStore {
     }
 }
 
+fn write_decision(
+    transaction: &mut postgres::Transaction<'_>,
+    decision: &Decision,
+    expect: Expect,
+) -> Result<(), StoreError> {
+    let instance = &decision.instance;
+    let (entity, id) = (instance.entity.as_str(), instance.id.as_str());
+
+    // Locked, so another writer waits and then sees the revision that landed. A later entry in
+    // this batch sees the revision an earlier entry wrote in the same transaction.
+    let found = transaction
+        .query_opt(
+            "SELECT revision FROM instances WHERE entity = $1 AND id = $2 FOR UPDATE",
+            &[&entity, &id],
+        )
+        .map_err(|error| backend("reading the current revision", &error))?
+        .map(|row| revision_of(row.get::<_, i64>(0)))
+        .transpose()?;
+    check(entity, id, expect, found)?;
+
+    let document = serde_json::to_string(instance)
+        .map_err(|error| backend("serialising the instance", &error))?;
+    let revision = i64::try_from(instance.revision)
+        .map_err(|_| StoreError::Backend("the revision does not fit a BIGINT".to_owned()))?;
+    let written = match found {
+        Some(_) => transaction.execute(
+            "UPDATE instances SET revision = $3, document = $4 WHERE entity = $1 AND id = $2",
+            &[&entity, &id, &revision, &document],
+        ),
+        None => transaction.execute(
+            "INSERT INTO instances (entity, id, revision, document) VALUES ($1, $2, $3, $4) \
+             ON CONFLICT (entity, id) DO NOTHING",
+            &[&entity, &id, &revision, &document],
+        ),
+    }
+    .map_err(|error| backend("writing the instance", &error))?;
+
+    // Two concurrent creations have no row to lock. `ON CONFLICT DO NOTHING` waits for the other
+    // transaction without poisoning this one, so the whole batch can still roll back and report
+    // the ordinary optimistic conflict with the revision that won.
+    if found.is_none() && written == 0 {
+        let landed = transaction
+            .query_opt(
+                "SELECT revision FROM instances WHERE entity = $1 AND id = $2",
+                &[&entity, &id],
+            )
+            .map_err(|error| backend("reading the revision that landed", &error))?
+            .map(|row| revision_of(row.get::<_, i64>(0)))
+            .transpose()?;
+        return Err(StoreError::RevisionConflict {
+            entity: entity.to_owned(),
+            id: id.to_owned(),
+            expected: expect,
+            found: landed,
+        });
+    }
+
+    for event in &decision.events {
+        let document = serde_json::to_string(event)
+            .map_err(|error| backend("serialising an event", &error))?;
+        let at_revision = i64::try_from(event.revision)
+            .map_err(|_| StoreError::Backend("the revision does not fit a BIGINT".to_owned()))?;
+        let position: i64 = transaction
+            .query_one(
+                "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
+                 WHERE entity = $1 AND id = $2 AND revision = $3",
+                &[&entity, &id, &at_revision],
+            )
+            .map_err(|error| backend("reading the event position", &error))?
+            .get(0);
+        transaction
+            .execute(
+                "INSERT INTO events (entity, id, revision, position, document) \
+                 VALUES ($1, $2, $3, $4, $5)",
+                &[&entity, &id, &at_revision, &position, &document],
+            )
+            .map_err(|error| backend("appending an event", &error))?;
+    }
+    Ok(())
+}
+
 impl Store for PostgresStore {
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
-        let instance = &decision.instance;
-        let (entity, id) = (instance.entity.as_str(), instance.id.as_str());
+        self.commit_batch(&[AtomicCommit::new(decision.clone(), expect)])
+    }
+}
 
+impl AtomicBatchStore for PostgresStore {
+    fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError> {
         let mut client = self.client()?;
         let mut transaction = client
             .transaction()
             .map_err(|error| backend("beginning the transaction", &error))?;
-
-        // Locked, so a second writer of this instance waits here and then sees what the first
-        // wrote. Read inside the transaction, so what is checked is what is written against.
-        let found = transaction
-            .query_opt(
-                "SELECT revision FROM instances WHERE entity = $1 AND id = $2 FOR UPDATE",
-                &[&entity, &id],
-            )
-            .map_err(|error| backend("reading the current revision", &error))?
-            .map(|row| revision_of(row.get::<_, i64>(0)))
-            .transpose()?;
-        check(entity, id, expect, found)?;
-
-        let document = serde_json::to_string(instance)
-            .map_err(|error| backend("serialising the instance", &error))?;
-        let revision = i64::try_from(instance.revision)
-            .map_err(|_| StoreError::Backend("the revision does not fit a BIGINT".to_owned()))?;
-        let written = match found {
-            Some(_) => transaction.execute(
-                "UPDATE instances SET revision = $3, document = $4 WHERE entity = $1 AND id = $2",
-                &[&entity, &id, &revision, &document],
-            ),
-            None => transaction.execute(
-                "INSERT INTO instances (entity, id, revision, document) VALUES ($1, $2, $3, $4)",
-                &[&entity, &id, &revision, &document],
-            ),
-        };
-        if let Err(error) = written {
-            // Two creations of one identity at once: nothing was locked, both read absent, and the
-            // second insert fails the primary key. That is a conflict, not a broken store — the
-            // other writer landed a revision, and this one is told which.
-            if error.code() == Some(&postgres::error::SqlState::UNIQUE_VIOLATION) {
-                drop(transaction);
-                let landed = client
-                    .query_opt(
-                        "SELECT revision FROM instances WHERE entity = $1 AND id = $2",
-                        &[&entity, &id],
-                    )
-                    .map_err(|error| backend("reading the revision that landed", &error))?
-                    .map(|row| revision_of(row.get::<_, i64>(0)))
-                    .transpose()?;
-                return Err(StoreError::RevisionConflict {
-                    entity: entity.to_owned(),
-                    id: id.to_owned(),
-                    expected: expect,
-                    found: landed,
-                });
-            }
-            return Err(backend("writing the instance", &error));
+        for commit in commits {
+            write_decision(&mut transaction, &commit.decision, commit.expect)?;
         }
 
-        // The position continues from what the log already holds at that revision, not from zero:
-        // an observation is an event at a revision the log has reached, and the second observation
-        // about one instance must not collide with the first on the primary key.
-        for event in &decision.events {
-            let document = serde_json::to_string(event)
-                .map_err(|error| backend("serialising an event", &error))?;
-            let at_revision = i64::try_from(event.revision).map_err(|_| {
-                StoreError::Backend("the revision does not fit a BIGINT".to_owned())
-            })?;
-            let position: i64 = transaction
-                .query_one(
-                    "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
-                     WHERE entity = $1 AND id = $2 AND revision = $3",
-                    &[&entity, &id, &at_revision],
-                )
-                .map_err(|error| backend("reading the event position", &error))?
-                .get(0);
-            transaction
-                .execute(
-                    "INSERT INTO events (entity, id, revision, position, document) \
-                     VALUES ($1, $2, $3, $4, $5)",
-                    &[&entity, &id, &at_revision, &position, &document],
-                )
-                .map_err(|error| backend("appending an event", &error))?;
-        }
-
-        // Both writes land here or neither does.
+        // Every instance and event lands here or none does.
         transaction
             .commit()
             .map_err(|error| backend("committing", &error))

@@ -4,7 +4,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+* **One adopter command can be one provider transaction.** `AtomicBatchStore` extends `Store` for
+  providers that can apply an ordered slice of `AtomicCommit { decision, expect }` values or none
+  of them. Expectations see earlier entries in the same transaction, while a conflict or backend
+  failure rolls every instance and event back. `MemoryStore`, `SqliteStore` and `PostgresStore`
+  implement the stronger contract; the shared suite is also run against a deliberately
+  prefix-committing provider so the rollback case is known to fail. R-112.
 
 ## [0.13.0] — 2026-08-28
 

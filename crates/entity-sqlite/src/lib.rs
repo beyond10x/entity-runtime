@@ -36,8 +36,10 @@
 use std::path::Path;
 
 use entity_core::{Decision, DomainEvent, EntityInstance};
-use entity_store::{check, EventProvider, Expect, StateProvider, Store, StoreError};
-use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use entity_store::{
+    check, AtomicBatchStore, AtomicCommit, EventProvider, Expect, StateProvider, Store, StoreError,
+};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
 /// A [`Store`] over one SQLite database.
 pub struct SqliteStore {
@@ -176,11 +178,66 @@ impl EventProvider for SqliteStore {
     }
 }
 
+fn write_decision(
+    transaction: &Transaction<'_>,
+    decision: &Decision,
+    expect: Expect,
+) -> Result<(), StoreError> {
+    let instance = &decision.instance;
+    let (entity, id) = (instance.entity.as_str(), instance.id.as_str());
+
+    // Read inside the transaction, so later batch entries see earlier ones while another
+    // connection sees neither until commit.
+    let found: Option<i64> = transaction
+        .query_row(
+            "SELECT revision FROM instances WHERE entity = ?1 AND id = ?2",
+            params![entity, id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| backend("reading the current revision", &error))?;
+    check(entity, id, expect, found.map(|revision| revision as u64))?;
+
+    let document = serde_json::to_string(instance)
+        .map_err(|error| backend("serialising the instance", &error))?;
+    transaction
+        .execute(
+            "INSERT INTO instances (entity, id, revision, document) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (entity, id) DO UPDATE SET revision = ?3, document = ?4",
+            params![entity, id, instance.revision as i64, document],
+        )
+        .map_err(|error| backend("writing the instance", &error))?;
+
+    for event in &decision.events {
+        let document = serde_json::to_string(event)
+            .map_err(|error| backend("serialising an event", &error))?;
+        let position: i64 = transaction
+            .query_row(
+                "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
+                 WHERE entity = ?1 AND id = ?2 AND revision = ?3",
+                params![entity, id, event.revision as i64],
+                |row| row.get(0),
+            )
+            .map_err(|error| backend("reading the event position", &error))?;
+        transaction
+            .execute(
+                "INSERT INTO events (entity, id, revision, position, document) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![entity, id, event.revision as i64, position, document],
+            )
+            .map_err(|error| backend("appending an event", &error))?;
+    }
+    Ok(())
+}
+
 impl Store for SqliteStore {
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
-        let instance = &decision.instance;
-        let (entity, id) = (instance.entity.as_str(), instance.id.as_str());
+        self.commit_batch(&[AtomicCommit::new(decision.clone(), expect)])
+    }
+}
 
+impl AtomicBatchStore for SqliteStore {
+    fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError> {
         // `Immediate`, not the default `Deferred`. A deferred transaction takes a *shared* lock on
         // the first read and tries to upgrade it at the first write, and two writers that both got
         // that far cannot both upgrade — SQLite refuses one with `SQLITE_BUSY` and no amount of
@@ -193,53 +250,12 @@ impl Store for SqliteStore {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| backend("beginning the transaction", &error))?;
-
-        // Read inside the transaction, so what is checked is what is written against — a check
-        // outside it would be a check against a state another writer could have replaced.
-        let found: Option<i64> = transaction
-            .query_row(
-                "SELECT revision FROM instances WHERE entity = ?1 AND id = ?2",
-                params![entity, id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|error| backend("reading the current revision", &error))?;
-        check(entity, id, expect, found.map(|revision| revision as u64))?;
-
-        let document = serde_json::to_string(instance)
-            .map_err(|error| backend("serialising the instance", &error))?;
-        transaction
-            .execute(
-                "INSERT INTO instances (entity, id, revision, document) VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT (entity, id) DO UPDATE SET revision = ?3, document = ?4",
-                params![entity, id, instance.revision as i64, document],
-            )
-            .map_err(|error| backend("writing the instance", &error))?;
-
-        // The position continues from what the log already holds at that revision, not from zero:
-        // an observation is an event at a revision the log has reached, and the second observation
-        // about one instance must not collide with the first on the primary key.
-        for event in &decision.events {
-            let document = serde_json::to_string(event)
-                .map_err(|error| backend("serialising an event", &error))?;
-            let position: i64 = transaction
-                .query_row(
-                    "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
-                     WHERE entity = ?1 AND id = ?2 AND revision = ?3",
-                    params![entity, id, event.revision as i64],
-                    |row| row.get(0),
-                )
-                .map_err(|error| backend("reading the event position", &error))?;
-            transaction
-                .execute(
-                    "INSERT INTO events (entity, id, revision, position, document) \
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![entity, id, event.revision as i64, position, document],
-                )
-                .map_err(|error| backend("appending an event", &error))?;
+        for commit in commits {
+            write_decision(&transaction, &commit.decision, commit.expect)?;
         }
 
-        // Both writes land here or neither does. This is the promise `FileStore` cannot make.
+        // Every instance and event in the slice lands here or none does. This is the promise
+        // `FileStore` cannot make.
         transaction
             .commit()
             .map_err(|error| backend("committing", &error))

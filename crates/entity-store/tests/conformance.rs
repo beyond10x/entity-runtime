@@ -12,6 +12,8 @@ fn the_memory_provider_conforms() {
     let report = conformance::run(&mut store);
     assert!(report.is_clean(), "MemoryStore:\n{}", report.summary());
     assert_eq!(report.outcomes.len(), 10);
+    let batch = conformance::run_atomic(&mut store);
+    assert!(batch.is_clean(), "MemoryStore batch:\n{}", batch.summary());
 }
 
 #[test]
@@ -55,5 +57,20 @@ fn a_broken_provider_is_caught() {
     assert!(
         report.failures().len() < report.outcomes.len(),
         "the suite must localise the defect, not condemn the whole provider"
+    );
+
+    let batch = conformance::run_atomic(&mut store);
+    let caught: Vec<&str> = batch
+        .failures()
+        .iter()
+        .map(|outcome| outcome.case)
+        .collect();
+    assert!(
+        caught.contains(&"a conflict rolls every earlier batch entry back"),
+        "the batch suite must catch a provider that publishes an accepted prefix: {caught:?}"
+    );
+    assert!(
+        batch.failures().len() < batch.outcomes.len(),
+        "the batch suite must localise its deliberate defect"
     );
 }

@@ -277,3 +277,28 @@ ENTITY_POSTGRES_URL unset` when they did not. When the variable is set and the s
 answer, the tests fail: a variable somebody set is a claim that the server is there. CI sets it,
 against a service container. The connection is the caller's — no TLS backend, no pool, no
 authentication beyond the URL is chosen on an adopter's behalf.
+
+## 13. A command spanning instances is one transaction only where a provider says so
+
+**R-112**: `Store::commit` keeps one instance and its events together. It deliberately cannot claim
+that several calls are one transaction: a caller looping over `commit` publishes a successful
+prefix before a later conflict, however honest every individual call is. `AtomicBatchStore` is the
+additive, stronger contract for a shell whose one command produces several decisions.
+
+An `AtomicCommit` carries one `Decision` and its `Expect`. A batch applies the slice in order against
+transaction-local state, so a later entry for the same identity may expect the revision an earlier
+entry just produced. An empty slice changes nothing. A revision conflict or provider failure at any
+entry rolls every earlier state and event write back; another reader observes the state before the
+batch or after it, never a prefix.
+
+`MemoryStore` uses a candidate copy and publishes it once. `SqliteStore` and `PostgresStore` loop
+inside one database transaction. Their shared batch suite checks ordered same-identity writes,
+rollback after an accepted prefix and the empty case. `Broken` implements the extension by issuing
+ordinary commits one at a time, and must fail the rollback case — proof that the suite tests the
+stronger claim rather than only replaying the single-commit cases.
+
+`FileStore` does not implement the extension: its documented crash window cannot support it.
+Neither does the remote protocol in this version; adding a batch wire request would change bytes a
+peer verifies and is therefore a separately versioned coordinated migration. Not implementing the
+extension is the honest answer for either provider, and does not weaken the `Store` contract they
+already satisfy.

@@ -209,6 +209,45 @@ pub trait Store: StateProvider + EventProvider {
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError>;
 }
 
+/// One decision in an [`AtomicBatchStore`] transaction, paired with what it expects to find.
+///
+/// Expectations are evaluated in slice order against the transaction-local state. That makes two
+/// decisions for one identity meaningful: the second may expect the revision the first produces,
+/// while another process still observes either the state before the batch or the state after it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AtomicCommit {
+    /// The state and events to persist.
+    pub decision: Decision,
+    /// What must be held when this entry is reached.
+    pub expect: Expect,
+}
+
+impl AtomicCommit {
+    /// Pairs `decision` with its optimistic expectation.
+    #[must_use]
+    pub fn new(decision: Decision, expect: Expect) -> Self {
+        Self { decision, expect }
+    }
+}
+
+/// A provider that can commit several decisions as one ordered transaction.
+///
+/// [`Store::commit`] is atomic for one instance and its events. This extension is the stronger
+/// promise a command spanning several instances needs: an empty slice is a no-op, entries are
+/// applied in order against transaction-local state, and any error leaves every instance and event
+/// as they stood before the call. Providers that cannot make that promise do not implement this
+/// trait; the weaker [`Store`] contract remains available to them.
+pub trait AtomicBatchStore: Store {
+    /// Commits `commits` in order, or commits none of them.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError::RevisionConflict`] when an entry finds something other than its expectation,
+    /// and [`StoreError::Backend`] when the provider itself fails. Either error rolls the entire
+    /// batch back.
+    fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError>;
+}
+
 impl StoreError {
     /// `true` when the provider could not be reached, so nothing was learned either way.
     ///

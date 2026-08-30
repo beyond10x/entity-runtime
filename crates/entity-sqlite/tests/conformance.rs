@@ -34,6 +34,8 @@ fn the_sqlite_provider_conforms() {
     let mut store = SqliteStore::in_memory().expect("a database");
     let report = conformance::run(&mut store);
     assert!(report.is_clean(), "SqliteStore:\n{}", report.summary());
+    let batch = conformance::run_atomic(&mut store);
+    assert!(batch.is_clean(), "SqliteStore batch:\n{}", batch.summary());
 }
 
 #[test]
