@@ -442,6 +442,15 @@ pub enum CoreError {
         /// The state the instance carries.
         state: String,
     },
+    /// The instance is already at the largest revision every bundled provider can represent.
+    RevisionExhausted {
+        /// The entity type.
+        entity: String,
+        /// The instance identity.
+        id: String,
+        /// The terminal revision.
+        revision: u64,
+    },
     /// The definition declares no such operation.
     OperationNotFound {
         /// The operation.
@@ -521,6 +530,7 @@ impl CoreError {
             Self::EntityNotRegistered { .. } => "entity_not_registered",
             Self::EntityMismatch { .. } => "entity_mismatch",
             Self::UnknownState { .. } => "unknown_state",
+            Self::RevisionExhausted { .. } => "revision_exhausted",
             Self::OperationNotFound { .. } => "operation_not_found",
             Self::InvalidTransition { .. } => "invalid_transition",
             Self::PreconditionFailed { .. } => "precondition_failed",
@@ -558,6 +568,14 @@ impl fmt::Display for CoreError {
             Self::UnknownState { entity, state } => write!(
                 f,
                 "instance claims lifecycle state '{state}', which '{entity}' does not declare"
+            ),
+            Self::RevisionExhausted {
+                entity,
+                id,
+                revision,
+            } => write!(
+                f,
+                "{entity} {id} is at terminal revision {revision}; no provider can store another revision"
             ),
             Self::OperationNotFound { operation } => {
                 write!(f, "operation '{operation}' is not defined")

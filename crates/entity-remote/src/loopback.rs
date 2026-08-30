@@ -16,7 +16,7 @@
 
 use std::cell::RefCell;
 
-use entity_store::Store;
+use entity_store::RecordedStore;
 
 use crate::{answer, Answer, Request, Transport};
 
@@ -26,7 +26,7 @@ pub struct LoopbackTransport<S> {
     unreachable: RefCell<Option<String>>,
 }
 
-impl<S: Store> LoopbackTransport<S> {
+impl<S: RecordedStore> LoopbackTransport<S> {
     /// A transport serving `store`.
     pub const fn new(store: S) -> Self {
         Self {
@@ -65,7 +65,7 @@ impl<S: Store> LoopbackTransport<S> {
     }
 }
 
-impl<S: Store> Transport for LoopbackTransport<S> {
+impl<S: RecordedStore> Transport for LoopbackTransport<S> {
     fn call(&self, request: &Request) -> Result<Answer, String> {
         if let Some(reason) = self.unreachable.borrow().as_ref() {
             return Err(reason.clone());

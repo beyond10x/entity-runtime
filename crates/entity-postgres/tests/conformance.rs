@@ -67,9 +67,11 @@ fn the_postgres_provider_conforms() {
     let Some(url) = url() else { return };
     let (mut store, schema) = fresh(&url, "conforms");
     let report = conformance::run(&mut store);
+    let recorded = conformance::verify_recorded(&mut store);
     let batch = conformance::run_atomic(&mut store);
     store.drop_schema(&schema).expect("dropped");
     assert!(report.is_clean(), "PostgresStore:\n{}", report.summary());
+    recorded.expect("PostgresStore recorded history");
     assert_eq!(report.outcomes.len(), 10);
     assert!(
         batch.is_clean(),
@@ -265,7 +267,7 @@ fn migrate_is_idempotent_and_a_store_survives_being_reopened() {
 #[test]
 fn a_server_that_does_not_answer_is_unreachable_and_never_an_empty_store() {
     // No variable needed: a port nothing listens on. Silence is the third value, not absence.
-    let error = PostgresStore::connect("postgres://nobody:nothing@127.0.0.1:1/nowhere")
+    let error = PostgresStore::connect_no_tls("postgres://nobody:nothing@127.0.0.1:1/nowhere")
         .expect_err("nothing listens on port 1");
     assert!(error.is_unreachable(), "{error}");
 }

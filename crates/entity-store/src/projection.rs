@@ -74,8 +74,14 @@ fn key_of(reference: &str, instance: &EntityInstance) -> Option<String> {
         "$entity" => instance.entity.clone(),
         "$version" => instance.version.to_string(),
         other => {
-            let field = other.strip_prefix("$fields.")?;
-            match instance.fields.get(field)? {
+            let path = other.strip_prefix("$fields.")?;
+            let mut parts = path.split('.');
+            let first = parts.next()?;
+            let mut value = instance.fields.get(first)?;
+            for part in parts {
+                value = value.as_object()?.get(part)?;
+            }
+            match value {
                 serde_json::Value::String(text) => text.clone(),
                 serde_json::Value::Null => return None,
                 // Numbers and booleans group perfectly well; anything structural does not have one

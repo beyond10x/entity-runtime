@@ -78,7 +78,7 @@ pub(crate) fn parse(value: &str) -> Option<Timestamp> {
     let year: u16 = number(year, 4)?;
     let month: u8 = number(month, 2)?;
     let day: u8 = number(day, 2)?;
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+    if !(1..=12).contains(&month) || day == 0 || day > days_in_month(year, month) {
         return None;
     }
 
@@ -99,7 +99,7 @@ pub(crate) fn parse(value: &str) -> Option<Timestamp> {
         Some(naive) => naive,
         None if rest.contains('+') => return None,
         // A `-` after the clock part's start is an offset; the date's hyphens are already behind us.
-        None if rest[1..].contains('-') => return None,
+        None if rest.get(1..).is_some_and(|tail| tail.contains('-')) => return None,
         None => rest,
     };
 
@@ -145,6 +145,17 @@ pub(crate) fn parse(value: &str) -> Option<Timestamp> {
     })
 }
 
+/// The number of days in one Gregorian month.
+fn days_in_month(year: u16, month: u8) -> u8 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 400 == 0 || (year % 4 == 0 && year % 100 != 0) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
 /// A fixed-width, all-digit field. Fixed width on purpose: `2026-8-25` is a spelling this parser
 /// does not read, and reading it would mean guessing that `08` and `8` are the same field in a
 /// format whose whole value is that they are not.
@@ -174,6 +185,14 @@ mod tests {
             "not lexicographic luck"
         );
         assert!(parse("2026-08-25T12:00:00.5") == parse("2026-08-25T12:00:00.500"));
+    }
+
+    #[test]
+    fn impossible_calendar_dates_and_non_ascii_clock_tails_are_refused_without_panicking() {
+        assert!(parse("2026-02-29").is_none());
+        assert!(parse("2024-02-29").is_some());
+        assert!(parse("2026-04-31").is_none());
+        assert!(parse("2026-08-25T😀").is_none());
     }
 
     /// The refusals, each of which becomes `Unknown` rather than `false`.

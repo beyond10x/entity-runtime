@@ -11,6 +11,7 @@ fn the_memory_provider_conforms() {
     let mut store = MemoryStore::new();
     let report = conformance::run(&mut store);
     assert!(report.is_clean(), "MemoryStore:\n{}", report.summary());
+    conformance::verify_recorded(&mut store).expect("MemoryStore recorded history");
     assert_eq!(report.outcomes.len(), 10);
     let batch = conformance::run_atomic(&mut store);
     assert!(batch.is_clean(), "MemoryStore batch:\n{}", batch.summary());
@@ -23,6 +24,7 @@ fn the_file_provider_conforms() {
     let mut store = FileStore::open(&root);
     let report = conformance::run(&mut store);
     assert!(report.is_clean(), "FileStore:\n{}", report.summary());
+    conformance::verify_recorded(&mut store).expect("FileStore recorded history");
 }
 
 #[test]

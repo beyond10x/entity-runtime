@@ -17,7 +17,8 @@ use std::path::{Path, PathBuf};
 
 use entity_core::{Decision, Registry, Runtime};
 use entity_store::{
-    EventProvider, Expect, FileStore, MemoryStore, StateProvider, Store, StoreError,
+    EventProvider, Expect, FileStore, MemoryStore, RecordedCommit, Recording, StateProvider, Store,
+    StoreError,
 };
 
 fn registry() -> Registry {
@@ -213,9 +214,8 @@ fn the_file_store_survives_being_reopened() {
 
 #[test]
 fn a_retried_commit_appends_its_events_once() {
-    // `FileStore` writes events before the state, so a state write that fails leaves the
-    // expectation unchanged — and the retry any caller is entitled to make used to append the same
-    // events a second time, producing a log that no longer folds. ENOSPC or EIO is enough.
+    // File Store v2 replaces the whole subject document and keys a retry by caller-supplied record
+    // id. Repeating the exact record is success without a second event.
     let directory = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("retry-once");
     let _ = std::fs::remove_dir_all(&directory);
     std::fs::create_dir_all(&directory).expect("a directory");
@@ -246,31 +246,23 @@ fn a_retried_commit_appends_its_events_once() {
             serde_json::json!({ "title": "A ticket" }),
         )
         .expect("permitted");
-
-    // The first attempt: make the state write fail while the event append succeeds.
-    use std::os::unix::fs::PermissionsExt as _;
-    let entity_directory = directory.join("ticket");
-    std::fs::create_dir_all(&entity_directory).expect("a directory");
-    // Seed the events file so appending needs no new directory entry.
-    std::fs::write(entity_directory.join("one.events.jsonl"), "").expect("seeded");
-    let mut locked = std::fs::metadata(&entity_directory)
-        .expect("metadata")
-        .permissions();
-    locked.set_mode(0o555);
-    std::fs::set_permissions(&entity_directory, locked).expect("read-only");
-
+    let commit = RecordedCommit::new(
+        created,
+        &Recording {
+            record_id: "create-one".to_owned(),
+            recorded_at: "2026-08-31T12:00:00Z".to_owned(),
+            correlation: None,
+            causation: None,
+            actor: None,
+        },
+    )
+    .expect("valid metadata");
     store
-        .commit(&created, Expect::Absent)
-        .expect_err("the state write cannot land");
-
-    let mut open = std::fs::metadata(&entity_directory)
-        .expect("metadata")
-        .permissions();
-    open.set_mode(0o755);
-    std::fs::set_permissions(&entity_directory, open).expect("writable again");
-
-    // The retry, which is what a caller seeing a backend failure is entitled to do.
-    store.commit(&created, Expect::Absent).expect("accepted");
+        .commit_recorded(&commit, Expect::Absent)
+        .expect("first accepted");
+    store
+        .commit_recorded(&commit, Expect::Absent)
+        .expect("identical retry accepted");
 
     let events = store.events("ticket", "one").expect("events");
     let revisions: Vec<u64> = events.iter().map(|event| event.revision).collect();

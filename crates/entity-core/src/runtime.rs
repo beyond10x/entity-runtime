@@ -3,9 +3,11 @@
 use crate::{
     validation::{apply_defaults, validate_object},
     Condition, CoreError, EntityDefinition, EventDefinition, Registry, RuleDefinition, Truth,
+    ValidatedDefinition,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
 /// One instance of an entity type: which definition it was created under, its identity, where it
@@ -91,17 +93,99 @@ pub struct DomainEvent {
     pub payload: Value,
 }
 
-/// What the kernel decided: the instance as it is afterwards, and the events that describe how
-/// it got there.
+/// The normalized command whose evaluation produced a decision record.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DecisionCommand {
+    /// Creation from caller-supplied fields, after defaults and canonicalization.
+    Create {
+        /// The normalized creation fields.
+        fields: Map<String, Value>,
+    },
+    /// One named operation with its validated/defaulted arguments.
+    Execute {
+        /// The operation name.
+        operation: String,
+        /// The normalized arguments.
+        arguments: Map<String, Value>,
+    },
+    /// Material imported without enough original command data for genesis replay.
+    LegacyImport,
+}
+
+/// Durable evidence of one complete kernel evaluation.
+///
+/// Events are nested under the decision that assigned their revision, so zero, one and many-event
+/// decisions all replay with the same revision semantics.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionRecord {
+    /// The exact validated definition snapshot used by the decision.
+    pub definition: Option<EntityDefinition>,
+    /// The normalized input command.
+    pub command: DecisionCommand,
+    /// The subject entity type.
+    pub entity: String,
+    /// The subject identity.
+    pub id: String,
+    /// The revision produced.
+    pub revision: u64,
+    /// The state before execution, or `None` for creation.
+    pub from_state: Option<String>,
+    /// The state produced.
+    pub to_state: String,
+    /// The complete resulting state, so a store never has to trust a separate mutable snapshot.
+    pub result: EntityInstance,
+    /// Every field whose value changed.
+    pub changed: Map<String, Value>,
+    /// Ordered domain facts emitted by this one decision.
+    pub events: Vec<DomainEvent>,
+}
+
+/// What the kernel decided: the instance as it is afterwards, and its durable record.
 ///
 /// A `Decision` is the only thing the kernel produces. Persisting the instance, appending the
 /// events and publishing them are the shell's, and are expected to happen together.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Decision {
     /// The instance after the operation.
     pub instance: EntityInstance,
+    /// The complete normalized record used for durable storage and verified replay.
+    pub record: DecisionRecord,
     /// Zero or more events, in declaration order.
+    ///
+    /// Kept as a source- and wire-compatibility view for 0.14 adopters. Durable stores use the
+    /// events nested in [`DecisionRecord`]; serializers retain this view so a decision printed by
+    /// an older shell consumer still has the shape that consumer understands.
     pub events: Vec<DomainEvent>,
+}
+
+impl Decision {
+    /// Builds an explicitly unverified legacy-import decision.
+    ///
+    /// New state-changing code must use [`create`] or [`execute`]. This constructor exists for
+    /// migrations and provider repair tools that must preserve old bytes without inventing the
+    /// definition or command that produced them.
+    #[must_use]
+    pub fn legacy_import(instance: EntityInstance, events: Vec<DomainEvent>) -> Self {
+        let record = DecisionRecord {
+            definition: None,
+            command: DecisionCommand::LegacyImport,
+            entity: instance.entity.clone(),
+            id: instance.id.clone(),
+            revision: instance.revision,
+            from_state: None,
+            to_state: instance.lifecycle_state.clone(),
+            result: instance.clone(),
+            changed: instance.fields.clone(),
+            events: events.clone(),
+        };
+        Self {
+            instance,
+            record,
+            events,
+        }
+    }
 }
 
 /// The kernel over a [`Registry`]: looks a definition up by the instance's `(entity, version)`
@@ -150,7 +234,7 @@ impl<'a> Runtime<'a> {
         execute(definition, instance, operation, arguments)
     }
 
-    fn definition(&self, entity: &str, version: u32) -> Result<&EntityDefinition, CoreError> {
+    fn definition(&self, entity: &str, version: u32) -> Result<&ValidatedDefinition, CoreError> {
         self.registry
             .get(entity, version)
             .ok_or_else(|| CoreError::EntityNotRegistered {
@@ -173,7 +257,7 @@ impl<'a> Runtime<'a> {
 /// * [`CoreError::InvariantViolation`] — an invariant does not hold for the new instance.
 /// * [`CoreError::Template`] — the creation event references something that does not exist.
 pub fn create(
-    definition: &EntityDefinition,
+    definition: &ValidatedDefinition,
     id: String,
     fields: Value,
 ) -> Result<Decision, CoreError> {
@@ -226,7 +310,25 @@ pub fn create(
         )?);
     }
 
-    Ok(Decision { instance, events })
+    let record = DecisionRecord {
+        definition: Some(definition_snapshot(definition)),
+        command: DecisionCommand::Create {
+            fields: instance.fields.clone(),
+        },
+        entity: instance.entity.clone(),
+        id: instance.id.clone(),
+        revision: instance.revision,
+        from_state: None,
+        to_state: instance.lifecycle_state.clone(),
+        result: instance.clone(),
+        changed: instance.fields.clone(),
+        events: events.clone(),
+    };
+    Ok(Decision {
+        instance,
+        record,
+        events,
+    })
 }
 
 /// Executes `operation_name` on `instance` under `definition`.
@@ -249,7 +351,7 @@ pub fn create(
 /// * [`CoreError::InvariantViolation`] — an invariant would not hold afterwards.
 /// * [`CoreError::Template`] — a `set` value or event payload references something missing.
 pub fn execute(
-    definition: &EntityDefinition,
+    definition: &ValidatedDefinition,
     instance: &EntityInstance,
     operation_name: &str,
     arguments: Value,
@@ -300,7 +402,7 @@ pub fn execute(
     };
     check_preconditions(operation_name, &operation.preconditions, &context)?;
 
-    let mut new_fields = old_fields.clone();
+    let mut new_fields = canonical_object(old_fields.clone());
     for (field, template) in &operation.set {
         let value = resolve_template(template, &context)?;
         new_fields.insert(field.clone(), value);
@@ -311,7 +413,15 @@ pub fn execute(
         return Err(CoreError::Validation(state_errors));
     }
 
-    let next_revision = instance.revision.saturating_add(1);
+    let next_revision = instance
+        .revision
+        .checked_add(1)
+        .filter(|revision| *revision <= i64::MAX as u64)
+        .ok_or_else(|| CoreError::RevisionExhausted {
+            entity: instance.entity.clone(),
+            id: instance.id.clone(),
+            revision: instance.revision,
+        })?;
     let next_instance = EntityInstance {
         entity: instance.entity.clone(),
         version: instance.version,
@@ -338,10 +448,34 @@ pub fn execute(
         events.push(materialize_event(event, &context, next_revision, &args)?);
     }
 
+    let changed = changed_fields(&context);
+    let record = DecisionRecord {
+        definition: Some(definition_snapshot(definition)),
+        command: DecisionCommand::Execute {
+            operation: operation_name.to_owned(),
+            arguments: args,
+        },
+        entity: next_instance.entity.clone(),
+        id: next_instance.id.clone(),
+        revision: next_instance.revision,
+        from_state: Some(instance.lifecycle_state.clone()),
+        to_state: next_instance.lifecycle_state.clone(),
+        result: next_instance.clone(),
+        changed,
+        events: events.clone(),
+    };
     Ok(Decision {
         instance: next_instance,
+        record,
         events,
     })
+}
+
+fn definition_snapshot(definition: &ValidatedDefinition) -> EntityDefinition {
+    let value = serde_json::to_value(definition.as_definition())
+        .expect("an EntityDefinition always serializes to JSON");
+    serde_json::from_value(canonicalize(value))
+        .expect("canonicalizing JSON cannot change an EntityDefinition's shape")
 }
 
 /// Every address a condition read and found nothing at, gathered as it is evaluated.
@@ -470,18 +604,14 @@ fn evaluate_condition(
         Condition::Ne { ne } => compare_values(ne, context, unobserved, |left, right| {
             !values_equal(left, right)
         }),
-        Condition::Gt { gt } => {
-            compare_numbers(gt, context, unobserved, |left, right| left > right)
-        }
-        Condition::Gte { gte } => {
-            compare_numbers(gte, context, unobserved, |left, right| left >= right)
-        }
-        Condition::Lt { lt } => {
-            compare_numbers(lt, context, unobserved, |left, right| left < right)
-        }
-        Condition::Lte { lte } => {
-            compare_numbers(lte, context, unobserved, |left, right| left <= right)
-        }
+        Condition::Gt { gt } => compare_numbers(gt, context, unobserved, Ordering::is_gt),
+        Condition::Gte { gte } => compare_numbers(gte, context, unobserved, |order| {
+            order.is_gt() || order.is_eq()
+        }),
+        Condition::Lt { lt } => compare_numbers(lt, context, unobserved, Ordering::is_lt),
+        Condition::Lte { lte } => compare_numbers(lte, context, unobserved, |order| {
+            order.is_lt() || order.is_eq()
+        }),
         Condition::In { values } => {
             let (needle, haystack) = resolve_pair(values, context, unobserved)?;
             match (needle, haystack) {
@@ -520,10 +650,7 @@ fn evaluate_condition(
 /// numerically, at every depth; everything else compares structurally.
 fn values_equal(left: &Value, right: &Value) -> bool {
     match (left, right) {
-        (Value::Number(left), Value::Number(right)) => match (left.as_f64(), right.as_f64()) {
-            (Some(left), Some(right)) => left == right,
-            _ => left == right,
-        },
+        (Value::Number(left), Value::Number(right)) => crate::number::compare(left, right).is_eq(),
         (Value::Array(left), Value::Array(right)) => {
             left.len() == right.len()
                 && left
@@ -595,13 +722,15 @@ fn compare_numbers(
     pair: &[Value; 2],
     context: &TemplateContext<'_>,
     unobserved: &mut Unobserved,
-    predicate: impl FnOnce(f64, f64) -> bool,
+    predicate: impl FnOnce(Ordering) -> bool,
 ) -> Result<Truth, CoreError> {
     let (left, right) = resolve_pair(pair, context, unobserved)?;
     match (left, right) {
         // Both resolved. Not being numbers is an observation about them, not an absence.
-        (Some(left), Some(right)) => match (left.as_f64(), right.as_f64()) {
-            (Some(left), Some(right)) => Ok(Truth::from_bool(predicate(left, right))),
+        (Some(left), Some(right)) => match (left.as_number(), right.as_number()) {
+            (Some(left), Some(right)) => Ok(Truth::from_bool(predicate(crate::number::compare(
+                left, right,
+            )))),
             _ => Ok(Truth::False),
         },
         _ => Ok(Truth::Unknown),
@@ -721,7 +850,7 @@ fn materialize_event(
         to_state: context.to_state.to_owned(),
         changed: changed_fields(context),
         args: args.clone(),
-        payload: resolve_template(&definition.payload, context)?,
+        payload: canonicalize(resolve_template(&definition.payload, context)?),
     })
 }
 
@@ -834,10 +963,26 @@ fn template_error(expression: &str, message: &str) -> CoreError {
 
 fn into_object(value: Value, path: &str) -> Result<Map<String, Value>, CoreError> {
     match value {
-        Value::Object(object) => Ok(object),
+        Value::Object(object) => Ok(canonical_object(object)),
         _ => Err(CoreError::Validation(vec![crate::ValidationError::new(
             path,
             "expected object",
         )])),
+    }
+}
+
+fn canonical_object(object: Map<String, Value>) -> Map<String, Value> {
+    let ordered: std::collections::BTreeMap<_, _> = object
+        .into_iter()
+        .map(|(key, value)| (key, canonicalize(value)))
+        .collect();
+    ordered.into_iter().collect()
+}
+
+fn canonicalize(value: Value) -> Value {
+    match value {
+        Value::Object(object) => Value::Object(canonical_object(object)),
+        Value::Array(values) => Value::Array(values.into_iter().map(canonicalize).collect()),
+        other => other,
     }
 }

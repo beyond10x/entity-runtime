@@ -35,9 +35,10 @@
 
 use std::path::Path;
 
-use entity_core::{Decision, DomainEvent, EntityInstance};
+use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 use entity_store::{
-    check, AtomicBatchStore, AtomicCommit, EventProvider, Expect, StateProvider, Store, StoreError,
+    check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
+    RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
@@ -49,6 +50,22 @@ pub struct SqliteStore {
 /// Turns a driver or serialisation failure into a backend error saying what it was doing.
 fn backend(operation: &str, error: &impl std::fmt::Display) -> StoreError {
     StoreError::Backend(format!("{operation}: {error}"))
+}
+
+fn revision_from_sql(revision: i64) -> Result<u64, StoreError> {
+    u64::try_from(revision).map_err(|_| {
+        StoreError::Backend(format!(
+            "the database contains negative revision {revision}, which no entity can have"
+        ))
+    })
+}
+
+fn revision_to_sql(revision: u64) -> Result<i64, StoreError> {
+    i64::try_from(revision).map_err(|_| {
+        StoreError::Backend(format!(
+            "revision {revision} exceeds the largest revision SQLite can store"
+        ))
+    })
 }
 
 impl SqliteStore {
@@ -102,6 +119,21 @@ impl SqliteStore {
                      position INTEGER NOT NULL,
                      document TEXT NOT NULL,
                      PRIMARY KEY (entity, id, revision, position)
+                 );
+                 CREATE TABLE IF NOT EXISTS history (
+                     entity    TEXT NOT NULL,
+                     id        TEXT NOT NULL,
+                     position  INTEGER NOT NULL,
+                     kind      TEXT NOT NULL CHECK (kind IN ('decision', 'observation')),
+                     record_id TEXT NOT NULL UNIQUE,
+                     document  TEXT NOT NULL,
+                     PRIMARY KEY (entity, id, position)
+                 );
+                 CREATE TABLE IF NOT EXISTS legacy_origins (
+                     entity TEXT NOT NULL,
+                     id     TEXT NOT NULL,
+                     revision INTEGER NOT NULL,
+                     PRIMARY KEY (entity, id)
                  );",
             )
             .map_err(|error| backend("establishing the schema", &error))?;
@@ -138,7 +170,7 @@ impl StateProvider for SqliteStore {
             )
             .optional()
             .map_err(|error| backend("reading a revision", &error))
-            .map(|found| found.map(|revision| revision as u64))
+            .and_then(|found| found.map(revision_from_sql).transpose())
     }
 
     fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
@@ -170,18 +202,84 @@ impl EventProvider for SqliteStore {
             .query_map(params![entity, id], |row| row.get::<_, String>(0))
             .map_err(|error| backend("reading events", &error))?;
 
-        rows.map(|row| {
-            let text = row.map_err(|error| backend("reading an event", &error))?;
-            serde_json::from_str(&text).map_err(|error| backend("parsing an event", &error))
-        })
-        .collect()
+        let mut events: Vec<DomainEvent> = rows
+            .map(|row| {
+                let text = row.map_err(|error| backend("reading an event", &error))?;
+                serde_json::from_str(&text).map_err(|error| backend("parsing an event", &error))
+            })
+            .collect::<Result<_, _>>()?;
+        for record in self.records(entity, id)? {
+            events.extend(record.record.events);
+        }
+        Ok(events)
     }
+}
+
+impl HistoryProvider for SqliteStore {
+    fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
+        read_history(&self.connection, entity, id, "decision")
+    }
+
+    fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
+        read_history(&self.connection, entity, id, "observation")
+    }
+}
+
+fn read_history<T: serde::de::DeserializeOwned>(
+    connection: &Connection,
+    entity: &str,
+    id: &str,
+    kind: &str,
+) -> Result<Vec<T>, StoreError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT document FROM history WHERE entity = ?1 AND id = ?2 AND kind = ?3 \
+             ORDER BY position",
+        )
+        .map_err(|error| backend("preparing the history read", &error))?;
+    let rows = statement
+        .query_map(params![entity, id, kind], |row| row.get::<_, String>(0))
+        .map_err(|error| backend("reading history", &error))?;
+    rows.map(|row| {
+        let text = row.map_err(|error| backend("reading a history record", &error))?;
+        serde_json::from_str(&text).map_err(|error| backend("parsing a history record", &error))
+    })
+    .collect()
+}
+
+fn next_history_position(
+    transaction: &Transaction<'_>,
+    entity: &str,
+    id: &str,
+) -> Result<i64, StoreError> {
+    transaction
+        .query_row(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM history WHERE entity = ?1 AND id = ?2",
+            params![entity, id],
+            |row| row.get(0),
+        )
+        .map_err(|error| backend("reading the history position", &error))
+}
+
+fn existing_record(
+    transaction: &Transaction<'_>,
+    record_id: &str,
+) -> Result<Option<String>, StoreError> {
+    transaction
+        .query_row(
+            "SELECT document FROM history WHERE record_id = ?1",
+            params![record_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| backend("checking the record id", &error))
 }
 
 fn write_decision(
     transaction: &Transaction<'_>,
     decision: &Decision,
     expect: Expect,
+    include_legacy_events: bool,
 ) -> Result<(), StoreError> {
     let instance = &decision.instance;
     let (entity, id) = (instance.entity.as_str(), instance.id.as_str());
@@ -196,7 +294,14 @@ fn write_decision(
         )
         .optional()
         .map_err(|error| backend("reading the current revision", &error))?;
-    check(entity, id, expect, found.map(|revision| revision as u64))?;
+    check(
+        entity,
+        id,
+        expect,
+        found.map(revision_from_sql).transpose()?,
+    )?;
+
+    let revision = revision_to_sql(instance.revision)?;
 
     let document = serde_json::to_string(instance)
         .map_err(|error| backend("serialising the instance", &error))?;
@@ -204,18 +309,28 @@ fn write_decision(
         .execute(
             "INSERT INTO instances (entity, id, revision, document) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT (entity, id) DO UPDATE SET revision = ?3, document = ?4",
-            params![entity, id, instance.revision as i64, document],
+            params![entity, id, revision, document],
         )
         .map_err(|error| backend("writing the instance", &error))?;
 
-    for event in &decision.events {
+    if !include_legacy_events {
+        return Ok(());
+    }
+    transaction
+        .execute(
+            "INSERT OR IGNORE INTO legacy_origins (entity, id, revision) VALUES (?1, ?2, ?3)",
+            params![entity, id, revision],
+        )
+        .map_err(|error| backend("marking the legacy snapshot boundary", &error))?;
+    for event in &decision.record.events {
+        let event_revision = revision_to_sql(event.revision)?;
         let document = serde_json::to_string(event)
             .map_err(|error| backend("serialising an event", &error))?;
         let position: i64 = transaction
             .query_row(
                 "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
                  WHERE entity = ?1 AND id = ?2 AND revision = ?3",
-                params![entity, id, event.revision as i64],
+                params![entity, id, event_revision],
                 |row| row.get(0),
             )
             .map_err(|error| backend("reading the event position", &error))?;
@@ -223,7 +338,7 @@ fn write_decision(
             .execute(
                 "INSERT INTO events (entity, id, revision, position, document) \
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![entity, id, event.revision as i64, position, document],
+                params![entity, id, event_revision, position, document],
             )
             .map_err(|error| backend("appending an event", &error))?;
     }
@@ -233,6 +348,102 @@ fn write_decision(
 impl Store for SqliteStore {
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         self.commit_batch(&[AtomicCommit::new(decision.clone(), expect)])
+    }
+
+    fn commit_recorded(
+        &mut self,
+        commit: &RecordedCommit,
+        expect: Expect,
+    ) -> Result<(), StoreError> {
+        commit.validate()?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| backend("beginning the recorded transaction", &error))?;
+        let document = serde_json::to_string(&commit.envelope)
+            .map_err(|error| backend("serialising the decision envelope", &error))?;
+        if let Some(existing) = existing_record(&transaction, &commit.envelope.record_id)? {
+            if existing == document {
+                transaction
+                    .commit()
+                    .map_err(|error| backend("committing the retry", &error))?;
+                return Ok(());
+            }
+            return Err(StoreError::RecordConflict {
+                record_id: commit.envelope.record_id.clone(),
+            });
+        }
+        write_decision(&transaction, &commit.decision(), expect, false)?;
+        let position =
+            next_history_position(&transaction, &commit.instance.entity, &commit.instance.id)?;
+        transaction
+            .execute(
+                "INSERT INTO history (entity, id, position, kind, record_id, document) \
+                 VALUES (?1, ?2, ?3, 'decision', ?4, ?5)",
+                params![
+                    commit.instance.entity,
+                    commit.instance.id,
+                    position,
+                    commit.envelope.record_id,
+                    document
+                ],
+            )
+            .map_err(|error| backend("appending the decision record", &error))?;
+        transaction
+            .commit()
+            .map_err(|error| backend("committing the recorded decision", &error))
+    }
+
+    fn observe(&mut self, observation: &RecordedObservation) -> Result<(), StoreError> {
+        observation.validate()?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| backend("beginning the observation transaction", &error))?;
+        let document = serde_json::to_string(observation)
+            .map_err(|error| backend("serialising the observation", &error))?;
+        if let Some(existing) = existing_record(&transaction, &observation.envelope.record_id)? {
+            if existing == document {
+                transaction
+                    .commit()
+                    .map_err(|error| backend("committing the observation retry", &error))?;
+                return Ok(());
+            }
+            return Err(StoreError::RecordConflict {
+                record_id: observation.envelope.record_id.clone(),
+            });
+        }
+        let found: Option<i64> = transaction
+            .query_row(
+                "SELECT revision FROM instances WHERE entity = ?1 AND id = ?2",
+                params![observation.entity, observation.id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| backend("reading the observed revision", &error))?;
+        check(
+            &observation.entity,
+            &observation.id,
+            Expect::Revision(observation.revision),
+            found.map(revision_from_sql).transpose()?,
+        )?;
+        let position = next_history_position(&transaction, &observation.entity, &observation.id)?;
+        transaction
+            .execute(
+                "INSERT INTO history (entity, id, position, kind, record_id, document) \
+                 VALUES (?1, ?2, ?3, 'observation', ?4, ?5)",
+                params![
+                    observation.entity,
+                    observation.id,
+                    position,
+                    observation.envelope.record_id,
+                    document
+                ],
+            )
+            .map_err(|error| backend("appending the observation", &error))?;
+        transaction
+            .commit()
+            .map_err(|error| backend("committing the observation", &error))
     }
 }
 
@@ -251,7 +462,7 @@ impl AtomicBatchStore for SqliteStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| backend("beginning the transaction", &error))?;
         for commit in commits {
-            write_decision(&transaction, &commit.decision, commit.expect)?;
+            write_decision(&transaction, &commit.decision, commit.expect, true)?;
         }
 
         // Every instance and event in the slice lands here or none does. This is the promise

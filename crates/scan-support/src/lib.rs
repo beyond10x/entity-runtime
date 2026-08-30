@@ -150,7 +150,8 @@ pub fn words(code: &str) -> impl Iterator<Item = (usize, &str)> {
 /// Every table, not the literal `[dependencies]` alone: `[dependencies.foo]` and
 /// `[target.'cfg(unix)'.dependencies]` are dependencies too, and a check that split on the literal
 /// heading would not see either. `[dev-dependencies]` is deliberately *not* counted — it is not
-/// linked into the library and cannot reach anything at run time.
+/// linked into the library and cannot reach anything at run time. Build dependencies are counted:
+/// build scripts execute during compilation and can generate code the source scan never sees.
 #[must_use]
 pub fn dependencies(manifest: &str) -> std::collections::BTreeSet<String> {
     let mut declared = std::collections::BTreeSet::new();
@@ -168,7 +169,10 @@ pub fn dependencies(manifest: &str) -> std::collections::BTreeSet<String> {
                 continue;
             }
             in_table = header == "dependencies"
-                || (header.starts_with("target.") && header.ends_with(".dependencies"));
+                || header == "build-dependencies"
+                || (header.starts_with("target.")
+                    && (header.ends_with(".dependencies")
+                        || header.ends_with(".build-dependencies")));
             continue;
         }
         if in_table && !line.is_empty() && !line.starts_with('#') {
@@ -231,6 +235,8 @@ mod tests {
         let manifest = "[package]\nname = \"x\"\n\n[dependencies]\nserde = \"1\"\n\n\
                         [dependencies.tokio]\nversion = \"1\"\n\n\
                         [target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n\n\
+                        [target.'cfg(unix)'.build-dependencies]\ncc = \"1\"\n\n\
+                        [build-dependencies]\nquote = \"1\"\n\n\
                         [dev-dependencies]\nproptest = \"1\"\n";
         let found = dependencies(manifest);
         assert!(found.contains("serde"), "{found:?}");
@@ -242,6 +248,11 @@ mod tests {
             found.contains("libc"),
             "so is a target-specific one: {found:?}"
         );
+        assert!(
+            found.contains("cc"),
+            "target build dependencies run: {found:?}"
+        );
+        assert!(found.contains("quote"), "build dependencies run: {found:?}");
         assert!(
             !found.contains("proptest"),
             "a dev-dependency is not linked into the library: {found:?}"

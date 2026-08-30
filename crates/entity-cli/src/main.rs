@@ -8,12 +8,14 @@
 //! invalid (the typed refusal is printed) · `2` the invocation itself was wrong — a missing file,
 //! unparsable input, two flags reading standard input.
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 use entity_core::{
     CoreError, Decision, DefinitionErrors, EntityDefinition, EntityInstance, Registry, Runtime,
     ValidationError,
 };
-use entity_store::{Expect, FileStore, Recording, StateProvider, Store};
+use entity_store::{
+    migrate_file_store_v1, Expect, FileStore, RecordedCommit, Recording, StateProvider, Store,
+};
 use serde_json::{json, Value};
 use std::{
     fmt::Write as _,
@@ -98,8 +100,14 @@ enum Command {
         /// it decides and holds nothing. With one, the decision is committed — state and events
         /// together — and `execute --store` can pick the instance up by id instead of being handed
         /// it back on the command line.
-        #[arg(long)]
+        #[arg(
+            long,
+            requires_all = ["record_id", "recorded_at", "actor_choice"]
+        )]
         store: Option<PathBuf>,
+        /// Provenance required when the decision is stored.
+        #[command(flatten)]
+        recording: RecordingArgs,
         #[arg(long, value_enum, default_value_t = Format::Json)]
         format: Format,
     },
@@ -116,7 +124,11 @@ enum Command {
         ///
         /// The instance is loaded from it, the decision is committed back to it at the revision
         /// that was loaded, and a concurrent writer is refused rather than overwritten.
-        #[arg(long, requires = "id")]
+        #[arg(
+            long,
+            requires = "id",
+            requires_all = ["record_id", "recorded_at", "actor_choice"]
+        )]
         store: Option<PathBuf>,
         /// Which instance in the store to act on.
         #[arg(long, requires = "store")]
@@ -130,19 +142,9 @@ enum Command {
         /// The arguments, as inline JSON, `@<path>` or `-` for stdin.
         #[arg(long, default_value = "{}")]
         arguments: String,
-        /// The flow these events belong to. Enveloping is all-or-nothing: give this and the
-        /// decision's events are printed sealed, with a time, a cause and an actor.
-        #[arg(long, requires = "recorded_at", requires = "causation")]
-        correlation: Option<String>,
-        /// When this was recorded, ISO-8601. Your clock: the kernel has none.
-        #[arg(long)]
-        recorded_at: Option<String>,
-        /// What immediately led to this — the step before it, not the whole flow.
-        #[arg(long)]
-        causation: Option<String>,
-        /// Who asked. Leave it out and the envelope records that nothing human did, explicitly.
-        #[arg(long)]
-        actor: Option<String>,
+        /// Provenance required when the decision is stored.
+        #[command(flatten)]
+        recording: RecordingArgs,
         #[arg(long, value_enum, default_value_t = Format::Json)]
         format: Format,
     },
@@ -161,6 +163,37 @@ enum Command {
         #[arg(long, value_enum, default_value_t = Format::Text)]
         format: Format,
     },
+    /// Work with persistent stores.
+    Store {
+        /// The store operation.
+        #[command(subcommand)]
+        command: StoreCommand,
+    },
+    /// Render a compact Agent Skills document that teaches this installed CLI.
+    Skill {
+        /// Write the skill to this path instead of standard output.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Replace the explicitly named output file when it already exists.
+        #[arg(long, requires = "out")]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum StoreCommand {
+    /// Migrate a pre-0.15 File Store into the confined v2 format, out of place.
+    MigrateFile {
+        /// The legacy File Store directory. It is never modified.
+        #[arg(long, value_name = "V1_ROOT")]
+        from: PathBuf,
+        /// A destination path that does not exist.
+        #[arg(long, value_name = "V2_ROOT")]
+        to: PathBuf,
+        /// Validate the complete migration without writing destination bytes.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Args)]
@@ -168,6 +201,62 @@ struct DefinitionArg {
     /// The definition file, YAML. Repeat to register several types or versions at once.
     #[arg(long = "definition", required = true)]
     definitions: Vec<PathBuf>,
+}
+
+#[derive(Args)]
+#[command(group(
+    ArgGroup::new("actor_choice")
+        .args(["actor", "no_actor"])
+        .multiple(false)
+))]
+struct RecordingArgs {
+    /// Caller-supplied idempotency identity for this complete decision.
+    #[arg(long, requires = "recorded_at", requires = "actor_choice")]
+    record_id: Option<String>,
+    /// When this was recorded, ISO-8601. Your clock: the kernel has none.
+    #[arg(long, requires = "record_id", requires = "actor_choice")]
+    recorded_at: Option<String>,
+    /// The wider flow, when there is one.
+    #[arg(long, requires = "record_id")]
+    correlation: Option<String>,
+    /// What immediately led to this record, when there is one.
+    #[arg(long, requires = "record_id")]
+    causation: Option<String>,
+    /// Who asked.
+    #[arg(long, requires = "record_id")]
+    actor: Option<String>,
+    /// Record explicitly that no actor caused this decision.
+    #[arg(long, requires = "record_id")]
+    no_actor: bool,
+}
+
+impl RecordingArgs {
+    fn into_recording(self, stored: bool) -> Result<Option<Recording>, Failure> {
+        if stored && self.record_id.is_none() {
+            return Err(Failure::Usage(
+                "--store requires --record-id, --recorded-at and exactly one of --actor/--no-actor"
+                    .to_owned(),
+            ));
+        }
+        let Some(record_id) = self.record_id else {
+            return Ok(None);
+        };
+        let recorded_at = self
+            .recorded_at
+            .ok_or_else(|| Failure::Usage("--record-id requires --recorded-at".to_owned()))?;
+        if self.actor.is_none() && !self.no_actor {
+            return Err(Failure::Usage(
+                "--record-id requires exactly one of --actor/--no-actor".to_owned(),
+            ));
+        }
+        Ok(Some(Recording {
+            record_id,
+            recorded_at,
+            correlation: self.correlation,
+            causation: self.causation,
+            actor: self.actor,
+        }))
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -299,18 +388,24 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             id,
             fields,
             store,
+            recording,
             format,
         } => {
             let registry = load_registry(&definition.definitions)?;
             let (entity, version) = chosen_type(&registry, wanted.as_deref())?;
             let fields = read_value(&fields, "--fields", &mut StdinOnce::default())?;
             let decision = Runtime::new(&registry).create(&entity, version, id, fields)?;
-            if let Some(root) = store {
-                // A creation expects nothing to be there. Committing a second one under the same
-                // identity is refused rather than overwriting the first.
-                commit(&root, &decision, Expect::Absent)?;
+            let recording = recording.into_recording(store.is_some())?;
+            if let Some(recording) = recording {
+                let recorded = RecordedCommit::new(decision, &recording)
+                    .map_err(|error| Failure::Usage(error.to_string()))?;
+                if let Some(root) = &store {
+                    commit(root, &recorded, Expect::Absent)?;
+                }
+                write_recorded(out, &recorded, format)
+            } else {
+                write_decision(out, &decision, format)
             }
-            write_decision(out, &decision, format)
         }
         Command::Execute {
             definition,
@@ -320,10 +415,7 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             wanted_entity,
             operation,
             arguments,
-            correlation,
-            recorded_at,
-            causation,
-            actor,
+            recording,
             format,
         } => {
             let registry = load_registry(&definition.definitions)?;
@@ -355,30 +447,17 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             // already one ahead.
             let expected = Expect::Revision(instance.revision);
             let decision = Runtime::new(&registry).execute(&instance, &operation, arguments)?;
-            if from_store {
-                commit(store.as_ref().expect("checked above"), &decision, expected)?;
+            let recording = recording.into_recording(from_store)?;
+            if let Some(recording) = recording {
+                let recorded = RecordedCommit::new(decision, &recording)
+                    .map_err(|error| Failure::Usage(error.to_string()))?;
+                if from_store {
+                    commit(store.as_ref().expect("checked above"), &recorded, expected)?;
+                }
+                write_recorded(out, &recorded, format)
+            } else {
+                write_decision(out, &decision, format)
             }
-            // Sealed only when the caller supplied what the kernel cannot know. Clap requires the
-            // three together, so there is no half-enveloped shape to interpret.
-            if let (Some(correlation), Some(recorded_at), Some(causation)) =
-                (correlation, recorded_at, causation)
-            {
-                let recording = Recording {
-                    recorded_at,
-                    correlation,
-                    causation,
-                    actor,
-                };
-                let sealed = recording.seal(&decision.events);
-                return write_all(
-                    out,
-                    &to_json(&json!({
-                        "instance": decision.instance,
-                        "events": sealed,
-                    }))?,
-                );
-            }
-            write_decision(out, &decision, format)
         }
         Command::List {
             store,
@@ -400,16 +479,101 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                 Format::Yaml => write_all(out, &to_yaml(&ids)?),
             }
         }
+        Command::Store { command } => match command {
+            StoreCommand::MigrateFile { from, to, dry_run } => {
+                let report = migrate_file_store_v1(&from, &to, dry_run)
+                    .map_err(|error| Failure::Usage(error.to_string()))?;
+                if report.dry_run {
+                    writeln!(
+                        out,
+                        "valid: {} subject(s), {} event(s); no files written",
+                        report.subjects, report.events
+                    )
+                    .map_err(io_failure)
+                } else {
+                    writeln!(
+                        out,
+                        "migrated {} subject(s), {} event(s) from {} to {}",
+                        report.subjects,
+                        report.events,
+                        from.display(),
+                        to.display()
+                    )
+                    .map_err(io_failure)
+                }
+            }
+        },
+        Command::Skill { out: path, force } => render_skill(out, path.as_deref(), force),
     }
+}
+
+const ENTITY_SKILL: &str = include_str!("../assets/entity-skill.md");
+
+fn render_skill(stdout: &mut impl Write, path: Option<&Path>, force: bool) -> Result<(), Failure> {
+    let document = ENTITY_SKILL.replace("{{VERSION}}", env!("CARGO_PKG_VERSION"));
+    let Some(path) = path else {
+        return write_all(stdout, &document);
+    };
+    if path.exists() && !force {
+        return Err(Failure::Usage(format!(
+            "{} already exists; pass --force to replace that exact file",
+            path.display()
+        )));
+    }
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)
+        .map_err(|error| Failure::Usage(format!("cannot create {}: {error}", parent.display())))?;
+    let name = path.file_name().ok_or_else(|| {
+        Failure::Usage("--out must name a file, not a filesystem root".to_owned())
+    })?;
+    let temporary = parent.join(format!(
+        ".{}.writing.{}",
+        name.to_string_lossy(),
+        std::process::id()
+    ));
+    let result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| {
+                Failure::Usage(format!("cannot create {}: {error}", temporary.display()))
+            })?;
+        file.write_all(document.as_bytes()).map_err(io_failure)?;
+        file.sync_all().map_err(io_failure)?;
+        drop(file);
+        match fs::rename(&temporary, path) {
+            Ok(()) => Ok(()),
+            Err(first) if force && path.exists() => {
+                fs::remove_file(path).map_err(|error| {
+                    Failure::Usage(format!("cannot replace {}: {error}", path.display()))
+                })?;
+                fs::rename(&temporary, path).map_err(|error| {
+                    Failure::Usage(format!(
+                        "cannot install {} after replacement was authorised: {error} (initial rename: {first})",
+                        path.display()
+                    ))
+                })
+            }
+            Err(error) => Err(Failure::Usage(format!(
+                "cannot install {}: {error}",
+                path.display()
+            ))),
+        }
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 /// Commits a decision to the store at `root`, turning a refusal into a usage failure.
 ///
 /// Exit 1 rather than 2: a revision conflict is not a wrong invocation, it is the store answering
 /// that somebody else moved first — the same class of "no" as the kernel refusing an operation.
-fn commit(root: &Path, decision: &Decision, expect: Expect) -> Result<(), Failure> {
+fn commit(root: &Path, decision: &RecordedCommit, expect: Expect) -> Result<(), Failure> {
     FileStore::open(root)
-        .commit(decision, expect)
+        .commit_recorded(decision, expect)
         .map_err(|error| Failure::StoreRefused(error.to_string()))
 }
 
@@ -537,9 +701,7 @@ fn parse_value(text: &str, flag: &str) -> Result<Value, Failure> {
 fn read_instance(source: &str, stdin: &mut StdinOnce) -> Result<EntityInstance, Failure> {
     let mut value = read_value(source, "--instance", stdin)?;
     if let Some(inner) = value.get("instance").cloned() {
-        if value.get("events").is_some() {
-            value = inner;
-        }
+        value = inner;
     }
     serde_json::from_value(value)
         .map_err(|error| Failure::Usage(format!("--instance is not an entity instance: {error}")))
@@ -587,24 +749,31 @@ fn validate(paths: &[PathBuf], out: &mut impl Write) -> Result<(), Failure> {
     // not: does every `ref` point at a type somebody declared? Without this the gate could run
     // `validate` over a reference example and miss a dangling edge entirely, which is what an
     // independent review of this command found.
-    let mut dangling = 0usize;
-    if invalid == 0 && paths.len() > 1 {
+    let mut set_defects = 0usize;
+    if invalid == 0 {
         let mut registry = Registry::new();
         for path in paths {
             if let Ok(definition) = load_definition(path) {
-                let _ = registry.register(definition);
+                if let Err(errors) = registry.register(definition) {
+                    set_defects += errors.len();
+                    for error in &errors {
+                        writeln!(out, "across the set: {error}").map_err(io_failure)?;
+                    }
+                }
             }
         }
-        if let Err(errors) = registry.validate_all() {
-            dangling = errors.len();
-            for error in &errors {
-                writeln!(out, "across the set: {error}").map_err(io_failure)?;
+        if set_defects == 0 {
+            if let Err(errors) = registry.validate_all() {
+                set_defects += errors.len();
+                for error in &errors {
+                    writeln!(out, "across the set: {error}").map_err(io_failure)?;
+                }
             }
         }
     }
 
     writeln!(out, "{} file(s), {invalid} invalid", paths.len()).map_err(io_failure)?;
-    if invalid > 0 || dangling > 0 {
+    if invalid > 0 || set_defects > 0 {
         return Err(Failure::Reported);
     }
     Ok(())
@@ -636,7 +805,7 @@ fn inspect_text(definition: &EntityDefinition) -> String {
         if field.required {
             notes.push("required".into());
         }
-        if let Some(default) = &field.default {
+        if let Some(default) = field.default.as_value() {
             notes.push(format!("default {default}"));
         }
         if !field.values.is_empty() {
@@ -754,6 +923,7 @@ fn write_decision(
         Format::Text => {
             let instance = &decision.instance;
             let events: Vec<&str> = decision
+                .record
                 .events
                 .iter()
                 .map(|event| event.event_type.as_str())
@@ -768,6 +938,42 @@ fn write_decision(
                 &format!(
                     "{} {} is {} (revision {}); events: {events}\n",
                     instance.entity, instance.id, instance.lifecycle_state, instance.revision
+                ),
+            )
+        }
+    }
+}
+
+fn write_recorded(
+    out: &mut impl Write,
+    commit: &RecordedCommit,
+    format: Format,
+) -> Result<(), Failure> {
+    match format {
+        Format::Json => write_all(out, &to_json(commit)?),
+        Format::Yaml => write_all(out, &to_yaml(commit)?),
+        Format::Text => {
+            let events: Vec<_> = commit
+                .envelope
+                .record
+                .events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect();
+            let events = if events.is_empty() {
+                "none".to_owned()
+            } else {
+                events.join(", ")
+            };
+            write_all(
+                out,
+                &format!(
+                    "{} {} is {} (revision {}); record {}; events: {events}\n",
+                    commit.instance.entity,
+                    commit.instance.id,
+                    commit.instance.lifecycle_state,
+                    commit.instance.revision,
+                    commit.envelope.record_id
                 ),
             )
         }
@@ -809,6 +1015,11 @@ fn refusal(error: &CoreError) -> Value {
             json!({ "entity": entity, "version": version })
         }
         CoreError::UnknownState { entity, state } => json!({ "entity": entity, "state": state }),
+        CoreError::RevisionExhausted {
+            entity,
+            id,
+            revision,
+        } => json!({ "entity": entity, "id": id, "revision": revision }),
         CoreError::EntityMismatch {
             expected_entity,
             expected_version,

@@ -105,6 +105,7 @@
 
 mod definition;
 mod error;
+mod number;
 mod registry;
 mod replay;
 mod runtime;
@@ -113,12 +114,23 @@ mod truth;
 mod validation;
 
 pub use definition::{
-    Condition, CreateDefinition, EntityDefinition, EventDefinition, FieldDefinition, FieldKind,
-    LifecycleDefinition, ObjectSchema, OneOrMany, OperationDefinition, RuleDefinition,
-    TransitionDefinition, CONDITION_OPERATORS,
+    Condition, CreateDefinition, DeclaredDefault, EntityDefinition, EventDefinition,
+    FieldDefinition, FieldKind, LifecycleDefinition, ObjectSchema, OneOrMany, OperationDefinition,
+    RuleDefinition, TransitionDefinition, CONDITION_OPERATORS,
 };
 pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
-pub use registry::Registry;
-pub use replay::rehydrate;
-pub use runtime::{create, execute, Decision, DomainEvent, EntityInstance, Runtime};
+pub use registry::{Registry, ValidatedDefinition};
+pub use replay::{rehydrate, replay};
+pub use runtime::{
+    create, execute, Decision, DecisionCommand, DecisionRecord, DomainEvent, EntityInstance,
+    Runtime,
+};
 pub use truth::Truth;
+
+/// Whether `value` is one of the deterministic ISO-8601 timestamp forms the runtime accepts.
+///
+/// The kernel never reads a clock; this validates a timestamp a shell already supplied.
+#[must_use]
+pub fn is_valid_timestamp(value: &str) -> bool {
+    timestamp::parse(value).is_some()
+}

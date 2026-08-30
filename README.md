@@ -2,7 +2,7 @@
 
 > A schema-driven entity runtime. Entity types are declared as data — schema, lifecycle,
 > operations, rules, events — and an IO-free, deterministic kernel decides
-> `definition + instance + operation + arguments → Decision { instance, events }`.
+> `definition + instance + operation + arguments → Decision { instance, record, events }`.
 
 A Rust library (`entity-core`), a YAML adapter (`entity-yaml`) and a command (`entity`).
 [`docs/VISION.md`](docs/VISION.md) is the argument; [`docs/requirements.md`](docs/requirements.md)
@@ -71,7 +71,7 @@ let approved  = runtime.execute(&submitted.instance, "approve", json!({}))?;
 
 assert_eq!(approved.instance.lifecycle_state, "approved");
 assert_eq!(approved.instance.revision, 3);
-// approved.events is what the shell appends and publishes; the kernel has done nothing with them.
+// approved.record is the normalized, replay-verifiable evidence a shell envelopes and stores.
 ```
 
 The kernel never mutates `created.instance`; each call returns a new one. A refusal is a
@@ -123,6 +123,8 @@ $ echo $?
 | `graph <file>` | the lifecycle as `from --operation--> to` lines or `--format dot` |
 | `create --definition <file> --id <id> [--fields <json\|@path\|->]` | a `Decision` |
 | `execute --definition <file> --instance <json\|@path\|-> --operation <op> [--arguments …]` | a `Decision`, or a typed refusal |
+| `store migrate-file --from OLD --to NEW [--dry-run]` | out-of-place File Store v2 migration |
+| `skill [--out PATH] [--force]` | the version-stamped Agent Skill for this CLI |
 
 Exit codes: `0` decided · `1` refused by the kernel, refusal as JSON on stdout · `2` bad invocation.
 The command is the reference *shell*: all IO is here, identifiers are yours, and a `Decision` it
@@ -139,11 +141,11 @@ prints is accepted back as the next `--instance`.
 | a rule or template cannot read what its scope forbids | refused at registration, whole path checked — `$fields.address.countri` never reaches run time |
 | a key nobody reads cannot silence a rule | every definition struct denies unknown fields; a condition carries exactly one operator |
 | every public item is documented, no `unsafe` | `missing_docs` + `unsafe_code = "forbid"` in `[workspace.lints]`, fatal under the gate's `-D warnings` |
-| a store writes an instance and its events together | `Store::commit` takes a whole `Decision`; there is no API that persists one half. Three providers pass one conformance suite, which is also run against a **deliberately wrong** provider it has to catch and localise |
+| a recorded store write is whole and attributable | `RecordedCommit` binds the complete result and replay evidence to caller-supplied provenance; providers preserve it atomically and idempotently |
 | a store that could not be reached is never *absent* | `StoreError::Unreachable` is its own variant and survives the wire. *Absent* is a fact about the data; silence is a fact about the network, and a provider that confuses them is how a synchronisation deletes something |
 | a hybrid's behaviour is four words somebody typed | `Policy::new` takes authority, read path, unreachable behaviour and divergence behaviour, and has **no `Default`** — a default policy is one nobody chose applied to somebody's data |
-| replay reaches no state `execute` would refuse | the fold checks the transition, the previous state, revision continuity, instance identity, that a creation enters `lifecycle.initial`, and validates the result against the schema |
-| every requirement is pinned | `scripts/check-requirements.py` fails the gate when a row cites a test that does not exist |
+| replay reaches no state `execute` would refuse | complete decision replay reruns the normalized command and compares the definition, result, changes and events; legacy event folding remains an explicit migration boundary |
+| every requirement is pinned | the requirements gate fails when a row cites a test that does not exist |
 
 Numbers compare numerically everywhere, so `eq: [$fields.total, 100]` holds for `100.0` too. A key
 the model does not declare, a condition with two operators, a constraint on the wrong kind, a
@@ -177,7 +179,7 @@ Prebuilt `entity` binaries for Linux, macOS and Windows are attached to every re
 
 ## Build
 
-Requires Rust 1.85+, [go-task](https://taskfile.dev) and `python3`; `task plan-check` additionally
+Requires Rust 1.85+ and [go-task](https://taskfile.dev); `task plan-check` additionally
 needs the `protocol` CLI from `engineering-protocols`.
 
 ```console

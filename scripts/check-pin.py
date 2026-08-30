@@ -53,7 +53,14 @@ def check(pin: Path) -> list[str]:
         return [f"{where}: records no sha256 sums, so it pins nothing"]
 
     for name, expected in sorted(sums.items()):
+        relative = Path(name)
+        if relative.is_absolute() or len(relative.parts) != 1 or relative.parts[0] in {".", ".."}:
+            findings.append(f"{where}: pin target `{name}` is not one file beside PIN.md")
+            continue
         target = pin.parent / name
+        if target.is_symlink():
+            findings.append(f"{where}: pins `{name}`, which is a symlink rather than fixture bytes")
+            continue
         if not target.is_file():
             findings.append(f"{where}: pins `{name}`, which is not there")
             continue

@@ -20,7 +20,10 @@
 use entity_core::{Decision, Registry, Runtime};
 use serde_json::json;
 
-use crate::{AtomicBatchStore, AtomicCommit, Expect, StateProvider, Store, StoreError};
+use crate::{
+    AtomicBatchStore, AtomicCommit, Expect, RecordedCommit, RecordedObservation, RecordedStore,
+    Recording, StateProvider, Store, StoreError,
+};
 
 /// What one case found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +126,94 @@ pub fn run_atomic(store: &mut dyn AtomicBatchStore) -> Report {
         });
     }
     Report { outcomes }
+}
+
+/// Exercises the recorded-history contract shared by every 0.15 provider.
+///
+/// # Errors
+///
+/// A sentence naming the first provider-contract mismatch.
+pub fn verify_recorded(store: &mut dyn RecordedStore) -> Result<(), String> {
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create(
+            "conformance-ticket",
+            1,
+            "recorded-history",
+            json!({ "title": "A ticket" }),
+        )
+        .map_err(|error| error.to_string())?;
+    let creation = RecordedCommit::new(created, &recording("conformance-create", "12:00:00"))
+        .map_err(|error| error.to_string())?;
+    store
+        .commit_recorded(&creation, Expect::Absent)
+        .map_err(|error| format!("recorded creation: {error}"))?;
+
+    let observation = RecordedObservation {
+        entity: "conformance-ticket".to_owned(),
+        id: "recorded-history".to_owned(),
+        revision: 1,
+        envelope: recording("conformance-observe", "12:01:00")
+            .seal(json!({ "source": "conformance" }))
+            .map_err(|error| error.to_string())?,
+    };
+    store
+        .observe(&observation)
+        .map_err(|error| format!("observation: {error}"))?;
+    let closed = runtime
+        .execute(&creation.instance, "close", json!({}))
+        .map_err(|error| error.to_string())?;
+    let closure = RecordedCommit::new(closed, &recording("conformance-close", "12:02:00"))
+        .map_err(|error| error.to_string())?;
+    store
+        .commit_recorded(&closure, Expect::Revision(1))
+        .map_err(|error| format!("recorded operation: {error}"))?;
+
+    store
+        .commit_recorded(&creation, Expect::Absent)
+        .map_err(|error| format!("an identical retry was not idempotent: {error}"))?;
+    let records = store
+        .records("conformance-ticket", "recorded-history")
+        .map_err(|error| error.to_string())?;
+    let record_ids: Vec<&str> = records
+        .iter()
+        .map(|record| record.record_id.as_str())
+        .collect();
+    if record_ids != ["conformance-create", "conformance-close"] {
+        return Err(format!(
+            "decision records are not in append order: {record_ids:?}"
+        ));
+    }
+    let observations = store
+        .observations("conformance-ticket", "recorded-history")
+        .map_err(|error| error.to_string())?;
+    if observations != [observation.clone()] {
+        return Err("the recorded observation did not round-trip exactly once".to_owned());
+    }
+
+    let mut conflicting = observation;
+    conflicting.envelope.record = json!({ "source": "different bytes" });
+    match store.observe(&conflicting) {
+        Err(StoreError::RecordConflict { record_id }) if record_id == "conformance-observe" => {}
+        Err(error) => {
+            return Err(format!(
+                "record-id reuse returned the wrong refusal: {error}"
+            ))
+        }
+        Ok(()) => return Err("one record id accepted different bytes".to_owned()),
+    }
+    Ok(())
+}
+
+fn recording(record_id: &str, clock: &str) -> Recording {
+    Recording {
+        record_id: record_id.to_owned(),
+        recorded_at: format!("2026-08-31T{clock}Z"),
+        correlation: Some("conformance-flow".to_owned()),
+        causation: None,
+        actor: None,
+    }
 }
 
 struct Case {
@@ -378,9 +469,9 @@ fn observations_land(store: &mut dyn Store, registry: &Registry) -> Result<(), S
     let created = opened(store, registry, "observed")?;
     let observed = |what: &str| {
         let args = serde_json::Map::from_iter([("what".to_owned(), json!(what))]);
-        Decision {
-            instance: created.clone(),
-            events: vec![entity_core::DomainEvent {
+        Decision::legacy_import(
+            created.clone(),
+            vec![entity_core::DomainEvent {
                 entity: created.entity.clone(),
                 version: created.version,
                 id: created.id.clone(),
@@ -392,7 +483,7 @@ fn observations_land(store: &mut dyn Store, registry: &Registry) -> Result<(), S
                 args,
                 payload: json!({ "what": what }),
             }],
-        }
+        )
     };
     for what in ["first", "second"] {
         store

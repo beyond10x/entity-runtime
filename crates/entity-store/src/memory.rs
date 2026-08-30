@@ -9,10 +9,12 @@
 
 use std::collections::BTreeMap;
 
-use entity_core::{Decision, DomainEvent, EntityInstance};
+use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
+use serde_json::Value;
 
 use crate::{
-    check, AtomicBatchStore, AtomicCommit, EventProvider, Expect, StateProvider, Store, StoreError,
+    check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
+    RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
 };
 
 /// The key an instance is held under: its entity type and its identity.
@@ -26,6 +28,9 @@ type Key = (String, String);
 pub struct MemoryStore {
     instances: BTreeMap<Key, EntityInstance>,
     events: BTreeMap<Key, Vec<DomainEvent>>,
+    records: BTreeMap<Key, Vec<Envelope<DecisionRecord>>>,
+    observations: BTreeMap<Key, Vec<RecordedObservation>>,
+    record_ids: BTreeMap<String, Value>,
 }
 
 impl MemoryStore {
@@ -75,8 +80,29 @@ impl StateProvider for MemoryStore {
 
 impl EventProvider for MemoryStore {
     fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
+        let key = (entity.to_owned(), id.to_owned());
+        let mut events = self.events.get(&key).cloned().unwrap_or_default();
+        if let Some(records) = self.records.get(&key) {
+            for record in records {
+                events.extend(record.record.events.iter().cloned());
+            }
+        }
+        Ok(events)
+    }
+}
+
+impl HistoryProvider for MemoryStore {
+    fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
         Ok(self
-            .events
+            .records
+            .get(&(entity.to_owned(), id.to_owned()))
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
+        Ok(self
+            .observations
             .get(&(entity.to_owned(), id.to_owned()))
             .cloned()
             .unwrap_or_default())
@@ -96,12 +122,103 @@ impl Store for MemoryStore {
         // events land together or not at all. A provider over a real database owes the same
         // guarantee through a transaction, and `commit` is one call so that it can give one.
         self.instances.insert(key.clone(), instance.clone());
-        if !decision.events.is_empty() {
+        if !decision.record.events.is_empty() {
             self.events
                 .entry(key)
                 .or_default()
-                .extend(decision.events.iter().cloned());
+                .extend(decision.record.events.iter().cloned());
         }
+        Ok(())
+    }
+
+    fn commit_recorded(
+        &mut self,
+        commit: &RecordedCommit,
+        expect: Expect,
+    ) -> Result<(), StoreError> {
+        commit.validate()?;
+        let key = (commit.instance.entity.clone(), commit.instance.id.clone());
+        let document =
+            serde_json::to_value(commit).map_err(|error| StoreError::Backend(error.to_string()))?;
+        if let Some(existing) = self.record_ids.get(&commit.envelope.record_id) {
+            return if existing == &document {
+                Ok(())
+            } else {
+                Err(StoreError::RecordConflict {
+                    record_id: commit.envelope.record_id.clone(),
+                })
+            };
+        }
+        if let Some(existing) = self
+            .records
+            .get(&key)
+            .into_iter()
+            .flatten()
+            .find(|existing| existing.record_id == commit.envelope.record_id)
+        {
+            return if existing == &commit.envelope
+                && self.instances.get(&key) == Some(&commit.instance)
+            {
+                Ok(())
+            } else {
+                Err(StoreError::RecordConflict {
+                    record_id: commit.envelope.record_id.clone(),
+                })
+            };
+        }
+        let found = self.instances.get(&key).map(|held| held.revision);
+        check(&commit.instance.entity, &commit.instance.id, expect, found)?;
+        self.instances.insert(key.clone(), commit.instance.clone());
+        self.records
+            .entry(key)
+            .or_default()
+            .push(commit.envelope.clone());
+        self.record_ids
+            .insert(commit.envelope.record_id.clone(), document);
+        Ok(())
+    }
+
+    fn observe(&mut self, observation: &RecordedObservation) -> Result<(), StoreError> {
+        observation.validate()?;
+        let key = (observation.entity.clone(), observation.id.clone());
+        let document = serde_json::to_value(observation)
+            .map_err(|error| StoreError::Backend(error.to_string()))?;
+        if let Some(existing) = self.record_ids.get(&observation.envelope.record_id) {
+            return if existing == &document {
+                Ok(())
+            } else {
+                Err(StoreError::RecordConflict {
+                    record_id: observation.envelope.record_id.clone(),
+                })
+            };
+        }
+        if let Some(existing) = self
+            .observations
+            .get(&key)
+            .into_iter()
+            .flatten()
+            .find(|existing| existing.envelope.record_id == observation.envelope.record_id)
+        {
+            return if existing == observation {
+                Ok(())
+            } else {
+                Err(StoreError::RecordConflict {
+                    record_id: observation.envelope.record_id.clone(),
+                })
+            };
+        }
+        check(
+            &observation.entity,
+            &observation.id,
+            Expect::Revision(observation.revision),
+            self.instances.get(&key).map(|held| held.revision),
+        )?;
+        self.observations
+            .entry(key)
+            .or_default()
+            .push(observation.clone());
+        self.record_ids
+            .insert(observation.envelope.record_id.clone(), document);
         Ok(())
     }
 }
