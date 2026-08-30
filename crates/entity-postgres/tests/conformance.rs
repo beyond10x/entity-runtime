@@ -11,7 +11,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use entity_core::{Registry, Runtime};
 use entity_postgres::PostgresStore;
-use entity_store::{conformance, Expect, StateProvider, Store, StoreError};
+use entity_store::{
+    conformance, AtomicBatchStore, AtomicCommit, Expect, StateProvider, Store, StoreError,
+};
 use serde_json::json;
 
 static SCHEMAS: AtomicUsize = AtomicUsize::new(0);
@@ -65,9 +67,15 @@ fn the_postgres_provider_conforms() {
     let Some(url) = url() else { return };
     let (mut store, schema) = fresh(&url, "conforms");
     let report = conformance::run(&mut store);
+    let batch = conformance::run_atomic(&mut store);
     store.drop_schema(&schema).expect("dropped");
     assert!(report.is_clean(), "PostgresStore:\n{}", report.summary());
     assert_eq!(report.outcomes.len(), 10);
+    assert!(
+        batch.is_clean(),
+        "PostgresStore batch:\n{}",
+        batch.summary()
+    );
 }
 
 /// The runtime's `Broken`, written over this provider: every write accepted whatever was expected.
@@ -103,12 +111,24 @@ impl Store for Broken {
     }
 }
 
+impl AtomicBatchStore for Broken {
+    fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError> {
+        // Deliberately non-atomic: each prefix is its own transaction, so the shared batch suite
+        // must localise the rollback defect just as the ordinary suite localises ignored expects.
+        for commit in commits {
+            self.0.commit(&commit.decision, commit.expect)?;
+        }
+        Ok(())
+    }
+}
+
 #[test]
 fn a_broken_copy_of_the_provider_is_caught() {
     let Some(url) = url() else { return };
     let (store, schema) = fresh(&url, "broken");
     let mut broken = Broken(store);
     let report = conformance::run(&mut broken);
+    let batch = conformance::run_atomic(&mut broken);
     broken.0.drop_schema(&schema).expect("dropped");
     assert!(
         !report.is_clean(),
@@ -122,6 +142,15 @@ fn a_broken_copy_of_the_provider_is_caught() {
     assert!(
         report.failures().len() < report.outcomes.len(),
         "and it localises the defect"
+    );
+    let caught: Vec<&str> = batch
+        .failures()
+        .iter()
+        .map(|outcome| outcome.case)
+        .collect();
+    assert!(
+        caught.contains(&"a conflict rolls every earlier batch entry back"),
+        "the batch suite must catch a provider that commits its prefix: {caught:?}"
     );
 }
 

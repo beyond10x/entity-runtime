@@ -11,7 +11,9 @@ use std::collections::BTreeMap;
 
 use entity_core::{Decision, DomainEvent, EntityInstance};
 
-use crate::{check, EventProvider, Expect, StateProvider, Store, StoreError};
+use crate::{
+    check, AtomicBatchStore, AtomicCommit, EventProvider, Expect, StateProvider, Store, StoreError,
+};
 
 /// The key an instance is held under: its entity type and its identity.
 ///
@@ -100,6 +102,19 @@ impl Store for MemoryStore {
                 .or_default()
                 .extend(decision.events.iter().cloned());
         }
+        Ok(())
+    }
+}
+
+impl AtomicBatchStore for MemoryStore {
+    fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError> {
+        // The clone is the transaction: every expectation sees earlier entries in `candidate`, and
+        // an error drops it without exposing a prefix through either map.
+        let mut candidate = self.clone();
+        for commit in commits {
+            candidate.commit(&commit.decision, commit.expect)?;
+        }
+        *self = candidate;
         Ok(())
     }
 }

@@ -20,7 +20,7 @@
 use entity_core::{Decision, Registry, Runtime};
 use serde_json::json;
 
-use crate::{Expect, StateProvider, Store, StoreError};
+use crate::{AtomicBatchStore, AtomicCommit, Expect, StateProvider, Store, StoreError};
 
 /// What one case found.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,10 +108,47 @@ pub fn run(store: &mut dyn Store) -> Report {
     Report { outcomes }
 }
 
+/// Runs the stronger ordered-batch cases against `store`.
+///
+/// Kept separate from [`run`] because a provider may implement [`Store`] honestly without claiming
+/// the multi-instance transaction that [`AtomicBatchStore`] promises.
+pub fn run_atomic(store: &mut dyn AtomicBatchStore) -> Report {
+    let registry = registry();
+    let mut outcomes = Vec::new();
+    for case in BATCH_CASES {
+        let failure = (case.run)(store, &registry).err();
+        outcomes.push(Outcome {
+            case: case.name,
+            failure,
+        });
+    }
+    Report { outcomes }
+}
+
 struct Case {
     name: &'static str,
     run: fn(&mut dyn Store, &Registry) -> Result<(), String>,
 }
+
+struct BatchCase {
+    name: &'static str,
+    run: fn(&mut dyn AtomicBatchStore, &Registry) -> Result<(), String>,
+}
+
+const BATCH_CASES: &[BatchCase] = &[
+    BatchCase {
+        name: "an ordered batch sees its own earlier revision",
+        run: ordered_batch_sees_earlier_revision,
+    },
+    BatchCase {
+        name: "a conflict rolls every earlier batch entry back",
+        run: batch_conflict_rolls_back,
+    },
+    BatchCase {
+        name: "an empty batch changes nothing",
+        run: empty_batch_is_inert,
+    },
+];
 
 const CASES: &[Case] = &[
     Case {
@@ -155,6 +192,123 @@ const CASES: &[Case] = &[
         run: refusal_lists_nothing,
     },
 ];
+
+fn ordered_batch_sees_earlier_revision(
+    store: &mut dyn AtomicBatchStore,
+    registry: &Registry,
+) -> Result<(), String> {
+    let runtime = Runtime::new(registry);
+    let created = runtime
+        .create(
+            "conformance-ticket",
+            1,
+            "batch-ordered",
+            json!({ "title": "A ticket" }),
+        )
+        .map_err(|error| error.to_string())?;
+    let closed = runtime
+        .execute(&created.instance, "close", json!({}))
+        .map_err(|error| error.to_string())?;
+
+    store
+        .commit_batch(&[
+            AtomicCommit::new(created, Expect::Absent),
+            AtomicCommit::new(closed, Expect::Revision(1)),
+        ])
+        .map_err(|error| format!("the ordered batch was refused: {error}"))?;
+
+    let held = store
+        .load("conformance-ticket", "batch-ordered")
+        .map_err(|error| error.to_string())?
+        .ok_or("the batch's instance is absent")?;
+    if held.revision != 2 || held.lifecycle_state != "closed" {
+        return Err(format!(
+            "the batch ended at revision {} in state {}, not revision 2 closed",
+            held.revision, held.lifecycle_state
+        ));
+    }
+    let events = store
+        .events("conformance-ticket", "batch-ordered")
+        .map_err(|error| error.to_string())?;
+    if events.len() != 1 {
+        return Err(format!(
+            "the ordered batch recorded {} event(s), not one",
+            events.len()
+        ));
+    }
+    Ok(())
+}
+
+fn batch_conflict_rolls_back(
+    store: &mut dyn AtomicBatchStore,
+    registry: &Registry,
+) -> Result<(), String> {
+    let runtime = Runtime::new(registry);
+    let prefix = runtime
+        .create(
+            "conformance-ticket",
+            1,
+            "batch-prefix",
+            json!({ "title": "Must roll back" }),
+        )
+        .map_err(|error| error.to_string())?;
+    let conflict = runtime
+        .create(
+            "conformance-ticket",
+            1,
+            "batch-conflict",
+            json!({ "title": "Must be refused" }),
+        )
+        .map_err(|error| error.to_string())?;
+
+    match store.commit_batch(&[
+        AtomicCommit::new(prefix, Expect::Absent),
+        AtomicCommit::new(conflict, Expect::Revision(99)),
+    ]) {
+        Err(StoreError::RevisionConflict { .. }) => {}
+        Ok(()) => return Err("a batch containing a conflicting entry was accepted".to_owned()),
+        Err(other) => return Err(format!("expected a revision conflict, got {other}")),
+    }
+
+    for id in ["batch-prefix", "batch-conflict"] {
+        if store
+            .load("conformance-ticket", id)
+            .map_err(|error| error.to_string())?
+            .is_some()
+        {
+            return Err(format!("`{id}` survived a refused batch"));
+        }
+        let events = store
+            .events("conformance-ticket", id)
+            .map_err(|error| error.to_string())?;
+        if !events.is_empty() {
+            return Err(format!(
+                "`{id}` retained {} event(s) from a refused batch",
+                events.len()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn empty_batch_is_inert(
+    store: &mut dyn AtomicBatchStore,
+    _registry: &Registry,
+) -> Result<(), String> {
+    let before = store
+        .ids("conformance-ticket")
+        .map_err(|error| error.to_string())?;
+    store
+        .commit_batch(&[])
+        .map_err(|error| format!("an empty batch was refused: {error}"))?;
+    let after = store
+        .ids("conformance-ticket")
+        .map_err(|error| error.to_string())?;
+    if before != after {
+        return Err("an empty batch changed the provider's holdings".to_owned());
+    }
+    Ok(())
+}
 
 /// Creates `id` in `store` and returns the stored instance.
 fn opened(
@@ -491,5 +645,17 @@ impl Store for Broken {
             None => Expect::Absent,
         };
         self.inner.commit(decision, expect)
+    }
+}
+
+impl AtomicBatchStore for Broken {
+    fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError> {
+        // Deliberately wrong in a third, independent way: expectations are honoured, but each
+        // accepted prefix is published before the next one is checked. The batch suite must catch
+        // the prefix left behind by its later conflict.
+        for commit in commits {
+            self.inner.commit(&commit.decision, commit.expect)?;
+        }
+        Ok(())
     }
 }
