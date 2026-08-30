@@ -2,13 +2,13 @@
 format: aep.planning-md/1
 id: story:atomic-batch-store
 kind: story
-status: active
+status: implemented
 title: A provider commits one ordered batch or nothing
 summary: Add an additive transactional batch contract for multi-entity commands.
 relations:
 - derived_from: epic:the-store-an-adopter-runs-on
 - serves: vision:O2
-revision: 3
+revision: 4
 ---
 ## Finding
 
