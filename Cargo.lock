@@ -240,7 +240,7 @@ dependencies = [
 
 [[package]]
 name = "entity-cli"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "clap",
  "entity-core",
@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "entity-core"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "scan-support",
  "serde",
@@ -263,7 +263,7 @@ dependencies = [
 
 [[package]]
 name = "entity-graph"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "entity-core",
  "scan-support",
@@ -272,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "entity-postgres"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "entity-remote"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -292,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "entity-sqlite"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -302,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "entity-store"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "entity-core",
  "serde",
@@ -311,7 +311,7 @@ dependencies = [
 
 [[package]]
 name = "entity-yaml"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "entity-core",
  "serde_json",
@@ -761,7 +761,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "scan-support"
-version = "0.13.0"
+version = "0.14.0"
 
 [[package]]
 name = "scopeguard"

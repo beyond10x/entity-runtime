@@ -4,6 +4,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.14.0] — 2026-08-31
+
 ### Added
 
 * **One adopter command can be one provider transaction.** `AtomicBatchStore` extends `Store` for
