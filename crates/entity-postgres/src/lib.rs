@@ -344,8 +344,8 @@ impl PostgresSession<'_> {
     pub fn lock_identity(&mut self, namespace: &str, identity: &str) -> Result<(), StoreError> {
         self.transaction
             .query_one(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                &[&format!("{namespace}\0{identity}")],
+                "SELECT pg_advisory_xact_lock(hashtextextended($2, hashtextextended($1, 0)))",
+                &[&namespace, &identity],
             )
             .map_err(|error| database("locking an absent identity", &error))?;
         Ok(())

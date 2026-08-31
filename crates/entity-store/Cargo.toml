@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.17.1" }
+entity-core = { path = "../entity-core", version = "0.17.2" }
 serde.workspace = true
 serde_json.workspace = true
 

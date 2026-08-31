@@ -4,6 +4,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.17.2] — 2026-08-31
+
+- Fixed PostgreSQL absent-identity locks to hash the namespace and identity as two text values;
+  ordinary lock requests no longer inject a NUL byte that PostgreSQL rejects as invalid UTF-8.
+
 ## [0.17.1] — 2026-08-31
 
 * PostgreSQL command sessions can now reserve transaction-scoped identity ranges and read events; document filters use recursive JSON containment consistently across memory and PostgreSQL.

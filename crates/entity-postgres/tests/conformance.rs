@@ -275,6 +275,7 @@ fn a_session_reserves_disjoint_sequence_ranges_and_reads_its_events() {
 
     let first = store
         .with_transaction(|session| {
+            session.lock_identity("aep.locator", "ep://beyond10x/plan/story/session")?;
             assert_eq!(session.events("ticket", "session")?, created.events);
             session.reserve_sequence("aep", 8)
         })
