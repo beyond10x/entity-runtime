@@ -2,9 +2,9 @@
 
 The contract for changing **this** repository. Read it before changing anything.
 
-Org-wide rules — repo naming, the language rule (anything that runs is Rust, not Python), the former-brand rule and the rule that a change to bytes another
-repo verifies is a coordinated migration with an ADR — live in `atlas/AGENTS.md` and are not
-restated here.
+Org-wide rules — repo naming, the language rule (anything that runs is Rust, not Python), the
+former-brand rule and the rule that a change to bytes another repo verifies is a coordinated
+migration with an ADR — live in `atlas/AGENTS.md` and are not restated here.
 
 `README.md` orients a reader. This file says what must not break.
 
@@ -13,19 +13,22 @@ restated here.
 The objectives of the collection this repository moves, by id from `atlas/ROADMAP.md` — the only
 cross-repository roadmap, and the page that says what each id means and which evidence closes it:
 
-- **O2 — decisions as data, with evidence.** State, lifecycle, legal moves, rules and events as data an IO-free kernel decides; the protocol's artifact model runs on it (atlas ADR 0002).
+- **O2 — decisions as data, with evidence.** State, lifecycle, legal moves, rules and events as
+  data an IO-free kernel decides; the protocol's artifact model runs on it (atlas ADR 0002).
 
 A change here that moves none of these is a question for the operator, not a task.
 `atlas/scripts/check-map.sh` fails a repository whose `AGENTS.md` names no objective.
 
 ## What this repository is
 
-A **library and a command**: `entity-core`, an IO-free deterministic kernel that executes entity
-types declared as data; provider crates outside the kernel; `entity-graph` and `entity-surface`,
-which project validated definitions; `entity-shell`, which shares provider-backed operations;
-`entity-mcp`, which serves those operations over caller-provided stdio; and `entity-cli`, the
-`entity` command that owns filesystem and process IO. It is not a database, a message bus, a
-workflow engine or a scripting runtime, and it holds no credential and reaches no network.
+A **library collection and a command**: `entity-core`, an IO-free deterministic kernel that
+executes entity types declared as data; provider crates outside the kernel; `entity-graph` and
+`entity-surface`, which project validated definitions; `entity-shell`, which shares
+provider-backed operations; `entity-mcp`, which serves those operations over caller-provided
+stdio; and `entity-cli`, the `entity` command that owns filesystem and process IO. It is not a
+hosted database, message bus, workflow service or scripting runtime. The kernel holds no
+credential and reaches no network; an explicit provider may perform the storage or transport IO
+its name promises.
 
 ## Which documents are normative
 
@@ -34,14 +37,16 @@ workflow engine or a scripting runtime, and it holds no credential and reaches n
 * [`docs/design/kernel-v0.1.md`](docs/design/kernel-v0.1.md) — the kernel's semantics. Where code
   and this document disagree, the document wins until a later revision says otherwise.
 * [`docs/design/kernel-v0.2.md`](docs/design/kernel-v0.2.md) and
-  [`docs/design/store-v0.2.md`](docs/design/store-v0.2.md) — the normative 0.15 changes: validated
-  execution handles, verifiable decision records, recorded provider history and File Store v2.
-  They supersede the matching v0.1 sections.
+  [`docs/design/store-v0.2.md`](docs/design/store-v0.2.md) — validated execution handles,
+  verifiable decision records, recorded provider history and File Store v2. They supersede the
+  matching v0.1 sections.
 
 [`docs/design/engineering-protocols-adoption-v0.1.md`](docs/design/engineering-protocols-adoption-v0.1.md)
-is **proposed**: it is accepted only by a plan page or a story in `engineering-protocols`, and this
-repository's side of it is worked through `epic:drive-engineering-protocols` in the planning store.
-Do not implement phase 2 or later from it without that acceptance.
+is a **proposed design with accepted portions**. Its phases 0–4 were accepted and implemented;
+later ideas are not authority until a plan page or story in `engineering-protocols` accepts them.
+This repository's side is tracked through `epic:drive-engineering-protocols`; `docs/roadmap.md`
+records what actually shipped. Do not use the design's original status line to undo accepted work
+or to infer approval for work beyond it.
 
 ## Invariants
 
@@ -60,20 +65,22 @@ somewhere. Do not write an enforcement here that you cannot point at.
 2. **Same inputs, same `Decision`, same bytes.** Ordered maps only; no `HashMap`/`HashSet`.
    *Enforced by* the same scan (`HashMap` and `HashSet` are banned tokens) and
    `the_same_inputs_produce_the_same_decision_byte_for_byte`.
-3. **A refusal changes nothing.** Every kernel entry point takes the instance by shared reference
-   and returns a new one; there is no code path that mutates the caller's.
-   *Enforced by* the signatures of `create` and `execute` and by
+3. **A refusal changes nothing.** `execute` takes the caller's instance by shared reference, and
+   every successful kernel entry point returns a new value; no refusal mutates caller-owned data.
+   *Enforced by* the signatures of `create`, `execute`, `replay` and `rehydrate`, and by
    `a_refusal_leaves_the_caller_owned_instance_untouched`.
-4. **The kernel never writes a lifecycle state except through an operation.** `lifecycle_state` is
-   assigned in `create` and `execute` and nowhere else; there is no setter and no generic status
-   write, and nothing is ever deleted.
-   *Enforced by* those two functions being the only writers, and by `execute` refusing an instance
-   whose state the definition does not declare (`UnknownState`,
-   `an_instance_claiming_a_state_the_definition_does_not_declare_is_refused`). It is **not**
-   enforced by the type: `EntityInstance` has public fields and deserialises, because an instance is
-   data a store round-trips, so which instance reaches the kernel is the shell's responsibility
-   (R-80). This invariant said "closed by the type" until the 0.1.0 review showed it was not;
-   sealing the type is a breaking change and a story. Do not restate the stronger claim.
+4. **There is no generic lifecycle-state write.** `create` selects the declared initial state and
+   `execute` reaches another state only through a declared operation. Legacy event rehydration may
+   reconstruct a state, but it validates every event's identity and revision, requires its
+   transition to be declared by an operation, and rechecks arguments against matching emitters
+   before assigning it. There is no setter, patch-state command or delete.
+   *Enforced by* `create` and `execute`, by the checks in `rehydrate`, by `execute` refusing an
+   instance whose state the definition does not declare (`UnknownState`), and by
+   `an_instance_claiming_a_state_the_definition_does_not_declare_is_refused` plus the R-97 replay
+   tests named in `docs/requirements.md`. It is **not** enforced by the type: `EntityInstance` has
+   public fields and deserialises because a store round-trips it, so which instance reaches the
+   kernel is the shell's responsibility (R-80). Do not restate the stronger claim that the type
+   seals lifecycle state.
 5. **Rules and templates see only what their scope allows, and every path is checked.** An
    invariant cannot read `$args`, `$old_fields`, `$from_state` or `$to_state`; a precondition
    cannot read `$state`, which would mean the state the operation is heading for; a creation event
@@ -126,8 +133,8 @@ somewhere. Do not write an enforcement here that you cannot point at.
 task check
 ```
 
-Ten steps, in this order: `fmt-check` · `clippy` (`--workspace --all-targets --locked
--D warnings`, which is what makes `missing_docs` fatal) · `test` · `doc-check`
+The local gate runs these steps in this order: `fmt-check` · `clippy` (`--workspace --all-targets
+--locked -D warnings`, which is what makes `missing_docs` fatal) · `test` · `doc-check`
 (`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml` and
 `examples/aep/*.yaml`, `examples/references/*.yaml`) · `req-check` · `pin-check` (every `PIN.md` under `crates/` still hashes to
 what it records, in both directions — a moved copy and an unpinned file beside it) ·
@@ -144,13 +151,15 @@ stays network-free and drift surfaces as its own red run rather than as a puzzli
 unrelated step. It was added because the fixture went stale for real: `vision.yaml` landed upstream
 and this repository stayed green while its equivalence test claimed to cover every ladder.
 
-CI runs the first six through **one reusable workflow**, `.github/workflows/gate.yml`, which
-`check.yml` and `release.yml` both call: a tag cannot be cut against a shorter gate than a pull
-request had to pass. It also runs an `msrv` job on 1.85.0, because `rust-version` is a promise to
-anyone who depends on these crates and nothing else would notice it breaking. `plan-check` is local
-only — CI has no `protocol` binary. If you add a step, add it to both the Taskfile and `gate.yml`.
+CI's reusable `.github/workflows/gate.yml` runs format, Clippy, tests, rustdoc, examples,
+requirements and the PostgreSQL provider against its service container; both `check.yml` and
+`release.yml` call it. CI also has an MSRV job on 1.85.0. `pin-check`, `plan-check` and
+`notes-check` remain local-only, and the website has its own required Docusaurus build. If a local
+gate step should run in CI too, add it to both the Taskfile and `gate.yml` deliberately rather than
+assuming the two are identical.
 
-Land nothing that does not pass all seven. Read the gate's own exit status, not a pipeline's:
+Land nothing until `task check` itself exits zero. A change under `website/` must also pass
+`task site-build`. Read each command's own exit status, not a pipeline's:
 `task check 2>&1 | tail` reports `tail`'s.
 
 **Prose states no count of the gate's suites or tests.** That number lives in exactly one place:
@@ -169,15 +178,19 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 
 ## Boundaries
 
-* **Vocabulary crosses to `engineering-protocols`; a dependency is a decision not yet taken.** No
-  `Cargo.toml` here names a crate of theirs and none there names one of ours until an ADR in `atlas`
-  says which way the arrow points. Both repositories are public.
+* **The dependency arrow points from `engineering-protocols` to this repository.** Its workspace
+  pins `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres` and `entity-remote` from
+  one release tag. No manifest here names one of its crates. Changing that direction or changing
+  bytes its pin verifies is a coordinated migration under the atlas ADR rules, not a local edit.
 * **Provider interfaces live outside `entity-core`.** A state store, an event store, a search
   index, a blob store — each is a crate that depends on the kernel, never the reverse.
-* **The shell owns IO.** `entity-cli` reads files and stdin, invokes Cargo for explicit Rust CLI
-  generation, and prints. Library crates accept values, providers, readers or writers from their
-  caller; none selects a path, opens a listener, reads an environment variable or starts a process.
-  If a new verb needs a clock, the clock is read in the CLI and passed in as an argument.
+* **IO stays at named edges.** `entity-core`, `entity-yaml`, `entity-graph` and `entity-surface` are
+  value-in/value-out. Store providers own only their declared storage boundary: `FileStore` and
+  `SqliteStore` open caller-selected paths, `PostgresStore` connects to a caller-selected server,
+  and `RemoteStore` uses a caller-provided `Transport`. `entity-mcp` uses caller-provided readers
+  and writers. `entity-cli` reads files and stdin, invokes Cargo only for explicit Rust CLI
+  generation, and prints. No library selects authority, credentials or a clock on the caller's
+  behalf; if a verb needs time or identity, the shell supplies it as data.
 * **No step of `task check` calls a network service of its own** — nothing downloads a schema,
   resolves a remote `$ref` or calls an API — and no step spends money. The one exception is
   opted into by name: `postgres-check` talks to the server `ENTITY_POSTGRES_URL` names and to
@@ -253,12 +266,15 @@ state: propose them and wait for the operator unless the operator asked for the 
 * **Task runner is `Taskfile.yml`** (go-task). Do not add a Makefile.
 * **Comments explain why.** Doc comments on public items say what the type is *for*, and where a
   design decision is embedded in it, why.
-* **Dependencies.** The workspace has five direct third-party crates: `serde`, `serde_json`,
-  `serde_yaml_ng`, `clap`, and `postgres` in `entity-postgres` alone (no default features; the
-  manifest says why). The kernel may use the first two — `crates/entity-core/tests/purity.rs`
-  fails if that changes. `serde_yaml_ng` replaced `serde_yaml`, whose last release marks itself
-  deprecated and receives no fixes; the reason is in the workspace manifest beside the line. Prefer
-  no dependency, and justify a new one in the manifest beside the line that adds it.
+* **Dependencies.** The direct third-party set is `serde`, `serde_json`, `serde_yaml_ng`, `clap`,
+  `rusqlite` in `entity-sqlite`, and `postgres` in `entity-postgres`. Provider manifests explain
+  their feature choices. The kernel may use only `serde` and `serde_json` —
+  `crates/entity-core/tests/purity.rs` fails if that changes. `serde_yaml_ng` replaced deprecated
+  `serde_yaml`; the workspace manifest records why. Prefer no new dependency, and justify one in
+  the manifest beside the line that adds it.
+* **Existing Python checkers are legacy under atlas's touch rule.** Do not add another, copy one,
+  or extend one as the convenient path. When a checker is next changed, its executable successor
+  is Rust unless the operator accepts the exception the org rule requires.
 
 ## Changelog
 
@@ -275,8 +291,8 @@ commit that delivered the work, and its `CHANGELOG.md` heading matches the versi
 Pushing the tag is the release: `.github/workflows/release.yml` re-runs the gate, builds the
 `entity` command for Linux (x86_64, aarch64), macOS (x86_64, arm64) and Windows (x86_64), and
 creates the GitHub Release with the archives, a `SHA256SUMS` file and the tag's `CHANGELOG.md`
-section as its notes. A tag with no changelog section gets generated notes and a line saying so —
-cut the section first.
+section as its notes. The provenance job refuses a tag unless the tag, workspace version and dated
+changelog heading agree. There is no generated-notes fallback: cut the section first.
 
 ```console
 task check
