@@ -1,5 +1,7 @@
 target/
 node_modules/
+build/
+website/static/examples/refund/
 __pycache__/
 *.pyc
 .DS_Store

@@ -1,7 +1,7 @@
 //! What the drawings actually say, and that they say it the same way twice.
 
 use entity_core::EntityDefinition;
-use entity_graph::{render, Emphasis, Graph, Layout};
+use entity_graph::{render, Emphasis, Graph, GraphKind, Layout};
 use serde_json::json;
 
 fn definition(value: serde_json::Value) -> EntityDefinition {
@@ -75,6 +75,7 @@ fn every_format_is_the_same_bytes_twice() {
     for (name, first, second) in [
         ("text", render::text(&graph), render::text(&graph)),
         ("dot", render::dot(&graph), render::dot(&graph)),
+        ("mermaid", render::mermaid(&graph), render::mermaid(&graph)),
         (
             "svg",
             render::svg(&graph, &layout),
@@ -94,6 +95,23 @@ fn every_format_is_the_same_bytes_twice() {
     let again = Graph::lifecycle(&story());
     assert_eq!(graph, again);
     assert_eq!(layout, Layout::of(&again));
+}
+
+#[test]
+fn lifecycle_and_reference_graphs_use_the_mermaid_notation_that_matches_them() {
+    let lifecycle = render::mermaid(&Graph::lifecycle(&story()));
+    assert!(lifecycle.starts_with("stateDiagram-v2\n"), "{lifecycle}");
+    assert!(lifecycle.contains("[*] --> n0"), "{lifecycle}");
+    assert!(lifecycle.contains("n0 --> n1: propose"), "{lifecycle}");
+
+    let references = Graph::references([&definition(json!({
+        "entity": "story",
+        "schema": { "fields": { "epic": { "type": "ref", "entity": "epic" } } },
+        "lifecycle": { "initial": "draft", "states": ["draft"] }
+    }))]);
+    let rendered = render::mermaid(&references);
+    assert!(rendered.starts_with("flowchart LR\n"), "{rendered}");
+    assert!(rendered.contains("-->|epic|"), "{rendered}");
 }
 
 /// The picture that could not be drawn before typed references existed.
@@ -130,6 +148,10 @@ fn references_draw_the_types_as_boxes_and_the_ref_fields_as_edges() {
         Some("story"),
         "through an array's items, and the `[]` says so — a bare `stories` and a list of them are \
          two labels, not one that overwrites the other"
+    );
+    assert!(
+        render::mermaid(&graph).contains("-->|stories#91;#93;|"),
+        "array-reference labels must remain inert Mermaid text"
     );
     assert_eq!(edge("story", "epic").as_deref(), Some("epic"));
     assert_eq!(
@@ -275,6 +297,7 @@ fn a_control_character_cannot_reach_the_document() {
 #[test]
 fn a_duplicate_node_id_is_read_the_same_way_by_the_layout_and_the_renderer() {
     let graph = Graph {
+        kind: GraphKind::Lifecycle,
         title: "dup".to_owned(),
         nodes: vec![
             entity_graph::Node {

@@ -1,0 +1,114 @@
+entity: refund
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    order_id:
+      type: string
+      required: true
+      min_length: 1
+    amount_cents:
+      type: integer
+      required: true
+      min: 1
+    evidence_count:
+      type: integer
+      required: true
+      min: 0
+    decision_reason:
+      type: string
+      min_length: 1
+    rejection_reason:
+      type: string
+      min_length: 1
+
+lifecycle:
+  initial: draft
+  states: [draft, submitted, approved, rejected]
+
+invariants:
+  - name: approved_has_a_reason
+    assert:
+      any:
+        - ne: [$state, approved]
+        - exists: $fields.decision_reason
+    message: an approved refund records why it was approved
+  - name: rejected_has_a_reason
+    assert:
+      any:
+        - ne: [$state, rejected]
+        - exists: $fields.rejection_reason
+    message: a rejected refund records why it was rejected
+
+create:
+  emit:
+    type: RefundDrafted
+    payload:
+      refund_id: $id
+      order_id: $fields.order_id
+      amount_cents: $fields.amount_cents
+
+operations:
+  submit:
+    transitions:
+      - from: draft
+        to: submitted
+    emits:
+      - type: RefundSubmitted
+        payload:
+          refund_id: $id
+          evidence_count: $fields.evidence_count
+
+  approve:
+    arguments:
+      fields:
+        actor_role:
+          type: enum
+          values: [agent, human]
+          required: true
+        reason:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: submitted
+        to: approved
+    preconditions:
+      - name: evidence_is_present
+        assert:
+          gt: [$fields.evidence_count, 0]
+        message: a refund cannot be approved without evidence
+      - name: large_refunds_need_a_human
+        assert:
+          any:
+            - lte: [$fields.amount_cents, 5000]
+            - eq: [$args.actor_role, human]
+        message: refunds above 5000 cents require a human actor
+    set:
+      decision_reason: $args.reason
+    emits:
+      - type: RefundApproved
+        payload:
+          refund_id: $id
+          amount_cents: $fields.amount_cents
+          actor_role: $args.actor_role
+          reason: $fields.decision_reason
+
+  reject:
+    arguments:
+      fields:
+        reason:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: submitted
+        to: rejected
+    set:
+      rejection_reason: $args.reason
+    emits:
+      - type: RefundRejected
+        payload:
+          refund_id: $id
+          reason: $fields.rejection_reason

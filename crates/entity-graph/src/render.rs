@@ -10,7 +10,7 @@
 
 use std::fmt::Write as _;
 
-use crate::graph::{Emphasis, Graph};
+use crate::graph::{Emphasis, Graph, GraphKind};
 use crate::layout::Layout;
 
 /// Character cell width, in SVG user units. Nothing here measures a font — a proportional font
@@ -86,6 +86,98 @@ pub fn dot(graph: &Graph) -> String {
     }
     let _ = writeln!(out, "}}");
     out
+}
+
+/// Mermaid source suitable for Markdown renderers and the Mermaid CLI.
+///
+/// Lifecycles use `stateDiagram-v2`; reference graphs use `flowchart LR`. Opaque node ids keep a
+/// definition name from becoming Mermaid syntax, while labels retain the name a person wrote.
+#[must_use]
+pub fn mermaid(graph: &Graph) -> String {
+    match graph.kind {
+        GraphKind::Lifecycle => mermaid_lifecycle(graph),
+        GraphKind::References => mermaid_references(graph),
+    }
+}
+
+fn mermaid_lifecycle(graph: &Graph) -> String {
+    let mut out = String::from("stateDiagram-v2\n");
+    for (at, node) in graph.nodes.iter().enumerate() {
+        let _ = writeln!(out, "  state \"{}\" as n{at}", mermaid_label(&node.label));
+    }
+    if let Some((at, _)) = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .find(|(_, node)| node.emphasis == Emphasis::Entry)
+    {
+        let _ = writeln!(out, "  [*] --> n{at}");
+    }
+    for edge in &graph.edges {
+        let (Some(from), Some(to)) = (find(graph, &edge.from), find(graph, &edge.to)) else {
+            continue;
+        };
+        let _ = writeln!(out, "  n{from} --> n{to}: {}", mermaid_label(&edge.label));
+    }
+    for (at, node) in graph.nodes.iter().enumerate() {
+        if node.emphasis == Emphasis::Terminal {
+            let _ = writeln!(out, "  n{at} --> [*]");
+        }
+    }
+    out
+}
+
+fn mermaid_references(graph: &Graph) -> String {
+    let mut out = String::from("flowchart LR\n");
+    for (at, node) in graph.nodes.iter().enumerate() {
+        let _ = writeln!(out, "  n{at}[\"{}\"]", mermaid_label(&node.label));
+    }
+    for edge in &graph.edges {
+        let (Some(from), Some(to)) = (find(graph, &edge.from), find(graph, &edge.to)) else {
+            continue;
+        };
+        let _ = writeln!(
+            out,
+            "  n{from} -->|{}| n{to}",
+            mermaid_flowchart_label(&edge.label)
+        );
+    }
+    let missing: Vec<String> = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node.emphasis == Emphasis::Terminal)
+        .map(|(at, _)| format!("n{at}"))
+        .collect();
+    if !missing.is_empty() {
+        let _ = writeln!(out, "  classDef missing stroke-dasharray: 4 3");
+        let _ = writeln!(out, "  class {} missing", missing.join(","));
+    }
+    out
+}
+
+fn mermaid_label(value: &str) -> String {
+    let mut out = String::new();
+    for character in value.chars() {
+        match character {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            ':' => out.push_str("&#58;"),
+            '|' => out.push_str("&#124;"),
+            '\n' | '\r' => out.push(' '),
+            other if other.is_control() => out.push('\u{FFFD}'),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+fn mermaid_flowchart_label(value: &str) -> String {
+    mermaid_label(value)
+        .replace('[', "#91;")
+        .replace(']', "#93;")
 }
 
 /// A standalone SVG, laid out here rather than by a tool nobody in this repository controls.

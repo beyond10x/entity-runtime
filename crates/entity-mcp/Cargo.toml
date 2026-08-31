@@ -1,0 +1,18 @@
+[package]
+name = "entity-mcp"
+description = "A synchronous stdio MCP tool surface over validated entities and a store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+entity-core = { path = "../entity-core", version = "0.16.0" }
+entity-shell = { path = "../entity-shell", version = "0.16.0" }
+entity-store = { path = "../entity-store", version = "0.16.0" }
+entity-surface = { path = "../entity-surface", version = "0.16.0" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

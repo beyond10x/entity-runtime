@@ -57,5 +57,5 @@ mod graph;
 mod layout;
 pub mod render;
 
-pub use graph::{Edge, Emphasis, Graph, Node};
+pub use graph::{Edge, Emphasis, Graph, GraphKind, Node};
 pub use layout::Layout;

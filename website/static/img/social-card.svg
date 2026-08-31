@@ -15,9 +15,9 @@
   <circle cx="930" cy="470" r="19" fill="#4fd1a5"/>
   <circle cx="1120" cy="330" r="19" fill="#f0a14b"/>
   <circle cx="930" cy="200" r="19" fill="none" stroke="#ff8a65" stroke-width="10"/>
-  <text x="88" y="122" fill="#f0a14b" font-family="monospace" font-size="23" font-weight="700" letter-spacing="4">DECLARED ONCE · DECIDED EVERY TIME</text>
+  <text x="88" y="122" fill="#f0a14b" font-family="monospace" font-size="23" font-weight="700" letter-spacing="4">A DETERMINISTIC BOUNDARY FOR AGENTS</text>
   <text x="88" y="270" fill="#f6f4ec" font-family="Arial, sans-serif" font-size="76" font-weight="650">Entity</text>
   <text x="88" y="355" fill="#f6f4ec" font-family="Arial, sans-serif" font-size="76" font-weight="650">Runtime</text>
-  <text x="91" y="438" fill="#a7b3b5" font-family="Arial, sans-serif" font-size="28">Entity types declared as data, decided by an IO-free kernel.</text>
+  <text x="91" y="438" fill="#a7b3b5" font-family="Arial, sans-serif" font-size="28">Let agents propose. Let deterministic rules decide.</text>
   <text x="91" y="520" fill="#6f7d86" font-family="monospace" font-size="22">beyond10x.github.io/entity-runtime</text>
 </svg>

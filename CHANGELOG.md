@@ -4,7 +4,38 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
-Nothing yet.
+## [0.16.0] — 2026-08-31
+
+### Added
+
+* **Graphs now render as terminal text, Mermaid, Graphviz DOT, SVG, or standalone HTML.** Lifecycle
+  graphs use Mermaid state diagrams; typed-reference graphs use flowcharts, with untrusted names
+  kept as escaped labels on opaque node identifiers.
+* **`entity generate docs` produces a standalone entity reference.** One validated definition set
+  becomes an index, per-entity HTML and Markdown pages, lifecycle/reference graphs, and OpenAPI 3.2
+  plus AsyncAPI 3.1 JSON/YAML contracts with inferred event payload schemas. Safe replacement is
+  limited to generator-owned output.
+* **`entity mcp` mounts stored entities as schema-derived stdio tools.** It exposes create, get,
+  list, events, and every named operation; mutating calls carry provenance and operation calls
+  require the revision the model observed, so stale intent is refused without a write.
+* **`entity generate rust-cli` builds a definition-specific host command.** It retains ordinary
+  Clap-derived Rust source, embeds the validated definitions, offers direct entity operation
+  subcommands, and builds from matching local runtime source with Cargo locked and offline.
+
+### Changed
+
+* **The public website is now written for people building agentic systems.** It has a standalone
+  product handbook instead of publishing internal requirements, designs, plans and reviews; a
+  refund workflow explains how agents propose named operations while trusted code supplies
+  authority and a deterministic runtime decides, refuses, records and replays the result.
+* The generated `entity` Agent Skill now covers graphs, documentation/contract generation, MCP,
+  and definition-specific Rust CLI generation.
+
+### Fixed
+
+* Mermaid reference edges escape array-path brackets so generated diagrams render instead of being
+  parsed as flowchart syntax.
+* The documentation navigation drawer occupies and scrolls within the viewport on narrow screens.
 
 ## [0.15.0] — 2026-08-31
 
