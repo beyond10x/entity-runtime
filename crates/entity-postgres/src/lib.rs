@@ -254,7 +254,7 @@ fn query_documents(
         .query(
             "SELECT document FROM instances
              WHERE entity = $1 AND id COLLATE \"C\" > $2
-               AND document::jsonb @> $3::jsonb
+               AND document::jsonb @> $3::text::jsonb
              ORDER BY id COLLATE \"C\" LIMIT $4",
             &[&query.entity, &after, &matching, &limit],
         )

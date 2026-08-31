@@ -4,6 +4,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.17.3] — 2026-08-31
+
+- Fixed PostgreSQL document queries to bind serialized containment predicates as text before
+  casting them to JSONB, so indexed service reads execute instead of failing parameter encoding.
+
 ## [0.17.2] — 2026-08-31
 
 - Fixed PostgreSQL absent-identity locks to hash the namespace and identity as two text values;

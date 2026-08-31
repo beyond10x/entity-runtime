@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use entity_core::{Registry, Runtime};
 use entity_postgres::PostgresStore;
+use entity_query::{DocumentQuery, DocumentQueryProvider};
 use entity_store::{
     conformance, AtomicBatchStore, AtomicCommit, Expect, StateProvider, Store, StoreError,
 };
@@ -262,6 +263,23 @@ fn migrate_is_idempotent_and_a_store_survives_being_reopened() {
     assert_eq!(held, created.instance);
     let mut reopened = reopened;
     reopened.drop_schema(&schema).expect("dropped");
+}
+
+#[test]
+fn postgres_document_queries_bind_serialized_containment_as_text() {
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "document_query_parameter");
+    let created = Runtime::new(&registry())
+        .create("ticket", 1, "matched", json!({ "title": "A ticket" }))
+        .expect("permitted");
+    store.commit(&created, Expect::Absent).expect("accepted");
+
+    let page = store
+        .query_documents(&DocumentQuery::for_entity("ticket").matching("title", json!("A ticket")))
+        .expect("serialized JSON text is cast to JSONB by PostgreSQL");
+
+    assert_eq!(page.items, [created.instance]);
+    store.drop_schema(&schema).expect("dropped");
 }
 
 #[test]
