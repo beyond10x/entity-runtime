@@ -1,0 +1,16 @@
+[package]
+name = "entity-shell"
+description = "Provider-backed application operations shared by entity command surfaces"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+entity-core = { path = "../entity-core", version = "0.16.0" }
+entity-store = { path = "../entity-store", version = "0.16.0" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

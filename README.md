@@ -4,10 +4,11 @@
 > operations, rules, events — and an IO-free, deterministic kernel decides
 > `definition + instance + operation + arguments → Decision { instance, record, events }`.
 
-A Rust library (`entity-core`), a YAML adapter (`entity-yaml`) and a command (`entity`).
-[`docs/VISION.md`](docs/VISION.md) is the argument; [`docs/requirements.md`](docs/requirements.md)
-is the register every row of which names the test that pins it. The guide — getting started, the
-definition language, the command, the library — is [`docs/guide/`](docs/guide/), published at
+A deterministic Rust kernel (`entity-core`), narrow storage and projection libraries, a YAML
+adapter, and the `entity` command.
+[`docs/VISION.md`](docs/VISION.md) is the internal argument; [`docs/requirements.md`](docs/requirements.md)
+is the register every row of which names the test that pins it. Human-facing product documentation
+is authored separately under [`website/docs/`](website/docs/) and published at
 <https://beyond10x.github.io/entity-runtime/>.
 
 ## A definition
@@ -120,9 +121,12 @@ $ echo $?
 |---|---|
 | `validate <file>...` | parse and register; exit 1 naming every invalid file |
 | `inspect <file>` | fields, states, rules, operations — `--format text\|json\|yaml` |
-| `graph <file>` | the lifecycle as `from --operation--> to` lines or `--format dot` |
+| `graph <file>` | lifecycle or typed references as text, Mermaid, DOT, SVG, or HTML |
 | `create --definition <file> --id <id> [--fields <json\|@path\|->]` | a `Decision` |
 | `execute --definition <file> --instance <json\|@path\|-> --operation <op> [--arguments …]` | a `Decision`, or a typed refusal |
+| `generate docs --definition <file> --out <dir>` | entity pages, graphs, OpenAPI, and AsyncAPI |
+| `generate rust-cli --definition <file> --name <name> --out <path>` | a retained, definition-specific Rust command |
+| `mcp --definition <file> --store <dir>` | schema-derived stored entity tools over stdio |
 | `store migrate-file --from OLD --to NEW [--dry-run]` | out-of-place File Store v2 migration |
 | `skill [--out PATH] [--force]` | the version-stamped Agent Skill for this CLI |
 
@@ -153,15 +157,11 @@ template or a reference path that could never resolve — each is refused when t
 because a definition that says less than its author meant is the failure this format exists to
 prevent.
 
-Rules are **two-valued**: a reference that does not resolve reads `false`. That is enough for a
-lifecycle and not enough for an evidence gate that must tell *nobody looked* from *it is wrong*;
-the three-valued extension is `story:three-valued-conditions` and is the first thing
-`engineering-protocols` needs before it can be driven by this.
-
-0.1.0 was reviewed adversarially and 0.2.0 is what that produced — thirteen new refusals, two
-corrected claims, and a purity scan that can no longer be walked past. The record, with every
-reproduction and its disposition, is
-[`docs/reviews/2026-08-25-adversarial-review.md`](docs/reviews/2026-08-25-adversarial-review.md).
+Rules are **three-valued**: a comparison against a missing value is `unknown`, distinct from a value
+that contradicts the rule. Preconditions and invariants report unobservable outcomes with every
+missing path, while `exists` remains the explicit two-valued presence check. The public
+[definition reference](https://beyond10x.github.io/entity-runtime/docs/guide/definitions) explains
+how to choose between an ordinary failure and a request for more evidence.
 
 ## Where it sits
 
@@ -199,15 +199,19 @@ this file.
 | [`crates/entity-sqlite/`](crates/entity-sqlite/) | one `BEGIN`, both writes, one `COMMIT` — the promise a file store cannot make |
 | [`crates/entity-remote/`](crates/entity-remote/) | a store somewhere else, and a hybrid over a local one whose policy is four required words with no default |
 | [`crates/entity-graph/`](crates/entity-graph/) | a definition, drawn |
+| [`crates/entity-surface/`](crates/entity-surface/) | one IO-free projection into schemas, contracts, and entity documentation |
+| [`crates/entity-shell/`](crates/entity-shell/) | provider-backed operations shared by generated commands and MCP |
+| [`crates/entity-mcp/`](crates/entity-mcp/) | synchronous schema-derived MCP tools over caller-provided IO |
 | [`crates/entity-cli/`](crates/entity-cli/) | the `entity` command |
 | [`examples/`](examples/) | definitions the gate validates |
-| [`docs/guide/`](docs/guide/) | getting started · the definition language · the command · the library |
+| [`website/docs/`](website/docs/) | human-facing product documentation for agent builders and Rust adopters |
+| [`docs/guide/`](docs/guide/) | repository-internal historical guide material; not published by the website |
 | [`docs/VISION.md`](docs/VISION.md) | why |
 | [`docs/requirements.md`](docs/requirements.md) | the register, every row pinned |
 | [`docs/design/`](docs/design/) | the kernel design (normative) and the adoption design (proposed) |
 | [`AGENTS.md`](AGENTS.md) | the working agreement: invariants, each with the check that enforces it |
 | `.engineering/` | this repository's planning store, driven through `protocol artifact` |
-| [`website/`](website/) | the Docusaurus site that renders `docs/` — <https://beyond10x.github.io/entity-runtime/> |
+| [`website/`](website/) | the standalone Docusaurus product site — <https://beyond10x.github.io/entity-runtime/> |
 | [`CHANGELOG.md`](CHANGELOG.md) | what a user of the runtime sees change |
 
 ## Licence

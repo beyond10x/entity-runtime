@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="980" viewBox="0 0 760 980" role="img" aria-labelledby="title description">
+  <title id="title">An agent proposes; Entity Runtime decides</title>
+  <desc id="description">An untrusted agent chooses an operation and arguments. A trusted shell adds canonical state, the validated definition, identity, authority, and the expected revision. Entity Runtime deterministically returns either a decision to record atomically or a typed refusal that changes nothing.</desc>
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#132838"/>
+      <stop offset="1" stop-color="#0a141f"/>
+    </linearGradient>
+    <linearGradient id="runtime" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#203d4d"/>
+      <stop offset="1" stop-color="#152a38"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0v32" fill="none" stroke="#f6f3ec" stroke-opacity=".035"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#02070b" flood-opacity=".28"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0l10 5-10 5z" fill="#8e9ca3"/>
+    </marker>
+    <style>
+      .sans { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; }
+      .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 2.2px; }
+      .heading { font-size: 27px; font-weight: 700; letter-spacing: -.4px; }
+      .copy { font-size: 16px; fill: #b9c3c5; }
+      .chip { font-size: 14px; font-weight: 650; }
+      .outcome { font-size: 20px; font-weight: 750; }
+    </style>
+  </defs>
+
+  <rect width="760" height="980" rx="22" fill="url(#paper)"/>
+  <rect width="760" height="980" rx="22" fill="url(#grid)"/>
+  <rect x="1" y="1" width="758" height="978" rx="21" fill="none" stroke="#e8e1d2" stroke-opacity=".12"/>
+
+  <text x="54" y="58" class="mono eyebrow" fill="#f0a14b">AGENT INTENT IN · DETERMINISTIC DECISION OUT</text>
+
+  <g filter="url(#shadow)">
+    <rect x="54" y="88" width="652" height="156" rx="16" fill="#182430" stroke="#f0a14b" stroke-opacity=".55" stroke-dasharray="7 6"/>
+  </g>
+  <circle cx="91" cy="127" r="15" fill="#f0a14b"/>
+  <path d="M84 128l5 5 10-13" fill="none" stroke="#0b1420" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="120" y="133" class="sans heading" fill="#f6f3ec">Agent chooses intent</text>
+  <text x="82" y="169" class="sans copy">Useful reasoning stays flexible and probabilistic.</text>
+  <g class="mono chip">
+    <rect x="82" y="190" width="144" height="34" rx="17" fill="#f0a14b" fill-opacity=".14" stroke="#f0a14b" stroke-opacity=".48"/>
+    <text x="154" y="212" text-anchor="middle" fill="#f4bd7d">operation</text>
+    <rect x="238" y="190" width="144" height="34" rx="17" fill="#f0a14b" fill-opacity=".14" stroke="#f0a14b" stroke-opacity=".48"/>
+    <text x="310" y="212" text-anchor="middle" fill="#f4bd7d">arguments</text>
+    <rect x="394" y="190" width="206" height="34" rx="17" fill="#f0a14b" fill-opacity=".14" stroke="#f0a14b" stroke-opacity=".48"/>
+    <text x="497" y="212" text-anchor="middle" fill="#f4bd7d">gathered evidence</text>
+  </g>
+
+  <path d="M380 244v52" fill="none" stroke="#8e9ca3" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="394" y="279" class="mono" font-size="12" fill="#8e9ca3">constrained proposal</text>
+
+  <path d="M54 318h652" stroke="#f0a14b" stroke-opacity=".6" stroke-dasharray="4 6"/>
+  <rect x="271" y="304" width="218" height="28" rx="14" fill="#0d1b27" stroke="#f0a14b" stroke-opacity=".5"/>
+  <text x="380" y="323" text-anchor="middle" class="mono eyebrow" fill="#f0a14b">TRUST BOUNDARY</text>
+
+  <g filter="url(#shadow)">
+    <rect x="54" y="354" width="652" height="184" rx="16" fill="#f2ede2"/>
+  </g>
+  <text x="82" y="399" class="sans heading" fill="#15212b">Trusted shell completes the context</text>
+  <text x="82" y="431" class="sans" font-size="16" fill="#53606a">Facts the model cannot promote, rewrite, or invent.</text>
+  <g class="mono chip" fill="#26343e">
+    <rect x="82" y="458" width="174" height="36" rx="8" fill="#dcd7cc"/>
+    <text x="169" y="481" text-anchor="middle">canonical state</text>
+    <rect x="268" y="458" width="188" height="36" rx="8" fill="#dcd7cc"/>
+    <text x="362" y="481" text-anchor="middle">validated definition</text>
+    <rect x="468" y="458" width="164" height="36" rx="8" fill="#dcd7cc"/>
+    <text x="550" y="481" text-anchor="middle">identity + role</text>
+    <rect x="161" y="502" width="186" height="36" rx="8" fill="#dcd7cc"/>
+    <text x="254" y="525" text-anchor="middle">trusted timestamps</text>
+    <rect x="359" y="502" width="240" height="36" rx="8" fill="#dcd7cc"/>
+    <text x="479" y="525" text-anchor="middle">expected store revision</text>
+  </g>
+
+  <path d="M380 538v50" fill="none" stroke="#8e9ca3" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="103" y="606" width="554" height="160" rx="18" fill="url(#runtime)" stroke="#4fd1a5" stroke-opacity=".55"/>
+  </g>
+  <path d="M145 642h34m-17-17v34" stroke="#4fd1a5" stroke-width="4" stroke-linecap="round"/>
+  <text x="199" y="653" class="sans heading" fill="#f6f3ec">Entity Runtime decides</text>
+  <text x="380" y="697" text-anchor="middle" class="mono" font-size="14" fill="#9de3ca">VALIDATE  →  EVALUATE  →  DECIDE</text>
+  <text x="380" y="731" text-anchor="middle" class="sans copy">IO-free kernel · closed rules · deterministic bytes</text>
+
+  <path d="M380 766v28M380 794H208v30M380 794h172v30" fill="none" stroke="#8e9ca3" stroke-width="2"/>
+  <path d="M208 824v10" stroke="#4fd1a5" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M552 824v10" stroke="#ff8a65" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="54" y="846" width="308" height="88" rx="14" fill="#153329" stroke="#4fd1a5" stroke-opacity=".65"/>
+    <rect x="398" y="846" width="308" height="88" rx="14" fill="#382128" stroke="#ff8a65" stroke-opacity=".65"/>
+  </g>
+  <circle cx="88" cy="877" r="9" fill="#4fd1a5"/>
+  <text x="110" y="883" class="sans outcome" fill="#dff8ed">Decision</text>
+  <text x="88" y="912" class="sans" font-size="15" fill="#9ed7c3">Atomically record state + events</text>
+  <circle cx="432" cy="877" r="9" fill="none" stroke="#ff8a65" stroke-width="4"/>
+  <text x="454" y="883" class="sans outcome" fill="#ffe5de">Typed refusal</text>
+  <text x="432" y="912" class="sans" font-size="15" fill="#e4aaa0">Return the reason · change nothing</text>
+
+  <text x="380" y="961" text-anchor="middle" class="mono" font-size="12" fill="#7f9098">SAME INPUTS  →  SAME DECISION  →  SAME BYTES</text>
+</svg>

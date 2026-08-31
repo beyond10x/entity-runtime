@@ -8,6 +8,16 @@ use std::collections::BTreeSet;
 
 use entity_core::{EntityDefinition, FieldDefinition, FieldKind, ObjectSchema};
 
+/// What a graph represents, so a renderer can choose the notation that says it faithfully.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GraphKind {
+    /// One entity definition's lifecycle.
+    #[default]
+    Lifecycle,
+    /// Typed references between entity definitions.
+    References,
+}
+
 /// How a node is drawn, which is the only thing a renderer needs to know about its meaning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Emphasis {
@@ -50,6 +60,8 @@ pub struct Edge {
 /// produce the same bytes. That is the whole reason there is no `HashMap` in this crate.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Graph {
+    /// The semantic kind of drawing.
+    pub kind: GraphKind,
     /// What the drawing is of.
     pub title: String,
     /// The nodes, in a stable order.
@@ -100,6 +112,7 @@ impl Graph {
             .collect();
 
         Self {
+            kind: GraphKind::Lifecycle,
             title: format!("{} v{}", definition.entity, definition.version),
             nodes,
             edges,
@@ -156,6 +169,7 @@ impl Graph {
             .collect();
 
         Self {
+            kind: GraphKind::References,
             title: "references".to_owned(),
             nodes,
             edges,

@@ -20,9 +20,9 @@ use serde_json::{json, Value};
 use std::{
     fmt::Write as _,
     fs,
-    io::{self, Read, Write},
+    io::{self, BufReader, Read, Write},
     path::{Path, PathBuf},
-    process::ExitCode,
+    process::{Command as ProcessCommand, ExitCode},
 };
 
 const ABOUT: &str =
@@ -163,6 +163,20 @@ enum Command {
         #[arg(long, value_enum, default_value_t = Format::Text)]
         format: Format,
     },
+    /// Generate public surfaces from a validated definition set.
+    Generate {
+        /// The generated artifact.
+        #[command(subcommand)]
+        command: GenerateCommand,
+    },
+    /// Mount stored entities as model-controlled MCP tools over standard input/output.
+    Mcp {
+        #[command(flatten)]
+        definition: DefinitionArg,
+        /// File Store v2 root used by every tool call.
+        #[arg(long)]
+        store: PathBuf,
+    },
     /// Work with persistent stores.
     Store {
         /// The store operation.
@@ -176,6 +190,41 @@ enum Command {
         out: Option<PathBuf>,
         /// Replace the explicitly named output file when it already exists.
         #[arg(long, requires = "out")]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum GenerateCommand {
+    /// Write standalone HTML/Markdown docs plus OpenAPI and AsyncAPI contracts.
+    Docs {
+        #[command(flatten)]
+        definition: DefinitionArg,
+        /// Destination directory.
+        #[arg(long)]
+        out: PathBuf,
+        /// Replace this exact directory only when it carries the generator marker.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Generate, compile and install a definition-specific Rust command.
+    RustCli {
+        #[command(flatten)]
+        definition: DefinitionArg,
+        /// Binary and Cargo package name.
+        #[arg(long)]
+        name: String,
+        /// Installed host-platform binary path.
+        #[arg(long)]
+        out: PathBuf,
+        /// Matching entity-runtime source checkout. Defaults to the current directory.
+        #[arg(long, default_value = ".")]
+        runtime_source: PathBuf,
+        /// Retained generated crate. Defaults to build/entity-runtime/NAME.
+        #[arg(long)]
+        build_dir: Option<PathBuf>,
+        /// Replace only exact generator-owned build and output targets.
+        #[arg(long)]
         force: bool,
     },
 }
@@ -273,6 +322,8 @@ enum Format {
 enum GraphFormat {
     /// One line per edge: `from --label--> to`.
     Text,
+    /// Mermaid state-diagram or flowchart source.
+    Mermaid,
     /// Graphviz DOT, for whoever already has `dot`.
     Dot,
     /// A standalone SVG, laid out here rather than by a tool nobody controls the version of.
@@ -479,6 +530,56 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                 Format::Yaml => write_all(out, &to_yaml(&ids)?),
             }
         }
+        Command::Generate { command } => match command {
+            GenerateCommand::Docs {
+                definition,
+                out: destination,
+                force,
+            } => {
+                let registry = load_registry(&definition.definitions)?;
+                let definitions: Vec<EntityDefinition> = registry
+                    .iter()
+                    .map(|definition| definition.as_definition().clone())
+                    .collect();
+                let bundle = entity_surface::documentation(&definitions).map_err(Failure::Usage)?;
+                install_documentation(&destination, &bundle, force)?;
+                writeln!(
+                    out,
+                    "generated {} file(s) for {} definition(s) at {}",
+                    bundle.len(),
+                    definitions.len(),
+                    destination.display()
+                )
+                .map_err(io_failure)
+            }
+            GenerateCommand::RustCli {
+                definition,
+                name,
+                out: destination,
+                runtime_source,
+                build_dir,
+                force,
+            } => generate_rust_cli(
+                &definition.definitions,
+                &name,
+                &destination,
+                &runtime_source,
+                build_dir.as_deref(),
+                force,
+                out,
+            ),
+        },
+        Command::Mcp { definition, store } => {
+            let registry = load_registry(&definition.definitions)?;
+            let file_store = FileStore::open(&store);
+            let mut server =
+                entity_mcp::Server::new(&registry, file_store).map_err(Failure::Usage)?;
+            let stdin = io::stdin();
+            let mut input = BufReader::new(stdin.lock());
+            server
+                .serve(&mut input, out)
+                .map_err(|error| Failure::Usage(format!("MCP transport failed: {error}")))
+        }
         Command::Store { command } => match command {
             StoreCommand::MigrateFile { from, to, dry_run } => {
                 let report = migrate_file_store_v1(&from, &to, dry_run)
@@ -508,6 +609,587 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
 }
 
 const ENTITY_SKILL: &str = include_str!("../assets/entity-skill.md");
+
+fn install_documentation(
+    destination: &Path,
+    bundle: &entity_surface::DocumentationBundle,
+    force: bool,
+) -> Result<(), Failure> {
+    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
+    let name = destination.file_name().ok_or_else(|| {
+        Failure::Usage("--out must name a directory, not a filesystem root".into())
+    })?;
+    fs::create_dir_all(parent)
+        .map_err(|error| Failure::Usage(format!("cannot create {}: {error}", parent.display())))?;
+    if destination.exists() {
+        if !force {
+            return Err(Failure::Usage(format!(
+                "{} already exists; pass --force to replace a generated directory",
+                destination.display()
+            )));
+        }
+        if !destination.join(entity_surface::DOCS_MARKER).is_file() {
+            return Err(Failure::Usage(format!(
+                "{} is not marked as entity-runtime generated documentation and will not be replaced",
+                destination.display()
+            )));
+        }
+    }
+    let stage = parent.join(format!(
+        ".{}.generating.{}",
+        name.to_string_lossy(),
+        std::process::id()
+    ));
+    if stage.exists() {
+        return Err(Failure::Usage(format!(
+            "staging directory {} already exists",
+            stage.display()
+        )));
+    }
+    for (relative, contents) in bundle {
+        let relative = Path::new(relative);
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+        {
+            return Err(Failure::Usage(format!(
+                "generator produced unsafe relative path {}",
+                relative.display()
+            )));
+        }
+        let path = stage.join(relative);
+        if let Some(directory) = path.parent() {
+            fs::create_dir_all(directory).map_err(|error| {
+                Failure::Usage(format!("cannot create {}: {error}", directory.display()))
+            })?;
+        }
+        fs::write(&path, contents)
+            .map_err(|error| Failure::Usage(format!("cannot write {}: {error}", path.display())))?;
+    }
+    if destination.exists() {
+        let backup = parent.join(format!(
+            ".{}.replaced.{}",
+            name.to_string_lossy(),
+            std::process::id()
+        ));
+        fs::rename(destination, &backup).map_err(|error| {
+            Failure::Usage(format!(
+                "cannot stage replacement of {}: {error}",
+                destination.display()
+            ))
+        })?;
+        if let Err(error) = fs::rename(&stage, destination) {
+            let _ = fs::rename(&backup, destination);
+            return Err(Failure::Usage(format!(
+                "cannot publish {}: {error}",
+                destination.display()
+            )));
+        }
+        fs::remove_dir_all(&backup).map_err(|error| {
+            Failure::Usage(format!(
+                "published {}, but cannot remove generated backup {}: {error}",
+                destination.display(),
+                backup.display()
+            ))
+        })
+    } else {
+        fs::rename(&stage, destination).map_err(|error| {
+            Failure::Usage(format!("cannot publish {}: {error}", destination.display()))
+        })
+    }
+}
+
+const GENERATED_CLI_MARKER: &str = ".entity-runtime-cli.json";
+
+#[allow(clippy::too_many_arguments)]
+fn generate_rust_cli(
+    definition_paths: &[PathBuf],
+    name: &str,
+    destination: &Path,
+    runtime_source: &Path,
+    requested_build_dir: Option<&Path>,
+    force: bool,
+    out: &mut impl Write,
+) -> Result<(), Failure> {
+    if !valid_binary_name(name) {
+        return Err(Failure::Usage(
+            "--name must start with an ASCII letter and contain only letters, digits, '-' or '_'"
+                .into(),
+        ));
+    }
+    let runtime_source = runtime_source.canonicalize().map_err(|error| {
+        Failure::Usage(format!(
+            "cannot resolve runtime source {}: {error}",
+            runtime_source.display()
+        ))
+    })?;
+    let workspace_manifest =
+        fs::read_to_string(runtime_source.join("Cargo.toml")).map_err(|error| {
+            Failure::Usage(format!(
+                "{} is not an entity-runtime source checkout: {error}",
+                runtime_source.display()
+            ))
+        })?;
+    let expected = format!("version = \"{}\"", env!("CARGO_PKG_VERSION"));
+    if !workspace_manifest.contains(&expected) {
+        return Err(Failure::Usage(format!(
+            "{} does not declare entity-runtime version {}; use the matching source checkout",
+            runtime_source.display(),
+            env!("CARGO_PKG_VERSION")
+        )));
+    }
+
+    let registry = load_registry(definition_paths)?;
+    let definitions: Vec<EntityDefinition> = registry
+        .iter()
+        .map(|definition| definition.as_definition().clone())
+        .collect();
+    for definition in &definitions {
+        for operation in definition.operations.keys() {
+            if ["create", "get", "list", "events"].contains(&operation.as_str()) {
+                return Err(Failure::Usage(format!(
+                    "operation {operation:?} on {} collides with a generated CLI command",
+                    definition.entity
+                )));
+            }
+        }
+    }
+    let build_dir = requested_build_dir
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("build/entity-runtime").join(name));
+    if build_dir.parent().is_none() {
+        return Err(Failure::Usage(
+            "--build-dir must not be a filesystem root".into(),
+        ));
+    }
+    if build_dir.exists() {
+        if !force || !build_dir.join(GENERATED_CLI_MARKER).is_file() {
+            return Err(Failure::Usage(format!(
+                "{} already exists and is not authorised for replacement",
+                build_dir.display()
+            )));
+        }
+        fs::remove_dir_all(&build_dir).map_err(|error| {
+            Failure::Usage(format!("cannot replace {}: {error}", build_dir.display()))
+        })?;
+    }
+    if destination.exists() && !force {
+        return Err(Failure::Usage(format!(
+            "{} already exists; pass --force to replace that exact binary",
+            destination.display()
+        )));
+    }
+    fs::create_dir_all(build_dir.join("src")).map_err(|error| {
+        Failure::Usage(format!("cannot create {}: {error}", build_dir.display()))
+    })?;
+    fs::create_dir_all(build_dir.join("definitions"))
+        .map_err(|error| Failure::Usage(format!("cannot create definitions directory: {error}")))?;
+    for (at, path) in definition_paths.iter().enumerate() {
+        let contents = fs::read_to_string(path)
+            .map_err(|error| Failure::Usage(format!("cannot read {}: {error}", path.display())))?;
+        fs::write(build_dir.join(format!("definitions/{at}.yaml")), contents).map_err(|error| {
+            Failure::Usage(format!("cannot write embedded definition: {error}"))
+        })?;
+    }
+    fs::write(
+        build_dir.join(GENERATED_CLI_MARKER),
+        format!(
+            "{{\"format\":\"entity-runtime-cli/1\",\"runtime\":\"{}\"}}\n",
+            env!("CARGO_PKG_VERSION")
+        ),
+    )
+    .map_err(|error| Failure::Usage(format!("cannot write generator marker: {error}")))?;
+
+    let manifest = generated_manifest(name, &runtime_source);
+    fs::write(build_dir.join("Cargo.toml"), manifest)
+        .map_err(|error| Failure::Usage(format!("cannot write generated Cargo.toml: {error}")))?;
+    fs::write(
+        build_dir.join("src/main.rs"),
+        generated_main(name, &definitions),
+    )
+    .map_err(|error| Failure::Usage(format!("cannot write generated Rust source: {error}")))?;
+
+    run_cargo(&build_dir, &["generate-lockfile", "--offline"])?;
+    run_cargo(&build_dir, &["build", "--release", "--locked", "--offline"])?;
+    let built = build_dir
+        .join("target/release")
+        .join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)
+        .map_err(|error| Failure::Usage(format!("cannot create {}: {error}", parent.display())))?;
+    let temporary = parent.join(format!(
+        ".{}.installing.{}",
+        destination
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new(name))
+            .to_string_lossy(),
+        std::process::id()
+    ));
+    let mut source = fs::File::open(&built).map_err(|error| {
+        Failure::Usage(format!(
+            "cannot open built binary {}: {error}",
+            built.display()
+        ))
+    })?;
+    let mut staged = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|error| {
+            Failure::Usage(format!(
+                "cannot reserve installation path {}: {error}",
+                temporary.display()
+            ))
+        })?;
+    io::copy(&mut source, &mut staged)
+        .map_err(|error| Failure::Usage(format!("cannot stage {}: {error}", built.display())))?;
+    drop(source);
+    drop(staged);
+    fs::set_permissions(
+        &temporary,
+        fs::metadata(&built)
+            .map_err(|error| {
+                Failure::Usage(format!("cannot inspect {}: {error}", built.display()))
+            })?
+            .permissions(),
+    )
+    .map_err(|error| Failure::Usage(format!("cannot preserve binary permissions: {error}")))?;
+    if destination.exists() {
+        let backup = parent.join(format!(
+            ".{}.replaced.{}",
+            destination
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new(name))
+                .to_string_lossy(),
+            std::process::id()
+        ));
+        if backup.exists() {
+            return Err(Failure::Usage(format!(
+                "replacement backup {} already exists",
+                backup.display()
+            )));
+        }
+        fs::rename(destination, &backup).map_err(|error| {
+            Failure::Usage(format!(
+                "cannot stage replacement of {}: {error}",
+                destination.display()
+            ))
+        })?;
+        if let Err(error) = fs::rename(&temporary, destination) {
+            let _ = fs::rename(&backup, destination);
+            return Err(Failure::Usage(format!(
+                "cannot install {}: {error}",
+                destination.display()
+            )));
+        }
+        fs::remove_file(&backup).map_err(|error| {
+            Failure::Usage(format!(
+                "installed {}, but cannot remove backup {}: {error}",
+                destination.display(),
+                backup.display()
+            ))
+        })?;
+    } else {
+        fs::rename(&temporary, destination).map_err(|error| {
+            Failure::Usage(format!("cannot install {}: {error}", destination.display()))
+        })?;
+    }
+    writeln!(
+        out,
+        "generated {name} at {}; source retained at {}",
+        destination.display(),
+        build_dir.display()
+    )
+    .map_err(io_failure)
+}
+
+fn valid_binary_name(name: &str) -> bool {
+    name.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn run_cargo(build_dir: &Path, arguments: &[&str]) -> Result<(), Failure> {
+    let status = ProcessCommand::new("cargo")
+        .args(arguments)
+        .current_dir(build_dir)
+        .status()
+        .map_err(|error| Failure::Usage(format!("cannot run Cargo: {error}")))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Failure::Usage(format!(
+            "Cargo {} failed with {status}",
+            arguments.join(" ")
+        )))
+    }
+}
+
+fn generated_manifest(name: &str, runtime_source: &Path) -> String {
+    let path = |member: &str| {
+        runtime_source
+            .join("crates")
+            .join(member)
+            .display()
+            .to_string()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+    };
+    format!(
+        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\nrust-version = \"1.85\"\n\n[workspace]\n\n[dependencies]\nentity-core = {{ path = \"{}\" }}\nentity-store = {{ path = \"{}\" }}\nentity-shell = {{ path = \"{}\" }}\nentity-yaml = {{ path = \"{}\" }}\nserde = {{ version = \"1\", features = [\"derive\"] }}\nserde_json = {{ version = \"1\", features = [\"arbitrary_precision\"] }}\nserde_yaml_ng = \"0.10\"\nclap = {{ version = \"4.6\", features = [\"derive\"] }}\n",
+        path("entity-core"),
+        path("entity-store"),
+        path("entity-shell"),
+        path("entity-yaml")
+    )
+}
+
+fn generated_main(name: &str, definitions: &[EntityDefinition]) -> String {
+    let mut grouped: std::collections::BTreeMap<String, Vec<&EntityDefinition>> =
+        std::collections::BTreeMap::new();
+    for definition in definitions {
+        grouped
+            .entry(definition.entity.clone())
+            .or_default()
+            .push(definition);
+    }
+    let mut source = String::new();
+    source.push_str(
+        r#"use std::{fs, path::PathBuf, process::ExitCode};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use entity_core::Registry;
+use entity_shell::StoredRuntime;
+use entity_store::{FileStore, Recording};
+use serde::Serialize;
+use serde_json::Value;
+
+#[derive(Parser)]
+#[command(version, about = "Definition-specific Entity Runtime command")]
+struct Cli {
+    #[arg(long)]
+    store: PathBuf,
+    #[command(subcommand)]
+    entity: EntityCommand,
+}
+
+#[derive(Subcommand)]
+enum EntityCommand {
+"#,
+    );
+    for (at, entity) in grouped.keys().enumerate() {
+        let _ = writeln!(
+            source,
+            "    #[command(name = {})]\n    E{at} {{ #[command(subcommand)] command: E{at}Command }},",
+            rust_string(entity)
+        );
+    }
+    source.push_str("}\n\n");
+    for (at, versions) in grouped.values().enumerate() {
+        let mut operations = std::collections::BTreeSet::new();
+        for definition in versions {
+            operations.extend(definition.operations.keys().cloned());
+        }
+        let _ = writeln!(source, "#[derive(Subcommand)]\nenum E{at}Command {{");
+        source.push_str(
+            "    Create(CreateArgs),\n    Get(IdArgs),\n    List(ListArgs),\n    Events(IdArgs),\n",
+        );
+        for (operation_at, operation) in operations.iter().enumerate() {
+            let _ = writeln!(
+                source,
+                "    #[command(name = {})]\n    O{operation_at}(OperationArgs),",
+                rust_string(operation)
+            );
+        }
+        source.push_str("}\n\n");
+    }
+    source.push_str(
+        r#"#[derive(Args)]
+struct CreateArgs {
+    #[arg(long)] id: String,
+    #[arg(long)] version: Option<u32>,
+    #[arg(long, default_value = "{}")] fields: String,
+    #[command(flatten)] recording: RecordingArgs,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)] format: OutputFormat,
+}
+
+#[derive(Args)]
+struct IdArgs {
+    #[arg(long)] id: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)] format: OutputFormat,
+}
+
+#[derive(Args)]
+struct ListArgs {
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)] format: OutputFormat,
+}
+
+#[derive(Args)]
+struct OperationArgs {
+    #[arg(long)] id: String,
+    #[arg(long)] expected_revision: u64,
+    #[arg(long, default_value = "{}")] arguments: String,
+    #[command(flatten)] recording: RecordingArgs,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)] format: OutputFormat,
+}
+
+#[derive(Args)]
+struct RecordingArgs {
+    #[arg(long)] record_id: String,
+    #[arg(long)] recorded_at: String,
+    #[arg(long)] actor: Option<String>,
+    #[arg(long)] no_actor: bool,
+    #[arg(long)] correlation: Option<String>,
+    #[arg(long)] causation: Option<String>,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum OutputFormat { Text, Json, Yaml }
+
+enum Action {
+    Create(CreateArgs), Get(IdArgs), List(ListArgs), Events(IdArgs),
+    Execute(&'static str, OperationArgs),
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    let (entity, action) = match cli.entity {
+"#,
+    );
+    for (at, (entity, versions)) in grouped.iter().enumerate() {
+        let mut operations = std::collections::BTreeSet::new();
+        for definition in versions {
+            operations.extend(definition.operations.keys().cloned());
+        }
+        let _ = writeln!(
+            source,
+            "        EntityCommand::E{at} {{ command }} => ({}, match command {{",
+            rust_string(entity)
+        );
+        source.push_str(&format!(
+            "            E{at}Command::Create(args) => Action::Create(args),\n            E{at}Command::Get(args) => Action::Get(args),\n            E{at}Command::List(args) => Action::List(args),\n            E{at}Command::Events(args) => Action::Events(args),\n"
+        ));
+        for (operation_at, operation) in operations.iter().enumerate() {
+            let _ = writeln!(
+                source,
+                "            E{at}Command::O{operation_at}(args) => Action::Execute({}, args),",
+                rust_string(operation)
+            );
+        }
+        source.push_str("        }),\n");
+    }
+    source.push_str(
+        r#"    };
+    match run(&cli.store, entity, action) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => { eprintln!("refused: {error}"); ExitCode::from(1) }
+    }
+}
+
+fn run(store_path: &std::path::Path, entity: &str, action: Action) -> Result<(), String> {
+    let registry = registry()?;
+    let mut store = FileStore::open(store_path);
+    let mut runtime = StoredRuntime::new(&registry, &mut store);
+    match action {
+        Action::Create(args) => {
+            let versions: Vec<u32> = registry.versions(entity).map(|item| item.version).collect();
+            let version = match (args.version, versions.as_slice()) {
+                (Some(version), _) if versions.contains(&version) => version,
+                (None, [only]) => *only,
+                (Some(version), _) => return Err(format!("version {version} is not one of {versions:?}")),
+                (None, _) => return Err(format!("--version is required; choose one of {versions:?}")),
+            };
+            let fields = value(&args.fields, "--fields")?;
+            let commit = runtime.create(entity, version, args.id, fields, &recording(args.recording)?)
+                .map_err(|error| error.to_string())?;
+            let text = format!("{} {} is {} (revision {})", commit.instance.entity, commit.instance.id, commit.instance.lifecycle_state, commit.instance.revision);
+            emit(&commit, args.format, &text)
+        }
+        Action::Get(args) => {
+            let instance = runtime.get(entity, &args.id).map_err(|error| error.to_string())?;
+            let text = format!("{} {} is {} (revision {})", instance.entity, instance.id, instance.lifecycle_state, instance.revision);
+            emit(&instance, args.format, &text)
+        }
+        Action::List(args) => {
+            let ids = runtime.list(entity).map_err(|error| error.to_string())?;
+            emit(&ids, args.format, &ids.join("\n"))
+        }
+        Action::Events(args) => {
+            let events = runtime.events(entity, &args.id).map_err(|error| error.to_string())?;
+            let text = events.iter().map(|event| event.event_type.as_str()).collect::<Vec<_>>().join("\n");
+            emit(&events, args.format, &text)
+        }
+        Action::Execute(operation, args) => {
+            let arguments = value(&args.arguments, "--arguments")?;
+            let commit = runtime.execute(entity, &args.id, args.expected_revision, operation, arguments, &recording(args.recording)?)
+                .map_err(|error| error.to_string())?;
+            let text = format!("{} {} is {} (revision {})", commit.instance.entity, commit.instance.id, commit.instance.lifecycle_state, commit.instance.revision);
+            emit(&commit, args.format, &text)
+        }
+    }
+}
+
+fn registry() -> Result<Registry, String> {
+    let mut registry = Registry::new();
+    for text in DEFINITIONS {
+        let definition = entity_yaml::from_str(text).map_err(|error| error.to_string())?;
+        registry.register(definition).map_err(|error| error.to_string())?;
+    }
+    registry.validate_all().map_err(|error| error.to_string())?;
+    Ok(registry)
+}
+
+const DEFINITIONS: &[&str] = &[
+"#,
+    );
+    for at in 0..definitions.len() {
+        let _ = writeln!(source, "    include_str!(\"../definitions/{at}.yaml\"),");
+    }
+    source.push_str(
+        r#"];
+
+fn recording(args: RecordingArgs) -> Result<Recording, String> {
+    if args.actor.is_some() == args.no_actor {
+        return Err("pass exactly one of --actor and --no-actor".into());
+    }
+    Ok(Recording {
+        record_id: args.record_id,
+        recorded_at: args.recorded_at,
+        correlation: args.correlation,
+        causation: args.causation,
+        actor: args.actor,
+    })
+}
+
+fn value(source: &str, flag: &str) -> Result<Value, String> {
+    let text = if let Some(path) = source.strip_prefix('@') {
+        fs::read_to_string(path).map_err(|error| format!("cannot read {path} for {flag}: {error}"))?
+    } else {
+        source.to_owned()
+    };
+    serde_json::from_str(&text).or_else(|json| {
+        serde_yaml_ng::from_str(&text).map_err(|yaml| format!("{flag} is not JSON or YAML: {yaml} (as JSON: {json})"))
+    })
+}
+
+fn emit<T: Serialize>(value: &T, format: OutputFormat, text: &str) -> Result<(), String> {
+    match format {
+        OutputFormat::Text => println!("{text}"),
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(value).map_err(|error| error.to_string())?),
+        OutputFormat::Yaml => print!("{}", serde_yaml_ng::to_string(value).map_err(|error| error.to_string())?),
+    }
+    Ok(())
+}
+"#,
+    );
+    let _ = writeln!(source, "// Generated by entity {name}.");
+    source
+}
+
+fn rust_string(value: &str) -> String {
+    serde_json::to_string(value).expect("a string serializes")
+}
 
 fn render_skill(stdout: &mut impl Write, path: Option<&Path>, force: bool) -> Result<(), Failure> {
     let document = ENTITY_SKILL.replace("{{VERSION}}", env!("CARGO_PKG_VERSION"));
@@ -906,6 +1588,7 @@ fn graph(drawing: &entity_graph::Graph, format: GraphFormat) -> String {
     let layout = entity_graph::Layout::of(drawing);
     match format {
         GraphFormat::Text => entity_graph::render::text(drawing),
+        GraphFormat::Mermaid => entity_graph::render::mermaid(drawing),
         GraphFormat::Dot => entity_graph::render::dot(drawing),
         GraphFormat::Svg => entity_graph::render::svg(drawing, &layout),
         GraphFormat::Html => entity_graph::render::html(drawing, &layout),

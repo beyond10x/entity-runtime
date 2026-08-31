@@ -21,8 +21,10 @@ A change here that moves none of these is a question for the operator, not a tas
 ## What this repository is
 
 A **library and a command**: `entity-core`, an IO-free deterministic kernel that executes entity
-types declared as data; `entity-yaml`, the text-to-definition adapter; `entity-cli`, the `entity`
-command that is the reference shell around the kernel. It is not a database, a message bus, a
+types declared as data; provider crates outside the kernel; `entity-graph` and `entity-surface`,
+which project validated definitions; `entity-shell`, which shares provider-backed operations;
+`entity-mcp`, which serves those operations over caller-provided stdio; and `entity-cli`, the
+`entity` command that owns filesystem and process IO. It is not a database, a message bus, a
 workflow engine or a scripting runtime, and it holds no credential and reaches no network.
 
 ## Which documents are normative
@@ -172,7 +174,9 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
   says which way the arrow points. Both repositories are public.
 * **Provider interfaces live outside `entity-core`.** A state store, an event store, a search
   index, a blob store — each is a crate that depends on the kernel, never the reverse.
-* **The shell owns IO.** `entity-cli` reads files and stdin and prints; nothing else here does.
+* **The shell owns IO.** `entity-cli` reads files and stdin, invokes Cargo for explicit Rust CLI
+  generation, and prints. Library crates accept values, providers, readers or writers from their
+  caller; none selects a path, opens a listener, reads an environment variable or starts a process.
   If a new verb needs a clock, the clock is read in the CLI and passed in as an argument.
 * **No step of `task check` calls a network service of its own** — nothing downloads a schema,
   resolves a remote `$ref` or calls an API — and no step spends money. The one exception is
@@ -193,12 +197,15 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 
 ## The website
 
-`website/` is a Docusaurus site that renders **this repository's `docs/` tree** — there is one copy
-of every document, and the site adds only the landing page. It is published at
+`website/` is a Docusaurus site with a human-facing product corpus under `website/docs/`. It does
+**not** render or link the repository-root `docs/` tree: requirements, designs, plans and reviews
+are the engineering record, not adopter documentation. The public site is published at
 <https://beyond10x.github.io/entity-runtime/> by `.github/workflows/pages.yml` on every push to
 `main`; pull requests get the build without the deploy. `onBrokenLinks: 'throw'` means a dangling
-link in `docs/` fails that build. `task site-build` runs the same locally; it is deliberately not a
-step of `task check`, which reaches no network.
+link in `website/docs/` fails that build. Public pages link one another, releases and source
+examples; they do not route a reader into `.engineering/`, requirements registers, versioned
+designs or reviews. `task site-build` runs the same locally; it is deliberately not a step of
+`task check`, which reaches no network.
 
 ## Where work is tracked
 
@@ -207,7 +214,7 @@ step of `task check`, which reaches no network.
 | the store — initiative, epics, stories, ADRs | `.engineering/planning/`, validated by `protocol artifact validate` |
 | the requirements and their pins | `docs/requirements.md` |
 | designs, normative and proposed | `docs/design/` |
-| the adopter's guide — what the site's navbar points at | `docs/guide/` |
+| the human-facing product guide — what the site's navbar points at | `website/docs/` |
 | what a user of the runtime sees change | `CHANGELOG.md` |
 | the order the adoption goes in, and the decisions taken | `docs/roadmap.md` |
 | the AEP artifact model as definitions, and the pinned upstream it is checked against | `examples/aep/`, `crates/entity-yaml/tests/fixtures/aep-lifecycles/` |

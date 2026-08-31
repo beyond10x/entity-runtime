@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="820" viewBox="0 0 760 820" role="img" aria-labelledby="title description">
+  <title id="title">A trusted shell around Entity Runtime</title>
+  <desc id="description">The shell loads canonical data, authenticates the actor, reads trusted time, and assigns provenance. Entity Runtime returns a decision or typed refusal. Refusals write nothing. Decisions become recorded commits, are stored with a revision expectation, and only then lead to external side effects.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#132838"/>
+      <stop offset="1" stop-color="#0a141f"/>
+    </linearGradient>
+    <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M30 0H0v30" fill="none" stroke="#f6f3ec" stroke-opacity=".035"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0l10 5-10 5z" fill="#87979e"/>
+    </marker>
+    <style>
+      .sans { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; }
+      .label { font-size: 15px; font-weight: 700; }
+      .heading { font-size: 24px; font-weight: 750; }
+      .copy { font-size: 14px; }
+    </style>
+  </defs>
+  <rect width="760" height="820" rx="20" fill="url(#bg)"/>
+  <rect width="760" height="820" rx="20" fill="url(#grid)"/>
+  <rect x="1" y="1" width="758" height="818" rx="19" fill="none" stroke="#e8e1d2" stroke-opacity=".12"/>
+
+  <text x="42" y="46" class="mono" font-size="12" font-weight="700" letter-spacing="2" fill="#f0a14b">THE SHELL OWNS IO AND TRUSTED FACTS</text>
+  <g class="sans label" text-anchor="middle">
+    <rect x="42" y="68" width="326" height="54" rx="10" fill="#f2ede2"/>
+    <text x="205" y="101" fill="#26343e">Load definition + canonical state</text>
+    <rect x="392" y="68" width="326" height="54" rx="10" fill="#f2ede2"/>
+    <text x="555" y="101" fill="#26343e">Authenticate actor + derive authority</text>
+    <rect x="42" y="138" width="326" height="54" rx="10" fill="#f2ede2"/>
+    <text x="205" y="171" fill="#26343e">Read trusted time</text>
+    <rect x="392" y="138" width="326" height="54" rx="10" fill="#f2ede2"/>
+    <text x="555" y="171" fill="#26343e">Assign record + correlation IDs</text>
+  </g>
+
+  <path d="M205 122v12M555 122v12M205 192v28h350v-28M380 220v28" fill="none" stroke="#87979e" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="162" y="260" width="436" height="104" rx="16" fill="#203d4d" stroke="#4fd1a5" stroke-opacity=".6"/>
+  <circle cx="208" cy="312" r="16" fill="#4fd1a5"/>
+  <path d="M201 312l5 5 11-13" fill="none" stroke="#0b1b22" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="239" y="307" class="sans heading" fill="#f6f3ec">Runtime::execute</text>
+  <text x="239" y="333" class="mono" font-size="13" fill="#9de3ca">PURE · DETERMINISTIC · IO-FREE</text>
+
+  <path d="M380 364v28M380 392H208v25M380 392h172v25" fill="none" stroke="#87979e" stroke-width="2"/>
+  <path d="M208 417v8" stroke="#4fd1a5" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M552 417v8" stroke="#ff8a65" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="42" y="438" width="326" height="84" rx="13" fill="#153329" stroke="#4fd1a5" stroke-opacity=".65"/>
+  <circle cx="78" cy="471" r="8" fill="#4fd1a5"/>
+  <text x="101" y="478" class="sans heading" font-size="21" fill="#dcf6e9">Decision</text>
+  <text x="78" y="503" class="sans copy" fill="#9ed7c3">Complete next state + domain events</text>
+  <rect x="392" y="438" width="326" height="84" rx="13" fill="#382128" stroke="#ff8a65" stroke-opacity=".65"/>
+  <circle cx="428" cy="471" r="8" fill="none" stroke="#ff8a65" stroke-width="3"/>
+  <text x="451" y="478" class="sans heading" font-size="21" fill="#ffe5de">CoreError</text>
+  <text x="428" y="503" class="sans copy" fill="#e4aaa0">Structured refusal · write nothing</text>
+
+  <path d="M205 522v46" fill="none" stroke="#4fd1a5" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="42" y="580" width="326" height="74" rx="12" fill="#263846" stroke="#71818a" stroke-opacity=".55"/>
+  <text x="205" y="612" text-anchor="middle" class="mono" font-size="16" font-weight="700" fill="#eef0ea">RecordedCommit::new</text>
+  <text x="205" y="636" text-anchor="middle" class="sans copy" fill="#aeb9bc">Bind decision to provenance</text>
+
+  <path d="M205 654v34" fill="none" stroke="#4fd1a5" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="42" y="700" width="326" height="74" rx="12" fill="#263846" stroke="#71818a" stroke-opacity=".55"/>
+  <text x="205" y="732" text-anchor="middle" class="mono" font-size="16" font-weight="700" fill="#eef0ea">Store::commit_recorded</text>
+  <text x="205" y="756" text-anchor="middle" class="sans copy" fill="#aeb9bc">Atomically check expected revision</text>
+
+  <path d="M368 737h63" fill="none" stroke="#87979e" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="444" y="690" width="274" height="94" rx="12" fill="#1b2934" stroke="#f0a14b" stroke-opacity=".55" stroke-dasharray="6 5"/>
+  <text x="581" y="723" text-anchor="middle" class="sans" font-size="18" font-weight="700" fill="#f3c28b">After durable recording</text>
+  <text x="581" y="749" text-anchor="middle" class="sans copy" fill="#b9c3c5">Publish events or perform</text>
+  <text x="581" y="769" text-anchor="middle" class="sans copy" fill="#b9c3c5">authorized side effects</text>
+
+  <path d="M552 522v94" fill="none" stroke="#ff8a65" stroke-width="2"/>
+  <path d="M535 600l34 34m0-34l-34 34" stroke="#ff8a65" stroke-width="4" stroke-linecap="round"/>
+  <text x="552" y="665" text-anchor="middle" class="mono" font-size="12" fill="#e4aaa0">NO COMMIT · NO EVENT</text>
+</svg>

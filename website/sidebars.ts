@@ -2,38 +2,48 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
-    {type: 'doc', id: 'guide/getting-started', label: 'Getting started'},
     {
       type: 'category',
-      label: 'Guide',
+      label: 'Start here',
       collapsed: false,
       items: [
-        {type: 'doc', id: 'guide/definitions', label: 'The definition language'},
-        {type: 'doc', id: 'guide/cli', label: 'The entity command'},
-        {type: 'doc', id: 'guide/file-store-migration', label: 'File Store migration'},
-        {type: 'doc', id: 'guide/library', label: 'The library'},
+        {type: 'doc', id: 'intro', label: 'What Entity Runtime does'},
+        {type: 'doc', id: 'agentic-systems', label: 'Why agents need it'},
+        {type: 'doc', id: 'guide/getting-started', label: 'Refund quickstart'},
       ],
     },
-    {type: 'doc', id: 'VISION', label: 'Vision'},
-    {type: 'doc', id: 'requirements', label: 'Requirements register'},
-    {type: 'doc', id: 'roadmap', label: 'Roadmap (proposed)'},
     {
-      type: 'doc',
-      id: 'reviews/2026-08-25-adversarial-review',
-      label: 'Adversarial review (0.1.0)',
+      type: 'category',
+      label: 'Build',
+      collapsed: false,
+      items: [
+        {type: 'doc', id: 'guide/modeling', label: 'Model policy as data'},
+        {type: 'doc', id: 'guide/graphs', label: 'Render graphs'},
+        {type: 'doc', id: 'guide/agent-integration', label: 'Connect an agent safely'},
+        {type: 'doc', id: 'guide/mcp', label: 'Mount MCP tools'},
+        {type: 'doc', id: 'guide/generated-docs', label: 'Generate entity docs'},
+        {type: 'doc', id: 'guide/generated-cli', label: 'Generate a Rust CLI'},
+        {type: 'doc', id: 'guide/storage', label: 'Persist and replay decisions'},
+      ],
     },
     {
       type: 'category',
-      label: 'Design',
+      label: 'Reference',
       collapsed: false,
       items: [
-        {type: 'doc', id: 'design/kernel-v0.2', label: 'The kernel v0.2 (normative)'},
-        {type: 'doc', id: 'design/store-v0.2', label: 'The store v0.2 (normative)'},
-        {
-          type: 'doc',
-          id: 'design/engineering-protocols-adoption-v0.1',
-          label: 'Driving engineering-protocols (proposed)',
-        },
+        {type: 'doc', id: 'guide/definitions', label: 'Definition language'},
+        {type: 'doc', id: 'guide/cli', label: 'CLI'},
+        {type: 'doc', id: 'guide/refusals', label: 'Typed refusals'},
+        {type: 'doc', id: 'guide/library', label: 'Rust libraries'},
+        {type: 'doc', id: 'guarantees', label: 'Guarantees and limits'},
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Operate',
+      collapsed: false,
+      items: [
+        {type: 'doc', id: 'guide/file-store-migration', label: 'File Store v2 migration'},
       ],
     },
   ],

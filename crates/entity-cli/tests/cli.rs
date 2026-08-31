@@ -15,6 +15,10 @@ fn order_yaml() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/order.yaml")
 }
 
+fn refund_yaml() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/refund.yaml")
+}
+
 fn run(args: &[&str], stdin: Option<&str>) -> Output {
     let mut child = entity()
         .args(args)
@@ -229,6 +233,25 @@ fn inspect_and_graph_describe_the_definition() {
         dot.contains("\"submitted\" -> \"approved\" [label=\"approve\"];"),
         "{dot}"
     );
+}
+
+#[test]
+fn graph_mermaid_uses_state_notation_with_inert_labels() {
+    let output = run(
+        &[
+            "graph",
+            refund_yaml().to_str().unwrap(),
+            "--format",
+            "mermaid",
+        ],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let diagram = stdout(&output);
+    assert!(diagram.starts_with("stateDiagram-v2\n"), "{diagram}");
+    assert!(diagram.contains("state \"draft\" as n0"), "{diagram}");
+    assert!(diagram.contains("n1 --> n2: approve"), "{diagram}");
+    assert!(diagram.contains("n3 --> [*]"), "{diagram}");
 }
 
 #[test]
@@ -1069,4 +1092,236 @@ fn file_store_migration_is_out_of_place_and_dry_run_writes_nothing() {
         .output()
         .expect("runs");
     assert_eq!(String::from_utf8_lossy(&listed.stdout), "one\n");
+}
+
+#[test]
+fn generated_documentation_is_complete_and_replaces_only_generator_owned_output() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-docs");
+    let _ = fs::remove_dir_all(&root);
+    let output_dir = root.join("refund-reference");
+    let generated = entity()
+        .args(["generate", "docs", "--definition"])
+        .arg(refund_yaml())
+        .arg("--out")
+        .arg(&output_dir)
+        .output()
+        .expect("runs");
+    assert!(
+        generated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    for relative in [
+        ".entity-runtime-docs.json",
+        "index.html",
+        "index.md",
+        "entities/refund.html",
+        "entities/refund.md",
+        "openapi.yaml",
+        "openapi.json",
+        "asyncapi.yaml",
+        "asyncapi.json",
+    ] {
+        assert!(output_dir.join(relative).is_file(), "missing {relative}");
+    }
+    let page = fs::read_to_string(output_dir.join("entities/refund.html")).expect("entity page");
+    for expected in [
+        "RefundDrafted",
+        "actor_role",
+        "large_refunds_need_a_human",
+        "RefundApproved",
+    ] {
+        assert!(
+            page.contains(expected),
+            "missing {expected:?} in generated page"
+        );
+    }
+
+    let refused = entity()
+        .args(["generate", "docs", "--definition"])
+        .arg(refund_yaml())
+        .arg("--out")
+        .arg(&output_dir)
+        .output()
+        .expect("runs");
+    assert_eq!(refused.status.code(), Some(2));
+
+    let arbitrary = root.join("arbitrary");
+    fs::create_dir_all(&arbitrary).expect("arbitrary directory");
+    fs::write(arbitrary.join("keep"), "operator data").expect("sentinel");
+    let refused = entity()
+        .args(["generate", "docs", "--definition"])
+        .arg(refund_yaml())
+        .arg("--out")
+        .arg(&arbitrary)
+        .arg("--force")
+        .output()
+        .expect("runs");
+    assert_eq!(refused.status.code(), Some(2));
+    assert_eq!(
+        fs::read_to_string(arbitrary.join("keep")).expect("untouched sentinel"),
+        "operator data"
+    );
+}
+
+#[test]
+fn mcp_command_keeps_stdout_as_json_rpc_and_lists_definition_derived_tools() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-mcp");
+    let _ = fs::remove_dir_all(&root);
+    let store = root.join("store");
+    let transcript = concat!(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"server/discover\"}\n",
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}\n",
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}\n"
+    );
+    let mut child = entity()
+        .args(["mcp", "--definition"])
+        .arg(refund_yaml())
+        .arg("--store")
+        .arg(store)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the entity binary runs");
+    child
+        .stdin
+        .take()
+        .expect("piped stdin")
+        .write_all(transcript.as_bytes())
+        .expect("transcript written");
+    let output = child.wait_with_output().expect("server exits at EOF");
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(output.stderr.is_empty(), "{}", stderr(&output));
+    let responses: Vec<serde_json::Value> = stdout(&output)
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("one JSON-RPC response per line"))
+        .collect();
+    assert_eq!(responses.len(), 3);
+    assert_eq!(responses[0]["result"]["protocolVersions"][0], "2026-07-28");
+    assert_eq!(responses[1]["result"]["protocolVersion"], "2025-11-25");
+    let names: Vec<&str> = responses[2]["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("name"))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "refund.approve",
+            "refund.create",
+            "refund.events",
+            "refund.get",
+            "refund.list",
+            "refund.reject",
+            "refund.submit"
+        ]
+    );
+}
+
+#[test]
+fn generated_rust_cli_compiles_and_executes_definition_specific_commands() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-rust-cli");
+    let _ = fs::remove_dir_all(&root);
+    let binary = root.join(format!("refundctl{}", std::env::consts::EXE_SUFFIX));
+    let build_dir = root.join("source");
+    let runtime_source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let generated = entity()
+        .args(["generate", "rust-cli", "--definition"])
+        .arg(refund_yaml())
+        .args(["--name", "refundctl", "--out"])
+        .arg(&binary)
+        .arg("--runtime-source")
+        .arg(runtime_source)
+        .arg("--build-dir")
+        .arg(&build_dir)
+        .output()
+        .expect("runs");
+    assert!(
+        generated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    assert!(binary.is_file(), "generated host binary");
+    assert!(build_dir.join("src/main.rs").is_file(), "retained source");
+
+    let store = root.join("store");
+    let created = Command::new(&binary)
+        .arg("--store")
+        .arg(&store)
+        .args([
+            "refund",
+            "create",
+            "--id",
+            "one",
+            "--fields",
+            r#"{"order_id":"order-1","amount_cents":2500,"evidence_count":1}"#,
+            "--record-id",
+            "create-one",
+            "--recorded-at",
+            "2026-08-31T10:00:00Z",
+            "--actor",
+            "test",
+        ])
+        .output()
+        .expect("generated command runs");
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let submitted = Command::new(&binary)
+        .arg("--store")
+        .arg(&store)
+        .args([
+            "refund",
+            "submit",
+            "--id",
+            "one",
+            "--expected-revision",
+            "1",
+            "--record-id",
+            "submit-one",
+            "--recorded-at",
+            "2026-08-31T10:01:00Z",
+            "--actor",
+            "test",
+        ])
+        .output()
+        .expect("direct operation runs");
+    assert!(
+        submitted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&submitted.stdout).expect("recorded decision JSON");
+    assert_eq!(value["instance"]["lifecycle_state"], "submitted");
+
+    let stale = Command::new(&binary)
+        .arg("--store")
+        .arg(&store)
+        .args([
+            "refund",
+            "reject",
+            "--id",
+            "one",
+            "--expected-revision",
+            "1",
+            "--arguments",
+            r#"{"reason":"late"}"#,
+            "--record-id",
+            "stale-one",
+            "--recorded-at",
+            "2026-08-31T10:02:00Z",
+            "--actor",
+            "test",
+        ])
+        .output()
+        .expect("stale direct operation runs");
+    assert_eq!(stale.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&stale.stderr).contains("expected revision 1, found revision 2")
+    );
 }

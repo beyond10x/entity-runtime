@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="390" viewBox="0 0 760 390" role="img" aria-labelledby="title description">
+  <title id="title">The Entity Runtime decision equation</title>
+  <desc id="description">A definition, current instance, named operation, and arguments enter Entity Runtime. The deterministic result is either a complete decision or a typed refusal.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#132838"/>
+      <stop offset="1" stop-color="#0a141f"/>
+    </linearGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0v28" fill="none" stroke="#f6f3ec" stroke-opacity=".035"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0l10 5-10 5z" fill="#87979e"/>
+    </marker>
+    <style>
+      .sans { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; }
+      .input { font-size: 16px; font-weight: 700; }
+      .result { font-size: 19px; font-weight: 750; }
+    </style>
+  </defs>
+  <rect width="760" height="390" rx="20" fill="url(#bg)"/>
+  <rect width="760" height="390" rx="20" fill="url(#grid)"/>
+  <rect x="1" y="1" width="758" height="388" rx="19" fill="none" stroke="#e8e1d2" stroke-opacity=".12"/>
+
+  <text x="40" y="44" class="mono" font-size="12" font-weight="700" letter-spacing="2" fill="#f0a14b">EXPLICIT INPUTS</text>
+  <g class="sans input" text-anchor="middle">
+    <rect x="40" y="64" width="158" height="52" rx="10" fill="#263846" stroke="#71818a" stroke-opacity=".55"/>
+    <text x="119" y="96" fill="#eef0ea">Definition</text>
+    <rect x="214" y="64" width="158" height="52" rx="10" fill="#263846" stroke="#71818a" stroke-opacity=".55"/>
+    <text x="293" y="96" fill="#eef0ea">Current instance</text>
+    <rect x="388" y="64" width="158" height="52" rx="10" fill="#263846" stroke="#71818a" stroke-opacity=".55"/>
+    <text x="467" y="96" fill="#eef0ea">Operation</text>
+    <rect x="562" y="64" width="158" height="52" rx="10" fill="#263846" stroke="#71818a" stroke-opacity=".55"/>
+    <text x="641" y="96" fill="#eef0ea">Arguments</text>
+  </g>
+
+  <path d="M119 116v28h522v-28M293 116v28M467 116v28M380 144v26" fill="none" stroke="#87979e" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="206" y="182" width="348" height="82" rx="15" fill="#203d4d" stroke="#4fd1a5" stroke-opacity=".6"/>
+  <circle cx="250" cy="223" r="15" fill="#4fd1a5"/>
+  <path d="M243 223l5 5 10-12" fill="none" stroke="#0b1b22" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="280" y="218" class="sans" font-size="24" font-weight="750" fill="#f6f3ec">Entity Runtime</text>
+  <text x="280" y="242" class="mono" font-size="12" fill="#9de3ca">VALIDATE · EVALUATE · DECIDE</text>
+
+  <path d="M380 264v25M380 289H205v20M380 289h175v20" fill="none" stroke="#87979e" stroke-width="2"/>
+  <path d="M205 309v8" stroke="#4fd1a5" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M555 309v8" stroke="#ff8a65" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="328" width="330" height="42" rx="11" fill="#153329" stroke="#4fd1a5" stroke-opacity=".65"/>
+  <circle cx="71" cy="349" r="7" fill="#4fd1a5"/>
+  <text x="91" y="356" class="sans result" fill="#dcf6e9">Complete decision</text>
+  <rect x="390" y="328" width="330" height="42" rx="11" fill="#382128" stroke="#ff8a65" stroke-opacity=".65"/>
+  <circle cx="421" cy="349" r="7" fill="none" stroke="#ff8a65" stroke-width="3"/>
+  <text x="441" y="356" class="sans result" fill="#ffe5de">Typed refusal</text>
+</svg>

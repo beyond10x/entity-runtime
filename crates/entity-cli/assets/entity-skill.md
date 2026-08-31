@@ -14,7 +14,9 @@ Read the repository's `AGENTS.md` or equivalent before changing definitions or s
 
 1. Validate the complete definition set together with `entity validate <files...>`. A reference to
    another entity is valid only when that type is in the same set.
-2. Use `entity inspect` or `entity graph` to understand states, operations and references.
+2. Use `entity inspect` or `entity graph --format text|mermaid|dot|svg|html` to understand states,
+   operations and references. Add `--references` and pass the complete definition set to see typed
+   relationships.
 3. The caller supplies every identifier and every fact from the outside world. Do not invent a
    timestamp, actor, record id, correlation or causation value.
 4. A stored `create` or `execute` requires complete recording metadata. Use exactly one of
@@ -35,3 +37,16 @@ directory for rollback. Migrated legacy history begins at an unverified snapshot
 claim it was replay-verified from genesis.
 
 Use `entity skill --out .agents/skills/entity/SKILL.md` to install a fresh copy of this document.
+
+## Generated surfaces
+
+- `entity generate docs --definition TYPE.yaml --out REFERENCE` writes standalone HTML/Markdown,
+  OpenAPI and AsyncAPI. Regeneration requires `--force`, and only a generator-marked directory can
+  be replaced.
+- `entity mcp --definition TYPE.yaml --store STORE` mounts `<entity>.create|get|list|events|<op>`
+  tools over stdio. Keep definitions and the store path in trusted host configuration. Mutating
+  tools require recording metadata; operation tools also require the observed revision.
+- `entity generate rust-cli --definition TYPE.yaml --name NAME --out PATH --runtime-source SOURCE`
+  builds a definition-specific host binary from a matching local checkout with Cargo locked and
+  offline. Its generated source remains under `build/entity-runtime/NAME` unless `--build-dir`
+  selects another location.

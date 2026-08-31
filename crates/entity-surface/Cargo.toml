@@ -1,0 +1,17 @@
+[package]
+name = "entity-surface"
+description = "Deterministic public schemas, contracts and documentation projected from entity definitions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+entity-core = { path = "../entity-core", version = "0.16.0" }
+entity-graph = { path = "../entity-graph", version = "0.16.0" }
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+
+[lints]
+workspace = true
