@@ -30,13 +30,13 @@ impl QueryCursor {
     }
 }
 
-/// A provider-neutral exact-match query over one entity type.
+/// A provider-neutral containment query over one entity type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentQuery {
     /// Entity discriminator stored beside the document.
     pub entity: String,
-    /// Exact matches against top-level instance fields.
+    /// Recursive JSON containment predicates rooted at instance fields.
     #[serde(default)]
     pub matching: BTreeMap<String, Value>,
     /// Requested page size.
@@ -59,7 +59,7 @@ impl DocumentQuery {
         }
     }
 
-    /// Adds one exact top-level field predicate.
+    /// Adds one recursive field-containment predicate.
     #[must_use]
     pub fn matching(mut self, field: impl Into<String>, value: Value) -> Self {
         self.matching.insert(field.into(), value);
@@ -184,7 +184,7 @@ impl From<StoreError> for QueryError {
 
 /// Optional provider capability for stable paginated document queries.
 pub trait DocumentQueryProvider {
-    /// Executes one exact-match query without requiring callers to enumerate the store.
+    /// Executes one containment query without requiring callers to enumerate the store.
     fn query_documents(&self, query: &DocumentQuery) -> Result<DocumentPage, QueryError>;
 }
 
@@ -200,11 +200,12 @@ impl DocumentQueryProvider for MemoryStore {
             let Some(instance) = self.load(&query.entity, &id)? else {
                 continue;
             };
-            if query
-                .matching
-                .iter()
-                .all(|(field, value)| instance.fields.get(field) == Some(value))
-            {
+            if query.matching.iter().all(|(field, expected)| {
+                instance
+                    .fields
+                    .get(field)
+                    .is_some_and(|actual| contains(actual, expected))
+            }) {
                 items.push(instance);
                 if items.len() == wanted {
                     break;
@@ -212,6 +213,21 @@ impl DocumentQueryProvider for MemoryStore {
             }
         }
         DocumentPage::from_matches(query, items)
+    }
+}
+
+/// The provider-neutral meaning of PostgreSQL JSONB containment.
+fn contains(actual: &Value, expected: &Value) -> bool {
+    match (actual, expected) {
+        (Value::Object(actual), Value::Object(expected)) => expected.iter().all(|(key, value)| {
+            actual
+                .get(key)
+                .is_some_and(|candidate| contains(candidate, value))
+        }),
+        (Value::Array(actual), Value::Array(expected)) => expected
+            .iter()
+            .all(|value| actual.iter().any(|candidate| contains(candidate, value))),
+        _ => actual == expected,
     }
 }
 
@@ -279,5 +295,25 @@ mod tests {
             .with_limit(MAX_LIMIT + 1)
             .effective_limit()
             .is_err());
+    }
+
+    #[test]
+    fn nested_document_matching_has_the_same_containment_meaning_as_jsonb() {
+        let actual = serde_json::json!({
+            "metadata": { "locator": "story:one", "revision": 3 },
+            "tags": ["runtime", "planning"]
+        });
+        assert!(contains(
+            &actual,
+            &serde_json::json!({ "metadata": { "locator": "story:one" } })
+        ));
+        assert!(contains(
+            &actual,
+            &serde_json::json!({ "tags": ["planning"] })
+        ));
+        assert!(!contains(
+            &actual,
+            &serde_json::json!({ "metadata": { "locator": "story:two" } })
+        ));
     }
 }

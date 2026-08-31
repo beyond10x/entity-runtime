@@ -265,6 +265,30 @@ fn migrate_is_idempotent_and_a_store_survives_being_reopened() {
 }
 
 #[test]
+fn a_session_reserves_disjoint_sequence_ranges_and_reads_its_events() {
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "session_primitives");
+    let created = Runtime::new(&registry())
+        .create("ticket", 1, "session", json!({ "title": "A ticket" }))
+        .expect("permitted");
+    store.commit(&created, Expect::Absent).expect("accepted");
+
+    let first = store
+        .with_transaction(|session| {
+            assert_eq!(session.events("ticket", "session")?, created.events);
+            session.reserve_sequence("aep", 8)
+        })
+        .expect("first reservation");
+    let second = store
+        .with_transaction(|session| session.reserve_sequence("aep", 8))
+        .expect("second reservation");
+
+    assert_eq!(first, 0);
+    assert_eq!(second, 8);
+    store.drop_schema(&schema).expect("dropped");
+}
+
+#[test]
 fn a_server_that_does_not_answer_is_unreachable_and_never_an_empty_store() {
     // No variable needed: a port nothing listens on. Silence is the third value, not absence.
     let error = PostgresStore::connect_no_tls("postgres://nobody:nothing@127.0.0.1:1/nowhere")

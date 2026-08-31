@@ -10,6 +10,7 @@
 //! ```sql
 //! CREATE TABLE instances (entity, id, revision, document, PRIMARY KEY (entity, id));
 //! CREATE TABLE events (entity, id, revision, position, document, PRIMARY KEY (entity, id, revision, position));
+//! CREATE TABLE provider_sequences (namespace PRIMARY KEY, next_value);
 //! ```
 //!
 //! The same two tables as `entity-sqlite`, for the same reasons: the instance is one JSON document
@@ -208,6 +209,10 @@ impl PostgresStore {
                      revision BIGINT NOT NULL,
                      PRIMARY KEY (entity, id)
                  );
+                 CREATE TABLE IF NOT EXISTS provider_sequences (
+                     namespace  TEXT   PRIMARY KEY,
+                     next_value BIGINT NOT NULL CHECK (next_value >= 0)
+                 );
                  CREATE INDEX IF NOT EXISTS instances_document_query
                      ON instances USING GIN ((document::jsonb) jsonb_path_ops);",
             )
@@ -290,6 +295,49 @@ impl PostgresSession<'_> {
                 .map_err(|error| backend("parsing a locked instance", &error))
         })
         .transpose()
+    }
+
+    /// Reads one instance's events from this transaction's current view, oldest first.
+    pub fn events(&mut self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
+        self.transaction
+            .query(
+                "SELECT document FROM events WHERE entity = $1 AND id = $2
+                 ORDER BY revision, position",
+                &[&entity, &id],
+            )
+            .map_err(|error| database("reading events in a session", &error))?
+            .into_iter()
+            .map(|row| {
+                let document: String = row.get(0);
+                serde_json::from_str(&document)
+                    .map_err(|error| backend("parsing an event in a session", &error))
+            })
+            .collect()
+    }
+
+    /// Atomically reserves `count` monotonically increasing values in `namespace`.
+    ///
+    /// Returns the value immediately before the reserved range, so callers that increment before
+    /// minting receive consecutive values beginning at one for a new namespace.
+    pub fn reserve_sequence(&mut self, namespace: &str, count: u64) -> Result<u64, StoreError> {
+        if count == 0 {
+            return Err(StoreError::Backend(
+                "a sequence reservation must contain at least one value".to_owned(),
+            ));
+        }
+        let count = i64::try_from(count)
+            .map_err(|_| StoreError::Backend("the sequence reservation is too large".to_owned()))?;
+        let row = self
+            .transaction
+            .query_one(
+                "INSERT INTO provider_sequences (namespace, next_value) VALUES ($1, $2)
+                 ON CONFLICT (namespace) DO UPDATE
+                 SET next_value = provider_sequences.next_value + EXCLUDED.next_value
+                 RETURNING next_value - $2",
+                &[&namespace, &count],
+            )
+            .map_err(|error| database("reserving provider sequence values", &error))?;
+        revision_of(row.get::<_, i64>(0))
     }
 
     /// Serializes contenders for an identity that may not have a row yet.
