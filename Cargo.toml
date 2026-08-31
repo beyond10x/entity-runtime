@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/entity-core",
   "crates/entity-store",
+  "crates/entity-query",
   "crates/entity-shell",
   "crates/entity-sqlite",
   "crates/entity-postgres",
@@ -16,7 +17,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.16.0"
+version = "0.17.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/beyond10x/entity-runtime"

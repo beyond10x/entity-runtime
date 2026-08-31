@@ -50,11 +50,12 @@
 use std::sync::Mutex;
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
+use entity_query::{DocumentPage, DocumentQuery, DocumentQueryProvider, QueryError};
 use entity_store::{
     check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
     RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
 };
-use postgres::{Client, NoTls};
+use postgres::{Client, GenericClient, NoTls};
 
 /// A [`Store`] over one PostgreSQL connection.
 ///
@@ -206,7 +207,9 @@ impl PostgresStore {
                      id       TEXT   NOT NULL,
                      revision BIGINT NOT NULL,
                      PRIMARY KEY (entity, id)
-                 );",
+                 );
+                 CREATE INDEX IF NOT EXISTS instances_document_query
+                     ON instances USING GIN ((document::jsonb) jsonb_path_ops);",
             )
             .map_err(|error| database("establishing the schema", &error))
     }
@@ -224,6 +227,113 @@ impl PostgresStore {
                 quote_identifier(schema)
             ))
             .map_err(|error| database("dropping the schema", &error))
+    }
+}
+
+impl DocumentQueryProvider for PostgresStore {
+    fn query_documents(&self, query: &DocumentQuery) -> Result<DocumentPage, QueryError> {
+        query_documents(&mut *self.client().map_err(QueryError::from)?, query)
+    }
+}
+
+fn query_documents(
+    client: &mut impl GenericClient,
+    query: &DocumentQuery,
+) -> Result<DocumentPage, QueryError> {
+    let after = query.after_id()?;
+    let limit = i64::try_from(query.effective_limit()? + 1)
+        .map_err(|_| QueryError::Invalid("query limit does not fit PostgreSQL".to_owned()))?;
+    let matching = serde_json::to_string(&serde_json::json!({ "fields": query.matching }))
+        .map_err(|error| QueryError::Invalid(error.to_string()))?;
+    let rows = client
+        .query(
+            "SELECT document FROM instances
+             WHERE entity = $1 AND id COLLATE \"C\" > $2
+               AND document::jsonb @> $3::jsonb
+             ORDER BY id COLLATE \"C\" LIMIT $4",
+            &[&query.entity, &after, &matching, &limit],
+        )
+        .map_err(|error| QueryError::from(database("querying instances", &error)))?;
+    let items = rows
+        .into_iter()
+        .map(|row| {
+            let document: String = row.get(0);
+            serde_json::from_str(&document)
+                .map_err(|error| QueryError::from(backend("parsing a queried instance", &error)))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    DocumentPage::from_matches(query, items)
+}
+
+/// One caller-owned PostgreSQL transaction with point locks and uncommitted batches.
+pub struct PostgresSession<'a> {
+    transaction: postgres::Transaction<'a>,
+}
+
+impl PostgresSession<'_> {
+    /// Reads and locks one existing instance until the outer session completes.
+    pub fn load_for_update(
+        &mut self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Option<EntityInstance>, StoreError> {
+        let row = self
+            .transaction
+            .query_opt(
+                "SELECT document FROM instances WHERE entity = $1 AND id = $2 FOR UPDATE",
+                &[&entity, &id],
+            )
+            .map_err(|error| database("locking an instance", &error))?;
+        row.map(|row| {
+            let document: String = row.get(0);
+            serde_json::from_str(&document)
+                .map_err(|error| backend("parsing a locked instance", &error))
+        })
+        .transpose()
+    }
+
+    /// Serializes contenders for an identity that may not have a row yet.
+    pub fn lock_identity(&mut self, namespace: &str, identity: &str) -> Result<(), StoreError> {
+        self.transaction
+            .query_one(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                &[&format!("{namespace}\0{identity}")],
+            )
+            .map_err(|error| database("locking an absent identity", &error))?;
+        Ok(())
+    }
+
+    /// Runs an indexed query against this transaction's own current view.
+    pub fn query_documents(&mut self, query: &DocumentQuery) -> Result<DocumentPage, QueryError> {
+        query_documents(&mut self.transaction, query)
+    }
+
+    /// Applies an ordered atomic batch without committing the outer transaction.
+    pub fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError> {
+        for commit in commits {
+            write_decision(&mut self.transaction, &commit.decision, commit.expect, true)?;
+        }
+        Ok(())
+    }
+}
+
+impl PostgresStore {
+    /// Executes one caller operation in a fresh transaction and commits only its successful result.
+    pub fn with_transaction<T>(
+        &mut self,
+        operation: impl FnOnce(&mut PostgresSession<'_>) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        let mut client = self.client()?;
+        let transaction = client
+            .transaction()
+            .map_err(|error| database("beginning the caller transaction", &error))?;
+        let mut session = PostgresSession { transaction };
+        let result = operation(&mut session)?;
+        session
+            .transaction
+            .commit()
+            .map_err(|error| database("committing the caller transaction", &error))?;
+        Ok(result)
     }
 }
 

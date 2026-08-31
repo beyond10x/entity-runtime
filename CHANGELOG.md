@@ -4,6 +4,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-08-31
+
+* Added optional provider-neutral, cursor-bound document queries, with memory and PostgreSQL implementations for indexed service reads without whole-store hydration.
+
 ## [0.16.0] — 2026-08-31
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
-name = "entity-yaml"
-description = "YAML adapter for entity-core definitions: text in, validated definition out, no IO"
+name = "entity-query"
+description = "Optional provider-neutral document queries for Entity Runtime stores."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,10 +9,8 @@ rust-version.workspace = true
 
 [dependencies]
 entity-core = { path = "../entity-core", version = "0.17.0" }
+entity-store = { path = "../entity-store", version = "0.17.0" }
 serde.workspace = true
-serde_yaml_ng.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true
 
 [lints]
