@@ -1,6 +1,7 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import docsSystemPlugin from '@beyond10x/docs-system/docusaurus';
 
 // Public product documentation lives here under `website/docs`. The repository-root `docs/` tree
 // is the engineering record — requirements, designs, plans and reviews — and is deliberately not
@@ -59,6 +60,7 @@ const config: Config = {
   ],
 
   themes: ['@docusaurus/theme-mermaid'],
+  plugins: [docsSystemPlugin],
 
   themeConfig: {
     image: 'img/social-card.svg',
@@ -81,6 +83,8 @@ const config: Config = {
         src: 'img/mark.svg',
       },
       items: [
+        {href: 'https://beyond10x.github.io/getting-started/', label: 'beyond10x', position: 'left'},
+        {href: 'https://beyond10x.github.io/getting-started/ecosystem', label: 'Ecosystem', position: 'left'},
         {to: '/docs/agentic-systems', label: 'Why for agents', position: 'left'},
         {to: '/docs/guide/getting-started', label: 'Quickstart', position: 'left'},
         {

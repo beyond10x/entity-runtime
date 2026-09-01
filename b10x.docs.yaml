@@ -1,0 +1,26 @@
+schema: b10x-docs/v1
+repository:
+  id: entity-runtime
+  url: https://github.com/beyond10x/entity-runtime
+surfaces:
+  - id: docs
+    name: Entity Runtime
+    summary: Declare entity state, operations, rules, and events as data and let a deterministic kernel decide transitions.
+    kind: documentation
+    canonicalUrl: https://beyond10x.github.io/entity-runtime/
+    maturity: development
+    availability: published
+    discoverability: public
+    audiences: [adopter, developer]
+    journeys: [specify, build-agents, operate-services]
+    capabilities: [entity-modeling, deterministic-decisions, generated-interfaces]
+    sections:
+      - {label: Quickstart, url: https://beyond10x.github.io/entity-runtime/docs/guide/getting-started, kind: quickstart}
+      - {label: Definition language, url: https://beyond10x.github.io/entity-runtime/docs/guide/definitions, kind: reference}
+      - {label: Guarantees, url: https://beyond10x.github.io/entity-runtime/docs/guarantees, kind: status}
+      - {label: Source, url: https://github.com/beyond10x/entity-runtime, kind: source}
+    relationships:
+      - {target: aep-service/docs, kind: uses, label: Provides deterministic entity storage semantics}
+    accent: "#f0b35c"
+    mark: website/static/img/mark.svg
+    shell: {integration: docusaurus, revision: 6323bfdaf73609247e8dabcc9df410ab280a1960}
