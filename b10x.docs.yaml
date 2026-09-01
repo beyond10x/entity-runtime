@@ -1,4 +1,4 @@
-schema: b10x-docs/v1
+schema: b10x-docs/v2
 repository:
   id: entity-runtime
   url: https://github.com/beyond10x/entity-runtime
@@ -21,6 +21,13 @@ surfaces:
       - {label: Source, url: https://github.com/beyond10x/entity-runtime, kind: source}
     relationships:
       - {target: aep-service/docs, kind: uses, label: Provides deterministic entity storage semantics}
+    adoption:
+      label: Model and execute a refund
+      url: https://beyond10x.github.io/entity-runtime/docs/guide/getting-started
+      mode: source-build
+      estimatedMinutes: 10
+      prerequisites: [Rust toolchain]
+      outcome: Validate an entity definition and observe a deterministic transition decision.
     accent: "#f0b35c"
     mark: website/static/img/mark.svg
-    shell: {integration: docusaurus, revision: 0cbd1f1b6951fec95767332e3a1792f838feb62d}
+    shell: {integration: docusaurus, revision: 73aefe1ca268cc853ed38fb23478454496462a03}
