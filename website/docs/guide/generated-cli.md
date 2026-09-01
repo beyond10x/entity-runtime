@@ -6,7 +6,7 @@ description: Compile validated definitions into a host-platform command with dir
 
 # Generate a definition-specific Rust CLI
 
-```console
+```bash
 entity generate rust-cli \
   --definition refund.yaml \
   --name refundctl \
@@ -22,7 +22,7 @@ the Cargo cache before generation; the `entity` command itself does not fetch co
 
 ## Commands from the definition
 
-```console
+```bash
 refundctl --store ./refund-store refund create \
   --id refund-104 \
   --fields '{"order_id":"order-88","amount_cents":12500,"evidence_count":2}' \
@@ -36,7 +36,7 @@ refundctl --store ./refund-store refund events --id refund-104
 
 Definition operations become direct subcommands:
 
-```console
+```bash
 refundctl --store ./refund-store refund approve \
   --id refund-104 --expected-revision 2 \
   --arguments '{"actor_role":"human","reason":"supervisor approved"}' \

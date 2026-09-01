@@ -65,7 +65,7 @@ variants directly.
 
 The installed command can render a compact Agent Skills document for its exact version:
 
-```console
+```bash
 entity skill --out .agents/skills/entity/SKILL.md
 ```
 
@@ -73,7 +73,7 @@ The file teaches safe input forms, exit meanings, recording metadata, and File S
 stdout and file forms are byte-identical. An existing path is left untouched unless that exact
 replacement is authorized:
 
-```console
+```bash
 entity skill --out .agents/skills/entity/SKILL.md --force
 ```
 

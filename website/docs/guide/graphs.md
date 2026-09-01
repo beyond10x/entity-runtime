@@ -11,7 +11,7 @@ validated states, operations, and typed references that execution reads.
 
 ## Lifecycle diagrams
 
-```console
+```bash
 entity graph refund.yaml --format text
 entity graph refund.yaml --format mermaid
 entity graph refund.yaml --format dot
@@ -42,7 +42,7 @@ Mermaid directive. Initial and terminal markers come from the lifecycle itself.
 
 Pass the complete related definition set and `--references`:
 
-```console
+```bash
 entity graph examples/references/*.yaml --references --format mermaid
 ```
 

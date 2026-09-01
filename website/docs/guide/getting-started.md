@@ -16,7 +16,7 @@ Every release includes `entity` binaries for Linux, macOS, and Windows plus `SHA
 
 Or install from the tagged source with Rust 1.85 or newer:
 
-```console
+```bash
 cargo install --git https://github.com/beyond10x/entity-runtime \
   --tag 0.16.0 entity-cli
 entity --version
@@ -30,7 +30,7 @@ Save it locally as `refund.yaml`.
 
 The definition has four states:
 
-```console
+```shell-session
 $ entity graph refund.yaml
 refund v1: initial draft
 draft --submit--> submitted
@@ -40,7 +40,7 @@ submitted --reject--> rejected
 
 The same lifecycle can go straight into Markdown, an issue, or an agent report:
 
-```console
+```shell-session
 $ entity graph refund.yaml --format mermaid
 ```
 
@@ -77,7 +77,7 @@ preconditions:
 
 Validate the complete document before using it:
 
-```console
+```shell-session
 $ entity validate refund.yaml
 refund.yaml: valid (refund v1)
 1 file(s), 0 invalid
@@ -87,7 +87,7 @@ refund.yaml: valid (refund v1)
 
 The kernel generates no identity, so the caller supplies one:
 
-```console
+```shell-session
 $ entity create --definition refund.yaml --id refund-104 \
     --fields '{"order_id":"order-88","amount_cents":12500,"evidence_count":2}' \
   > draft.json
@@ -104,7 +104,7 @@ events produced by `submit`.
 The trusted shell supplies `actor_role: agent` from its execution context. It is not a label the
 model is allowed to choose.
 
-```console
+```shell-session
 $ entity execute --definition refund.yaml --instance @submitted.json \
     --operation approve \
     --arguments '{"actor_role":"agent","reason":"customer supplied delivery evidence"}'
@@ -127,7 +127,7 @@ no `RefundApproved` event exists.
 For durable use, create and execute against a File Store. Stored commands require provenance the
 kernel cannot invent:
 
-```console
+```shell-session
 $ entity create --definition refund.yaml --id refund-104 \
     --fields '{"order_id":"order-88","amount_cents":12500,"evidence_count":2}' \
     --store ./refund-store --record-id request-104-created \

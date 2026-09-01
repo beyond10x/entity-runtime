@@ -51,7 +51,7 @@ At most one flag may read `-` in an invocation. A complete `Decision` printed by
 
 Without `--store`, the command prints a `Decision` and remembers nothing:
 
-```console
+```bash
 entity create --definition refund.yaml --id refund-104 \
   --fields '{"order_id":"order-88","amount_cents":2500,"evidence_count":1}' \
 | entity execute --definition refund.yaml --instance - --operation submit
@@ -69,7 +69,7 @@ responsible for accepting only trusted instances.
 - exactly one of `--actor ID` and `--no-actor`;
 - optional `--correlation ID` and `--causation ID`.
 
-```console
+```bash
 entity execute --definition refund.yaml --store ./refund-store \
   --id refund-104 --operation approve \
   --arguments '{"actor_role":"human","reason":"supervisor approved"}' \
@@ -112,7 +112,7 @@ stderr sentences.
 
 ## Render the Agent Skill
 
-```console
+```bash
 entity skill
 entity skill --out .agents/skills/entity/SKILL.md
 entity skill --out .agents/skills/entity/SKILL.md --force
@@ -123,7 +123,7 @@ directories are created. Existing output is refused unless `--force` names that 
 
 ## Generate public surfaces
 
-```console
+```bash
 entity generate docs --definition refund.yaml --out ./refund-reference
 entity generate rust-cli --definition refund.yaml --name refundctl \
   --out ./bin/refundctl --runtime-source /src/entity-runtime

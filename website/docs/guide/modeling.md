@@ -73,7 +73,7 @@ outside templates; templates only materialize data from the decision context.
 
 Run the whole registry together when definitions contain typed references:
 
-```console
+```bash
 entity validate customer.yaml refund.yaml
 entity inspect refund.yaml
 entity graph refund.yaml

@@ -6,7 +6,7 @@ description: Produce a browsable reference, OpenAPI, and AsyncAPI from one valid
 
 # Generate entity documentation
 
-```console
+```bash
 entity generate docs \
   --definition refund.yaml \
   --out ./refund-reference

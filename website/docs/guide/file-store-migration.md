@@ -23,7 +23,7 @@ against one root.
 
 ## Validate without writing
 
-```console
+```bash
 entity store migrate-file \
   --from /srv/entity-v1 \
   --to /srv/entity-v2 \
@@ -39,7 +39,7 @@ by deleting a record whose meaning is unclear.
 
 ## Migrate and verify
 
-```console
+```bash
 entity store migrate-file \
   --from /srv/entity-v1 \
   --to /srv/entity-v2
