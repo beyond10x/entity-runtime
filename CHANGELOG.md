@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.17.4] — 2026-09-01
+
 - Added the AEP `outbound-claim` lifecycle definition and refreshed the byte-exact AEP fixture to
   0.40.0, so the equivalence suite covers every lifecycle AEP ships.
 

@@ -12,14 +12,14 @@ name = "entity"
 path = "src/main.rs"
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.17.3" }
-entity-graph = { path = "../entity-graph", version = "0.17.3" }
-entity-mcp = { path = "../entity-mcp", version = "0.17.3" }
-entity-shell = { path = "../entity-shell", version = "0.17.3" }
-entity-surface = { path = "../entity-surface", version = "0.17.3" }
+entity-core = { path = "../entity-core", version = "0.17.4" }
+entity-graph = { path = "../entity-graph", version = "0.17.4" }
+entity-mcp = { path = "../entity-mcp", version = "0.17.4" }
+entity-shell = { path = "../entity-shell", version = "0.17.4" }
+entity-surface = { path = "../entity-surface", version = "0.17.4" }
 # The shell's half of R-80: the CLI is a shell, so this is where a store belongs.
-entity-store = { path = "../entity-store", version = "0.17.3" }
-entity-yaml = { path = "../entity-yaml", version = "0.17.3" }
+entity-store = { path = "../entity-store", version = "0.17.4" }
+entity-yaml = { path = "../entity-yaml", version = "0.17.4" }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
