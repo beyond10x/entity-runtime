@@ -184,7 +184,7 @@ pub struct FieldDefinition {
     ///
     /// A **label**, not a second edge. Nothing stores the reverse and the kernel never traverses
     /// it; it exists so tooling and prose can name the direction they are reading, the way
-    /// `engineering-protocols` `RelationKind::inverse_label` already does.
+    /// `aep` `RelationKind::inverse_label` already does.
     #[serde(default)]
     pub inverse: Option<String>,
 
@@ -198,7 +198,7 @@ pub struct FieldDefinition {
     ///
     /// A **declaration**, not an enforcement. The kernel is handed one instance and cannot see a
     /// graph (R-01), so it records what the definition claims and the shell enforces it — which is
-    /// exactly the split `protocol artifact relate` already runs, rebuilding the graph before it
+    /// exactly the split `aep artifact relate` already runs, rebuilding the graph before it
     /// writes. Declaring it here is what turns a rule written in prose into one a shell can read.
     #[serde(default)]
     pub acyclic: Option<bool>,

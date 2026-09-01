@@ -4,6 +4,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.17.5] — 2026-09-01
+
+- Updated the AEP adoption record, local planning guidance, and gate command to the renamed AEP
+  repository and canonical `aep` CLI. The byte-pinned lifecycle fixtures remain unchanged at their
+  recorded AEP release.
+
 ## [0.17.4] — 2026-09-01
 
 - Added the AEP `outbound-claim` lifecycle definition and refreshed the byte-exact AEP fixture to

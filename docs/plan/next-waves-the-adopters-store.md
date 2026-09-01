@@ -1,13 +1,13 @@
 # Next waves — the store an adopter runs on
 
 **Status: accepted 2026-08-28 by the operator, with every default taken.** Written the same day
-against this tree at `dc5b25a` (0.9.1) and `engineering-protocols` at `82a80e5` (0.27.3);
+against this tree at `dc5b25a` (0.9.1) and `aep` at `82a80e5` (0.27.3);
 `story:store-enumeration` is the first of the three in progress, and the stories carry the record.
 
-`engineering-protocols` has planned three storage waves — F, G, H — whose end state is that its
+`aep` has planned three storage waves — F, G, H — whose end state is that its
 storage layer is this runtime's: one adapter over `entity_store::Store`, one provider of its own, and
 every other store a type instantiated over a provider tested here. The plan, its evidence and its
-decisions are on their page: `engineering-protocols/docs/plan/store-waves-f-g-h.md`. This page holds
+decisions are on their page: `aep/docs/plan/store-waves-f-g-h.md`. This page holds
 only what that plan asks of this repository, and when.
 
 ## What the adopter needs, and before which wave

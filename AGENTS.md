@@ -41,10 +41,11 @@ its name promises.
   verifiable decision records, recorded provider history and File Store v2. They supersede the
   matching v0.1 sections.
 
-[`docs/design/engineering-protocols-adoption-v0.1.md`](docs/design/engineering-protocols-adoption-v0.1.md)
+[`docs/design/aep-adoption-v0.1.md`](docs/design/aep-adoption-v0.1.md)
 is a **proposed design with accepted portions**. Its phases 0–4 were accepted and implemented;
 later ideas are not authority until a plan page or story in AEP accepts them.
-This repository's side is tracked through `epic:drive-engineering-protocols`; `docs/roadmap.md`
+This repository's side is tracked through the historical id
+`epic:drive-engineering-protocols`; `docs/roadmap.md`
 records what actually shipped. Do not use the design's original status line to undo accepted work
 or to infer approval for work beyond it.
 
@@ -138,7 +139,7 @@ The local gate runs these steps in this order: `fmt-check` · `clippy` (`--works
 (`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml` and
 `examples/aep/*.yaml`, `examples/references/*.yaml`) · `req-check` · `pin-check` (every `PIN.md` under `crates/` still hashes to
 what it records, in both directions — a moved copy and an unpinned file beside it) ·
-`plan-check` (`protocol artifact validate`) · `postgres-check` (the Postgres provider's tests
+`plan-check` (`aep artifact validate`) · `postgres-check` (the Postgres provider's tests
 against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they did not run) ·
 `notes-check`. Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
@@ -146,7 +147,7 @@ set the repository committed rather than one cargo re-resolved on the way past.
 One check is deliberately **outside** the gate. `pin-check` holds the AEP fixture against its own
 `PIN.md`; whether that fixture is still what AEP ships is a different question,
 and answering it means cloning their repository. `.github/workflows/upstream-pin.yml` asks it weekly
-(`scripts/check-upstream-pin.py <checkout>`, runnable locally against a sibling clone), so the gate
+(`cargo xtask upstream-pin <checkout>`, runnable locally against a sibling clone), so the gate
 stays network-free and drift surfaces as its own red run rather than as a puzzling failure in an
 unrelated step. It was added because the fixture went stale for real: `vision.yaml` landed upstream
 and this repository stayed green while its equivalence test claimed to cover every ladder.
@@ -223,7 +224,7 @@ designs or reviews. `task site-build` runs the same locally; it is deliberately 
 
 | what | where |
 |---|---|
-| the store — initiative, epics, stories, ADRs | `.engineering/planning/`, validated by `protocol artifact validate` |
+| the store — initiative, epics, stories, ADRs | `.engineering/planning/`, validated by `aep artifact validate` |
 | the requirements and their pins | `docs/requirements.md` |
 | designs, normative and proposed | `docs/design/` |
 | the human-facing product guide — what the site's navbar points at | `website/docs/` |
@@ -234,23 +235,23 @@ designs or reviews. `task site-build` runs the same locally; it is deliberately 
 ## Planning artifacts
 
 Plan items are markdown files under `.engineering/planning/<kind>/<slug>.md`: YAML frontmatter the
-`protocol` CLI owns, and a body the agent and operator own. The repository-local skill at
+`aep` CLI owns, and a body the agent and operator own. The repository-local skill at
 `.agents/skills/planning/SKILL.md` carries the full model and store conventions.
 
 Kinds, relations, statuses and legal moves come from validated lifecycle documents. Ask the CLI —
-`protocol artifact kinds`, `relations`, `lifecycle <kind>`, `list`, `board`, `graph` — instead of
-reciting them. Before the first planning-store write of a session, run `protocol artifact list`.
+`aep artifact kinds`, `relations`, `lifecycle <kind>`, `list`, `board`, `graph` — instead of
+reciting them. Before the first planning-store write of a session, run `aep artifact list`.
 
-1. **A status changes only through `protocol artifact move`.** Never edit `status:` directly.
+1. **A status changes only through `aep artifact move`.** Never edit `status:` directly.
 2. **Never edit a planning-store file directly.** `new` creates, `relate` links, `move` moves,
    `body <id> --from <path|->` writes prose.
-3. **After a batch, run `protocol artifact validate` and relay its output verbatim.**
+3. **After a batch, run `aep artifact validate` and relay its output verbatim.**
 4. **A refusal is an answer.** Relay the legal moves the CLI names; do not route around it.
 5. **An already-satisfied or wrong request still gets an artifact** recording the finding.
 
 New artifacts start in the lifecycle's initial state. Lifecycle moves are claims about project
 state: propose them and wait for the operator unless the operator asked for the specific move.
-`protocol` must be on `PATH`; if it is absent, do not improvise machine-owned frontmatter.
+`aep` must be on `PATH`; if it is absent, do not improvise machine-owned frontmatter.
 
 ## Conventions
 

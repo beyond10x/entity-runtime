@@ -1,7 +1,7 @@
 # The AEP `review-result` lifecycle, expressed as an entity definition.
 #
-# Phase 1 of `docs/design/engineering-protocols-adoption-v0.1.md`: the transitions map in
-# `engineering-protocols` `artifacts/lifecycles/review-result.yaml` at `4e6279b` — a Rust
+# Phase 1 of `docs/design/aep-adoption-v0.1.md`: the transitions map in
+# `aep` `artifacts/lifecycles/review-result.yaml` at `4e6279b` — a Rust
 # `LifecycleRegistry` consults it and nothing else — carried here as data a kernel executes.
 # `crates/entity-yaml/tests/aep_lifecycles.rs` proves the two say the same thing.
 #

@@ -12,15 +12,15 @@ is sequenced after the SPI exists rather than bolted onto it.
 
 **The want, in the operator's words:** *use one CLI cross repo with dependencies.*
 
-**This wave is `engineering-protocols`' work, not this repository's**, and its stories live in that
+**This wave is `aep`' work, not this repository's**, and its stories live in that
 repository's store under `epic:one-cli-many-repositories`. It is written up here because it comes
 first and because B and C are sequenced behind it — but nothing in it needs the kernel. `protocol
 artifact` owns the store, the relation vocabulary and the verbs; assembling several markdown stores
 into one graph adds no definition, no rule and no IO this kernel could perform anyway.
 
-Today every repository is an island. `protocol artifact` reads **one** store (`--store`), `entity`
+Today every repository is an island. `aep artifact` reads **one** store (`--store`), `entity`
 reads **one** definition set. A story here that is blocked by a story in `metaharness` cannot say
-so, and `engineering-protocols`' own limitations page lists the gap plainly: *"No federated artifact
+so, and `aep`' own limitations page lists the gap plainly: *"No federated artifact
 graphs across repositories."*
 
 **Why this can go first:** it needs no provider, no database and no network. Every store involved is
@@ -78,7 +78,7 @@ type, no storage adapter, and no replay from events."*
 | B3 | **`replay-from-events`** *(exists, `draft`)* | rehydrate an instance from its events. **R-81 is the hard constraint** and the one that would quietly destroy the product: a rehydrate path accepting a lifecycle state as input lets any caller reach any rung, and every ladder in every adopter becomes advisory | B2 |
 | B4 | **`projections`** *(exists, `draft`)* | projection definitions folded from the event stream, for search and indexing | B2 |
 | B5 | **`a second provider`** *(new)* | one durable implementation — SQLite is the cheapest honest choice — so the SPI is proven by **two** implementors rather than described by one | B1 |
-| B6 | **`provider-conformance`** *(new)* | black-box suites any provider runs against itself, **plus a deliberately broken provider the suites are checked against**. `engineering-protocols` paid for this at `0.2.0-wave-3`: a suite that passes everything tells you nothing about whether it would catch anything | B5 |
+| B6 | **`provider-conformance`** *(new)* | black-box suites any provider runs against itself, **plus a deliberately broken provider the suites are checked against**. `aep` paid for this at `0.2.0-wave-3`: a suite that passes everything tells you nothing about whether it would catch anything | B5 |
 
 ---
 
@@ -100,7 +100,7 @@ disagree* — a distributed-systems question with answers that must be declared 
 
 ### What hybrid has to declare, and why
 
-`engineering-protocols` learned this in ESS wave 2 and wrote it into its own model: **a binding
+`aep` learned this in ESS wave 2 and wrote it into its own model: **a binding
 states its delivery guarantee and what happens on failure, both as required words** — never
 defaulted, because a default here is a system-wide assumption nobody made on purpose and the failure
 mode arrives in production.
@@ -135,7 +135,7 @@ read, so A is not a detour from it.
    this a live risk for the first time, because it is the wave that introduces a network.
 2. **Replay is not a setter** (R-81).
 3. **`entity-core` stays free of its adopters.** No crate here appears in a manifest of
-   `engineering-protocols`' (`atlas/architecture/adr/0002`).
+   `aep`' (`atlas/architecture/adr/0002`).
 
 ## Housekeeping these waves should not carry, but somebody should
 
@@ -144,7 +144,7 @@ read, so A is not a detour from it.
   `aep-open-status-vocabulary`. `typed-references` carries a *"Built 2026-08-25"* section while its
   status still says `draft`. The repository that supplies the ladder does not climb its own.
 * **`docs/roadmap.md` § 1 is titled "The blocking fact" and states something that is no longer
-  true** — that `engineering-protocols` *"has never been told this repository exists"*, with a grep
+  true** — that `aep` *"has never been told this repository exists"*, with a grep
   returning zero hits as its evidence. That grep now returns its README, its `AGENTS.md`, its
   `Cargo.toml`, a concepts page and a release post. The section, and the sequencing built on it,
   describe the world before 0.13.0.

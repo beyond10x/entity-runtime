@@ -294,7 +294,7 @@ impl std::error::Error for ValidationError {}
 /// Validation used to stop at the first defect, so a document with four of them took four
 /// attempts to fix and each attempt told you nothing about the next. Value validation already
 /// reported every failing field at once (R-23); this is the same courtesy for the definition
-/// itself, and `engineering-protocols` invariant 3 asks for it by name.
+/// itself, and `aep` invariant 3 asks for it by name.
 ///
 /// Comparing one of these to a single [`DefinitionError`] holds when it carries exactly that
 /// defect and nothing else, so a test that asserts one defect is also asserting that there were

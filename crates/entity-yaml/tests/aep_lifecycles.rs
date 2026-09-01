@@ -1,4 +1,4 @@
-//! Phase 1 of [`docs/design/engineering-protocols-adoption-v0.1.md`]: every AEP lifecycle
+//! Phase 1 of [`docs/design/aep-adoption-v0.1.md`]: every AEP lifecycle
 //! document AEP ships, expressed as an entity definition under `examples/aep/`. The number is read
 //! from the fixture, never written down here, because a count in a test is a second place for the
 //! truth to live.

@@ -1,23 +1,23 @@
-# Driving engineering-protocols — design v0.1
+# Driving AEP — design v0.1
 
-**Status: proposed.** How `engineering-protocols`' artifact model would be expressed as entity
+**Status: proposed.** How `aep`' artifact model would be expressed as entity
 definitions and executed by this kernel, what that would fix, and what has to change here first.
 Nothing in this document is accepted for either repository until a plan page or a story in
-`engineering-protocols` accepts it (their `AGENTS.md` § *Which documents are normative*). This
+`aep` accepts it (their `AGENTS.md` § *Which documents are normative*). This
 repository's side of the work is tracked in its own planning store under
-`epic:drive-engineering-protocols`.
+the historical planning id `epic:drive-engineering-protocols`.
 
 ## 1. The claim
 
-`engineering-protocols` already models its planning artifacts the way this kernel models entities —
+`aep` already models its planning artifacts the way this kernel models entities —
 typed things with a lifecycle, legal moves, relations and events — but it does so **in Rust, with
 closed enums**, and it ships the data-shaped parts as advisory YAML beside the code. Concretely
-(all paths in `engineering-protocols` at `79b641c`):
+(all paths in `aep` at `79b641c`):
 
-| in `engineering-protocols` today | where | consequence recorded there |
+| in `aep` today | where | consequence recorded there |
 |---|---|---|
 | `ArtifactStatus` is a closed ten-variant enum | `crates/aep-domain/src/artifact.rs:707` | `docs/plan/gap-register.md:70` — "the status vocabulary could not hold [`correction-owed`]"; `expired`/`failed`/`blocked` "flatten onto rungs that mean something else" |
-| `protocol artifact move` consults a `LifecycleRegistry` and nothing else | `crates/aep-domain/src/artifact.rs:1496`, `crates/aep-backend-markdown/src/document.rs:115-142` | gap register :39 — "a story's `implemented` is a claim nothing checks" |
+| `aep artifact move` consults a `LifecycleRegistry` and nothing else | `crates/aep-domain/src/artifact.rs:1496`, `crates/aep-backend-markdown/src/document.rs:115-142` | gap register :39 — "a story's `implemented` is a claim nothing checks" |
 | commands are hand-written `CommandKind` variants (`aep.entity.create/v1`, `aep.entity.archive/v1`, …) | `crates/aep-domain/src/command.rs:104-112` | adding a kind-specific operation is a Rust change and a release |
 | lifecycles, kinds and relations are YAML files the validator does not fully read | `artifacts/lifecycles/*.yaml`, `artifacts/kinds/*.yaml`, `artifacts/relations/relations.yaml` (header: "advisory until the artifact validator reads these files") | rules written down twice, enforced once |
 | four lifecycle concepts the protocol cannot express: a decision with a default and an expiry, time-based transitions, a typed blocker | gap register :73 | hand-rolled in scripts `explain` cannot see |
@@ -25,7 +25,7 @@ closed enums**, and it ships the data-shaped parts as advisory YAML beside the c
 
 Every row is a place where a *definition* — schema, open state vocabulary, operations with
 preconditions, invariants, events — would carry what a Rust enum carries now. That is what "drive"
-means here: the artifact model becomes data this kernel executes, and `engineering-protocols` keeps
+means here: the artifact model becomes data this kernel executes, and `aep` keeps
 what is genuinely its own — the evidence model, three-valued predicates, capabilities, the driver.
 
 ## 2. The mapping
@@ -36,7 +36,7 @@ what is genuinely its own — the evidence model, three-valued predicates, capab
 | `EntityId` opaque, ≥ 12 chars (`entity.rs:52`) | `EntityInstance::id`, opaque to the kernel | the length rule would be the shell's; the kernel never parses an id |
 | `ArtifactStatus` (closed enum) | `lifecycle.states` per definition | `correction-owed` becomes a line in a YAML file |
 | `artifacts/lifecycles/story.yaml` transitions map | one operation per edge | an edge gains arguments, preconditions and events. Written here as verbs (`propose`, `activate`, `implement`) and shipped that way in `examples/aep/`; **phase 2 did not adopt them** — it names each operation for its target status, because a verb vocabulary is theirs to decide and `story:entity-runtime-mapping` is still asking |
-| `protocol artifact move` (status only) | an operation with `preconditions` | *`implemented` requires evidence* is `preconditions: [{ exists: $args.evidence_ref }]` — or, with three-valued rules (§ 4), a predicate over facts |
+| `aep artifact move` (status only) | an operation with `preconditions` | *`implemented` requires evidence* is `preconditions: [{ exists: $args.evidence_ref }]` — or, with three-valued rules (§ 4), a predicate over facts |
 | `aep.entity.archive/v1`, `aep.entity.supersede/v1`, **no delete** (`command.rs:706-710`) | terminal states `archived`, `superseded`; no operation leaves them; no delete exists to call | R-34 makes the absence structural |
 | `DomainEvent` with correlation/causation (`domain_event.rs`) | `DomainEvent` (fact) + the shell's envelope | the split is already how `domain_event.rs` argues it: "an event is not an audit record" |
 | a denied command → audit record, **no event** (`domain_event.rs` table) | `Err(CoreError)` → shell records the refusal; no `Decision`, no events (R-04) | identical contract |
@@ -51,9 +51,9 @@ Each phase is a story here and would be a story there; none starts until the ope
 
 | phase | what | evidence of done |
 |---|---|---|
-| 0 | this document; the mapping is reviewed by both repositories | accepted or refused, with the reason, on a plan page in `engineering-protocols` |
-| 1 | **done** — every `artifacts/lifecycles/*.yaml` re-expressed as a definition under `examples/aep/`, with one operation per edge and no rules. Nine at `engineering-protocols` 0.14.0, eight when it shipped: the count follows theirs and lives in the fixture, not in prose | an equivalence test: for every kind, the set of `(from, to)` edges the definition yields equals the transitions map in the YAML at the pinned commit; `entity validate examples/aep/*.yaml` exit 0 |
-| 2 | **done** — `protocol artifact move` evaluated by this kernel behind the existing CLI, refusing what it refuses today and nothing more | `engineering-protocols` `crates/aep-backend-markdown/tests/kernel_equivalence.rs`: the kernel and `ArtifactLifecycle::permits_transition` agree on **every ordered pair of statuses** for every kind either store holds — 800 pairs, 90% of them illegal |
+| 0 | this document; the mapping is reviewed by both repositories | accepted or refused, with the reason, on a plan page in `aep` |
+| 1 | **done** — every `artifacts/lifecycles/*.yaml` re-expressed as a definition under `examples/aep/`, with one operation per edge and no rules. Nine at `aep` 0.14.0, eight when it shipped: the count follows theirs and lives in the fixture, not in prose | an equivalence test: for every kind, the set of `(from, to)` edges the definition yields equals the transitions map in the YAML at the pinned commit; `entity validate examples/aep/*.yaml` exit 0 |
+| 2 | **done** — `aep artifact move` evaluated by this kernel behind the existing CLI, refusing what it refuses today and nothing more | `aep` `crates/aep-backend-markdown/tests/kernel_equivalence.rs`: the kernel and `ArtifactLifecycle::permits_transition` agree on **every ordered pair of statuses** for every kind either store holds — 800 pairs, 90% of them illegal |
 | 3 | **done** — preconditions on `implement` and `accept`: evidence must be present | gap register :39 closes its *mechanism* half. A lifecycle document declares `requires:` per rung; the move is decided against evidence the caller presents, three-valued, so *nobody presented any* and *not enough* are different refusals. What it does **not** close is provenance — whose records they are and whether the producer was independent stay the engine's, and are `story:completion-needs-evidence` |
 | 4 | open status vocabulary: `correction-owed` and friends added as data | gap register :70 closes without a Rust change |
 
@@ -64,7 +64,7 @@ Phases 2–4 need § 4 first, and § 4 is done.
 `ArtifactLifecycle` and executes the move. Three things about it are worth carrying forward:
 
 * **The operations are named for the target status, not for a verb.** This design's § 2 says
-  `protocol artifact move --to implemented` becomes `execute --operation implement`. It did not, and
+  `aep artifact move --to implemented` becomes `execute --operation implement`. It did not, and
   should not have: a verb vocabulary is a published surface on their side and nobody has agreed to
   one — `story:entity-runtime-mapping` asks for that decision and has not had it. Naming each
   operation for its target introduces no name that is not already theirs, and phase 2 keeps its
@@ -78,7 +78,7 @@ Phases 2–4 need § 4 first, and § 4 is done.
 
 ## 4. What must change here before phase 2
 
-**Three-valued rules — done.** `engineering-protocols` invariant 5: *`Unknown` is not `False`* — a
+**Three-valued rules — done.** `aep` invariant 5: *`Unknown` is not `False`* — a
 fact nobody observed reads `?`, never `✗`, and only `True` permits a transition. This kernel's rules
 were two-valued: a missing reference made a comparison `false` (R-54 as it read then). For a
 lifecycle ladder that is harmless; for *`implemented` requires evidence* it is wrong in exactly the
@@ -93,7 +93,7 @@ a `Truth { True, False, Unknown }` result with Kleene `all`/`any`/`not`; a rule 
 `Unknown` is confined to questions about a **value** — the comparisons — where a reference that
 resolves to nothing, including a key **present and null**, leaves nothing to read. `exists` asks
 about the **store** and stays two-valued (R-58): the kernel holds the instance, so it can always
-see whether a key carries a value. That is the split `engineering-protocols` already makes without
+see whether a key carries a value. That is the split `aep` already makes without
 naming it — its predicate language has six comparison operators and no presence operator, and its
 only candidate-shaped `Unknown` is `ValueAbsent`. R-54's short-circuit clause was revised with it;
 the old wording is quoted in the register. `story:three-valued-conditions`.
@@ -112,7 +112,7 @@ finding rather than one per transition it invalidates. R-13 revised.
 `story:accumulating-definition-validation`.
 
 **Typed references.** Relations are the artifact graph's edges; the kernel has no `ref` kind. Until
-it does, the shell keeps validating edges as `protocol artifact relate` does today.
+it does, the shell keeps validating edges as `aep artifact relate` does today.
 `story:typed-references`.
 
 ## 5. Boundaries that hold whatever happens

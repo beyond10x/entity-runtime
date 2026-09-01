@@ -112,7 +112,7 @@ impl Registry {
     ///
     /// Only the **type** is checked. Whether an instance carrying that identity exists is a
     /// question about another instance, and the kernel is handed exactly one (R-01); a reference's
-    /// target is the shell's to resolve, exactly as `protocol artifact relate` resolves one today.
+    /// target is the shell's to resolve, exactly as `aep artifact relate` resolves one today.
     ///
     /// # Errors
     ///

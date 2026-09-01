@@ -30,7 +30,7 @@ written twice, so they cannot be allowed to disagree:
 |---|---|
 | `id` in frontmatter equals `<kind>:<slug>` from the path | the id is how relations point at this file; a mismatch makes an edge resolve to nothing |
 | slug is lowercase, hyphen-separated, no dots | it is a filename and an id segment at once |
-| the file lives under the directory named by its `kind` | `protocol artifact list --kind` reads the directory, and a misfiled artifact is invisible to it |
+| the file lives under the directory named by its `kind` | `aep artifact list --kind` reads the directory, and a misfiled artifact is invisible to it |
 
 Renaming therefore is not a `mv`. Moving a file by hand breaks every relation that names its old id
 and leaves `validate` to find the wreckage. Create the new artifact, re-point the relations, and
@@ -42,10 +42,10 @@ No planning-store file is edited directly. One command surface owns every change
 
 | Change | Command |
 |---|---|
-| create an artifact | `protocol artifact new` |
-| replace its complete markdown body | `protocol artifact body <id> --from <path|->` |
-| add a relation | `protocol artifact relate` |
-| move lifecycle status | `protocol artifact move` |
+| create an artifact | `aep artifact new` |
+| replace its complete markdown body | `aep artifact body <id> --from <path|->` |
+| add a relation | `aep artifact relate` |
+| move lifecycle status | `aep artifact move` |
 
 This makes the store a single-writer system: every mutation loads and validates it before writing,
 and every changed document receives the same revision semantics.
@@ -58,9 +58,9 @@ Everything above the `---` is structured. Ownership is what decides whether you 
 |---|---|---|
 | `id` | machine | set at creation, never edited; equals `<kind>:<slug>` |
 | `kind` | machine | fixed at creation; changing a kind means a new artifact |
-| `status` | machine | **only** `protocol artifact move` writes this — see guardrail 1 |
+| `status` | machine | **only** `aep artifact move` writes this — see guardrail 1 |
 | `revision` | machine | bumped by the CLI; a review is bound to the revision it saw |
-| `relations` | machine | written by `protocol artifact new --relate` and `protocol artifact relate` |
+| `relations` | machine | written by `aep artifact new --relate` and `aep artifact relate` |
 | `title` | descriptive | set at creation; correcting a typo by hand is harmless |
 | `summary` | descriptive | one or two sentences; optional |
 | `format` | machine | optional; defaults to `aep.planning-md/1` when absent — a file may omit it |
@@ -72,8 +72,8 @@ legal one afterwards, which is what makes it expensive.
 ## Body
 
 Everything below the closing `---` is authored by you and the operator, but written through
-`protocol artifact body`. There is no required section list at this layer; a kind may declare
-expected sections in `artifacts/kinds/<kind>.yaml`, and `protocol artifact kinds` reports what a
+`aep artifact body`. There is no required section list at this layer; a kind may declare
+expected sections in `artifacts/kinds/<kind>.yaml`, and `aep artifact kinds` reports what a
 kind is for. Write plainly: what this is, why now, what counts as done.
 
 One convention worth keeping: **a story or task carries a single acceptance statement**, one

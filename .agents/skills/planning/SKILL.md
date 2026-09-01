@@ -1,6 +1,6 @@
 ---
 name: planning
-description: Plan engineering work in a governed markdown artifact store — create, relate, move and validate epics, stories, tasks and initiatives through the `protocol` CLI. Use when the user mentions planning, a backlog, an epic, a story, a task, decomposing or breaking down work, an artifact's status ("move this to active", "what is still in draft?", "why can't this be implemented?"), or when the project contains a `.engineering/planning/` directory. Also use before editing any file under `.engineering/planning/`.
+description: Plan engineering work in a governed markdown artifact store — create, relate, move and validate epics, stories, tasks and initiatives through the `aep` CLI. Use when the user mentions planning, a backlog, an epic, a story, a task, decomposing or breaking down work, an artifact's status ("move this to active", "what is still in draft?", "why can't this be implemented?"), or when the project contains a `.engineering/planning/` directory. Also use before editing any file under `.engineering/planning/`.
 ---
 
 # Planning in a governed artifact store
@@ -10,7 +10,7 @@ description: Plan engineering work in a governed markdown artifact store — cre
 Artifacts are markdown files under `.engineering/planning/<kind>/<slug>.md`: YAML frontmatter the
 CLI owns, and a body you and the operator own. Which kinds exist, which statuses each kind may hold
 and which moves between them are legal come from validated lifecycle documents, not from convention
-and not from this file. The `protocol` CLI is the authority on both, so every question about
+and not from this file. The `aep` CLI is the authority on both, so every question about
 vocabulary has a command that answers it.
 
 ## 2. Discover, do not memorise
@@ -20,47 +20,47 @@ or relations. Ask for them at the moment you need them:
 
 | Question | Command |
 |---|---|
-| What kinds can I create? | `protocol artifact kinds` |
-| What edges exist between artifacts? | `protocol artifact relations` |
-| What statuses does this kind have, and what moves where? | `protocol artifact lifecycle <kind>` |
-| What is already in the store? | `protocol artifact list [--kind k] [--status s] [--format json]` |
-| What does it look like as a board? | `protocol artifact board [--kind k]` |
-| How is it wired together? | `protocol artifact graph` |
+| What kinds can I create? | `aep artifact kinds` |
+| What edges exist between artifacts? | `aep artifact relations` |
+| What statuses does this kind have, and what moves where? | `aep artifact lifecycle <kind>` |
+| What is already in the store? | `aep artifact list [--kind k] [--status s] [--format json]` |
+| What does it look like as a board? | `aep artifact board [--kind k]` |
+| How is it wired together? | `aep artifact graph` |
 
 The reason is the reason this project exists. Lifecycle and relation documents are validated and
 versioned; a prose copy of them in a skill file is neither, and it goes stale the first time a kind
 gains a status. An agent that recites `draft → proposed → active` from memory will confidently
-propose an illegal move in a store that renamed one of them. Reading `protocol artifact
+propose an illegal move in a store that renamed one of them. Reading `aep artifact
 lifecycle story` costs one command and cannot be wrong.
 
 When a store is present but you have not looked at it yet in this session, start with `protocol
-artifact list` and `protocol artifact kinds`. Two commands buy you the whole vocabulary.
+artifact list` and `aep artifact kinds`. Two commands buy you the whole vocabulary.
 
 ## 3. Five guardrails
 
 These are inlined because they hold whatever the store's vocabulary is.
 
-**1. A status changes only through `protocol artifact move`.** Never edit the `status:` field in
+**1. A status changes only through `aep artifact move`.** Never edit the `status:` field in
 frontmatter, and never write it into a file with a patch or a heredoc. The CLI validates the move
 against the kind's lifecycle; a hand-edited status is an unvalidated one, indistinguishable in the
 file from a legal one and wrong in exactly the cases that matter.
 
 ```console
-$ protocol artifact move story:credential-store --to proposed
+$ aep artifact move story:credential-store --to proposed
 story:credential-store moved draft -> proposed (revision 2)
 ```
 
-**2. Every store mutation uses `protocol artifact`; never edit a store file directly.** Creation,
+**2. Every store mutation uses `aep artifact`; never edit a store file directly.** Creation,
 relations, status, and prose use `new`, `relate`, `move`, and `body` respectively. Supply the complete
 body from a file or standard input; the CLI preserves frontmatter, validates the store, and bumps the
 revision once when bytes change.
 
 ```console
-$ protocol artifact body story:credential-store --from story-body.md
+$ aep artifact body story:credential-store --from story-body.md
 story:credential-store body replaced (revision 2) at .engineering/planning/story/credential-store.md
 ```
 
-**3. After a batch of edits, run `protocol artifact validate`, and relay its output verbatim.** It
+**3. After a batch of edits, run `aep artifact validate`, and relay its output verbatim.** It
 accumulates every problem rather than stopping at the first, and exits 1 if any remain. Do not
 summarise it into "validation failed" — the output names each artifact and each defect, which is the
 only part the operator can act on.
@@ -71,7 +71,7 @@ spelling, do not route around it by editing the file, and do not pick an interme
 "get there" without saying so.
 
 ```console
-$ protocol artifact move story:credential-store --to implemented
+$ aep artifact move story:credential-store --to implemented
 story:credential-store is proposed; a story may move to: draft, rejected, active
 $ echo $?
 1
@@ -102,7 +102,7 @@ answering a question.
 
 You propose; the operator decides.
 
-* New artifacts are created in the lifecycle's initial status — `protocol artifact new` does this,
+* New artifacts are created in the lifecycle's initial status — `aep artifact new` does this,
   and it is the correct starting point. Do not immediately move them.
 * Status moves and decompositions are **proposals** until confirmed. Say what you would do, to which
   ids, and wait.
@@ -120,32 +120,32 @@ world, and that is the operator's to make.
 An epic, two stories derived from it, one move, one validation.
 
 ```console
-$ protocol artifact new epic passkey-login \
+$ aep artifact new epic passkey-login \
     --title "Passkey login" \
     --summary "Replace password sign-in with WebAuthn passkeys."
 created epic:passkey-login (draft) at .engineering/planning/epic/passkey-login.md
 
-$ protocol artifact new story credential-store \
+$ aep artifact new story credential-store \
     --title "Store and retrieve passkey credentials" \
     --relate derived_from:epic:passkey-login
 created story:credential-store (draft) at .engineering/planning/story/credential-store.md
 
-$ protocol artifact new story registration-ceremony \
+$ aep artifact new story registration-ceremony \
     --title "Register a passkey during sign-up" \
     --relate derived_from:epic:passkey-login
 created story:registration-ceremony (draft) at .engineering/planning/story/registration-ceremony.md
 ```
 
-Then write each story's complete body through `protocol artifact body <id> --from <path|->` — one
+Then write each story's complete body through `aep artifact body <id> --from <path|->` — one
 acceptance statement per story, because guardrail 2 makes the CLI the store's sole writer.
 
 Then the one move the operator asked for, and the check:
 
 ```console
-$ protocol artifact move story:credential-store --to proposed
+$ aep artifact move story:credential-store --to proposed
 story:credential-store moved draft -> proposed (revision 2)
 
-$ protocol artifact validate
+$ aep artifact validate
 3 file(s) in .engineering/planning: 3 artifact(s)
 valid
 ```

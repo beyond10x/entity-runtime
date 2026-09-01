@@ -8,7 +8,7 @@ three places at once — a service's code, a database constraint, a paragraph in
 three drift. An agent, or a person under time pressure, finds the one that is not enforced and
 writes `status = "fulfilled"` through it.
 
-`engineering-protocols` made this argument for *engineering work*: rules in prose enforce nothing,
+`aep` made this argument for *engineering work*: rules in prose enforce nothing,
 so move them into typed, executable definitions and let a program decide what the facts permit.
 This repository makes the same argument for *the objects the work is about*. An entity type is
 declared once, as data — its fields, its states, the operations that move it between them, the
@@ -39,12 +39,12 @@ never parses code.
 
 ## Why this repository, and why now
 
-`engineering-protocols` reasons about stories, designs, ADRs, reviews and evidence as **entities**
+`aep` reasons about stories, designs, ADRs, reviews and evidence as **entities**
 with lifecycles, legal moves and events, and it enforces those moves through a `LifecycleRegistry`
 over a closed status enum, with hand-written command variants. Its own gap register records the
 cost: a status vocabulary that cannot hold a rung it needs, a completion status that "a claim
 nothing checks", four lifecycle concepts the model cannot express. Every one of those is a
-definition this kernel executes. [`docs/design/engineering-protocols-adoption-v0.1.md`](design/engineering-protocols-adoption-v0.1.md)
+definition this kernel executes. [`docs/design/aep-adoption-v0.1.md`](design/aep-adoption-v0.1.md)
 lays out the mapping and the phases; the short version is that this repository is meant to become
 the thing that repository's artifact model runs on, while that repository keeps what is genuinely
 its own — evidence, three-valued predicates, capabilities, the driver.
@@ -70,7 +70,7 @@ scan was walked past by a grouped import. The record, with every reproduction, i
 [the review](reviews/2026-08-25-adversarial-review.md).
 
 Not yet, stated plainly: rules are two-valued — a missing reference reads `false`, not `unknown` —
-which is enough for a lifecycle ladder and not enough for `engineering-protocols`' evidence gates;
+which is enough for a lifecycle ladder and not enough for `aep`' evidence gates;
 there are no typed references between entities, no projections, no event envelope type, no storage
 adapter, and no replay from events. Each is a story in `.engineering/planning/`.
 

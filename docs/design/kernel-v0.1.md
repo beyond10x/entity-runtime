@@ -191,13 +191,13 @@ it is in, or what revision. Those are questions about *another instance*, and `e
 exactly one (R-01). This is not a limitation to route around later: resolving a reference by lookup
 would mean the same definition, instance, operation and arguments could produce different decisions
 at different moments, which is R-02 — the property that makes a decision replayable a year later.
-Resolution is the shell's, exactly as `protocol artifact relate` resolves one today, rebuilding the
+Resolution is the shell's, exactly as `aep artifact relate` resolves one today, rebuilding the
 graph before it writes.
 
 #### What the declaration buys, given that
 
 The kernel enforces neither `inverse` nor `acyclic`, so it is fair to ask what they are for. They
-turn a rule that was written in prose into one a shell can read. `engineering-protocols` declares
+turn a rule that was written in prose into one a shell can read. `aep` declares
 its `source`/`target` pairings in `artifacts/relations/relations.yaml` and says in the file's own
 header that they are *"advisory guidance for humans until the artifact validator reads them"* —
 rules written down twice and enforced once. A declaration in the definition is the first half of
@@ -260,7 +260,7 @@ only on it staying data.
 ### 4.1 Three values, and which questions can have them
 
 *Missing* and *false* used to collapse into one verdict — the proof of concept's semantics, and
-enough to govern a lifecycle ladder. They no longer do (R-57). `engineering-protocols` invariant 5,
+enough to govern a lifecycle ladder. They no longer do (R-57). `aep` invariant 5,
 "Unknown is not False", is the requirement that forced it, and the consequence is concrete: an
 operator told only that an evidence gate failed goes and fixes a review that was never written.
 
@@ -302,12 +302,12 @@ exactly the prose-rule failure this whole programme exists to end — and naming
 of three costs the operator three round trips.
 
 The shape of `Truth` — the variant names, the Kleene tables, `is_satisfied` meaning `True` alone —
-is taken from `engineering-protocols`' own `aep-domain::predicate::Truth` rather than designed
+is taken from `aep`' own `aep-domain::predicate::Truth` rather than designed
 here. Their predicate language has no presence operator at all: six comparison operators, and its
 only candidate-shaped `Unknown` is `ValueAbsent`, a comparison it cannot decide. The split above is
 therefore the one they already made, written down. Two kernels that disagreed about what `Unknown`
 means would disagree about whether a gate passed, which is the seam phase 2 of
-`engineering-protocols-adoption-v0.1.md` runs straight through.
+`aep-adoption-v0.1.md` runs straight through.
 
 ## 5. Templates
 
@@ -519,7 +519,7 @@ and the second is now itself a check.
 
 **Judgements recorded rather than changed.** Rules stay two-valued: *missing* reads `false`, not
 `unknown`. That is enough for a lifecycle and not enough for an evidence gate, and the difference is
-the first thing `engineering-protocols` needs — `story:three-valued-conditions`, and § 4 of
-[`engineering-protocols-adoption-v0.1.md`](engineering-protocols-adoption-v0.1.md). A sealed
+the first thing `aep` needs — `story:three-valued-conditions`, and § 4 of
+[`aep-adoption-v0.1.md`](aep-adoption-v0.1.md). A sealed
 `EntityInstance` would make R-34's strongest reading true and is a breaking change; it stays on the
 roadmap with the reason written down.

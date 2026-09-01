@@ -58,7 +58,7 @@ add the check to the shell guidance. (b) Additionally make `execute` refuse an i
 `lifecycle_state` is not a declared state (`UnknownState`), which is cheap and catches the
 `limbo` case with a correct message instead of `invalid_transition … from 'limbo'`. (c) Seal the
 type — private fields, a constructor only `create` can reach, `Deserialize` through a validated
-`RawInstance` — which is engineering-protocols' *parse, then validate* rule (their invariant 2) and
+`RawInstance` — which is aep' *parse, then validate* rule (their invariant 2) and
 the only option that makes the claim true as written. (c) is a design change and a story.
 
 ### F-2 · medium · A definition registered under an existing `(entity, version)` silently replaces it
@@ -121,7 +121,7 @@ serde_yaml v0.9.34+deprecated
 ```
 
 `entity-yaml` and `entity-cli` depend on a crate whose last release marks itself deprecated and
-which receives no security fixes. `engineering-protocols` carries the same dependency, so this is
+which receives no security fixes. `aep` carries the same dependency, so this is
 an org-level choice, but it is not written down anywhere here. **Fix.** Decide (`serde_yaml_ng`,
 `serde_yml`, or stay and say why) and record it in the manifest beside the line, as `AGENTS.md`
 § Dependencies requires of a justified dependency.
@@ -186,7 +186,7 @@ dependency turns the docs deploy red on a commit that touched a Markdown file. I
 
 `rust-version = "1.85"` is declared, and `cargo +1.85.0 build --workspace --locked` exits 0 for
 this review. CI does not run it, so the promise is checked by hand and will break silently the
-first time a dependency raises its own MSRV; `engineering-protocols` has a dedicated `msrv` job for
+first time a dependency raises its own MSRV; `aep` has a dedicated `msrv` job for
 exactly this. **Fix.** Add the job.
 
 ### F-12 · info · `validate` stops at the first invocation error
@@ -398,7 +398,7 @@ returns. The gate was green after each batch and is green now.
 
 **Rules stay two-valued.** A reference that does not resolve reads `false`, not `unknown`. It is
 enough for a lifecycle and not enough for an evidence gate that must tell *nobody looked* from *it is
-wrong*, which is the first thing `engineering-protocols` needs from this kernel. The reasoning is in
+wrong*, which is the first thing `aep` needs from this kernel. The reasoning is in
 [`kernel-v0.1.md` § 4](../design/kernel-v0.1.md#4-the-condition-language) and the work is
 `story:three-valued-conditions`.
 

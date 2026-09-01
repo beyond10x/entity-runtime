@@ -1,7 +1,7 @@
 # The AEP artifact model, as entity definitions
 
 One definition per lifecycle document AEP ships. This is **phase 1** of
-[`../../docs/design/engineering-protocols-adoption-v0.1.md`](../../docs/design/engineering-protocols-adoption-v0.1.md),
+[`../../docs/design/aep-adoption-v0.1.md`](../../docs/design/aep-adoption-v0.1.md),
 and its claim is deliberately narrow: *these say exactly what their ladders say*.
 
 | definition | upstream ladder | states | operations | edges |
@@ -25,7 +25,7 @@ and its claim is deliberately narrow: *these say exactly what their ladders say*
   That is the guard working, and these definitions cannot lead upstream by construction — which is
   the whole reason they are safe to send as evidence. Upstream opened the status *vocabulary* on
   2026-08-25, so adding the rung no longer needs a release of theirs — but no lifecycle document
-  declares `correction-owed` yet, and until one does `protocol artifact move --to correction-owed`
+  declares `correction-owed` yet, and until one does `aep artifact move --to correction-owed`
   refuses there too. The cost moved from a release to a line; nobody has written the line.
 * **`status` is not a field**, and `additional_fields` is `false` everywhere. The kernel owns the
   lifecycle state; nothing can move an artifact by editing it. A test asserts this per kind.

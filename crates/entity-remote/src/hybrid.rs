@@ -6,7 +6,7 @@
 //!
 //! # Why every field is required
 //!
-//! `engineering-protocols` learned this in its ESS wave 2 and wrote it into its own model: a
+//! `aep` learned this in its ESS wave 2 and wrote it into its own model: a
 //! binding states its delivery guarantee and what happens on failure, **both as required words**,
 //! never defaulted. A hybrid store is a binding. A default here is a system-wide assumption nobody
 //! made on purpose, and the failure mode arrives in production — usually as data loss nobody can

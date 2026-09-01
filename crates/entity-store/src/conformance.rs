@@ -14,7 +14,7 @@
 //! run against something that *should* fail, and `a_broken_provider_is_caught` asserts that it does
 //! — because a conformance suite nobody has watched fail is a suite nobody knows the reach of.
 //!
-//! This is the same move `engineering-protocols` made at `0.2.0-wave-3` and has held since: prove
+//! This is the same move `aep` made at `0.2.0-wave-3` and has held since: prove
 //! the checker before trusting the check.
 
 use entity_core::{Decision, Registry, Runtime};

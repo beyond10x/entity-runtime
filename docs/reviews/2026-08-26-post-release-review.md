@@ -1,7 +1,7 @@
-# Post-release review — 0.6.0, 0.7.0 (entity-runtime), 0.25.0 (engineering-protocols)
+# Post-release review — 0.6.0, 0.7.0 (entity-runtime), 0.25.0 (aep)
 
 Two independent read-only reviewers, 2026-08-26, against the pushed commits
-`f70bea4`, `311e186` (entity-runtime) and `cefb749`, `694e0a7` (engineering-protocols).
+`f70bea4`, `311e186` (entity-runtime) and `cefb749`, `694e0a7` (aep).
 All three tags are **already published**. Every finding below is against released code.
 
 Reviewer 1 lens: correctness and safety of the code itself.
@@ -103,7 +103,7 @@ not record.
 
 ## Disposition
 
-Every CONFIRMED finding is fixed in `entity-runtime` 0.8.0 and `engineering-protocols` 0.26.0, whose
+Every CONFIRMED finding is fixed in `entity-runtime` 0.8.0 and `aep` 0.26.0, whose
 changelogs carry the corrections. The two releases this review is against — 0.6.0/0.7.0 and 0.25.0 —
 are left exactly as published: a section that shipped is not rewritten.
 

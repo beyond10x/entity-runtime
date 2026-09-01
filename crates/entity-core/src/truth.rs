@@ -20,7 +20,7 @@ use std::fmt;
 /// `Unknown` means *nothing has been observed here*; it is distinct from `False`, which means
 /// *something was observed and it contradicts the rule*.
 ///
-/// This mirrors, deliberately and name for name, the `Truth` that `engineering-protocols` already
+/// This mirrors, deliberately and name for name, the `Truth` that `aep` already
 /// evaluates its predicates with (`crates/aep-domain/src/predicate.rs`). Two kernels that disagree
 /// about what `Unknown` means would disagree about whether a gate passed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

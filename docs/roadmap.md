@@ -1,44 +1,44 @@
-# Roadmap — driving `engineering-protocols`
+# Roadmap — driving AEP
 
 Serves **O2** of `atlas/ROADMAP.md`, the collection's objectives; this page orders the work inside this repository.
 
 **Status: a record of a sequencing that is now done, not requirements.** The requirements register
 ([`requirements.md`](requirements.md)) says what 0.13.0 guarantees; the design
-([`design/engineering-protocols-adoption-v0.1.md`](design/engineering-protocols-adoption-v0.1.md))
-says what the adoption would look like; the planning store (`protocol artifact list`) holds the work.
+([`design/aep-adoption-v0.1.md`](design/aep-adoption-v0.1.md))
+says what the adoption would look like; the planning store (`aep artifact list`) holds the work.
 This page says **in what order, blocked on what, and why that order**.
 
-*Until 2026-08-28 this paragraph ended "Nothing here is accepted by `engineering-protocols`."* That
+*Until 2026-08-28 this paragraph ended "Nothing here is accepted by `aep`."* That
 is no longer true and is the reason this page was rewritten: phases 0–4 have shipped, the mapping has
 a verdict on their side, and five crates of this repository are in their manifest. § 1 is the current
 reading; what it replaced is kept under it.
 
 Evidence dates: **re-read 2026-08-28** against this tree at `ddee747` (tag `0.13.0`) and
-`engineering-protocols` at tag `0.31.0` (`1419f1c`); their `main` moved again the same day, so the tag is what is cited rather than a head. Every date and count
+`aep` at tag `0.31.0` (`1419f1c`); their `main` moved again the same day, so the tag is what is cited rather than a head. Every date and count
 below was checked against those two trees; where one had gone stale it is corrected in place and the
 superseded text is kept rather than deleted. The previous reading — this tree at `4b6f2a1`,
-`engineering-protocols` at `79b641c`, 2026-08-25 — is three days old and predates their 0.13.0, the
+`aep` at `79b641c`, 2026-08-25 — is three days old and predates their 0.13.0, the
 release that took the dependency; every tag from `0.13.0` to `0.31.0` has been cut since. That
 `79b641c` is on none of their branches today is its own small lesson about citing a bare commit
 across a repository boundary: a tag survives a history rewrite and a hash does not.
 
 ## 1. Where this stands — verified 2026-08-28
 
-**Phases 0 to 4 of the adoption design have shipped, and `engineering-protocols` depends on this
+**Phases 0 to 4 of the adoption design have shipped, and `aep` depends on this
 repository.** The programme this page was written to sequence is done; what is left is the storage
 layer, which is § 6.
 
 | fact | evidence |
 |---|---|
-| `engineering-protocols` takes **five** crates of this repository | `engineering-protocols/Cargo.toml:112-116` — `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres`, `entity-remote`, declared once in `[workspace.dependencies]` |
+| `aep` takes **five** crates of this repository | `aep/Cargo.toml:112-116` — `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres`, `entity-remote`, declared once in `[workspace.dependencies]` |
 | all five at **one pin**, the release tag `0.13.0` | the same five lines; their gate's `dep-check` (`cargo xtask deps`) fails if the lockfile ever resolves two pins or two versions, after two kernels were compiled side by side there for two releases |
-| the arrow is **one way**, and permanent | no `Cargo.toml` in this repository names a crate of theirs — `grep -rn 'aep-\|engineering-protocols' --include=Cargo.toml .` returns nothing. [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md): *"`entity-runtime` takes nothing from `engineering-protocols`, at any version, forever"* |
-| **phase 0** — the mapping has a verdict | **accepted in part**, 2026-08-28, in `engineering-protocols`' own store: `story:entity-runtime-mapping` § *Verdict — 2026-08-28*. Accepted for states, initial states and edges; **explicitly not for the verbs** — the eleven operation names in [`examples/aep/`](https://github.com/beyond10x/entity-runtime/tree/main/examples/aep) stay ours and unendorsed |
-| the verdict has a test on **their** side too | `engineering-protocols/crates/aep-backend-markdown/tests/entity_runtime_equivalence.rs` — our `examples/aep/*.yaml`, pinned at our tag `0.13.0`, compared against their `artifacts/lifecycles/*.yaml`; six tests, eleven kinds, **77 edges** in both directions. Each repository now holds a pinned copy of the other's documents |
+| the arrow is **one way**, and permanent | no `Cargo.toml` in this repository names a crate of theirs — `grep -rn 'aep-\|aep' --include=Cargo.toml .` returns nothing. [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md): *"`entity-runtime` takes nothing from `aep`, at any version, forever"* |
+| **phase 0** — the mapping has a verdict | **accepted in part**, 2026-08-28, in `aep`' own store: `story:entity-runtime-mapping` § *Verdict — 2026-08-28*. Accepted for states, initial states and edges; **explicitly not for the verbs** — the eleven operation names in [`examples/aep/`](https://github.com/beyond10x/entity-runtime/tree/main/examples/aep) stay ours and unendorsed |
+| the verdict has a test on **their** side too | `aep/crates/aep-backend-markdown/tests/entity_runtime_equivalence.rs` — our `examples/aep/*.yaml`, pinned at our tag `0.13.0`, compared against their `artifacts/lifecycles/*.yaml`; six tests, eleven kinds, **77 edges** in both directions. Each repository now holds a pinned copy of the other's documents |
 | **phase 1** — every ladder as a definition | shipped: 11 definitions, 77 edges, **14 tests** (`cargo test -p entity-yaml --test aep_lifecycles`), against their `artifacts/lifecycles/*.yaml` pinned at `3de6e07`. In the gate through `test`, `example-check` and `pin-check` |
-| **phase 2** — `protocol artifact move` decided by this kernel | shipped there in `engineering-protocols` 0.13.0, 2026-08-25 (`f20c9d6`), with `crates/aep-backend-markdown/tests/kernel_equivalence.rs` holding the kernel's verdict identical to the lookup it replaced over all 800 ordered status pairs |
+| **phase 2** — `aep artifact move` decided by this kernel | shipped there in `aep` 0.13.0, 2026-08-25 (`f20c9d6`), with `crates/aep-backend-markdown/tests/kernel_equivalence.rs` holding the kernel's verdict identical to the lookup it replaced over all 800 ordered status pairs |
 | **phase 3** — a rung may cost evidence | shipped on both sides: `requires:` per rung upstream, three-valued rules here (R-57, R-58), and `PreconditionUnobservable` naming every address nobody supplied. Their gap register `:39` closed its mechanism half 2026-08-25 and its provenance half 2026-08-26 |
-| **phase 4** — the status vocabulary opened | shipped in `engineering-protocols` 0.13.0: `ArtifactStatus` carries `Other(String)` and the *ladder* gates a status write instead of the enum. Their gap register `:70`'s vocabulary half, and the last instance of `:76` |
+| **phase 4** — the status vocabulary opened | shipped in `aep` 0.13.0: `ArtifactStatus` carries `Other(String)` and the *ladder* gates a status write instead of the enum. Their gap register `:70`'s vocabulary half, and the last instance of `:76` |
 
 **One correction to how it happened.** The ADR's order of moves put the verdict (its step 3) before
 the manifest line (step 4). It went the other way: the operator instructed phase 2 directly, the
@@ -62,10 +62,10 @@ it was run and stopped being true the same week.
 
 #### 1. The blocking fact
 
-`engineering-protocols` **has never been told this repository exists.**
+`aep` **has never been told this repository exists.**
 
 ```console
-$ cd ../engineering-protocols && grep -rln "entity-runtime\|entity-core" \
+$ cd ../aep && grep -rln "entity-runtime\|entity-core" \
     --include='*.md' --include='*.yaml' --include='*.rs' . | grep -v ^./target
 $ echo $?
 1
@@ -85,13 +85,13 @@ re-read 2026-08-28. Kept as the record of what was on the critical path and how 
 
 | # | item | state | reversible until |
 |---|---|---|---|
-| **D** | phase 1: every lifecycle as a definition | **shipped** — 11 definitions, 77 edges, 14 tests, in the gate; refreshed to `engineering-protocols` `3de6e07` (0.18.0). *(Read 9/73/11 until 2026-08-28; the counts were a release behind two more ladders.)* | always, it is `examples/` |
+| **D** | phase 1: every lifecycle as a definition | **shipped** — 11 definitions, 77 edges, 14 tests, in the gate; refreshed to `aep` `3de6e07` (0.18.0). *(Read 9/73/11 until 2026-08-28; the counts were a release behind two more ladders.)* | always, it is `examples/` |
 | **C** | `story:three-valued-conditions` — the one semantics change | **shipped** — `Truth`, two new refusals, R-57/R-58 | it ships in a release |
-| **A** | put the mapping to `engineering-protocols`, carrying D as evidence | **done, and answered** — `story:entity-runtime-mapping` § *Verdict — 2026-08-28*: accepted in part, and not for the verbs | it is a document |
-| **B** | the dependency arrow | **taken, and widened** — five crates now, one tag, one way: `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres`, `entity-remote` at `0.13.0` (`engineering-protocols/Cargo.toml:112-116`); [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | — the manifest lines exist |
+| **A** | put the mapping to `aep`, carrying D as evidence | **done, and answered** — `story:entity-runtime-mapping` § *Verdict — 2026-08-28*: accepted in part, and not for the verbs | it is a document |
+| **B** | the dependency arrow | **taken, and widened** — five crates now, one tag, one way: `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres`, `entity-remote` at `0.13.0` (`aep/Cargo.toml:112-116`); [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | — the manifest lines exist |
 
 Phase 3 is **done** on both sides — a ladder may declare what a rung costs, and the refusal tells
-*nobody looked* from *it does not hold*. Phase 2 is **done**: `protocol artifact move` is decided by
+*nobody looked* from *it does not hold*. Phase 2 is **done**: `aep artifact move` is decided by
 this kernel, with an 800-pair verdict equivalence test in their repository. **Phase 4 is done too**,
 and this sentence used to say it and phase 3 were next: `ArtifactStatus` carries `Other(String)` and
 the ladder gates the write, shipped in their 0.13.0. Nothing of phases 0–4 is outstanding; § 6 is
@@ -99,7 +99,7 @@ what follows.
 
 ## 3. What to send, and where it lands
 
-Not a new plan page. `engineering-protocols` already has the story that asks this repository's
+Not a new plan page. `aep` already has the story that asks this repository's
 question: **`story:open-vocabulary-audit`** (`.engineering/planning/story/open-vocabulary-audit.md`),
 whose acceptance is *"one table over every adopter-facing declaration — open or closed, and for each
 closed one the guarantee the closure buys"*, opened by an adopter's meta-defect: *things the docs
@@ -141,7 +141,7 @@ is the review as it read when the work was owed:
 |---|---|
 | **three-valued rules** | correct, load-bearing, and **under-specified in three places** — below |
 | **accumulating definition validation** | **shipped** — `Registry::register` returns `DefinitionErrors`, every defect at once, and one broken ladder is one finding rather than one per transition it invalidates |
-| **typed references** | correct as a goal, **not a phase-2 blocker**. The design's own words: *"until it does, the shell keeps validating edges as `protocol artifact relate` does today"*. It belongs with relations (phase 3+), not on the critical path |
+| **typed references** | correct as a goal, **not a phase-2 blocker**. The design's own words: *"until it does, the shell keeps validating edges as `aep artifact relate` does today"*. It belongs with relations (phase 3+), not on the critical path |
 
 ### 4a. Three-valued: three questions, decided 2026-08-25
 
@@ -152,7 +152,7 @@ small before the type ships and expensive after:
 1. **An `unobservable` refusal needs an address. → It carries every unresolved path, as data.** `CoreError::PreconditionFailed` carries
    `rule: Option<String>` and a `message` (`crates/entity-core/src/error.rs:318-326`) and has no
    field for *which reference did not resolve*. Telling an operator "go and observe" without naming
-   what to observe reproduces, in a type, exactly the prose-rule failure `engineering-protocols`
+   what to observe reproduces, in a type, exactly the prose-rule failure `aep`
    exists to end. The `Unobservable` counterpart should carry the unresolved path(s).
 2. **`null` has no verdict. → A present `null` is not a value.** `lookup` returns
    `Some(Value::Null)` for a key that is present and null (`runtime.rs:634-645`), and argument
@@ -184,12 +184,12 @@ small before the type ships and expensive after:
   public since 2026-08-25 (`atlas/log/2026-08-25.md`). Both repositories are public; the question is
   now only arrow direction, and `atlas/architecture/adr/` holds one ADR to pattern it on.
 * ~~**The pin is held by prose.**~~ **Done, and then done twice.** Every cross-repo claim in the
-  adoption design cited `engineering-protocols@79b641c` by file and line with nothing checking it.
+  adoption design cited `aep@79b641c` by file and line with nothing checking it.
   The fixture is now committed — `crates/entity-yaml/tests/fixtures/aep-lifecycles/` with a
   `PIN.md` the gate's `pin-check` recomputes on every run, and `.github/workflows/upstream-pin.yml`
   asking weekly whether the copy is still what upstream ships, outside the gate so nothing here
   reaches the network. As of 2026-08-28 **they hold the mirror image**:
-  `engineering-protocols/crates/aep-backend-markdown/tests/fixtures/entity-runtime-aep/`, our
+  `aep/crates/aep-backend-markdown/tests/fixtures/entity-runtime-aep/`, our
   `examples/aep/*.yaml` pinned at our tag `0.13.0`, with its own sha per file. Neither repository can
   now move its half of the mapping without the other's gate saying so.
 * **An `explain` verb is *not* needed for phase 2.** Worth stating because it looks like it is:
@@ -215,7 +215,7 @@ fixture fails naming what the definitions do not express.
 initial states and edges — and refusing exactly what it could not pin: the verbs. A paper review
 would have had no way to draw that line.
 
-The old edge is still in the store: `protocol artifact` has `relate` and no `unrelate`, so an edge
+The old edge is still in the store: `aep artifact` has `relate` and no `unrelate`, so an edge
 can be added and never removed. `story:aep-mapping-review informed_by
 story:aep-lifecycles-as-definitions` records the real order beside it. Small, and worth carrying into
 the phase-0 message — *nothing is deleted* is their principle, and this is where it bites an author.
@@ -227,7 +227,7 @@ adoption; it is the storage layer**, and it is tracked as
 [`epic:the-store-an-adopter-runs-on`](https://github.com/beyond10x/entity-runtime/blob/main/.engineering/planning/epic/the-store-an-adopter-runs-on.md)
 in this repository's own store, with its plan page at
 [`plan/next-waves-the-adopters-store.md`](plan/next-waves-the-adopters-store.md) (accepted
-2026-08-28) and the adopter's side at `engineering-protocols/docs/plan/store-waves-f-g-h.md`. Three
+2026-08-28) and the adopter's side at `aep/docs/plan/store-waves-f-g-h.md`. Three
 capabilities, each with no `aep` in it: say what a store holds, record what an operation was decided
 on, and run on a server. **Read that epic, not this section, for what is being built.**
 
@@ -263,8 +263,8 @@ only named adopter.** Doing them first would grow a kernel nobody has yet agreed
 
 | question | decision | recorded in |
 |---|---|---|
-| what goes to `engineering-protocols`, and when | build phase 1, send it as the evidence | `story:aep-mapping-review`, `story:aep-lifecycles-as-definitions` |
-| the dependency arrow | `engineering-protocols` takes `entity-core` as a Cargo dependency; this repository takes nothing back, ever | `atlas/architecture/adr/0002` |
+| what goes to `aep`, and when | build phase 1, send it as the evidence | `story:aep-mapping-review`, `story:aep-lifecycles-as-definitions` |
+| the dependency arrow | `aep` takes `entity-core` as a Cargo dependency; this repository takes nothing back, ever | `atlas/architecture/adr/0002` |
 | a present `null` | not a value — `exists` reports `false`, a comparison reports `unknown` (amended from *"`Unknown`, `exists` included"* when built; § 4a) | `story:three-valued-conditions` |
 | an `Unknown` refusal's address | names every unresolved path; `all`/`any` stop short-circuiting when the outcome is `Unknown` | `story:three-valued-conditions` |
 

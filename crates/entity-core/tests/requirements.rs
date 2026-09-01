@@ -266,7 +266,7 @@ fn an_enum_without_values_and_an_array_without_items_are_refused() {
 /// R-13, revised. Validation used to stop at the first defect, so a document with three faults
 /// took three attempts to fix and each attempt told you nothing about the next. Value validation
 /// already reported every failing field at once (R-23); this is the same courtesy for the
-/// definition, and `engineering-protocols` invariant 3 asks for it by name.
+/// definition, and `aep` invariant 3 asks for it by name.
 #[test]
 fn definition_validation_reports_every_defect_not_the_first() {
     let document = with(

@@ -193,7 +193,7 @@ meant; what changed is that a rule nobody can answer no longer borrows one of th
 
 The proof of concept named what it would add next, and the 0.1.0 review added to the list. None of
 these is a requirement of this version; each is a story in the planning store
-(`protocol artifact list --kind story`).
+(`aep artifact list --kind story`).
 
 | addition | why it is not here yet |
 |---|---|

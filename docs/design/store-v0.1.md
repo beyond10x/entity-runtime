@@ -153,7 +153,7 @@ and must fail — because a conformance suite nobody has watched fail is a suite
 reach of. It must also **localise**: failing every case against one defect would be no more
 informative than passing everything.
 
-This is the move `engineering-protocols` made at `0.2.0-wave-3` and has held since: prove the checker
+This is the move `aep` made at `0.2.0-wave-3` and has held since: prove the checker
 before trusting the check.
 
 **R-103**: `SqliteStore` writes the check and both halves in one transaction, which is the promise
@@ -232,7 +232,7 @@ process that recorded it would be one nobody could act on, in exactly the shell 
 Every other question in this crate needs an `(entity, id)` the caller already knows. A shell that
 did not write a store — a second process, a rebuild after a crash, an adopter's process hydrating
 from a file another run wrote — has no id to ask with, and until this section the honest thing it
-could do was refuse. `engineering-protocols`' SQLite backend did exactly that: it refused any row it
+could do was refuse. `aep`' SQLite backend did exactly that: it refused any row it
 had not written itself and told people to point it at an empty database.
 
 Three rules make the answer one a shell can act on:
