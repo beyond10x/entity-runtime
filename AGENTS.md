@@ -43,7 +43,7 @@ its name promises.
 
 [`docs/design/engineering-protocols-adoption-v0.1.md`](docs/design/engineering-protocols-adoption-v0.1.md)
 is a **proposed design with accepted portions**. Its phases 0–4 were accepted and implemented;
-later ideas are not authority until a plan page or story in `engineering-protocols` accepts them.
+later ideas are not authority until a plan page or story in AEP accepts them.
 This repository's side is tracked through `epic:drive-engineering-protocols`; `docs/roadmap.md`
 records what actually shipped. Do not use the design's original status line to undo accepted work
 or to infer approval for work beyond it.
@@ -144,7 +144,7 @@ against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they 
 set the repository committed rather than one cargo re-resolved on the way past.
 
 One check is deliberately **outside** the gate. `pin-check` holds the AEP fixture against its own
-`PIN.md`; whether that fixture is still what `engineering-protocols` ships is a different question,
+`PIN.md`; whether that fixture is still what AEP ships is a different question,
 and answering it means cloning their repository. `.github/workflows/upstream-pin.yml` asks it weekly
 (`scripts/check-upstream-pin.py <checkout>`, runnable locally against a sibling clone), so the gate
 stays network-free and drift surfaces as its own red run rather than as a puzzling failure in an
@@ -169,16 +169,15 @@ the gate's output.
 
 `main` carries a ruleset (`main: checks before merge`, id 21404415): `gate / Gate`,
 `gate / MSRV 1.85` and `Build Docusaurus` must pass, the branch cannot be deleted, and history
-cannot be rewritten. **`b10x-bot` and repository admins bypass it**, which is what keeps
-`private Atlas delivery tooling push origin main` working — the rule exists for pull requests, where a
-Dependabot bump used to be mergeable with a cancelled or failing site build.
+cannot be rewritten. Repository administrators may perform governed release operations; delivery
+credentials and their machinery remain outside this public repository.
 
 If a check name changes, change it here too: a required check that no longer runs blocks every
 pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime/rulesets/21404415`).
 
 ## Boundaries
 
-* **The dependency arrow points from `engineering-protocols` to this repository.** Its workspace
+* **The dependency arrow points from AEP to this repository.** Its workspace
   pins `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres` and `entity-remote` from
   one release tag. No manifest here names one of its crates. Changing that direction or changing
   bytes its pin verifies is a coordinated migration under the atlas ADR rules, not a local edit.
@@ -200,11 +199,11 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 * **Never commit a credential, a token or anything adopter-internal.**
 * **This repository is not a live-evaluation subject today, and that is a fact rather than a
   policy.** It carries a planning store under `.engineering/` and could be driven, but it ships no
-  step map — `engineering-protocols` owns `drivers/development/default.yaml` and is the subject the
+  step map — AEP owns `drivers/development/default.yaml` and is the subject the
   harness comparison actually runs against. If you are ever asked to drive a harness against this
   repository, do not rediscover the machinery: `metaharness`' `AGENTS.md` § *Live-evaluating our
   own harness* has the procedure, the reinstall-before-you-run rule and the traps that each cost a
-  paid model run, and `engineering-protocols`' `AGENTS.md` § *Being the subject of a live harness
+  paid model run, and AEP's `AGENTS.md` § *Being the subject of a live harness
   evaluation* has what a subject repository has to get right. Both are paid runs; neither belongs
   in `task check`, whose no-money rule above would forbid it anyway.
 
@@ -297,16 +296,15 @@ changelog heading agree. There is no generated-notes fallback: cut the section f
 ```console
 task check
 $EDITOR CHANGELOG.md                      # move [Unreleased] under ## [X.Y.Z] - YYYY-MM-DD
-private Atlas delivery tooling commit -F msg.txt
-private Atlas delivery tooling tag -a X.Y.Z -F tag.txt
-private Atlas delivery tooling push origin main X.Y.Z
 ```
+
+The private Atlas release procedure owns the commit, annotated tag and push. This repository owns
+the release-ready tree and its evidence, never delivery credentials or token-minting machinery.
 
 ## Commits
 
-* **Commits land as the org bot.** `private Atlas delivery tooling commit …` and `private Atlas delivery tooling push …`
-  run git with `b10x-bot[bot]` authorship and the App's installation token (`private Atlas delivery tooling`
-  mints it from `~/private Atlas configuration/`). See `atlas/docs/bot-only-commits.md`.
+* **Public history uses the organization release identity.** The private Atlas delivery procedure
+  supplies that identity and any required credentials; this repository contains neither.
 * Conventional prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 * Title, blank line, then a body explaining what changed and why. No title-only commits.
 * Ticket references go in a `Refs:` tagline at the end of the body, never in the title.

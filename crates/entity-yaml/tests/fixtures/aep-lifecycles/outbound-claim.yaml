@@ -1,0 +1,80 @@
+# A statement this organisation made to somebody outside it.
+#
+# Gap register :70, the half the vocabulary alone did not close. Every other ladder here models
+# evidence flowing *inward*: something was observed, and an artifact's status records what we now
+# know. An outbound claim runs the other way. A number in a customer's inbox, a status page saying
+# "resolved", an availability figure in a renewal deck — those are assertions that left the boundary,
+# and nothing in this repository modelled them.
+#
+# # The property the ladder exists to enforce: sending is not undoable
+#
+# There is no path from `sent` back to `draft`, and that is the whole design.
+#
+# `draft` and not `drafted`, which is what this said first: every other ladder here starts at the
+# built-in `draft`, and an invented rung one letter away from a built-in is a typo wearing a
+# vocabulary's clothes. The vocabulary is open to authors, not to near-misses. An assertion handed
+# to a customer cannot be unhanded. A ladder that let `sent` move back to `draft` would model
+# retraction as an edit — the claim would simply stop having been made — and the customer would still
+# have the email.
+#
+# So a wrong claim moves *forward*, never back: `correction-owed` is a rung of its own, and the only
+# way out of it is `corrected`, which is a **new outbound act** with its own evidence. Fixing a claim
+# costs a second claim. That is true in the world and the ladder should not be kinder than the world.
+#
+# # Why `correction-owed` is a rung and not a flag
+#
+# The row names the state precisely: *sent, known wrong, audience not yet told*. It is the most
+# expensive state an organisation can be in and the easiest one to leave undocumented, because
+# nobody wants to write it down. A rung makes it a position on a ladder that `protocol artifact
+# board` prints in a column, rather than a sentence in a thread.
+#
+# It is deliberately **not** terminal and deliberately **not** `is_approved`: a claim in
+# `correction-owed` is a live obligation, and anything that treated it as finished would let the
+# most important case disappear from a report.
+#
+# # What is absent, and why
+#
+# No `retracted`. A retraction is itself an outbound claim — you have to tell somebody — so it is a
+# `corrected` reached by a correction whose content is a withdrawal, not a rung that quietly makes
+# the original stop counting.
+#
+# No `expired`. A claim does not become false by ageing; the world moves and somebody notices, which
+# is `correction-owed` and needs a person in it.
+kind: outbound-claim
+initial: draft
+
+transitions:
+  # Nothing leaves the boundary without a human approving it.
+  draft: [cleared]
+  cleared: [sent]
+  # Still true, as far as anybody knows.
+  sent: [standing, correction-owed]
+  standing: [correction-owed]
+  # The only way out is a second outbound act.
+  correction-owed: [corrected]
+  corrected: []
+
+requires:
+  # `cleared` is an approval gate, which is what `cleared` already means elsewhere here.
+  cleared:
+    - evidence: approval
+      at_least: 1
+  # Two, and the second one is the point.
+  #
+  # A correction is itself an outbound act and owes its own clearance. Written as `at_least: 1` this
+  # rung passed immediately, because the approval that cleared the *original* claim was still on the
+  # record and evidence is append-only — an observation that happened does not un-happen. So the
+  # claim would have been "corrected" on the strength of somebody approving the thing that was
+  # wrong, which is precisely the failure this ladder exists to make impossible.
+  #
+  # Two approvals is what a corrected claim has actually had: one to send it, one to correct it. The
+  # count is exact rather than a safety margin.
+  #
+  # **The general shape of this, stated where somebody will meet it:** `requires:` counts every
+  # matching record ever made about the artifact, and there is no way today to say *an approval
+  # recorded since this claim entered `correction-owed`*. Where a rung's history gives an exact
+  # cumulative number, as here, counting works. Where it does not, this mechanism cannot yet express
+  # freshness, and a ladder that pretends otherwise would be worse than one that says so.
+  corrected:
+    - evidence: approval
+      at_least: 2

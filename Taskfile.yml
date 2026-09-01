@@ -74,7 +74,7 @@ tasks:
     # printed every status move it made and recorded none of them, and `artifact validate` stayed
     # green because it reads the files and the files were fine.
     cmds:
-      - python3 scripts/check-protocol.py
+      - cargo run -q -p entity-xtask --locked -- protocol-version
       - protocol artifact validate
 
   fmt:

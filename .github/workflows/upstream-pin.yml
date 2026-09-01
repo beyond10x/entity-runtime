@@ -1,4 +1,4 @@
-# Whether the pinned AEP ladders are still what `engineering-protocols` ships.
+# Whether the pinned AEP ladders are still what AEP ships.
 #
 # `pin-check`, in the gate, holds the committed fixture against its own `PIN.md`. It says nothing
 # about the thing the fixture is a copy of, and that is the half that went wrong: `vision.yaml`
@@ -37,20 +37,20 @@ jobs:
       # Full depth: the report names the tag to pin to, and `git describe` needs tags to find one.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: beyond10x/engineering-protocols
+          repository: beyond10x/aep
           path: upstream
           fetch-depth: 0
           persist-credentials: false
 
       # Redirect and then `cat`, rather than piping through `tee`: a pipeline reports its **last**
-      # command's status, not the checker's. `engineering-protocols` pushed two commits claiming a
+      # command's status, not the checker's. A historical upstream incident produced two commits claiming a
       # gate that had aborted at its first step because of exactly this, and records it in their
       # AGENTS.md. The status recorded here is the checker's own.
       - name: Compare
         id: compare
         run: |
           set +e
-          python3 scripts/check-upstream-pin.py upstream > report.txt 2>&1
+          cargo run -q -p entity-xtask --locked -- upstream-pin upstream > report.txt 2>&1
           status=$?
           cat report.txt
           echo "status=$status" >> "$GITHUB_OUTPUT"

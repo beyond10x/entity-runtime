@@ -281,7 +281,7 @@ product handbook lives under [`website/docs/`](website/docs/).
 
 ## Ecosystem
 
-- [engineering-protocols](https://github.com/beyond10x/engineering-protocols) is the first adopter.
+- [AEP](https://github.com/beyond10x/aep) is the first adopter.
   Its artifact backends consume this repository's kernel and provider crates from one pinned
   release; the dependency points from it to Entity Runtime.
 - [eventlog](https://github.com/beyond10x/eventlog) is the append-only counterpart: Entity Runtime

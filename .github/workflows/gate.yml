@@ -3,7 +3,7 @@
 # when the two carried hand-copied step lists and only one of them ran `cargo doc`.
 #
 # These steps mirror `task check` in Taskfile.yml, in the same order, minus `plan-check`, which
-# needs the `protocol` CLI from engineering-protocols and is a local discipline.
+# needs the AEP `protocol` compatibility command and is a local discipline.
 name: Gate
 
 on:

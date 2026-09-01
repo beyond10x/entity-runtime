@@ -4,9 +4,9 @@ version: aep.project/1
 # carries no cross-repository path. Advancing the pin is an explicit change to this file.
 protocol: adp/1
 profile: development.standard
-protocols: git+ssh://git@github.com/beyond10x/engineering-protocols.git#79b641c9c75411627669dfce7f0bac04d4472463
+protocols: git+https://github.com/beyond10x/aep.git#714d256e6810834d7de0d670c1e8eff0f79a76c8
 
 summary: >-
   A schema-driven entity runtime: entity types declared as data (schema, lifecycle, operations,
   rules, events) and executed by an IO-free deterministic kernel. The foundation that
-  engineering-protocols' artifact model is to be driven by.
+  AEP's artifact model is driven by this deterministic runtime.

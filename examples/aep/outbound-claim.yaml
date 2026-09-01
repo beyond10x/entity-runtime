@@ -1,0 +1,160 @@
+# The AEP `outbound-claim` lifecycle, expressed as an entity definition.
+#
+# A sent assertion never returns to draft. Discovering an error creates a correction obligation,
+# and closing that obligation costs a second approval because the correction is itself outbound.
+
+entity: outbound-claim
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    title:
+      type: string
+      required: true
+      min_length: 1
+    summary:
+      type: string
+    owner:
+      type: string
+    tags:
+      type: array
+      default: []
+      items:
+        type: string
+    body:
+      type: json
+
+lifecycle:
+  initial: draft
+  states:
+    - draft
+    - cleared
+    - sent
+    - standing
+    - correction-owed
+    - corrected
+
+create:
+  emit:
+    type: ArtifactCreated
+    payload:
+      artifact_id: $id
+      kind: $entity
+      status: $state
+      title: $fields.title
+
+operations:
+  clear:
+    arguments:
+      fields:
+        evidence:
+          type: json
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    preconditions:
+      - name: 'evidence: approval'
+        message: an outbound claim needs approval before it is cleared
+        assert:
+          gte: [$args.evidence.approval, 1]
+    transitions:
+      - from: draft
+        to: cleared
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: clear
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  send:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: cleared
+        to: sent
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: send
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  affirm:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: sent
+        to: standing
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: affirm
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  owe-correction:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: [sent, standing]
+        to: correction-owed
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: owe-correction
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  correct:
+    arguments:
+      fields:
+        evidence:
+          type: json
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    preconditions:
+      - name: 'evidence: approval'
+        message: a corrected claim carries approval for both outbound acts
+        assert:
+          gte: [$args.evidence.approval, 2]
+    transitions:
+      - from: correction-owed
+        to: corrected
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: correct
+          from: $from_state
+          to: $to_state
+          actor: $args.actor

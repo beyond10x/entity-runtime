@@ -1,6 +1,6 @@
 # The AEP artifact model, as entity definitions
 
-Eleven definitions, one per lifecycle document `engineering-protocols` ships. This is **phase 1** of
+One definition per lifecycle document AEP ships. This is **phase 1** of
 [`../../docs/design/engineering-protocols-adoption-v0.1.md`](../../docs/design/engineering-protocols-adoption-v0.1.md),
 and its claim is deliberately narrow: *these say exactly what their ladders say*.
 
@@ -21,7 +21,7 @@ and its claim is deliberately narrow: *these say exactly what their ladders say*
   and could not have — costs a line and an operation rather than a release of a crate.
 
   Not *here*, though: the equivalence test binds these files to the pinned ladder in both
-  directions, so adding that rung to `story.yaml` fails until `engineering-protocols` adds it too.
+  directions, so adding that rung to `story.yaml` fails until AEP adds it too.
   That is the guard working, and these definitions cannot lead upstream by construction — which is
   the whole reason they are safe to send as evidence. Upstream opened the status *vocabulary* on
   2026-08-25, so adding the rung no longer needs a release of theirs — but no lifecycle document
@@ -54,7 +54,7 @@ $ entity validate examples/aep/*.yaml
 
 ## Status
 
-**Proposed, and unread by the repository it maps.** Nothing in `engineering-protocols` knows these
+**Proposed, and unread by the repository it maps.** Nothing in AEP knows these
 files exist; `story:aep-mapping-review` is the phase that changes that, and these definitions are
 what it sends. Until then this is one repository's reading of another's documents, kept honest by a
 test.

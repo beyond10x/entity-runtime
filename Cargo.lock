@@ -356,6 +356,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "entity-xtask"
+version = "0.17.3"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "entity-yaml"
 version = "0.17.3"
 dependencies = [

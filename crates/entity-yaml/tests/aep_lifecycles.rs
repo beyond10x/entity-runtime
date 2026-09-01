@@ -1,7 +1,7 @@
 //! Phase 1 of [`docs/design/engineering-protocols-adoption-v0.1.md`]: every AEP lifecycle
-//! document `engineering-protocols` ships, expressed as an entity definition under `examples/aep/`.
-//! Nine of them at the pinned commit; the number is read from the fixture, never written down here,
-//! because a count in a test is a second place for the truth to live.
+//! document AEP ships, expressed as an entity definition under `examples/aep/`. The number is read
+//! from the fixture, never written down here, because a count in a test is a second place for the
+//! truth to live.
 //!
 //! The claim these tests make is narrow and is the whole of phase 1: **the definitions declare
 //! exactly the edges the upstream transitions map declares — no more, no fewer.** No rules, no

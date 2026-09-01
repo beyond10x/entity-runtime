@@ -4,6 +4,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+- Added the AEP `outbound-claim` lifecycle definition and refreshed the byte-exact AEP fixture to
+  0.40.0, so the equivalence suite covers every lifecycle AEP ships.
+
 ## [0.17.3] — 2026-08-31
 
 - Fixed PostgreSQL document queries to bind serialized containment predicates as text before

@@ -13,6 +13,7 @@ members = [
   "crates/entity-surface",
   "crates/entity-yaml",
   "crates/entity-cli",
+  "crates/entity-xtask",
   "crates/scan-support",
 ]
 
