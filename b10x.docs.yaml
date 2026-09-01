@@ -23,4 +23,4 @@ surfaces:
       - {target: aep-service/docs, kind: uses, label: Provides deterministic entity storage semantics}
     accent: "#f0b35c"
     mark: website/static/img/mark.svg
-    shell: {integration: docusaurus, revision: 6323bfdaf73609247e8dabcc9df410ab280a1960}
+    shell: {integration: docusaurus, revision: 0cbd1f1b6951fec95767332e3a1792f838feb62d}
