@@ -210,14 +210,15 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 
 ## The website
 
-`website/` is a Docusaurus site with a human-facing product corpus under `website/docs/`. It does
-**not** render or link the repository-root `docs/` tree: requirements, designs, plans and reviews
-are the engineering record, not adopter documentation. The public site is published at
-<https://beyond10x.github.io/entity-runtime/> by `.github/workflows/pages.yml` on every push to
-`main`; pull requests get the build without the deploy. `onBrokenLinks: 'throw'` means a dangling
-link in `website/docs/` fails that build. Public pages link one another, releases and source
-examples; they do not route a reader into `.engineering/`, requirements registers, versioned
-designs or reviews. `task site-build` runs the same locally; it is deliberately not a step of
+`website/` is a Docusaurus source corpus with a human-facing product guide under `website/docs/`.
+It does **not** render or link the repository-root `docs/` tree: requirements, designs, plans and
+reviews are the engineering record, not adopter documentation. The unified Website publishes the
+canonical guide at <https://beyond10x.github.io/docs/entity-runtime/>; the project URL is only its
+generated redirect façade. `.github/workflows/pages.yml` retains the required `Build Docusaurus`
+context, type check, link gate and image-format guard, but has no Pages deployment authority.
+`onBrokenLinks: 'throw'` means a dangling link in `website/docs/` fails that build. Public pages link
+one another, releases and source examples; they do not route a reader into `.engineering/`,
+requirements registers, versioned designs or reviews. `task site-build` runs the same locally; it is deliberately not a step of
 `task check`, which reaches no network.
 
 ## Where work is tracked
@@ -311,3 +312,11 @@ the release-ready tree and its evidence, never delivery credentials or token-min
 * Ticket references go in a `Refs:` tagline at the end of the body, never in the title.
 * Write messages through a file or a quoted heredoc (`git commit -F -` with `<<'MSG'`), never
   `-m "…"` with backticks in the text.
+
+<!-- b10x-docs-operations:start -->
+## Public documentation operations
+
+This repository owns the public source and presentation allowlist in `b10x.docs.yaml`; the unified [beyond10x Website](https://beyond10x.github.io/docs/entity-runtime/) passively collects those declared files from the exact commit in `website/sources.lock.json`. Atlas owns discovery grouping/order; Website and Docs System own rendering, shared components, search, and feeds. Do not add a standalone docs deployer or put App credentials in this public repository. If Atlas catalogs a former Pages workflow, that file remains repository-owned validation: preserve its bespoke checks while keeping exact read-only permissions, an unconditional pull-request trigger, and no deployment primitives. Project Pages at `/entity-runtime/` is only the generated redirect façade in `.github/workflows/b10x-docs-pages.yml`.
+
+From a complete organization workspace, run `cargo run --manifest-path atlas/Cargo.toml -- docs reconcile --workspace . --check` to verify the contract. Keep internal plans, stories, ADRs, decisions, worklogs, security material, and research out of the public allowlist unless a repository authority explicitly declares them public.
+<!-- b10x-docs-operations:end -->

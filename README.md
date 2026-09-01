@@ -291,3 +291,9 @@ product handbook lives under [`website/docs/`](website/docs/).
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+<!-- b10x-docs:start -->
+## Documentation
+
+[Entity Runtime documentation](https://beyond10x.github.io/docs/entity-runtime/) · [Start](https://beyond10x.github.io/) · [Ecosystem](https://beyond10x.github.io/ecosystem/) · [Impact](https://beyond10x.github.io/changes/) · [Releases](https://beyond10x.github.io/releases/)
+<!-- b10x-docs:end -->
