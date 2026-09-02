@@ -17,7 +17,7 @@ surfaces:
     outcome: Validate an entity definition and observe a deterministic transition decision.
     prerequisites:
     - Rust toolchain
-    url: https://beyond10x.github.io/docs/entity-runtime/guide/getting-started
+    url: https://beyond10x.github.io/docs/entity-runtime/guide/getting-started/
   audiences:
   - adopter
   - developer
@@ -43,13 +43,13 @@ surfaces:
   sections:
   - kind: quickstart
     label: Quickstart
-    url: https://beyond10x.github.io/docs/entity-runtime/guide/getting-started
+    url: https://beyond10x.github.io/docs/entity-runtime/guide/getting-started/
   - kind: reference
     label: Definition language
-    url: https://beyond10x.github.io/docs/entity-runtime/guide/definitions
+    url: https://beyond10x.github.io/docs/entity-runtime/guide/definitions/
   - kind: status
     label: Guarantees
-    url: https://beyond10x.github.io/docs/entity-runtime/guarantees
+    url: https://beyond10x.github.io/docs/entity-runtime/guarantees/
   - kind: source
     label: Source
     url: https://github.com/beyond10x/entity-runtime
