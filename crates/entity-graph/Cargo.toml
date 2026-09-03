@@ -11,7 +11,7 @@ rust-version.workspace = true
 # could reach a filesystem or a clock is one that could draw something the definition does not say,
 # and the drawing would stop being reproducible from the definition alone.
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.17.5" }
+entity-core = { path = "../entity-core", version = "0.17.6" }
 
 [dev-dependencies]
 serde_json.workspace = true

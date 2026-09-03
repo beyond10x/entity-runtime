@@ -9,6 +9,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 use serde::{Deserialize, Serialize};
@@ -24,9 +25,48 @@ const FORMAT_FILE: &str = ".entity-store-format";
 const SUBJECT_FORMAT: &str = "entity.file-subject/2";
 
 /// A [`Store`] backed by one versioned directory.
-#[derive(Debug, Clone)]
+///
+/// Record identity is store-global (R-88), so every recorded write asks whether its record id is
+/// already held somewhere. Answering that by reading every subject on every write made a store of
+/// a few hundred subjects read gigabytes for megabytes written — measured 2026-09-03 at 24 GB read
+/// for 45 MB written over 517 subjects. So a handle builds an index of record ids **once**, by one
+/// read of every subject on its first lookup, and keeps it current with every write it makes. The
+/// index is per handle: a second handle or a second process writing the same directory is outside
+/// File Store's atomicity, which is limited to one subject document. Cloning a handle clones what
+/// it knew at that moment.
+#[derive(Debug)]
 pub struct FileStore {
     root: PathBuf,
+    records: Mutex<Option<RecordIndex>>,
+}
+
+impl Clone for FileStore {
+    fn clone(&self) -> Self {
+        Self {
+            root: self.root.clone(),
+            records: Mutex::new(lock(&self.records).clone()),
+        }
+    }
+}
+
+/// Every record id a handle knows, and the subject that holds it.
+#[derive(Debug, Clone, Default)]
+struct RecordIndex {
+    locations: BTreeMap<String, RecordLocation>,
+}
+
+#[derive(Debug, Clone)]
+struct RecordLocation {
+    entity: String,
+    id: String,
+    /// `true` for a recorded observation, `false` for a decision record.
+    observation: bool,
+}
+
+fn lock(records: &Mutex<Option<RecordIndex>>) -> std::sync::MutexGuard<'_, Option<RecordIndex>> {
+    records
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,7 +104,10 @@ pub struct FileMigrationReport {
 impl FileStore {
     /// Opens the store rooted at `root`. Validation happens on the first operation.
     pub fn open(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            records: Mutex::new(None),
+        }
     }
 
     /// The directory it writes into.
@@ -219,10 +262,53 @@ impl FileStore {
             RootState::Missing | RootState::Empty => return Ok(None),
             RootState::V2 => {}
         }
+        let location = {
+            let mut records = lock(&self.records);
+            if records.is_none() {
+                *records = Some(self.scan_records()?);
+            }
+            records
+                .as_ref()
+                .and_then(|index| index.locations.get(record_id).cloned())
+        };
+        let Some(location) = location else {
+            return Ok(None);
+        };
+        let Some(subject) = self.read_subject(&location.entity, &location.id)? else {
+            return Ok(None);
+        };
+        let subject_path = self.subject_path(&location.entity, &location.id);
+        if location.observation {
+            subject
+                .observations
+                .into_iter()
+                .find(|observation| observation.envelope.record_id == record_id)
+                .map(serde_json::to_value)
+                .transpose()
+                .map_err(|error| backend("serialising a stored observation", &subject_path, &error))
+        } else {
+            subject
+                .records
+                .into_iter()
+                .find(|envelope| envelope.record_id == record_id)
+                .map(|envelope| {
+                    serde_json::to_value(RecordedCommit {
+                        instance: envelope.record.result.clone(),
+                        envelope,
+                    })
+                })
+                .transpose()
+                .map_err(|error| backend("serialising a stored record", &subject_path, &error))
+        }
+    }
+
+    /// One read of every subject: where each record id lives. Built once per handle.
+    fn scan_records(&self) -> Result<RecordIndex, StoreError> {
+        let mut index = RecordIndex::default();
         let subjects = self.root.join("subjects");
         let entities = match fs::read_dir(&subjects) {
             Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(index),
             Err(error) => return Err(backend("listing", &subjects, &error)),
         };
         for entity_entry in entities {
@@ -257,29 +343,43 @@ impl FileStore {
                 let subject = self
                     .read_subject(&entity, &id)?
                     .expect("ids validates every returned subject");
-                for envelope in subject.records {
-                    if envelope.record_id == record_id {
-                        let commit = RecordedCommit {
-                            instance: envelope.record.result.clone(),
-                            envelope,
-                        };
-                        return serde_json::to_value(commit).map(Some).map_err(|error| {
-                            backend("serialising a stored record", &entity_path, &error)
-                        });
-                    }
+                for envelope in &subject.records {
+                    index.locations.insert(
+                        envelope.record_id.clone(),
+                        RecordLocation {
+                            entity: entity.clone(),
+                            id: id.clone(),
+                            observation: false,
+                        },
+                    );
                 }
-                for observation in subject.observations {
-                    if observation.envelope.record_id == record_id {
-                        return serde_json::to_value(observation)
-                            .map(Some)
-                            .map_err(|error| {
-                                backend("serialising a stored observation", &entity_path, &error)
-                            });
-                    }
+                for observation in &subject.observations {
+                    index.locations.insert(
+                        observation.envelope.record_id.clone(),
+                        RecordLocation {
+                            entity: entity.clone(),
+                            id: id.clone(),
+                            observation: true,
+                        },
+                    );
                 }
             }
         }
-        Ok(None)
+        Ok(index)
+    }
+
+    /// A write this handle made: keep the index current without reading anything.
+    fn remember(&self, record_id: &str, entity: &str, id: &str, observation: bool) {
+        if let Some(index) = lock(&self.records).as_mut() {
+            index.locations.insert(
+                record_id.to_owned(),
+                RecordLocation {
+                    entity: entity.to_owned(),
+                    id: id.to_owned(),
+                    observation,
+                },
+            );
+        }
     }
 }
 
@@ -527,7 +627,9 @@ impl Store for FileStore {
         });
         stored.instance = commit.instance.clone();
         stored.records.push(commit.envelope.clone());
-        self.write_subject(&stored)
+        self.write_subject(&stored)?;
+        self.remember(&commit.envelope.record_id, entity, id, false);
+        Ok(())
     }
 
     fn observe(&mut self, observation: &RecordedObservation) -> Result<(), StoreError> {
@@ -580,7 +682,14 @@ impl Store for FileStore {
             Some(stored.instance.revision),
         )?;
         stored.observations.push(observation.clone());
-        self.write_subject(&stored)
+        self.write_subject(&stored)?;
+        self.remember(
+            &observation.envelope.record_id,
+            &observation.entity,
+            &observation.id,
+            true,
+        );
+        Ok(())
     }
 }
 
