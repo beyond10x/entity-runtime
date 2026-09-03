@@ -4,6 +4,17 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.17.6] — 2026-09-03
+
+### Fixed
+
+- The File Store no longer reads every subject on every recorded write to check that a record id
+  is unused. A handle builds an index of record ids once — one read of every subject on its first
+  lookup — and keeps it current with its own writes. Measured before the change on 2026-09-03: an
+  import of 517 subjects read 24 GB to write 45 MB. The rule itself is unchanged: a record id
+  reused for different bytes is `RecordConflict`, identical bytes are an idempotent success, and
+  both hold across handles opened at different times.
+
 ## [0.17.5] — 2026-09-01
 
 - Updated the AEP adoption record, local planning guidance, and gate command to the renamed AEP
