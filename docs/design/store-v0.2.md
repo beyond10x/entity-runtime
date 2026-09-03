@@ -33,6 +33,41 @@ and publishes it by rename. The destination must not exist and the source is nev
 `--dry-run` performs the validation without creating destination bytes. Migrated subjects carry a
 `legacy_snapshot` origin and retain legacy events, but have no invented decision records.
 
+### 2.1 The record-id index (0.17.6)
+
+R-88 makes a record id global to a store, so every recorded write — `commit_recorded` and
+`observe` — must first answer *is this id already held anywhere*. Until 0.17.6 the File Store
+answered by reading and parsing every subject document in the store on every write
+(`record_document` walked `subjects/*/*.json`). That is O(subjects) per write and O(subjects²) per
+import; measured on 2026-09-03 while replaying an adopter's history, 517 subjects written cost
+24 GB read for 45 MB written, and the run did not finish in ten minutes.
+
+From 0.17.6 a handle keeps a `RecordIndex`: record id → (entity, id, decision-or-observation).
+
+| moment | what happens |
+|---|---|
+| `open` | nothing; the index is `None` |
+| first lookup (`record_document`) | `scan_records` reads every subject once and fills the index — the same walk as before, run one time |
+| a hit | the located subject alone is read and the matching envelope or observation returned |
+| a miss | `None`, with no further read |
+| after a successful `write_subject` in `commit_recorded` / `observe` | `remember` inserts the id, so the handle's own writes are found without a second scan |
+| `clone` | the clone carries what the original knew at that moment |
+
+The on-disk format is unchanged: no index file, no marker change, nothing to migrate; a reader
+older than 0.17.6 reads the same bytes. The index lives behind a `Mutex<Option<RecordIndex>>`
+so the handle stays `Send + Sync`; a poisoned lock is taken over rather than propagated, because
+the index is a cache of what is on disk and never the authority.
+
+**What the index does not do.** It is per handle. A second handle, or a second process, writing the
+same directory is outside File Store's atomicity, which § 2 limits to one subject document; such a
+writer's record ids are unknown to this handle until it is reopened. The store-global rule itself
+is unchanged and is pinned by `tests/file_record_index.rs`: an id reused for different bytes is
+`RecordConflict` and identical bytes are an idempotent success, across handles opened at different
+times and for a handle's own writes; `the_file_provider_conforms` is unchanged.
+
+After the change the same 9,085-call import completes in 34 s and reads 0.7 GB — the one scan plus
+one subject read per lookup.
+
 ## 3. Hybrid truthfulness
 
 Freshness is relative to the declared authority, not merely to whether a network request returned.
