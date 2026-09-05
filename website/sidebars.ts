@@ -8,6 +8,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         {type: 'doc', id: 'intro', label: 'What Entity Runtime does'},
+        {type: 'doc', id: 'system-model', label: 'System model and derivation'},
         {type: 'doc', id: 'agentic-systems', label: 'Why agents need it'},
         {type: 'doc', id: 'guide/getting-started', label: 'Refund quickstart'},
       ],

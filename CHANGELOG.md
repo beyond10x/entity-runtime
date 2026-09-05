@@ -4,6 +4,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Documentation
+
+- Added a subsystem and derivation map distinguishing the runtime from ESS and generated domain
+  surfaces. Updated adoption examples to 0.17.7, completed the generated CLI workflow, and clarified
+  exact retries, event/history coverage, optional queries, and trusted-host responsibilities.
+
 ## [0.17.7] — 2026-09-05
 
 ### Fixed

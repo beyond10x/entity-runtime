@@ -74,6 +74,14 @@ Providers store state and events together and compare the revision the caller ex
 memory, SQLite, PostgreSQL, remote, and hybrid options serve different deployment boundaries without
 pulling IO into the kernel.
 
+## Model coverage and release status
+
+This guide targets [0.17.7](https://github.com/beyond10x/entity-runtime/releases/tag/0.17.7).
+The API remains in development. Entity definitions drive execution and generated domain interfaces;
+the runtime itself has authored Rust subsystem contracts, not a whole-system ESS specification.
+The [system model and derivation map](/docs/system-model) shows command, event, provider, and query
+coverage and distinguishes generated surfaces from handwritten command handling.
+
 ## Where to start
 
 - [Why this matters for agentic systems](/docs/agentic-systems)

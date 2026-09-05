@@ -41,11 +41,17 @@ The tool handler should:
 
 1. allow only the definitions and operations intended for this agent;
 2. load the instance from the authoritative store by `id`;
-3. inject trusted values such as `actor_role`;
-4. call `Runtime::execute` or `entity execute`;
+3. preserve the revision the proposal was based on and inject trusted values such as `actor_role`;
+4. call `StoredRuntime::execute` with that expected revision, or use the equivalent kernel/provider sequence;
 5. return typed refusal JSON unchanged when the request is refused;
-6. atomically commit an accepted recorded decision at the loaded revision; and
+6. return success only after the recorded decision commits at the expected revision; and
 7. trigger downstream work only after the commit succeeds.
+
+`StoredRuntime` performs the load, retry check, decision, and recorded commit. Do not commit its
+result a second time. Generic `entity execute --store` reloads current state and has different
+[retry semantics](./storage#retry-boundaries). The schema-derived MCP server exposes recording
+and domain fields directly; an untrusted agent needs a wrapper that derives or validates authority
+fields before dispatch. Merely supplying a trusted-looking sample value is not authentication.
 
 ## Handle outcomes by kind
 

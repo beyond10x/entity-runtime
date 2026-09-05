@@ -6,7 +6,9 @@ description: Commands, value inputs, stored-command provenance, output formats, 
 
 # CLI reference
 
-`entity` is the reference shell around the deterministic kernel. It reads files and standard input,
+`entity` is the authored, Clap-derived reference shell around the deterministic kernel.
+Its top-level verbs are not generated from an ESS specification; [domain CLIs](./generated-cli)
+derive their entity and operation subcommands from mounted entity definitions. It reads files and standard input,
 uses the local File Store when requested, prints structured results, and selects an exit code.
 
 ## Commands
@@ -79,8 +81,14 @@ entity execute --definition refund.yaml --store ./refund-store \
 ```
 
 The output is the exact `RecordedCommit` persisted. An incomplete recording envelope is an invalid
-invocation. Record IDs are idempotency keys: same ID and same bytes succeeds; same ID with different
-bytes is refused.
+invocation. At the provider boundary, an identical recorded commit is idempotent and a reused ID
+with different bytes is refused.
+
+Generic `entity execute --store` loads current state and evaluates again on every invocation. It
+has no `--expected-revision` flag and does not recover a prior accepted operation by record ID.
+The [generated CLI](./generated-cli) and [MCP tools](./mcp) require the caller's observed revision
+and use the shared stored runtime's exact-retry path. See [storage](./storage#retry-boundaries)
+before turning a local command into a retrying service.
 
 ## Output formats
 
@@ -131,7 +139,8 @@ entity mcp --definition refund.yaml --store ./refund-store
 ```
 
 The generated documentation directory is self-contained. Rust CLI generation retains its source
-under `build/entity-runtime/NAME` by default and invokes Cargo with `--locked --offline`.
+under `build/entity-runtime/NAME` by default and invokes Cargo with `--locked --offline`. Follow the matching-source and Cargo-output
+prerequisites in the [generation guide](./generated-cli).
 
 ## What the command does not do
 

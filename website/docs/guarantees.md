@@ -6,7 +6,9 @@ description: The properties Entity Runtime enforces, the responsibilities it lea
 
 # Guarantees and limits
 
-Entity Runtime is useful because its boundary is narrow enough to state precisely.
+These are the guarantees of the 0.17.7 runtime. Its API remains in development; definition
+versions, runtime releases, and storage formats are separate compatibility boundaries.
+The [system model](./system-model) identifies the source and coverage of each contract.
 
 ## Kernel guarantees
 
@@ -29,7 +31,8 @@ rule, validation, invariant, or template produces no partial instance and no eve
 ### Lifecycle through operations only
 
 Creation enters the declared initial state. Every later lifecycle change comes from a named
-operation and declared transition. There is no status setter.
+operation and declared transition. There is no status setter in the runtime API. `EntityInstance` has public serializable
+fields, so the host must still choose canonical input state.
 
 ### Closed definitions
 
@@ -78,8 +81,10 @@ Entity Runtime is not:
 - a guarantee that model-supplied facts are true.
 
 The `entity-remote` crate supplies a transport-neutral protocol, not an HTTP stack. The CLI uses the
-File Store; SQLite and PostgreSQL are library integrations. Definition migration between arbitrary
+File Store; SQLite and PostgreSQL are library integrations. Optional document queries exist in `entity-query`, with Memory Store and PostgreSQL
+implementations; they are not a general search service. Definition migration between arbitrary
 versions, search/blob providers, and an `explain` command are not shipped capabilities.
+There is no whole-system ESS specification or ESS importer in this runtime.
 
 ## Security model in one sentence
 
