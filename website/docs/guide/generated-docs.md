@@ -6,6 +6,8 @@ description: Produce a browsable reference, OpenAPI, and AsyncAPI from one valid
 
 # Generate entity documentation
 
+From the directory containing `refund.yaml` in the [quickstart](./getting-started):
+
 ```bash
 entity generate docs \
   --definition refund.yaml \
@@ -27,9 +29,9 @@ refund-reference/
 └── assets/style.css
 ```
 
-[Open the generated refund example](pathname:///examples/refund/index.html) or download its
-[OpenAPI YAML](pathname:///examples/refund/openapi.yaml) and
-[AsyncAPI YAML](pathname:///examples/refund/asyncapi.yaml).
+Open `refund-reference/index.html` locally after generation. The OpenAPI and AsyncAPI files
+are beside it; this guide does not publish a second generated copy of those contracts.
+Use the release-pinned definition from the [quickstart](./getting-started) to reproduce the example.
 
 ## What an entity page explains
 
@@ -44,11 +46,15 @@ reference flowchart, so they remain useful when copied into another documentatio
 
 OpenAPI describes the HTTP facade an adopter can implement: create, get, list, events, and named
 operations. It is a contract, not a hidden server—Entity Runtime opens no HTTP listener. Operation
-requests include `expected_revision` and recording provenance.
+requests include `expected_revision` and recording provenance. Authentication and authorization
+must be designed in the implemented facade; schema validity alone grants no authority.
 
 AsyncAPI describes the domain events a successful decision materializes. Event payload properties
 retain the schema of referenced fields and operation arguments rather than collapsing to arbitrary
 JSON. It declares no broker: publishing is a shell responsibility after durable recording.
+
+These outputs derive from Entity Runtime definitions, not ESS documents. See the
+[system model](../system-model) for the complete projection boundary.
 
 ## Safe regeneration
 

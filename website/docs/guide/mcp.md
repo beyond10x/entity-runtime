@@ -56,9 +56,16 @@ server supports MCP 2026-07-28 and initialization-era 2025-11-25 clients.
 }
 ```
 
-The result is the persisted recorded decision. If the store now holds revision 3, the same call is
-an actionable `revision_conflict` tool error and changes nothing. Kernel refusals likewise carry a
-stable `kind`, boundary, and human detail.
+The subject must first have been created and submitted, as in the [quickstart](./getting-started).
+This call is a trusted-host example: the model must not choose its own `actor_role` or impersonate
+`supervisor-7` through the recording fields.
+
+The result is the persisted recorded decision. In 0.17.7, repeating this exact accepted call returns
+the original revision-3 commit, even if state has since advanced. Keep the original expected
+revision, arguments, and recording metadata. Changing intent under the same record ID is a
+`record_conflict`; a new request based on a stale revision is a `revision_conflict`.
+Kernel refusals likewise carry a stable `kind`, boundary, and human detail.
+See [retry boundaries](./storage#retry-boundaries).
 
 ## Security boundary
 
@@ -68,3 +75,9 @@ stable `kind`, boundary, and human detail.
 - Tool names are strict and collisions with `create`, `get`, `list`, or `events` are refused at
   startup.
 - Stdout contains protocol messages only; diagnostics use stderr.
+
+## Coverage
+
+`events` reads emitted domain events; it does not return the complete decision/observation history.
+The server exposes no general query, transaction-session, observation-write, or event-publication
+tool. Those are separate provider or host integrations in the [system model](../system-model).

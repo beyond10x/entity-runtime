@@ -11,8 +11,9 @@ Entity Runtime is a workspace of narrow crates. Use only the boundary your appli
 | Crate | Purpose |
 |---|---|
 | `entity-core` | IO-free definitions, registry, runtime, decisions, events, and replay |
-| `entity-yaml` | YAML text to validated definition data; no file IO |
+| `entity-yaml` | YAML text to definition data; register it before execution |
 | `entity-store` | provider traits, memory/file stores, envelopes, projections, conformance suite |
+| `entity-query` | optional document containment queries and continuation cursors |
 | `entity-sqlite` | transactional embedded provider |
 | `entity-postgres` | transactional centralized provider |
 | `entity-remote` | versioned store protocol, transport trait, and hybrid policy |
@@ -25,9 +26,12 @@ The crates are currently consumed from the tagged repository:
 
 ```toml
 [dependencies]
-entity-core = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.16.0" }
-entity-yaml = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.16.0" }
+entity-core = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.17.7" }
+entity-yaml = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.17.7" }
 ```
+
+Keep all runtime crate dependencies on the same release tag. The
+[system map](../system-model) explains which contracts are authored and which surfaces are generated.
 
 ## Decide in memory
 
@@ -102,3 +106,14 @@ not equivalent proof.
 
 Match `CoreError` and `StoreError` variants in code. Display strings are for people and may be
 reworded.
+
+## Optional document queries
+
+`DocumentQueryProvider` is implemented by Memory Store and PostgreSQL. `DocumentQuery` selects one
+entity type, applies recursive JSON containment to its fields, and returns an identity-ordered page.
+The default limit is 100 and the maximum is 1,000. Reuse the returned cursor with the same entity and
+filter; a cursor for another query is refused. Pagination alone does not hold a snapshot across calls.
+
+PostgreSQL also offers command sessions for transactional reads, writes, queries, events, and
+identity-range reservation. This is a provider-specific capability; the CLI `list` verb simply
+enumerates stored IDs and exposes no query or transaction-session command.

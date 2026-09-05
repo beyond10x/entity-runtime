@@ -15,8 +15,13 @@ The kernel performs no IO, reads no clock, invents no identity, and mutates no c
 Storage, authentication, timestamps, transport, and event publication remain explicit concerns of
 the application around it.
 
-[Read the product guide](https://beyond10x.github.io/entity-runtime/) or
+[Read the product guide](https://beyond10x.github.io/docs/entity-runtime/) or
 [download a release](https://github.com/beyond10x/entity-runtime/releases).
+
+The guide targets [0.17.7](https://github.com/beyond10x/entity-runtime/releases/tag/0.17.7);
+the API remains in development. Start with the
+[refund quickstart](https://beyond10x.github.io/docs/entity-runtime/guide/getting-started/) or
+[system model and derivation](https://beyond10x.github.io/docs/entity-runtime/system-model/).
 
 ## Why use it?
 
@@ -81,7 +86,7 @@ operations:
 
 Real definitions can add typed arguments, defaults, nested objects, references to other entity
 types, preconditions, invariants, field assignments, projections, and event templates. See the
-[definition language](https://beyond10x.github.io/entity-runtime/docs/guide/definitions) and the
+[definition language](https://beyond10x.github.io/docs/entity-runtime/guide/definitions) and the
 shipped [`refund`](examples/refund.yaml) and [`order`](examples/order.yaml) examples.
 
 ## Try it
@@ -133,7 +138,7 @@ refund ref-123 is approved (revision 3); events: RefundApproved
 
 A `Decision` printed by `create` or `execute` can be passed back as the next `--instance`. Add
 `--store` and recording metadata when the command should persist the decision; the
-[storage guide](https://beyond10x.github.io/entity-runtime/docs/guide/storage) explains the write
+[storage guide](https://beyond10x.github.io/docs/entity-runtime/guide/storage) explains the write
 contract and provider choices.
 
 Exit code `0` means the command decided successfully, `1` means a definition, kernel operation, or
@@ -158,7 +163,7 @@ entity mcp --definition examples/refund.yaml --store ./refund-store
 entity generate rust-cli \
   --definition examples/refund.yaml \
   --name refundctl \
-  --out ./bin/refundctl
+  --out ./bin/refundctl --runtime-source .
 
 # A compact, version-stamped Agent Skills document for the installed command
 entity skill
@@ -168,6 +173,11 @@ Generated OpenAPI describes an HTTP facade an adopter may implement; it does not
 server. Generated AsyncAPI describes emitted domain events; it does not select a broker. The MCP
 server uses stdio and a caller-selected File Store. These boundaries keep generated convenience
 from silently choosing infrastructure or authority.
+
+The dedicated CLI and MCP tools derive their domain commands from entity definitions. The
+top-level `entity` command is handwritten Rust using Clap derive. Entity Runtime has its own
+definition format and no whole-system ESS specification; see the
+[coverage map](https://beyond10x.github.io/docs/entity-runtime/system-model/) for the exact boundary.
 
 The command surface is:
 
@@ -228,6 +238,7 @@ unchecked parsed document. On refusal, the caller still owns the unchanged prior
 | [`entity-core`](crates/entity-core/) | IO-free definitions, validation, decisions, typed refusals, and verified replay |
 | [`entity-yaml`](crates/entity-yaml/) | YAML text to definition data, without filesystem IO |
 | [`entity-store`](crates/entity-store/) | provider traits, memory/File Store, envelopes, projections, and conformance suites |
+| [`entity-query`](crates/entity-query/) | optional containment queries and cursor-bound document pages |
 | [`entity-sqlite`](crates/entity-sqlite/) | embedded transactional persistence |
 | [`entity-postgres`](crates/entity-postgres/) | centralized transactional persistence |
 | [`entity-remote`](crates/entity-remote/) | transport-neutral remote protocol and explicit hybrid policy |
@@ -256,11 +267,11 @@ batches; File Store atomicity is limited to one subject document.
   does not exist.
 
 The full public statement is in
-[Guarantees and limits](https://beyond10x.github.io/entity-runtime/docs/guarantees).
+[Guarantees and limits](https://beyond10x.github.io/docs/entity-runtime/guarantees).
 
 ## Develop
 
-Requires Rust 1.85+ and [go-task](https://taskfile.dev). The local gate also needs the `protocol`
+Requires Rust 1.85+ and [go-task](https://taskfile.dev). The local gate also needs the `aep`
 CLI for planning-store validation; PostgreSQL tests run when `ENTITY_POSTGRES_URL` is set and print
 that they were skipped otherwise.
 
@@ -276,7 +287,7 @@ task site-build
 ```
 
 Contributors and coding agents must read [`AGENTS.md`](AGENTS.md) before changing the repository.
-The requirements register and normative designs live under [`docs/`](docs/); the standalone human
+The requirements register and normative designs live under [`docs/`](docs/); the human
 product handbook lives under [`website/docs/`](website/docs/).
 
 ## Ecosystem
@@ -284,9 +295,9 @@ product handbook lives under [`website/docs/`](website/docs/).
 - [AEP](https://github.com/beyond10x/aep) is the first adopter.
   Its artifact backends consume this repository's kernel and provider crates from one pinned
   release; the dependency points from it to Entity Runtime.
-- [eventlog](https://github.com/beyond10x/eventlog) is the append-only counterpart: Entity Runtime
-  decides; an event log keeps recorded facts as the durable state.
-- [atlas](https://github.com/beyond10x/atlas) maps the broader beyond10x system.
+- [eventlog](https://github.com/beyond10x/eventlog) provides append-only event storage.
+  Event publication is an explicit host integration, not an automatic connection from this runtime.
+- The public [Ecosystem](https://beyond10x.github.io/ecosystem/) maps the broader beyond10x system.
 
 ## License
 
