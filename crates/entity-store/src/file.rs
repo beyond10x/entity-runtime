@@ -4,6 +4,7 @@
 //! UTF-8 path components, so data can never become `..`, an absolute path or a separator. State
 //! and history are replaced together through a synced temporary file and rename.
 
+use fs2::FileExt;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
@@ -31,13 +32,13 @@ const SUBJECT_FORMAT: &str = "entity.file-subject/2";
 /// a few hundred subjects read gigabytes for megabytes written — measured 2026-09-03 at 24 GB read
 /// for 45 MB written over 517 subjects. So a handle builds an index of record ids **once**, by one
 /// read of every subject on its first lookup, and keeps it current with every write it makes. The
-/// index is per handle: a second handle or a second process writing the same directory is outside
-/// File Store's atomicity, which is limited to one subject document. Cloning a handle clones what
-/// it knew at that moment.
+/// index is per handle. A process-safe root lock serializes writers; its append-only epoch
+/// invalidates cached locations whenever another handle writes. Only one subject is atomic.
 #[derive(Debug)]
 pub struct FileStore {
     root: PathBuf,
     records: Mutex<Option<RecordIndex>>,
+    epoch: AtomicU64,
 }
 
 impl Clone for FileStore {
@@ -45,6 +46,7 @@ impl Clone for FileStore {
         Self {
             root: self.root.clone(),
             records: Mutex::new(lock(&self.records).clone()),
+            epoch: AtomicU64::new(self.epoch.load(Ordering::Relaxed)),
         }
     }
 }
@@ -107,6 +109,7 @@ impl FileStore {
         Self {
             root: root.into(),
             records: Mutex::new(None),
+            epoch: AtomicU64::new(u64::MAX),
         }
     }
 
@@ -114,6 +117,37 @@ impl FileStore {
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The lock file is never removed: unlinking a locked inode would admit another writer.
+    /// Append the invalidation epoch before mutation, so an interrupted write cannot leave
+    /// another handle trusting stale locations. A crash releases the OS lock automatically.
+    fn write_guard(&self) -> Result<fs::File, StoreError> {
+        reject_symlink_components(&self.root)?;
+        fs::create_dir_all(&self.root).map_err(|e| backend("creating", &self.root, &e))?;
+        let path = self.root.join(".entity-store-lock");
+        reject_symlink_components(&path)?;
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            .append(true)
+            .create(true)
+            .open(&path)
+            .map_err(|e| backend("opening lock", &path, &e))?;
+        file.lock_exclusive()
+            .map_err(|e| backend("locking", &path, &e))?;
+        let epoch = file
+            .metadata()
+            .map_err(|e| backend("reading epoch", &path, &e))?
+            .len();
+        if epoch != self.epoch.load(Ordering::Relaxed) {
+            *lock(&self.records) = None;
+        }
+        file.write_all(&[0])
+            .map_err(|e| backend("advancing epoch", &path, &e))?;
+        file.sync_all()
+            .map_err(|e| backend("syncing epoch", &path, &e))?;
+        self.epoch.store(epoch + 1, Ordering::Relaxed);
+        Ok(file)
     }
 
     fn entity_directory(&self, entity: &str) -> PathBuf {
@@ -145,6 +179,7 @@ impl FileStore {
             )));
         }
         let marker = self.format_path();
+        reject_symlink_components(&marker)?;
         match fs::read_to_string(&marker) {
             Ok(value) if value.trim() == FORMAT => Ok(RootState::V2),
             Ok(value) => Err(StoreError::Backend(format!(
@@ -153,9 +188,14 @@ impl FileStore {
                 value.trim()
             ))),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let mut entries = fs::read_dir(&self.root)
-                    .map_err(|error| backend("listing", &self.root, &error))?;
-                if entries.next().is_none() {
+                let entries = fs::read_dir(&self.root)
+                    .map_err(|error| backend("listing", &self.root, &error))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| backend("listing", &self.root, &e))?;
+                if entries.iter().all(|entry| {
+                    entry.file_name() == ".entity-store-lock"
+                        || entry.file_name() == ".entity-store-format.writing"
+                }) {
                     Ok(RootState::Empty)
                 } else {
                     Err(StoreError::Backend(format!(
@@ -176,15 +216,20 @@ impl FileStore {
         fs::create_dir_all(&self.root).map_err(|error| backend("creating", &self.root, &error))?;
         reject_symlink_components(&self.root)?;
         let marker = self.format_path();
+        let temporary = self.root.join(".entity-store-format.writing");
+        reject_symlink_components(&temporary)?;
         let mut file = fs::OpenOptions::new()
             .write(true)
-            .create_new(true)
-            .open(&marker)
+            .create(true)
+            .truncate(true)
+            .open(&temporary)
             .map_err(|error| backend("creating", &marker, &error))?;
         file.write_all(format!("{FORMAT}\n").as_bytes())
             .map_err(|error| backend("writing", &marker, &error))?;
         file.sync_all()
             .map_err(|error| backend("syncing", &marker, &error))?;
+        drop(file);
+        fs::rename(&temporary, &marker).map_err(|e| backend("publishing marker", &marker, &e))?;
         sync_directory(&self.root)?;
         Ok(())
     }
@@ -195,7 +240,7 @@ impl FileStore {
             RootState::V2 => {}
         }
         let path = self.subject_path(entity, id);
-        reject_symlink(&path)?;
+        reject_symlink_components(&path)?;
         let text = match fs::read_to_string(&path) {
             Ok(text) => text,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -226,6 +271,7 @@ impl FileStore {
         let entity = &subject.instance.entity;
         let id = &subject.instance.id;
         let directory = self.entity_directory(entity);
+        reject_symlink_components(&directory)?;
         fs::create_dir_all(&directory).map_err(|error| backend("creating", &directory, &error))?;
         reject_symlink_components(&directory)?;
         let path = self.subject_path(entity, id);
@@ -306,6 +352,7 @@ impl FileStore {
     fn scan_records(&self) -> Result<RecordIndex, StoreError> {
         let mut index = RecordIndex::default();
         let subjects = self.root.join("subjects");
+        reject_symlink_components(&subjects)?;
         let entities = match fs::read_dir(&subjects) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(index),
@@ -452,9 +499,31 @@ fn reject_symlink_components(path: &Path) -> Result<(), StoreError> {
 }
 
 fn sync_directory(path: &Path) -> Result<(), StoreError> {
+    #[cfg(windows)]
+    {
+        // Windows cannot flush a directory through the ordinary File API.
+        // Subject file data is flushed before replacement on every platform.
+        let _ = path;
+        Ok(())
+    }
+    #[cfg(not(windows))]
     fs::File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(|error| backend("syncing directory", path, &error))
+}
+
+fn is_temporary_subject(name: &str) -> bool {
+    let Some((encoded, suffix)) = name.split_once(".json.writing.") else {
+        return false;
+    };
+    let Some((pid, counter)) = suffix.split_once('.') else {
+        return false;
+    };
+    unhex(encoded).is_ok()
+        && !pid.is_empty()
+        && !counter.is_empty()
+        && pid.bytes().all(|b| b.is_ascii_digit())
+        && counter.bytes().all(|b| b.is_ascii_digit())
 }
 
 impl StateProvider for FileStore {
@@ -468,7 +537,7 @@ impl StateProvider for FileStore {
             RootState::V2 => {}
         }
         let directory = self.entity_directory(entity);
-        reject_symlink(&directory)?;
+        reject_symlink_components(&directory)?;
         let entries = match fs::read_dir(&directory) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -493,6 +562,9 @@ impl StateProvider for FileStore {
             let name = name.to_str().ok_or_else(|| {
                 StoreError::Backend(format!("non-UTF-8 File Store filename {}", path.display()))
             })?;
+            if is_temporary_subject(name) {
+                continue;
+            }
             let encoded = name.strip_suffix(".json").ok_or_else(|| {
                 StoreError::Backend(format!("unexpected File Store file {}", path.display()))
             })?;
@@ -519,6 +591,7 @@ impl EventProvider for FileStore {
                 for record in stored.records {
                     events.extend(record.record.events);
                 }
+                events.sort_by_key(|event| event.revision);
                 events
             }))
     }
@@ -541,7 +614,11 @@ impl HistoryProvider for FileStore {
 static WRITES: AtomicU64 = AtomicU64::new(0);
 
 impl Store for FileStore {
+    fn history(&self) -> Option<&dyn HistoryProvider> {
+        Some(self)
+    }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
+        let _guard = self.write_guard()?;
         let instance = &decision.instance;
         let held = self.read_subject(&instance.entity, &instance.id)?;
         check(
@@ -559,9 +636,7 @@ impl Store for FileStore {
             events: Vec::new(),
         });
         for event in &decision.record.events {
-            if !stored.events.contains(event) {
-                stored.events.push(event.clone());
-            }
+            stored.events.push(event.clone());
         }
         stored.instance = instance.clone();
         self.write_subject(&stored)
@@ -573,6 +648,7 @@ impl Store for FileStore {
         expect: Expect,
     ) -> Result<(), StoreError> {
         commit.validate()?;
+        let _guard = self.write_guard()?;
         let document =
             serde_json::to_value(commit).map_err(|error| StoreError::Backend(error.to_string()))?;
         if let Some(existing) = self.record_document(&commit.envelope.record_id)? {
@@ -634,6 +710,7 @@ impl Store for FileStore {
 
     fn observe(&mut self, observation: &RecordedObservation) -> Result<(), StoreError> {
         observation.validate()?;
+        let _guard = self.write_guard()?;
         let document = serde_json::to_value(observation)
             .map_err(|error| StoreError::Backend(error.to_string()))?;
         if let Some(existing) = self.record_document(&observation.envelope.record_id)? {

@@ -353,17 +353,19 @@ impl<L: Store, R: Store> Hybrid<L, R> {
                 detail,
             };
             let outcome = match divergence.source {
-                StoreSide::Local => reconcile(
+                StoreSide::Local => reconcile_divergence(
                     &self.local,
                     &mut self.remote,
                     &divergence.entity,
                     &divergence.id,
+                    divergence.record_id.as_deref(),
                 ),
-                StoreSide::Remote => reconcile(
+                StoreSide::Remote => reconcile_divergence(
                     &self.remote,
                     &mut self.local,
                     &divergence.entity,
                     &divergence.id,
+                    divergence.record_id.as_deref(),
                 ),
             };
             if let Err(detail) = outcome {
@@ -374,6 +376,125 @@ impl<L: Store, R: Store> Hybrid<L, R> {
         self.divergences = still;
         self.divergences.len()
     }
+}
+
+fn reconcile_divergence<S: Store, D: Store>(
+    source: &S,
+    destination: &mut D,
+    entity: &str,
+    id: &str,
+    record_id: Option<&str>,
+) -> Result<(), String> {
+    let Some(history) = source.history() else {
+        return if record_id.is_some() {
+            Err("source has no recorded history capability".into())
+        } else {
+            reconcile(source, destination, entity, id)
+        };
+    };
+    let records = history.records(entity, id).map_err(|e| e.to_string())?;
+    let observations = history
+        .observations(entity, id)
+        .map_err(|e| e.to_string())?;
+    if let Some(record_id) = record_id {
+        if !records.iter().any(|entry| entry.record_id == record_id)
+            && !observations
+                .iter()
+                .any(|entry| entry.envelope.record_id == record_id)
+        {
+            return Err(format!(
+                "source no longer holds required record {record_id}"
+            ));
+        }
+    }
+    if records.is_empty() && observations.is_empty() {
+        return reconcile(source, destination, entity, id);
+    }
+    if records.is_empty() {
+        reconcile(source, destination, entity, id)?;
+        let revision = destination
+            .load(entity, id)
+            .map_err(|e| e.to_string())?
+            .map(|state| state.revision);
+        return restore_observations(destination, &observations, revision);
+    }
+    let held = destination.load(entity, id).map_err(|e| e.to_string())?;
+    let mut revision = held.as_ref().map(|instance| instance.revision);
+    if let Some(held) = &held {
+        if !records.iter().any(|entry| &entry.record.result == held) {
+            return Err("destination is not a verified prefix of the source history".into());
+        }
+    }
+    let history = destination
+        .history()
+        .ok_or("destination has no recorded history capability")?;
+    let existing = history.records(entity, id).map_err(|e| e.to_string())?;
+    for envelope in records {
+        if let Some(previous) = existing
+            .iter()
+            .find(|entry| entry.record_id == envelope.record_id)
+        {
+            if previous != &envelope {
+                return Err(format!("conflicting record {}", envelope.record_id));
+            }
+            continue;
+        }
+        if revision.is_some_and(|at| envelope.record.revision <= at) {
+            return Err(format!(
+                "destination is missing historical record {}; repair is required",
+                envelope.record_id
+            ));
+        }
+        if revision.unwrap_or(0).checked_add(1) != Some(envelope.record.revision) {
+            return Err("a missing legacy prefix or gap requires explicit history repair".into());
+        }
+        restore_observations(destination, &observations, revision)?;
+        let commit = RecordedCommit {
+            instance: envelope.record.result.clone(),
+            envelope,
+        };
+        destination
+            .commit_recorded(&commit, revision.map_or(Expect::Absent, Expect::Revision))
+            .map_err(|e| e.to_string())?;
+        revision = Some(commit.instance.revision);
+    }
+    restore_observations(destination, &observations, revision)?;
+    // Only after exact envelopes have arrived may a later legacy suffix be mirrored.
+    reconcile(source, destination, entity, id)
+}
+
+fn restore_observations<D: Store>(
+    destination: &mut D,
+    observations: &[RecordedObservation],
+    revision: Option<u64>,
+) -> Result<(), String> {
+    for observation in observations
+        .iter()
+        .filter(|entry| revision.is_some_and(|at| entry.revision <= at))
+    {
+        let history = destination
+            .history()
+            .ok_or("destination has no recorded history capability")?;
+        let existing = history
+            .observations(&observation.entity, &observation.id)
+            .map_err(|e| e.to_string())?;
+        if let Some(previous) = existing
+            .iter()
+            .find(|entry| entry.envelope.record_id == observation.envelope.record_id)
+        {
+            if previous != observation {
+                return Err(format!(
+                    "conflicting observation {}",
+                    observation.envelope.record_id
+                ));
+            }
+        } else {
+            destination
+                .observe(observation)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 fn reconcile<S: Store, D: Store>(
@@ -498,25 +619,44 @@ impl<L: Store, R: Store> EventProvider for Hybrid<L, R> {
 
 impl<L, R> HistoryProvider for Hybrid<L, R>
 where
-    L: Store + HistoryProvider,
-    R: Store + HistoryProvider,
+    L: Store,
+    R: Store,
 {
     fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
         match self.policy.authority {
-            Authority::Local => self.local.records(entity, id),
-            Authority::Remote => self.remote.records(entity, id),
+            Authority::Local => self
+                .local
+                .history()
+                .ok_or_else(|| StoreError::Backend("local history unavailable".into()))?
+                .records(entity, id),
+            Authority::Remote => self
+                .remote
+                .history()
+                .ok_or_else(|| StoreError::Backend("remote history unavailable".into()))?
+                .records(entity, id),
         }
     }
 
     fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
         match self.policy.authority {
-            Authority::Local => self.local.observations(entity, id),
-            Authority::Remote => self.remote.observations(entity, id),
+            Authority::Local => self
+                .local
+                .history()
+                .ok_or_else(|| StoreError::Backend("local history unavailable".into()))?
+                .observations(entity, id),
+            Authority::Remote => self
+                .remote
+                .history()
+                .ok_or_else(|| StoreError::Backend("remote history unavailable".into()))?
+                .observations(entity, id),
         }
     }
 }
 
 impl<L: Store, R: Store> Store for Hybrid<L, R> {
+    fn history(&self) -> Option<&dyn HistoryProvider> {
+        Some(self)
+    }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         let (entity, id) = (
             decision.instance.entity.clone(),

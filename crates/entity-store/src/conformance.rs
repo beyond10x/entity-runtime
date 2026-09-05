@@ -203,6 +203,67 @@ pub fn verify_recorded(store: &mut dyn RecordedStore) -> Result<(), String> {
         }
         Ok(()) => return Err("one record id accepted different bytes".to_owned()),
     }
+    // Mixing both supported write APIs must preserve revision order and duplicate emissions.
+    let mut definition = registry
+        .get("conformance-ticket", 1)
+        .ok_or("definition missing")?
+        .as_definition()
+        .clone();
+    definition.create.emit = Some(
+        serde_json::from_value(json!({ "type": "Opened", "payload": {} }))
+            .map_err(|e| e.to_string())?,
+    );
+    let close = definition
+        .operations
+        .get_mut("close")
+        .ok_or("close missing")?;
+    close.emits.push(close.emits[0].clone());
+    let mut mixed_registry = Registry::new();
+    mixed_registry
+        .register(definition)
+        .map_err(|e| e.to_string())?;
+    let mixed_runtime = Runtime::new(&mixed_registry);
+    for recorded_first in [true, false] {
+        let id = if recorded_first {
+            "mixed-recorded-first"
+        } else {
+            "mixed-plain-first"
+        };
+        let created = mixed_runtime
+            .create("conformance-ticket", 1, id, json!({"title": "Mixed"}))
+            .map_err(|e| e.to_string())?;
+        let closed = mixed_runtime
+            .execute(&created.instance, "close", json!({}))
+            .map_err(|e| e.to_string())?;
+        let expected: Vec<_> = created
+            .events
+            .iter()
+            .chain(&closed.events)
+            .cloned()
+            .collect();
+        for (decision, expect, recorded) in [
+            (created, Expect::Absent, recorded_first),
+            (closed, Expect::Revision(1), !recorded_first),
+        ] {
+            if recorded {
+                let commit = RecordedCommit::new(decision, &recording(id, "12:03:00"))
+                    .map_err(|e| e.to_string())?;
+                store
+                    .commit_recorded(&commit, expect)
+                    .map_err(|e| e.to_string())?;
+            } else {
+                store.commit(&decision, expect).map_err(|e| e.to_string())?;
+            }
+        }
+        let actual = store
+            .events("conformance-ticket", id)
+            .map_err(|e| e.to_string())?;
+        if actual != expected {
+            return Err(format!(
+                "mixed history lost event order or multiplicity for {id}: {actual:?}"
+            ));
+        }
+    }
     Ok(())
 }
 

@@ -4,6 +4,40 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.17.7] — 2026-09-05
+
+### Fixed
+
+- File Store serializes concurrent writes across handles and processes, preventing accepted
+  revisions and recorded history from being overwritten. Record-ID caches refresh after another
+  writer changes the root. Upgrade all concurrent writers together to use the locking protocol.
+- File Store tolerates abandoned temporary subject files and refuses symlinks in parent paths
+  and the format marker on reads. Initialization publishes its marker atomically.
+- Numeric validation and rules correctly compare zero with positive and negative fractions,
+  including arbitrarily large JSON exponents. Memory queries match equivalent numeric JSON
+  representations consistently with PostgreSQL.
+- Hybrid catch-up transfers exact decision envelopes and observations instead of discarding
+  provenance through event-only imports. It retains divergences that need explicit history repair,
+  including missing evidence behind an already-advanced destination.
+- PostgreSQL session batches roll back their entire prefix when a conflict is caught by the outer
+  callback. Session event reads include recorded history. Concurrent identical decision and
+  observation retries both succeed idempotently.
+- The shared stored runtime, generated CLI, and MCP tools return the original accepted operation
+  for an exact retry, even after state has advanced. Changed intent under the same record ID is
+  refused as a record conflict.
+- Provider event reads preserve revision order across mixed recorded and unrecorded commits.
+  File Store preserves repeated equal events emitted by one decision.
+- Generated MCP schemas accept overlapping definition versions and validate creation fields
+  against the selected version. An explicit unsupported version is refused even when only one
+  version is registered. AsyncAPI schemas accept overlapping event emitters, and generated
+  component identifiers distinguish punctuation, case and composed names.
+
+### Portability
+
+- File Store flushes subject contents on every platform and directories on Unix. Windows writes
+  no longer fail by trying to open a directory as an ordinary file; directory-entry persistence
+  across power loss is not promised on Windows.
+
 ## [0.17.6] — 2026-09-03
 
 ### Fixed

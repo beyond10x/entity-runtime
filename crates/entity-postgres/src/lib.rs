@@ -299,7 +299,8 @@ impl PostgresSession<'_> {
 
     /// Reads one instance's events from this transaction's current view, oldest first.
     pub fn events(&mut self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
-        self.transaction
+        let mut events: Vec<DomainEvent> = self
+            .transaction
             .query(
                 "SELECT document FROM events WHERE entity = $1 AND id = $2
                  ORDER BY revision, position",
@@ -312,7 +313,18 @@ impl PostgresSession<'_> {
                 serde_json::from_str(&document)
                     .map_err(|error| backend("parsing an event in a session", &error))
             })
-            .collect()
+            .collect::<Result<_, _>>()?;
+        for row in self.transaction.query(
+            "SELECT document FROM history WHERE entity = $1 AND id = $2 AND kind = 'decision' ORDER BY position",
+            &[&entity, &id],
+        ).map_err(|e| database("reading session history", &e))? {
+            let document: String = row.get(0);
+            let envelope: Envelope<DecisionRecord> = serde_json::from_str(&document)
+                .map_err(|e| backend("parsing session history", &e))?;
+            events.extend(envelope.record.events);
+        }
+        events.sort_by_key(|event| event.revision);
+        Ok(events)
     }
 
     /// Atomically reserves `count` monotonically increasing values in `namespace`.
@@ -358,10 +370,16 @@ impl PostgresSession<'_> {
 
     /// Applies an ordered atomic batch without committing the outer transaction.
     pub fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError> {
+        let mut batch = self
+            .transaction
+            .transaction()
+            .map_err(|e| database("starting batch savepoint", &e))?;
         for commit in commits {
-            write_decision(&mut self.transaction, &commit.decision, commit.expect, true)?;
+            write_decision(&mut batch, &commit.decision, commit.expect, true)?;
         }
-        Ok(())
+        batch
+            .commit()
+            .map_err(|e| database("releasing batch savepoint", &e))
     }
 }
 
@@ -454,6 +472,7 @@ impl EventProvider for PostgresStore {
         for record in self.records(entity, id)? {
             events.extend(record.record.events);
         }
+        events.sort_by_key(|event| event.revision);
         Ok(events)
     }
 }
@@ -560,7 +579,23 @@ fn write_decision(
     Ok(())
 }
 
+fn lock_record(
+    transaction: &mut postgres::Transaction<'_>,
+    record_id: &str,
+) -> Result<(), StoreError> {
+    transaction
+        .query_one(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 412731))",
+            &[&record_id],
+        )
+        .map_err(|e| database("locking record identity", &e))?;
+    Ok(())
+}
+
 impl Store for PostgresStore {
+    fn history(&self) -> Option<&dyn HistoryProvider> {
+        Some(self)
+    }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         self.commit_batch(&[AtomicCommit::new(decision.clone(), expect)])
     }
@@ -577,6 +612,7 @@ impl Store for PostgresStore {
             .map_err(|error| database("beginning the recorded transaction", &error))?;
         let document = serde_json::to_string(&commit.envelope)
             .map_err(|error| backend("serialising the decision envelope", &error))?;
+        lock_record(&mut transaction, &commit.envelope.record_id)?;
         if let Some(row) = transaction
             .query_opt(
                 "SELECT document FROM history WHERE record_id = $1",
@@ -629,6 +665,7 @@ impl Store for PostgresStore {
             .map_err(|error| database("beginning the observation transaction", &error))?;
         let document = serde_json::to_string(observation)
             .map_err(|error| backend("serialising the observation", &error))?;
+        lock_record(&mut transaction, &observation.envelope.record_id)?;
         if let Some(row) = transaction
             .query_opt(
                 "SELECT document FROM history WHERE record_id = $1",

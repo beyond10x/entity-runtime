@@ -399,6 +399,9 @@ impl<T: Transport> HistoryProvider for RemoteStore<T> {
 }
 
 impl<T: Transport> Store for RemoteStore<T> {
+    fn history(&self) -> Option<&dyn HistoryProvider> {
+        Some(self)
+    }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         match self.ask(Ask::Commit {
             decision: WireDocument::encode(decision)?,

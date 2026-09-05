@@ -211,6 +211,7 @@ impl EventProvider for SqliteStore {
         for record in self.records(entity, id)? {
             events.extend(record.record.events);
         }
+        events.sort_by_key(|event| event.revision);
         Ok(events)
     }
 }
@@ -346,6 +347,9 @@ fn write_decision(
 }
 
 impl Store for SqliteStore {
+    fn history(&self) -> Option<&dyn HistoryProvider> {
+        Some(self)
+    }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         self.commit_batch(&[AtomicCommit::new(decision.clone(), expect)])
     }

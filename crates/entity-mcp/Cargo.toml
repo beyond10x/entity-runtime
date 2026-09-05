@@ -8,11 +8,15 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.17.6" }
-entity-shell = { path = "../entity-shell", version = "0.17.6" }
-entity-store = { path = "../entity-store", version = "0.17.6" }
-entity-surface = { path = "../entity-surface", version = "0.17.6" }
+entity-core = { path = "../entity-core", version = "0.17.7" }
+entity-shell = { path = "../entity-shell", version = "0.17.7" }
+entity-store = { path = "../entity-store", version = "0.17.7" }
+entity-surface = { path = "../entity-surface", version = "0.17.7" }
 serde_json.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Validate generated tool schemas with a real, offline JSON Schema evaluator (MSRV 1.85).
+jsonschema = { version = "=0.49.9", default-features = false }

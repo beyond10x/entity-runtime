@@ -2026,3 +2026,28 @@ fn fields_are_ordered_by_name_so_two_identical_decisions_serialise_alike() {
         "serialisation must follow the same order: {serialised}"
     );
 }
+
+#[test]
+fn zero_bounds_order_positive_and_negative_fractions_mathematically() {
+    for (bound, accepted, refused, reason) in [
+        ("min", json!(0.1), json!(-0.1), "below minimum"),
+        ("max", json!(-0.1), json!(0.1), "exceeds maximum"),
+    ] {
+        let mut registry = Registry::new();
+        registry.register(serde_json::from_value(json!({
+            "entity": "bounded", "schema": {"fields": {"value": {"type": "number", bound: 0}}},
+            "lifecycle": {"initial": "open", "states": ["open"]}
+        })).unwrap()).unwrap();
+        let runtime = Runtime::new(&registry);
+        runtime
+            .create("bounded", 1, "accepted", json!({"value": accepted}))
+            .unwrap();
+        let error = runtime
+            .create("bounded", 1, "refused", json!({"value": refused}))
+            .unwrap_err();
+        assert!(
+            matches!(error, CoreError::Validation(ref errors) if errors.len() == 1 && errors[0].message.contains(reason)),
+            "{error}"
+        );
+    }
+}

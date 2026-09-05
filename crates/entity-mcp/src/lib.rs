@@ -335,7 +335,7 @@ fn choose_version(
         .versions(entity)
         .map(|definition| definition.version)
         .collect();
-    if versions.len() == 1 {
+    if versions.len() == 1 && !object.contains_key("version") {
         return Ok(versions[0]);
     }
     object
@@ -393,7 +393,7 @@ fn create_schema(definitions: Vec<&EntityDefinition>) -> Value {
             .next()
             .unwrap_or_else(|| json!({}))
     } else {
-        json!({ "oneOf": field_schemas })
+        json!({ "anyOf": field_schemas })
     };
     let versions: Vec<u32> = definitions
         .iter()
@@ -405,6 +405,10 @@ fn create_schema(definitions: Vec<&EntityDefinition>) -> Value {
     }
     json!({
         "type": "object", "additionalProperties": false, "required": required,
+        "allOf": definitions.iter().map(|definition| json!({
+            "if": { "properties": { "version": { "const": definition.version } }, "required": ["version"] },
+            "then": { "properties": { "fields": entity_surface::object_schema(&definition.schema) } }
+        })).collect::<Vec<_>>(),
         "properties": {
             "id": { "type": "string", "minLength": 1 },
             "version": { "type": "integer", "enum": versions },
@@ -423,7 +427,7 @@ fn execute_schema(definitions: Vec<&EntityDefinition>, operation: &str) -> Value
     let arguments = if schemas.len() == 1 {
         schemas.into_iter().next().unwrap_or_else(|| json!({}))
     } else {
-        json!({ "oneOf": schemas })
+        json!({ "anyOf": schemas })
     };
     json!({
         "type": "object", "additionalProperties": false,
@@ -489,6 +493,52 @@ mod tests {
         let mut registry = Registry::new();
         registry.register(definition).expect("valid");
         registry
+    }
+
+    #[test]
+    fn overlapping_versions_accept_valid_requests_and_creation_checks_the_selected_version() {
+        let mut registry = registry();
+        let mut second = registry.get("refund", 1).unwrap().as_definition().clone();
+        second.version = 2;
+        registry.register(second.clone()).unwrap();
+        let definitions: Vec<_> = registry.iter().map(|d| d.as_definition()).collect();
+        let recording =
+            json!({ "record_id": "one", "recorded_at": "2026-09-05T12:00:00Z", "actor": null });
+        let input =
+            json!({"id": "one", "version": 1, "fields": {"amount": 100}, "recording": recording});
+        let schema = create_schema(definitions.clone());
+        assert!(
+            jsonschema::is_valid(&schema, &input),
+            "overlapping versions must admit valid fields"
+        );
+        assert!(
+            jsonschema::is_valid(
+                &execute_schema(definitions, "approve"),
+                &json!({"id": "one", "expected_revision": 1, "arguments": {}, "recording": recording})
+            ),
+            "overlapping argument schemas must admit valid arguments"
+        );
+        second.schema.fields.get_mut("amount").unwrap().kind = entity_core::FieldKind::String;
+        let first = registry.get("refund", 1).unwrap().as_definition();
+        let schema = create_schema(vec![first, &second]);
+        let mut wrong_version = input.clone();
+        wrong_version["fields"]["amount"] = json!("wrong version");
+        assert!(!jsonschema::is_valid(&schema, &wrong_version));
+        let mut server = Server::new(&registry, MemoryStore::new()).unwrap();
+        let result = server.handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "refund.create", "arguments": input}})).unwrap();
+        assert_eq!(result["result"]["isError"], false);
+    }
+
+    #[test]
+    fn a_single_version_still_refuses_an_explicit_unknown_version() {
+        let registry = registry();
+        let error = choose_version(
+            &registry,
+            "refund",
+            json!({"version": 99}).as_object().unwrap(),
+        )
+        .unwrap_err();
+        assert!(matches!(error, ShellError::Recording(ref detail) if detail.contains("version")));
     }
 
     #[test]

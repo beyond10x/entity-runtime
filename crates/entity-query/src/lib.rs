@@ -219,6 +219,9 @@ impl DocumentQueryProvider for MemoryStore {
 /// The provider-neutral meaning of PostgreSQL JSONB containment.
 fn contains(actual: &Value, expected: &Value) -> bool {
     match (actual, expected) {
+        (Value::Number(actual), Value::Number(expected)) => {
+            entity_core::compare_numbers(actual, expected).is_eq()
+        }
         (Value::Object(actual), Value::Object(expected)) => expected.iter().all(|(key, value)| {
             actual
                 .get(key)
@@ -295,6 +298,17 @@ mod tests {
             .with_limit(MAX_LIMIT + 1)
             .effective_limit()
             .is_err());
+    }
+
+    #[test]
+    fn containment_compares_numeric_values_across_json_representations() {
+        for (left, right) in [("100", "100.0"), ("0", "-0.0"), ("0.1", "1e-1")] {
+            let left: Value = serde_json::from_str(left).unwrap();
+            let right: Value = serde_json::from_str(right).unwrap();
+            assert!(contains(&left, &right));
+            assert!(contains(&right, &left));
+        }
+        assert!(!contains(&serde_json::json!(0), &serde_json::json!(0.1)));
     }
 
     #[test]

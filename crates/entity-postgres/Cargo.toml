@@ -8,9 +8,9 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.17.6" }
-entity-store = { path = "../entity-store", version = "0.17.6" }
-entity-query = { path = "../entity-query", version = "0.17.6" }
+entity-core = { path = "../entity-core", version = "0.17.7" }
+entity-store = { path = "../entity-store", version = "0.17.7" }
+entity-query = { path = "../entity-query", version = "0.17.7" }
 serde.workspace = true
 serde_json.workspace = true
 # The fifth direct third-party crate in this workspace, and the first that talks to a server. The

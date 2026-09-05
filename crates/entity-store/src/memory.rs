@@ -87,6 +87,7 @@ impl EventProvider for MemoryStore {
                 events.extend(record.record.events.iter().cloned());
             }
         }
+        events.sort_by_key(|event| event.revision);
         Ok(events)
     }
 }
@@ -110,6 +111,9 @@ impl HistoryProvider for MemoryStore {
 }
 
 impl Store for MemoryStore {
+    fn history(&self) -> Option<&dyn HistoryProvider> {
+        Some(self)
+    }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         let instance = &decision.instance;
         let key = (instance.entity.clone(), instance.id.clone());

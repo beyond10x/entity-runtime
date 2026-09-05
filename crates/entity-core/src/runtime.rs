@@ -366,12 +366,7 @@ pub fn execute(
                 operation: operation_name.to_owned(),
             })?;
 
-    let mut args = into_object(arguments, "arguments")?;
-    apply_defaults(&operation.arguments, &mut args);
-    let argument_errors = validate_object(&operation.arguments, &args, "arguments");
-    if !argument_errors.is_empty() {
-        return Err(CoreError::Validation(argument_errors));
-    }
+    let args = normalize_arguments(definition, operation_name, arguments)?;
 
     let transition = operation
         .transitions
@@ -476,6 +471,29 @@ fn definition_snapshot(definition: &ValidatedDefinition) -> EntityDefinition {
         .expect("an EntityDefinition always serializes to JSON");
     serde_json::from_value(canonicalize(value))
         .expect("canonicalizing JSON cannot change an EntityDefinition's shape")
+}
+
+/// Defaults and validates operation arguments without evaluating state-dependent rules.
+/// Used to compare a retried command with the exact normalized intent recorded previously.
+pub fn normalize_arguments(
+    definition: &ValidatedDefinition,
+    operation_name: &str,
+    arguments: Value,
+) -> Result<Map<String, Value>, CoreError> {
+    let operation =
+        definition
+            .operations
+            .get(operation_name)
+            .ok_or_else(|| CoreError::OperationNotFound {
+                operation: operation_name.to_owned(),
+            })?;
+    let mut args = into_object(arguments, "arguments")?;
+    apply_defaults(&operation.arguments, &mut args);
+    let errors = validate_object(&operation.arguments, &args, "arguments");
+    if !errors.is_empty() {
+        return Err(CoreError::Validation(errors));
+    }
+    Ok(args)
 }
 
 /// Every address a condition read and found nothing at, gathered as it is evaluated.

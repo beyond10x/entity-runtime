@@ -755,3 +755,149 @@ fn a_divergence_survives_the_process_that_recorded_it() {
         "and now holds what the authority holds"
     );
 }
+
+fn recording(id: &str) -> entity_store::Recording {
+    entity_store::Recording {
+        record_id: id.into(),
+        recorded_at: "2026-09-05T12:00:00Z".into(),
+        correlation: None,
+        causation: None,
+        actor: None,
+    }
+}
+
+#[test]
+fn catch_up_preserves_exact_recorded_envelopes_and_observations_between_revisions() {
+    use entity_store::{HistoryProvider, RecordedCommit, RecordedObservation};
+    let registry = registry();
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    store.remote().transport().go_dark("offline");
+    let created = RecordedCommit::new(opened(&registry), &recording("created")).unwrap();
+    store.commit_recorded(&created, Expect::Absent).unwrap();
+    let observation = RecordedObservation {
+        entity: "ticket".into(),
+        id: "one".into(),
+        revision: 1,
+        envelope: recording("observed")
+            .seal(json!({"evidence": true}))
+            .unwrap(),
+    };
+    store.observe(&observation).unwrap();
+    let closed = RecordedCommit::new(
+        Runtime::new(&registry)
+            .execute(&created.instance, "close", json!({}))
+            .unwrap(),
+        &recording("closed"),
+    )
+    .unwrap();
+    store.commit_recorded(&closed, Expect::Revision(1)).unwrap();
+    assert_eq!(store.divergences().len(), 3);
+    store.remote().transport().come_back();
+    assert_eq!(store.catch_up(), 0, "{:?}", store.divergences());
+    assert_eq!(
+        store.remote().records("ticket", "one").unwrap(),
+        [created.envelope, closed.envelope]
+    );
+    assert_eq!(
+        store.remote().observations("ticket", "one").unwrap(),
+        [observation]
+    );
+    assert_eq!(
+        store.local().events("ticket", "one").unwrap(),
+        store.remote().events("ticket", "one").unwrap()
+    );
+}
+
+#[test]
+fn equal_state_does_not_hide_a_missing_observation() {
+    use entity_store::{HistoryProvider, RecordedCommit, RecordedObservation};
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    let created = RecordedCommit::new(opened(&registry()), &recording("created")).unwrap();
+    store.commit_recorded(&created, Expect::Absent).unwrap();
+    store.remote().transport().go_dark("offline");
+    let observation = RecordedObservation {
+        entity: "ticket".into(),
+        id: "one".into(),
+        revision: 1,
+        envelope: recording("observed")
+            .seal(json!({"evidence": true}))
+            .unwrap(),
+    };
+    store.observe(&observation).unwrap();
+    store.remote().transport().come_back();
+    assert_eq!(store.catch_up(), 0);
+    assert_eq!(
+        store.remote().observations("ticket", "one").unwrap(),
+        [observation]
+    );
+}
+
+#[test]
+fn missing_evidence_behind_the_destination_keeps_its_divergence_for_repair() {
+    use entity_store::{HistoryProvider, RecordedCommit, RecordedObservation};
+    let registry = registry();
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    let created = RecordedCommit::new(opened(&registry), &recording("created")).unwrap();
+    store.commit_recorded(&created, Expect::Absent).unwrap();
+    store.remote().transport().go_dark("offline");
+    let observation = RecordedObservation {
+        entity: "ticket".into(),
+        id: "one".into(),
+        revision: 1,
+        envelope: recording("observed")
+            .seal(json!({"evidence": true}))
+            .unwrap(),
+    };
+    store.observe(&observation).unwrap();
+    store.remote().transport().come_back();
+    let closed = RecordedCommit::new(
+        Runtime::new(&registry)
+            .execute(&created.instance, "close", json!({}))
+            .unwrap(),
+        &recording("closed"),
+    )
+    .unwrap();
+    store.commit_recorded(&closed, Expect::Revision(1)).unwrap();
+    assert_eq!(store.catch_up(), 1);
+    assert_eq!(
+        store.divergences()[0].record_id.as_deref(),
+        Some("observed")
+    );
+    assert!(store.divergences()[0].detail.contains("revision"));
+    assert_eq!(
+        store.remote().load("ticket", "one").unwrap(),
+        Some(closed.instance)
+    );
+    assert!(store
+        .remote()
+        .observations("ticket", "one")
+        .unwrap()
+        .is_empty());
+}

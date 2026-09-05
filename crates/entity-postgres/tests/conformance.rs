@@ -314,3 +314,171 @@ fn a_server_that_does_not_answer_is_unreachable_and_never_an_empty_store() {
         .expect_err("nothing listens on port 1");
     assert!(error.is_unreachable(), "{error}");
 }
+
+fn recording(id: &str) -> entity_store::Recording {
+    entity_store::Recording {
+        record_id: id.into(),
+        recorded_at: "2026-09-05T12:00:00Z".into(),
+        correlation: None,
+        causation: None,
+        actor: None,
+    }
+}
+
+#[test]
+fn a_caught_session_batch_conflict_rolls_back_its_prefix_but_keeps_the_transaction_usable() {
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "caught_batch");
+    let created = Runtime::new(&registry())
+        .create("ticket", 1, "one", json!({"title": "One"}))
+        .unwrap();
+    let commits = vec![
+        AtomicCommit {
+            decision: created.clone(),
+            expect: Expect::Absent,
+        },
+        AtomicCommit {
+            decision: created.clone(),
+            expect: Expect::Absent,
+        },
+    ];
+    store
+        .with_transaction(|session| {
+            let result = session.commit_batch(&commits);
+            assert!(
+                matches!(
+                    result,
+                    Err(StoreError::RevisionConflict { found: Some(1), .. })
+                ),
+                "{result:?}"
+            );
+            assert_eq!(
+                session.load_for_update("ticket", "one")?,
+                None,
+                "the caught error must not retain the successful prefix"
+            );
+            assert!(session.events("ticket", "one")?.is_empty());
+            session.reserve_sequence("still-usable", 1)?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(store.load("ticket", "one").unwrap(), None);
+    store.drop_schema(&schema).unwrap();
+}
+
+#[test]
+fn session_events_include_recorded_and_plain_writes_in_revision_order() {
+    use entity_store::{EventProvider, RecordedCommit};
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "mixed_session");
+    let registry = registry();
+    let created = Runtime::new(&registry)
+        .create("ticket", 1, "one", json!({"title": "One"}))
+        .unwrap();
+    store
+        .commit_recorded(
+            &RecordedCommit::new(created.clone(), &recording("created")).unwrap(),
+            Expect::Absent,
+        )
+        .unwrap();
+    let closed = Runtime::new(&registry)
+        .execute(&created.instance, "close", json!({}))
+        .unwrap();
+    store.commit(&closed, Expect::Revision(1)).unwrap();
+    let expected: Vec<_> = created.events.into_iter().chain(closed.events).collect();
+    assert_eq!(store.events("ticket", "one").unwrap(), expected);
+    store
+        .with_transaction(|session| {
+            assert_eq!(session.events("ticket", "one")?, expected);
+            Ok(())
+        })
+        .unwrap();
+    store.drop_schema(&schema).unwrap();
+}
+
+#[test]
+fn concurrent_identical_decisions_and_observations_are_idempotent() {
+    use entity_store::{HistoryProvider, RecordedCommit, RecordedObservation};
+    let Some(url) = url() else { return };
+    let (mut first, schema) = fresh(&url, "record_retries");
+    let mut second = PostgresStore::connect_in_schema(&url, &schema).unwrap();
+    let created = Runtime::new(&registry())
+        .create("ticket", 1, "one", json!({"title": "One"}))
+        .unwrap();
+    let commit = RecordedCommit::new(created, &recording("created")).unwrap();
+    let barrier = std::sync::Barrier::new(2);
+    std::thread::scope(|scope| {
+        let a = scope.spawn(|| {
+            barrier.wait();
+            first.commit_recorded(&commit, Expect::Absent)
+        });
+        let b = scope.spawn(|| {
+            barrier.wait();
+            second.commit_recorded(&commit, Expect::Absent)
+        });
+        a.join().unwrap().expect("first identical decision");
+        b.join().unwrap().expect("second identical decision");
+    });
+    let observation = RecordedObservation {
+        entity: "ticket".into(),
+        id: "one".into(),
+        revision: 1,
+        envelope: recording("observed")
+            .seal(json!({"evidence": true}))
+            .unwrap(),
+    };
+    std::thread::scope(|scope| {
+        let a = scope.spawn(|| {
+            barrier.wait();
+            first.observe(&observation)
+        });
+        let b = scope.spawn(|| {
+            barrier.wait();
+            second.observe(&observation)
+        });
+        a.join().unwrap().expect("first identical observation");
+        b.join().unwrap().expect("second identical observation");
+    });
+    assert_eq!(first.records("ticket", "one").unwrap(), [commit.envelope]);
+    assert_eq!(first.observations("ticket", "one").unwrap(), [observation]);
+    first.drop_schema(&schema).unwrap();
+}
+
+#[test]
+fn memory_and_postgres_match_equivalent_numeric_json_values() {
+    use entity_store::MemoryStore;
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "numeric_query");
+    let mut memory = MemoryStore::new();
+    let mut registry = Registry::new();
+    registry.register(serde_json::from_value(json!({"entity": "numbers", "schema": {"fields": {"value": {"type": "json"}}}, "lifecycle": {"initial": "open", "states": ["open"]}})).unwrap()).unwrap();
+    for (id, value) in [
+        ("one", json!({"amount": 100})),
+        ("two", json!([0.1, 2])),
+        ("three", json!(0)),
+    ] {
+        let decision = Runtime::new(&registry)
+            .create("numbers", 1, id, json!({"value": value}))
+            .unwrap();
+        store.commit(&decision, Expect::Absent).unwrap();
+        memory.commit(&decision, Expect::Absent).unwrap();
+    }
+    for (value, expected) in [
+        (json!({"amount": 100.0}), "one"),
+        (json!([1e-1]), "two"),
+        (json!(-0.0), "three"),
+    ] {
+        let query = DocumentQuery::for_entity("numbers").matching("value", value);
+        let postgres = store.query_documents(&query).unwrap();
+        assert_eq!(
+            postgres
+                .items
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            [expected]
+        );
+        assert_eq!(memory.query_documents(&query).unwrap(), postgres);
+    }
+    store.drop_schema(&schema).unwrap();
+}

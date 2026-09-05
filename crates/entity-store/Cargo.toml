@@ -8,9 +8,11 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.17.6" }
+entity-core = { path = "../entity-core", version = "0.17.7" }
 serde.workspace = true
 serde_json.workspace = true
+# Cross-process advisory locks release automatically on process exit; supports the MSRV and Windows.
+fs2 = "0.4.3"
 
 [lints]
 workspace = true

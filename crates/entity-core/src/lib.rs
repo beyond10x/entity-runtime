@@ -106,6 +106,7 @@
 mod definition;
 mod error;
 mod number;
+pub use number::compare as compare_numbers;
 mod registry;
 mod replay;
 mod runtime;
@@ -122,8 +123,8 @@ pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
 pub use registry::{Registry, ValidatedDefinition};
 pub use replay::{rehydrate, replay};
 pub use runtime::{
-    create, execute, Decision, DecisionCommand, DecisionRecord, DomainEvent, EntityInstance,
-    Runtime,
+    create, execute, normalize_arguments, Decision, DecisionCommand, DecisionRecord, DomainEvent,
+    EntityInstance, Runtime,
 };
 pub use truth::Truth;
 

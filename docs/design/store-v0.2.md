@@ -23,8 +23,11 @@ writes are the required provenance path used by the CLI.
 A v2 root contains `.entity-store-format` with `entity.file-store/2`. Each subject is one JSON
 document under `subjects/<hex entity>/<hex id>.json`; caller-controlled entity names and ids never
 become path syntax. Existing path components and subject files may not be symlinks. A write creates
-and syncs a temporary document, renames it over the subject, then syncs the containing directory,
-so current state and history cannot tear apart.
+and syncs a temporary document, then renames it over the subject, so current state and history
+cannot tear apart. Unix also syncs containing directories; Windows flushes file contents but does
+not promise directory-entry persistence across power loss. Recognizable abandoned subject
+temporary files are ignored by enumeration and record-id scans. All existing path components,
+including the format marker, are checked on reads and writes.
 
 An unmarked non-empty directory is never guessed to be v2. `entity store migrate-file --from OLD
 --to NEW` is the only supported v1 transition: it validates every state and complete JSONL record,
@@ -58,12 +61,18 @@ older than 0.17.6 reads the same bytes. The index lives behind a `Mutex<Option<R
 so the handle stays `Send + Sync`; a poisoned lock is taken over rather than propagated, because
 the index is a cache of what is on disk and never the authority.
 
-**What the index does not do.** It is per handle. A second handle, or a second process, writing the
-same directory is outside File Store's atomicity, which § 2 limits to one subject document; such a
-writer's record ids are unknown to this handle until it is reopened. The store-global rule itself
-is unchanged and is pinned by `tests/file_record_index.rs`: an id reused for different bytes is
-`RecordConflict` and identical bytes are an idempotent success, across handles opened at different
-times and for a handle's own writes; `the_file_provider_conforms` is unchanged.
+From 0.17.7 every write holds an OS advisory exclusive lock on `.entity-store-lock` across root
+initialization, global record-id lookup, revision checking and subject publication. The lock file
+is never unlinked. Its length is an invalidation epoch, advanced by one synced byte before a write:
+a handle invalidates its cached index if another writer advanced the epoch. A process crash releases
+the lock. This retains the single-writer index benefit while serializing independent handles and
+processes. Multi-subject transactions remain unsupported. All concurrent writers must use 0.17.7
+or later and a filesystem that supports advisory locking and atomic rename; older writers do not
+participate in this protocol. The subject and format-marker bytes remain v2.
+
+`tests/file_record_index.rs` pins concurrent revision conflicts, cache invalidation, orphan-file
+tolerance and read-path symlink refusals. `verify_recorded` also checks mixed recorded/unrecorded
+event history: revision order and repeated equal emissions are both preserved.
 
 After the change the same 9,085-call import completes in 34 s and reads 0.7 GB — the one scan plus
 one subject read per lookup.
@@ -73,3 +82,12 @@ one subject read per lookup.
 Freshness is relative to the declared authority, not merely to whether a network request returned.
 A divergence records source, destination and record id. Catch-up follows that direction, never
 clears an unreadable or absent source, and never overwrites a destination that moved independently.
+Catch-up transfers exact recorded envelopes and observations, inserting observations before moving
+beyond their revisions. Equal state alone cannot establish that evidence was replicated. Missing
+legacy prefixes, missing records behind the destination revision, or observations whose revision
+the destination has already passed retain the divergence for explicit repair. Catch-up never
+converts those records into event-only legacy imports or silently clears their divergence.
+
+`Store::history` advertises optional recorded-history access without changing the remote wire
+contract. The shipped providers expose it. Custom wrappers must forward this capability to support
+recorded catch-up and shared-shell retries; unavailable history is an explicit catch-up refusal.

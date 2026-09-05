@@ -228,6 +228,11 @@ impl<T: Store + HistoryProvider + ?Sized> RecordedStore for T {}
 
 /// A provider that keeps state and events, and writes both together.
 pub trait Store: StateProvider + EventProvider {
+    /// Recorded history when the provider supports durable replay and command retries.
+    fn history(&self) -> Option<&dyn HistoryProvider> {
+        None
+    }
+
     /// Writes a decision: the instance and its events, as one step.
     ///
     /// `expect` is checked **before** anything is written, so a refusal changes nothing — the same

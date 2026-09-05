@@ -166,7 +166,11 @@ pub fn asyncapi(definitions: &[EntityDefinition]) -> Value {
     for definition in definitions {
         if let Some(event) = &definition.create.emit {
             declared
-                .entry(format!("{}.{}", definition.entity, event.event_type))
+                .entry(format!(
+                    "{}.{}",
+                    safe_identifier(&definition.entity),
+                    safe_identifier(&event.event_type)
+                ))
                 .or_insert_with(|| {
                     (
                         definition.entity.clone(),
@@ -180,7 +184,11 @@ pub fn asyncapi(definitions: &[EntityDefinition]) -> Value {
         for operation in definition.operations.values() {
             for event in &operation.emits {
                 declared
-                    .entry(format!("{}.{}", definition.entity, event.event_type))
+                    .entry(format!(
+                        "{}.{}",
+                        safe_identifier(&definition.entity),
+                        safe_identifier(&event.event_type)
+                    ))
                     .or_insert_with(|| {
                         (
                             definition.entity.clone(),
@@ -198,7 +206,17 @@ pub fn asyncapi(definitions: &[EntityDefinition]) -> Value {
         }
     }
     for (channel_name, (entity, event_type, schemas)) in declared {
-        let message_key = safe_identifier(&channel_name);
+        let message_key = if entity.bytes().all(|b| b.is_ascii_alphanumeric())
+            && event_type.bytes().all(|b| b.is_ascii_alphanumeric())
+        {
+            format!("{entity}_{event_type}")
+        } else {
+            format!(
+                "Message_{}_{}",
+                hex_identifier(&entity),
+                hex_identifier(&event_type)
+            )
+        };
         channels.insert(channel_name.clone(), json!({
             "address": channel_name,
             "messages": { message_key.clone(): { "$ref": format!("#/components/messages/{message_key}") }}
@@ -209,7 +227,7 @@ pub fn asyncapi(definitions: &[EntityDefinition]) -> Value {
                 .next()
                 .unwrap_or_else(domain_event_schema)
         } else {
-            json!({ "oneOf": schemas })
+            json!({ "anyOf": schemas })
         };
         messages.insert(
             message_key.clone(),
@@ -831,7 +849,15 @@ fn constraints(field: &FieldDefinition) -> String {
 }
 
 fn schema_key(definition: &EntityDefinition) -> String {
-    format!("{}V{}", pascal(&definition.entity), definition.version)
+    let name = &definition.entity;
+    if name.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+        && name.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    {
+        format!("{}V{}", pascal(name), definition.version)
+    } else {
+        let encoded: String = name.bytes().map(|byte| format!("{byte:02X}")).collect();
+        format!("Entity_{encoded}V{}", definition.version)
+    }
 }
 
 fn pascal(value: &str) -> String {
@@ -858,15 +884,19 @@ fn pascal(value: &str) -> String {
 
 fn safe_identifier(value: &str) -> String {
     value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || character == '_' {
-                character
+        .bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() {
+                char::from(byte).to_string()
             } else {
-                '_'
+                format!("_{byte:02X}")
             }
         })
         .collect()
+}
+
+fn hex_identifier(value: &str) -> String {
+    value.bytes().map(|byte| format!("{byte:02X}")).collect()
 }
 
 fn path_segment(value: &str) -> String {
@@ -942,6 +972,67 @@ mod tests {
             }}
         }))
         .expect("definition")
+    }
+
+    #[test]
+    fn overlapping_emitters_accept_real_events_in_the_projected_schema() {
+        let mut definition = definition();
+        let approve = definition.operations["approve"].clone();
+        definition.operations.insert("also_approve".into(), approve);
+        let spec = asyncapi(&[definition.clone()]);
+        let mut registry = entity_core::Registry::new();
+        registry.register(definition).unwrap();
+        let runtime = entity_core::Runtime::new(&registry);
+        let created = runtime
+            .create("refund", 1, "one", json!({"amount": 100}))
+            .unwrap();
+        let decision = runtime
+            .execute(&created.instance, "approve", json!({"reason": "accepted"}))
+            .unwrap();
+        let schema = &spec["components"]["messages"]["refund_RefundApproved"]["payload"];
+        assert!(jsonschema::is_valid(
+            schema,
+            &serde_json::to_value(&decision.events[0]).unwrap()
+        ));
+        let mut invalid = serde_json::to_value(&decision.events[0]).unwrap();
+        invalid["payload"]["reason"] = json!(42);
+        assert!(!jsonschema::is_valid(schema, &invalid));
+    }
+
+    #[test]
+    fn punctuation_case_and_composed_names_never_alias_contract_components() {
+        let names = ["foo-bar", "foo_bar", "fooBar", "FooBar", "a.b", "a", "é"];
+        let definitions: Vec<_> = names
+            .iter()
+            .map(|name| {
+                let mut definition = definition();
+                definition.entity = (*name).into();
+                if *name == "a" {
+                    definition.operations.get_mut("approve").unwrap().emits[0].event_type =
+                        "b.RefundApproved".into();
+                }
+                definition
+            })
+            .collect();
+        let spec = openapi(&definitions);
+        for definition in &definitions {
+            assert_eq!(
+                spec["components"]["schemas"][format!("{}Fields", schema_key(definition))]
+                    ["properties"]["amount"]["type"],
+                "integer"
+            );
+        }
+        let keys: std::collections::BTreeSet<_> = definitions.iter().map(schema_key).collect();
+        assert_eq!(keys.len(), definitions.len());
+        let events = asyncapi(&definitions);
+        assert_eq!(
+            events["channels"].as_object().unwrap().len(),
+            definitions.len()
+        );
+        assert_eq!(
+            events["components"]["messages"].as_object().unwrap().len(),
+            definitions.len()
+        );
     }
 
     #[test]

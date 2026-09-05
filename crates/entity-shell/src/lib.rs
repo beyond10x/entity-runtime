@@ -186,6 +186,44 @@ where
         recording: &Recording,
     ) -> Result<RecordedCommit, ShellError> {
         let instance = self.get(entity, id)?;
+        if let Some(history) = self.store.history() {
+            if let Some(envelope) = history
+                .records(entity, id)?
+                .into_iter()
+                .find(|entry| entry.record_id == recording.record_id)
+            {
+                let matches = (|| {
+                    let record = &envelope.record;
+                    let definition =
+                        entity_core::ValidatedDefinition::new(record.definition.clone()?).ok()?;
+                    let args =
+                        entity_core::normalize_arguments(&definition, operation, arguments.clone())
+                            .ok()?;
+                    Some(
+                        record.entity == entity
+                            && record.id == id
+                            && expected_revision.checked_add(1) == Some(record.revision)
+                            && record.command
+                                == entity_core::DecisionCommand::Execute {
+                                    operation: operation.to_owned(),
+                                    arguments: args,
+                                }
+                            && recording.seal(record.clone()).ok()? == envelope,
+                    )
+                })()
+                .unwrap_or(false);
+                if !matches {
+                    return Err(StoreError::RecordConflict {
+                        record_id: recording.record_id.clone(),
+                    }
+                    .into());
+                }
+                return Ok(RecordedCommit {
+                    instance: envelope.record.result.clone(),
+                    envelope,
+                });
+            }
+        }
         if instance.revision != expected_revision {
             return Err(ShellError::StaleRevision {
                 entity: entity.to_owned(),
@@ -231,6 +269,37 @@ mod tests {
             causation: None,
             actor: Some("test".into()),
         }
+    }
+
+    #[test]
+    fn an_exact_execute_retry_returns_the_original_commit_after_state_has_advanced() {
+        let registry = registry();
+        let mut store = MemoryStore::new();
+        let mut runtime = StoredRuntime::new(&registry, &mut store);
+        runtime
+            .create("thing", 1, "one", json!({}), &recording("create"))
+            .unwrap();
+        let accepted = runtime
+            .execute("thing", "one", 1, "finish", json!({}), &recording("finish"))
+            .unwrap();
+        assert_eq!(
+            runtime
+                .execute("thing", "one", 1, "finish", json!({}), &recording("finish"))
+                .unwrap(),
+            accepted
+        );
+        let changed = runtime.execute(
+            "thing",
+            "one",
+            1,
+            "finish",
+            json!({"extra": true}),
+            &recording("finish"),
+        );
+        assert!(
+            matches!(changed, Err(ShellError::Store(StoreError::RecordConflict { record_id })) if record_id == "finish")
+        );
+        assert_eq!(runtime.get("thing", "one").unwrap().revision, 2);
     }
 
     #[test]
