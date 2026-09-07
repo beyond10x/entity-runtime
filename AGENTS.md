@@ -289,9 +289,10 @@ The bare-version tag is an org-wide convention (atlas § *Naming*): `0.1.0`, nev
 The full gate comes first — component gates are not enough. The tag is annotated, points at the
 commit that delivered the work, and its `CHANGELOG.md` heading matches the version.
 
-Pushing the tag is the release: `.github/workflows/release.yml` re-runs the gate, builds the
+Pushing the tag queues the release: `.github/workflows/release.yml` runs the gate concurrently with
+building the
 `entity` command for Linux (x86_64, aarch64), macOS (x86_64, arm64) and Windows (x86_64), and
-creates the GitHub Release with the archives, a `SHA256SUMS` file and the tag's `CHANGELOG.md`
+creates the GitHub Release only after both succeed, with the archives, a `SHA256SUMS` file and the tag's `CHANGELOG.md`
 section as its notes. The provenance job refuses a tag unless the tag, workspace version and dated
 changelog heading agree. There is no generated-notes fallback: cut the section first.
 
@@ -332,3 +333,24 @@ cargo run --manifest-path "$atlas_checkout/Cargo.toml" --locked -q -- \
 
 Keep internal plans, stories, ADRs, decisions, worklogs, security material, and research out of the public allowlist unless a repository authority explicitly declares them public.
 <!-- b10x-docs-operations:end -->
+
+<!-- b10x-release-operations:start -->
+## Release completion
+
+An ordinary release completes after this repository's exact tag, required source checks,
+published release and required artifacts are verified. A pushed tag with unfinished checks or
+uploads is queued; report it as released only after those requirements succeed.
+
+Atlas reconciliation and public documentation publication run asynchronously. Do not wait for
+Atlas or Website, update Website source locks or bootstrap snapshots, promote consumer pins,
+release shared docs tooling, or redeploy documentation façades as part of an ordinary source
+release. Report documentation as pending unless its publication was actually verified. A background
+documentation failure does not invalidate a successful source release.
+
+Keep this repository's provenance, correctness, security, compatibility and artifact verification
+requirements. Shared rendering, routing or delivery-control changes still require their relevant
+integration gates. A release request does not authorize deployment or downstream releases.
+Repositories without a release unit retain their existing publication policy. This completion
+boundary supersedes older instructions that attach synchronous documentation ceremony to each
+source release.
+<!-- b10x-release-operations:end -->
