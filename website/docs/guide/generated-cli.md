@@ -13,7 +13,7 @@ host-platform executable. It embeds those definitions and delegates stored opera
 
 ## Prepare a matching source checkout
 
-Install `entity` 0.17.7 from the [quickstart](./getting-started). Generation also needs Git,
+Install `entity` 0.18.0 from the [quickstart](./getting-started). Generation also needs Git,
 Rust/Cargo, a matching runtime source checkout, and cached Cargo dependencies. These Bash commands
 use a fresh directory so both the output and demonstration store start empty:
 
@@ -21,7 +21,7 @@ use a fresh directory so both the output and demonstration store start empty:
 set -euo pipefail
 refund_cli_dir="$(mktemp -d)"
 cd "$refund_cli_dir"
-git clone --depth 1 --branch 0.17.7 \
+git clone --depth 1 --branch 0.18.0 \
   https://github.com/beyond10x/entity-runtime.git runtime-source
 cargo fetch --manifest-path runtime-source/Cargo.toml --locked
 cp runtime-source/examples/refund.yaml refund.yaml

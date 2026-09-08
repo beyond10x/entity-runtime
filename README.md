@@ -18,7 +18,7 @@ the application around it.
 [Read the product guide](https://beyond10x.github.io/docs/entity-runtime/) or
 [download a release](https://github.com/beyond10x/entity-runtime/releases).
 
-The guide targets [0.17.7](https://github.com/beyond10x/entity-runtime/releases/tag/0.17.7);
+The guide targets [0.18.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.18.0);
 the API remains in development. Start with the
 [refund quickstart](https://beyond10x.github.io/docs/entity-runtime/guide/getting-started/) or
 [system model and derivation](https://beyond10x.github.io/docs/entity-runtime/system-model/).

@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-09-09
+
 ### Changed
 
 - Rebuilding an instance from its events (`rehydrate`) now holds every event to what the kernel
