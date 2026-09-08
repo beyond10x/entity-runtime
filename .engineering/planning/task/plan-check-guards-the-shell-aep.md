@@ -2,13 +2,13 @@
 format: aep.planning-md/1
 id: task:plan-check-guards-the-shell-aep
 kind: task
-status: draft
+status: implemented
 title: plan-check version-checks the aep the shell will run
 summary: entity-xtask resolved aep through cargo's augmented PATH while aep artifact validate used the shell's; the Taskfile now hands it the shell's path
 relations:
 - decomposes: story:gate-and-release-hardening
 - serves: vision:O2
-revision: 2
+revision: 5
 ---
 ## Outcome
 
