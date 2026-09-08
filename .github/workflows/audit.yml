@@ -37,28 +37,8 @@ jobs:
         working-directory: website
         run: |
           set -euo pipefail
-          npm audit --json > audit.json || status=$?
-          status="${status:-0}"
-          today="$(date -u +%F)"
-          # Re-read 2026-09-09: image-size 2.0.2 is still the latest release and the advisory
-          # (published 2026-06-10) names no patched version, so the exception is extended once
-          # more. The exposure is the JXL/HEIF/ICNS parsers, and pages.yml refuses those formats
-          # under website/. When a patched image-size ships, drop the two sources below instead of
-          # moving this date again.
-          if [[ "$today" > "2026-12-31" ]]; then
-            echo 'The image-size advisory exception expired on 2026-12-31.' >&2
-            exit 1
-          fi
-          unexpected="$(jq -r '
-            [.vulnerabilities | to_entries[]
-             | select(.value.severity == "high" or .value.severity == "critical")
-             | .value.via[]
-             | select(type == "object")
-             | select(.source != 1138808 and .source != 1138809)
-             | .source] | unique | .[]?' audit.json)"
-          if [[ -n "$unexpected" ]]; then
-            echo "Unexpected high/critical npm advisories: $unexpected" >&2
-            exit 1
-          fi
-          echo 'Only image-size GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq remain; exception expires 2026-12-31.'
-          test "$status" -eq 1
+          # No exceptions. The last one, image-size (GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq),
+          # ended on 2026-09-09 when website/vendor/image-size started carrying the guards upstream
+          # never released; see website/vendor/image-size/B10X-PATCH.md. A new high or critical
+          # advisory is a finding on its own clock, which is what this workflow is for.
+          npm audit --audit-level=high
