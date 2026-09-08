@@ -2,13 +2,13 @@
 format: aep.planning-md/1
 id: task:fold-refuses-unemitted-event-types
 kind: task
-status: draft
+status: implemented
 title: The fold refuses an event whose type no operation emits on its transition
 summary: rehydrate checked only the transition for an event type nothing emits; such an event now needs an emitter that produced it
 relations:
 - decomposes: story:replay-from-events
 - serves: vision:O2
-revision: 2
+revision: 5
 ---
 ## Outcome
 

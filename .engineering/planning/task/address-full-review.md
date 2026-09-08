@@ -2,12 +2,12 @@
 format: aep.planning-md/1
 id: task:address-full-review
 kind: task
-status: draft
+status: implemented
 title: Correct failures found by the full runtime review
 relations:
 - decomposes: story:provider-integrity-hardening
 - serves: vision:O2
-revision: 2
+revision: 5
 ---
 ## Outcome
 

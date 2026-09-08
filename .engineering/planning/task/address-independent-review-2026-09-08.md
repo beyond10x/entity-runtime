@@ -2,13 +2,13 @@
 format: aep.planning-md/1
 id: task:address-independent-review-2026-09-08
 kind: task
-status: draft
+status: implemented
 title: Correct the findings of the 2026-09-08 full and independent reviews
 summary: Eight review findings plus the blocker and nits two independent reviewers raised against the fixes, all corrected with regression tests
 relations:
 - decomposes: story:provider-integrity-hardening
 - serves: vision:O2
-revision: 2
+revision: 5
 ---
 ## Outcome
 

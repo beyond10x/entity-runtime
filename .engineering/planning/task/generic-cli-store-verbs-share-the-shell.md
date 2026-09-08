@@ -2,13 +2,13 @@
 format: aep.planning-md/1
 id: task:generic-cli-store-verbs-share-the-shell
 kind: task
-status: draft
+status: implemented
 title: entity create/execute --store go through the shared stored runtime
 summary: The generic CLI evaluated again on every invocation and could not return an accepted operation for an exact retry; it now uses StoredRuntime like MCP and the generated CLI
 relations:
 - decomposes: story:recorded-command-contract
 - serves: vision:O2
-revision: 2
+revision: 5
 ---
 ## Outcome
 
