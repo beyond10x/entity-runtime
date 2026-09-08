@@ -42,6 +42,8 @@ reason that would otherwise be lost:
 | `serialize-javascript` 7.1.1, `uuid` 11.1.1 | added with 0.15.0 (`70c4167`); that commit records no reason |
 | `qs` 6.16.0 | GHSA-4mjr-xmp4-gh2g and GHSA-x5fp-wj9c-mxmx; `express` 4 pins `qs` 6.15.3 and the fixed version arrives only with `express` 5, which webpack-dev-server 5 does not take yet (2026-09-09) |
 
+| `image-size` → `file:vendor/image-size-2.0.3-b10x.1.tgz` | GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq have no upstream fix; the vendored copy carries three loop guards, see `vendor/image-size/B10X-PATCH.md` |
+
 Drop an override when the requesting package moves past it: `npm ls <name>` says who still asks for
-the old range. The remaining `image-size` advisories have no fixed release; `.github/workflows/audit.yml`
-carries that exception with its expiry date.
+the old range. `npm run vendor-check` proves the vendored image-size still refuses the inputs that
+hang the published 2.0.2; the build runs it too.
