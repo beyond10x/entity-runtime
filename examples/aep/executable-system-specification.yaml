@@ -1,0 +1,155 @@
+# The current AEP executable-system-specification ladder as an Entity Runtime definition.
+# Source identity and unmodified lifecycle bytes are recorded in the aep-lifecycles fixture.
+# The equivalence suite checks every state, edge and required evidence kind.
+entity: executable-system-specification
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    # `id`, `kind` and `status` are not fields: the kernel owns identity and the lifecycle state,
+    # and writing either as a field is how a status becomes something anybody can set.
+    title:
+      type: string
+      required: true
+      min_length: 1
+
+    summary:
+      type: string
+
+    owner:
+      type: string
+
+    tags:
+      type: array
+      default: []
+      items:
+        type: string
+
+    # The markdown body, unmodelled for now. `artifacts/kinds/*.yaml` declares `required_sections`
+    # there; modelling those as fields is a later step, and this is what the design calls keeping
+    # the body as json in the first one.
+    body:
+      type: json
+
+
+lifecycle:
+  initial: draft
+  states: [draft, validated, conforming, superseded, archived]
+
+create:
+  emit:
+    type: ArtifactCreated
+    payload:
+      artifact_id: $id
+      kind: $entity
+      status: $state
+      title: $fields.title
+
+operations:
+  validate:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: [draft, conforming]
+        to: validated
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: validate
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  revise:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: validated
+        to: draft
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: revise
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  conform:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+        evidence:
+          type: json
+    preconditions:
+      - name: 'evidence: ess_conformance'
+        message: conformance requires an ESS conformance record
+        assert:
+          gte: [$args.evidence.ess_conformance, 1]
+    transitions:
+      - from: validated
+        to: conforming
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: conform
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  supersede:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: [validated, conforming]
+        to: superseded
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: supersede
+          from: $from_state
+          to: $to_state
+          actor: $args.actor
+
+  archive:
+    arguments:
+      fields:
+        actor:
+          type: string
+          required: true
+          min_length: 1
+    transitions:
+      - from: [draft, validated, conforming, superseded]
+        to: archived
+    emits:
+      - type: ArtifactMoved
+        payload:
+          artifact_id: $id
+          kind: $entity
+          operation: archive
+          from: $from_state
+          to: $to_state
+          actor: $args.actor

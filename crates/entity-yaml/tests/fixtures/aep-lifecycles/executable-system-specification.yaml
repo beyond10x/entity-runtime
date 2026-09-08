@@ -1,0 +1,35 @@
+# The specification an implementation is generated against and checked by, and what a run against
+# it has shown.
+#
+# The kind has existed since ESS wave 1 and had no ladder, so every status and every move was
+# permitted — which is the same as no rung at all: `aep artifact move` could take one to
+# `implemented` with nothing presented. The ladder is narrow for the reason `specification`'s is:
+# each rung is a distinct claim a requirement can name.
+#
+#   draft       written; nothing has been shown about it
+#   validated   `ess validate` accepts it; nothing has been checked against it yet
+#   conforming  an implementation has been held to its generated suite, and a record says so
+#   superseded  a later revision of the model replaced it
+kind: executable-system-specification
+initial: draft
+
+transitions:
+  draft: [validated, archived]
+  validated: [draft, conforming, superseded, archived]
+  # Back to `validated` is a real edge. A run is bound to the digest of the model it checked, so a
+  # model that moved has not been shown to conform until a run against the new digest is recorded;
+  # this is the move that says so rather than leaving the old claim standing.
+  conforming: [validated, superseded, archived]
+  superseded: [archived]
+  archived: []
+
+# What the rung costs. `conforming` is a claim that a run happened, and this is the line that
+# checks a record was presented — `aep artifact evidence <id> --from <report.json>` is how one
+# arrives, read out of the runner's own `ess-conformance-report/1` rather than typed. Whether the
+# record passed, and whether its digest is this specification's `model_digest`, is the
+# `ess-conformance` principle's judgement; it fails closed on a specification that records no
+# digest.
+requires:
+  conforming:
+    - evidence: ess_conformance
+      at_least: 1

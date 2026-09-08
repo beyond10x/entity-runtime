@@ -15,3 +15,16 @@ transitions:
   rejected: [archived]
   superseded: [archived]
   archived: []
+
+# One line per rung, for anything that renders this ladder as a board and would otherwise
+# carry its own map of status to blurb — a second copy of this vocabulary, in a file
+# nothing validates. Prose about *this* ladder's rungs: `draft` here is not `draft`
+# everywhere.
+descriptions:
+  draft: Being written.
+  in_review: Written, and waiting on somebody to read it.
+  approved: Agreed, and not yet built.
+  implemented: Built as described.
+  rejected: Decided against.
+  superseded: Replaced by a later design, kept because the reasoning is still readable.
+  archived: Closed, kept for the record.

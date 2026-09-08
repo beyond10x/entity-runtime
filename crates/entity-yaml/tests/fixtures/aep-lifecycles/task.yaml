@@ -19,3 +19,15 @@ transitions:
   implemented: [archived]
   rejected: [archived]
   archived: []
+
+# One line per rung, for anything that renders this ladder as a board and would otherwise
+# carry its own map of status to blurb — a second copy of this vocabulary, in a file
+# nothing validates. Prose about *this* ladder's rungs: `draft` here is not `draft`
+# everywhere.
+descriptions:
+  draft: Written down, not yet agreed.
+  proposed: Ready to pick up.
+  active: Being worked on now.
+  implemented: Done.
+  rejected: Decided against.
+  archived: Closed, kept for the record.

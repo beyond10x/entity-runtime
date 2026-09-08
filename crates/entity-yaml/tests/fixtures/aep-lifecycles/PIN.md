@@ -8,23 +8,24 @@ on a machine that has only this repository.
 | | |
 |---|---|
 | source | `github.com/beyond10x/aep`, `artifacts/lifecycles/*.yaml` |
-| pinned commit | `714d256e6810834d7de0d670c1e8eff0f79a76c8` — tagged `0.40.0` |
-| last upstream change to these files | `4d331a0`, 2026-08-26 — *fix: `outbound-claim` starts at `draft`, and the pin says 0.5.2* |
-| copied | 2026-09-01 |
+| pinned commit | `35b5c9949d7b9e1caa3a5e5de7502af42c2dbc5e` — current main source, no tag |
+| scope | All lifecycle documents at the recorded source commit, including executable system specifications |
+| copied | 2026-09-07 |
 | licence | Apache-2.0, the same as this repository |
 
 ```
 8982ee715013ddec5b9e8fa81a0283c300d662684c05d65a42c3fd0567329e52  architecture-decision-record.yaml
 973ec77a5870ab2c1c74e3108370b4b34d20c84c19b38298f3df804c18563a7e  blocker.yaml
-ca15b5c1c630b3ca4a794305024edf03b16921c635a6f53da38037562caaa9e5  design.yaml
+33f43d5af14dc0415114edd6a29027bc1ea0c9932b18fb00fa71367ac471c12d  design.yaml
 fe8e08bd3c57f988ed6228ae7060bb7393893ce51d680a171c99f4bb8bfbe858  epic.yaml
+073d2f423dee34120c1cf7aad8437a15071ed03bdae63a9d778ddb58bd53b442  executable-system-specification.yaml
 602c4fb794f846ed1c280b22d01842e28a1e692dfd752eb7a5fc220819dfeae2  initiative.yaml
 7224f7515ead95da321fe1c4dc98ee7c1369303ae7409686aa9211459642efc4  obligation.yaml
 006abbc630d78fbc994bf25a93bef97afee252bb14504e2d15499c6d1d72e1a3  outbound-claim.yaml
 a282c5a1fe9abde13354faaa2c05e8bc2308dc7569a56b6b900d82ff870e9bbd  review-result.yaml
 357de517350ef2ee6421bc95dfba81cc2b276db193b878c666a9935d6ee7c142  specification.yaml
-982e7690baf1584c0049969ce731572cb3be8c8919327d42f39d88f3709b03fc  story.yaml
-638bc428c36f2cd7ffaa0b0ba5cc7306db90805db57cf8b1ec44373cb011c3a0  task.yaml
+265f3020e51de7d9a0c27b62629ce90cad29c2c74908a9cbe49f92589b91cb72  story.yaml
+f918abee7724f4e7eec94640bea19dbf2d6bf3eaab9285ca38649c7c9b91cc89  task.yaml
 db65a35124f2aff6c3c9e14a792cc6316b5a1626df51d9ea3dda54bdda9e994d  vision.yaml
 ```
 
@@ -46,8 +47,9 @@ this repository stayed green for as long as it took somebody to notice, with an 
 asserting agreement about eight ladders while nine existed. Nothing here reaches
 AEP at build or test time, deliberately — a test whose coverage depends on a
 sibling checkout says a different thing on a machine that has none — so the signal has to come from
-outside the gate. `.github/workflows/upstream-pin.yml` is that signal: it clones upstream on a
-schedule and opens the question, without putting the network inside `task check`.
+outside the gate. Atlas owns that signal: its consumer compatibility workflow compares current
+AEP source with this fixture on a schedule, without putting a consumer dependency or the network
+inside `task check`.
 
 Refreshing this pin is a coordinated decision: the AEP and Entity Runtime equivalence suites both
 record the copied boundary.

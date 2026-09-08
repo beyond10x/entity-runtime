@@ -186,8 +186,8 @@ small before the type ships and expensive after:
 * ~~**The pin is held by prose.**~~ **Done, and then done twice.** Every cross-repo claim in the
   adoption design cited `aep@79b641c` by file and line with nothing checking it.
   The fixture is now committed — `crates/entity-yaml/tests/fixtures/aep-lifecycles/` with a
-  `PIN.md` the gate's `pin-check` recomputes on every run, and `.github/workflows/upstream-pin.yml`
-  asking weekly whether the copy is still what upstream ships, outside the gate so nothing here
+  `PIN.md` the gate's `pin-check` recomputes on every run. Atlas now owns the separate weekly
+  consumer comparison with current AEP source, outside this repository's gate so nothing here
   reaches the network. As of 2026-08-28 **they hold the mirror image**:
   `aep/crates/aep-backend-markdown/tests/fixtures/entity-runtime-aep/`, our
   `examples/aep/*.yaml` pinned at our tag `0.13.0`, with its own sha per file. Neither repository can

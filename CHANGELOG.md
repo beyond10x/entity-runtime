@@ -4,6 +4,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- Move the scheduled comparison with current AEP lifecycle documents to Atlas; deterministic fixture and pin checks remain in the local gate. Refresh the fixture from current
+  AEP source and cover the executable-system-specification lifecycle and its conformance evidence requirement.
+
 ### Documentation
 
 - Added a subsystem and derivation map distinguishing the runtime from ESS and generated domain

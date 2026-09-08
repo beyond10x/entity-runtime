@@ -144,13 +144,13 @@ against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they 
 `notes-check`. Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
 
-One check is deliberately **outside** the gate. `pin-check` holds the AEP fixture against its own
-`PIN.md`; whether that fixture is still what AEP ships is a different question,
-and answering it means cloning their repository. `.github/workflows/upstream-pin.yml` asks it weekly
-(`cargo xtask upstream-pin <checkout>`, runnable locally against a sibling clone), so the gate
-stays network-free and drift surfaces as its own red run rather than as a puzzling failure in an
-unrelated step. It was added because the fixture went stale for real: `vision.yaml` landed upstream
-and this repository stayed green while its equivalence test claimed to cover every ladder.
+The local `pin-check` holds the AEP lifecycle fixture against its own `PIN.md`.
+Atlas owns the separate consumer compatibility suite and its weekly schedule. It compares these
+committed fixtures with current AEP source through `atlas compatibility aep --entity-runtime
+<checkout> --aep <checkout>`. This repository's build and tests consume only the committed fixture;
+the consumer comparison runs above both repositories and does not add a reverse dependency here.
+The check still reports added, retired and changed ladders, including the historical failure where
+`vision.yaml` landed upstream while this repository's equivalence test covered only older ladders.
 
 CI's reusable `.github/workflows/gate.yml` runs format, Clippy, tests, rustdoc, examples,
 requirements and the PostgreSQL provider against its service container; both `check.yml` and
