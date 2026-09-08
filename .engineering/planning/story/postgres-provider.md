@@ -9,7 +9,7 @@ relations:
 - decomposes: epic:the-store-an-adopter-runs-on
 - depends_on: story:store-enumeration
 - informed_by: story:sqlite-provider
-revision: 9
+revision: 10
 ---
 # Story: `entity-postgres` — a provider with a server, and a gate that says when it did not run
 
@@ -46,7 +46,7 @@ unconditionally.
 - The tests run when `ENTITY_POSTGRES_URL` is set and are **skipped with a printed line** when it is
   not — `task check` prints *"postgres-check: skipped, ENTITY_POSTGRES_URL unset"*. CI sets it, with
   a service container. **Done** — `scripts/postgres-check.sh`, the `postgres-check` step in
-  `Taskfile.yml`, a `postgres:16` service and the `Postgres provider` step in
+  `Taskfile.yml`, a `postgres:17` service (16 until 2026-09-08) and the `Postgres provider` step in
   `.github/workflows/gate.yml`; each test also says so on stderr when it returns without a server.
 - The one new dependency is justified in the manifest, and `entity-core`'s dependency-pin test is
   untouched. **Done** — `postgres` 0.19, `default-features = false`; the synchronous client because
