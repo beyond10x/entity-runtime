@@ -15,7 +15,9 @@ serde_json.workspace = true
 # `bundled`: SQLite is compiled from vendored C rather than linked against whatever the machine
 # happens to have. A store whose behaviour depends on the host's library version is a store two
 # machines can disagree about, which is the one thing a provider must not be.
-rusqlite = { version = "0.32", features = ["bundled"] }
+# 0.40: the bump Dependabot proposed in #7 and nobody applied; taken 2026-09-09 with the full
+# gate and the 1.85 MSRV check green. The wrapper API this crate uses is unchanged.
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 [lints]
 workspace = true

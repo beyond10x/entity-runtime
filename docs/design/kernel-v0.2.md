@@ -26,8 +26,9 @@ the events nested in the record.
 `replay` treats recorded results as comparison evidence. It validates each definition snapshot,
 reruns the normalized command through the ordinary kernel path, and compares the complete record.
 An altered command, result, change or event is refused and never becomes state (R-97, R-114).
-Legacy event folding remains available for migration, but a `LegacyImport` is explicitly an
-unverified snapshot boundary and cannot claim replay from genesis.
+Legacy event folding remains available for migration — since 2026-09-08 it holds every revision to
+what the current definition's operations could have produced (`kernel-v0.1.md` § 10.1) — but a
+`LegacyImport` is explicitly an unverified snapshot boundary and cannot claim replay from genesis.
 
 ## 3. Determinism and evaluation order
 

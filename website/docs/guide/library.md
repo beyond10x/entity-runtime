@@ -101,8 +101,9 @@ provider failure rolls the batch back.
 ## Replay
 
 `entity_core::replay` reruns complete decision records and compares normalized input, definition,
-result, changes, and events. `rehydrate` folds legacy event-only histories and is a migration tool,
-not equivalent proof.
+result, changes, and events. `rehydrate` folds legacy event-only histories against the current
+definition, refusing any revision no operation could have produced, and is a migration tool rather
+than equivalent proof: it has no definition snapshot and cannot see a decision that emitted nothing.
 
 Match `CoreError` and `StoreError` variants in code. Display strings are for people and may be
 reworded.
