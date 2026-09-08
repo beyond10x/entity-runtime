@@ -460,6 +460,137 @@ fn an_instant_this_kernel_cannot_read_is_unobservable_and_the_refusal_names_it()
         .expect("a readable instant before the deadline");
 }
 
+/// A literal `before`/`after` operand that nothing can ever read is refused where it is written.
+///
+/// At run time `compare_instants` answers `Unknown` for a value it cannot read, and it records only
+/// `$` operands as unresolved — so a definition carrying an unreadable literal refuses every
+/// evaluation with `PreconditionUnobservable { unresolved: [] }`, whose message says nothing was
+/// observed and the rule names no reference. That is a defect in the document, not a fact about the
+/// instance, so registration is where it belongs.
+#[test]
+fn a_before_or_after_rule_with_a_literal_the_kernel_cannot_read_is_refused_at_registration() {
+    let unreadable = [
+        // An impossible date: there is no thirteenth month.
+        (
+            json!({ "before": ["2026-13-01", "$fields.title"] }),
+            "before[0]",
+        ),
+        // An offset is refused rather than normalised, here as at run time.
+        (
+            json!({ "after": ["$fields.title", "2026-08-25T12:00:00+02:00"] }),
+            "after[1]",
+        ),
+        // An epoch second is a number, not an instant this kernel reads.
+        (
+            json!({ "before": [1_756_108_800, "2026-08-25"] }),
+            "before[0]",
+        ),
+        (json!({ "after": ["2026-08-25", "yesterday"] }), "after[1]"),
+        (json!({ "before": [true, "2026-08-25"] }), "before[0]"),
+        (json!({ "before": ["2026-08-25", null] }), "before[1]"),
+        (
+            json!({ "after": [["2026-08-25"], "2026-08-25"] }),
+            "after[0]",
+        ),
+        (
+            json!({ "before": ["2026-08-25", { "at": "2026-08-25" }] }),
+            "before[1]",
+        ),
+        // `$$2026-08-25` escapes to the literal `$2026-08-25`, which nothing reads.
+        (
+            json!({ "before": ["$$2026-08-25", "2026-08-25"] }),
+            "before[0]",
+        ),
+    ];
+    for (condition, operand) in unreadable {
+        let document = with(
+            ticket(),
+            "operations.touch.preconditions",
+            json!([{ "assert": condition }]),
+        );
+        let Err(error) = register(document) else {
+            panic!("{condition} registers, and would then be unobservable at every evaluation");
+        };
+        let expected = format!("operations.touch.preconditions[0].assert.{operand}");
+        assert!(
+            matches!(error.first(), DefinitionError::InvalidRule { path, .. } if *path == expected),
+            "{condition}: {error}"
+        );
+    }
+
+    // The refusal names the value and the forms the kernel reads, so the author can fix it without
+    // going to read the parser.
+    let unreadable = with(
+        ticket(),
+        "invariants",
+        json!([{ "assert": { "after": ["yesterday", "$fields.title"] } }]),
+    );
+    let Err(error) = register(unreadable) else {
+        panic!("an unreadable literal instant must be refused where it is written");
+    };
+    assert!(
+        matches!(error.first(), DefinitionError::InvalidRule { path, message }
+            if path == "invariants[0].assert.after[0]"
+                && message.contains("\"yesterday\"")
+                && message.contains("YYYY-MM-DD")
+                && message.contains("unobservable at every evaluation")),
+        "{error}"
+    );
+
+    // And the instant rule does not shadow the reference walk: a `$` reference nested inside an
+    // operand is still checked against the schema, so the typo is named with its own path and its
+    // own reason rather than reported as *not an instant* one level up, where nothing says which
+    // field was misspelled.
+    let nested = with(
+        ticket(),
+        "invariants",
+        json!([{ "assert": { "before": [["$fields.nope"], "2026-08-25"] } }]),
+    );
+    let Err(error) = register(nested) else {
+        panic!("a reference that cannot resolve must be refused however deeply it is nested");
+    };
+    assert!(
+        matches!(error.first(), DefinitionError::InvalidRule { path, message }
+            if path == "invariants[0].assert.before[0][0]"
+                && message.contains("'$fields.nope' cannot resolve")
+                && message.contains("unknown field 'nope'")),
+        "{error}"
+    );
+}
+
+/// The other half of the same rule: a readable literal against a reference registers and decides.
+#[test]
+fn a_before_or_after_rule_reading_a_literal_instant_against_a_reference_registers_and_decides() {
+    let registry = register(with(
+        with(
+            ticket(),
+            "operations.touch.arguments",
+            json!({ "fields": { "now": { "type": "string" } } }),
+        ),
+        "operations.touch.preconditions",
+        json!([{
+            "name": "not_yet_due",
+            "message": "the deadline has not passed",
+            "assert": { "before": ["2026-08-25", "$args.now"] }
+        }]),
+    ))
+    .expect("a readable literal against a reference");
+    let instance = open_ticket(&registry, 3);
+
+    Runtime::new(&registry)
+        .execute(&instance, "touch", json!({ "now": "2026-12-31" }))
+        .expect("2026-08-25 is before 2026-12-31");
+
+    let error = Runtime::new(&registry)
+        .execute(&instance, "touch", json!({ "now": "2026-01-01" }))
+        .expect_err("2026-08-25 is not before 2026-01-01");
+    assert!(
+        matches!(error, CoreError::PreconditionFailed { ref rule, .. }
+            if rule.as_deref() == Some("not_yet_due")),
+        "{error}"
+    );
+}
+
 // --- Typed references ----------------------------------------------------------------------------
 
 /// A `ref` that does not say what it points at is a string with extra ceremony.

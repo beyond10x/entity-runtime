@@ -248,10 +248,13 @@ comment. Semantics (R-54):
   `Unknown` rather than `false` — the one place the two comparison families deliberately differ,
   because *not a number* is an observation and *not a timestamp I can read* is a statement about
   the reader. There is no `$now` and there will not be (R-62): a definition compares instants it
-  was handed, which is what keeps the decision replayable.
+  was handed, which is what keeps the decision replayable. A **literal** operand, though, is the
+  author's own text, and one this kernel cannot read (`2026-13-01`, an offset, a number) would
+  make the rule unobservable at every evaluation with nothing to go and observe — so it is
+  refused at registration as an invalid rule, like every other defect that could never work.
 
 There is no function call, loop, arithmetic, clock, random source or lookup (R-55). The `Condition`
-type has sixteen variants and none of them is "evaluate this string", which is the property that
+type has fifteen variants and none of them is "evaluate this string", which is the property that
 lets a definition be validated at registration, evaluated identically everywhere, and rendered by
 tooling that never parses source code. A richer language (CEL, Rhai, …) could be introduced later
 behind the same two rule slots; nothing in this design depends on the AST staying this small,
@@ -429,7 +432,7 @@ styles (R-81):
 The fold exists now: `rehydrate(definition, events)`.
 
 R-34 says `lifecycle_state` is written by `create` and `execute` and by nothing else, and a fold
-plainly *does* set a state. What stops it being a second way in is two things together.
+plainly *does* set a state. What stops it being a second way in is five things together.
 
 **The state comes from the event, not from the caller.** R-89 puts `from_state`, `to_state` and the
 fields the operation wrote onto `DomainEvent`, because the kernel wrote them at the moment it
@@ -439,9 +442,81 @@ An event that cannot rebuild what it describes is a notification, not a record.
 
 **Every step is re-checked against the definition.** R-97: the fold refuses an event whose
 transition no operation declares, whose `from_state` is not where the fold had reached, whose
-revision does not follow, or which is about another instance. An invented event therefore has to
-name a transition the definition already permits, from the state the instance is already in — which
-is precisely what `execute` would have allowed anyway.
+revision does not follow, which is about another instance, or whose type no operation emits on the
+transition it took. An invented event therefore has to name a transition the definition already
+permits, from the state the instance is already in, and carry a type something there actually emits
+— which is precisely what `execute` would have allowed anyway.
+
+**And the entity's invariants are re-checked too.** R-51 has `create` and `execute` evaluate the
+invariants against the state they are about to return; a fold that skipped them would reach, one
+event at a time, the instance an invariant exists to forbid. So after each event's state, revision
+and fields are installed — the creation event included, since `create` checks them as well — the
+invariants are evaluated against what the fold now holds, with the arguments and previous fields
+empty because R-52 says an invariant may read neither. A violation and an unobservable both refuse,
+naming the event and the rule. What reaches this check, now that every event answers to an emitting
+operation's `set:`, is an honest history recorded under an earlier definition: an invariant added
+after those events were written is satisfied by nothing in them, and without this the fold hands
+back the `closed` ticket with no resolution that the invariant was added to forbid.
+
+**And an event's fields answer to the operation that wrote them.** R-97, extended again: for an
+operation event the fold takes the operations that declare the transition *and* emit the event's
+type — the same candidates the argument check uses — and requires one of them to both accept the
+event's arguments under its argument schema and its preconditions (steps 3 and 5 of § 6, in that
+order) and, resolving its `set:` against the fields as they stood
+and those same arguments, write exactly the event's `changed`. One candidate has to answer for the
+whole event, because one `execute` call did: accepting the arguments from one operation and the
+fields from another would accept a history no single call could have written. A `set:` that does not
+resolve from the event's arguments is that candidate's refusal, not the fold's. A creation event is
+the same question with no operation in it — `create` records the fields it wrote as both `changed`
+and `args`, so a fold requires the two to be equal, naming the fields they differ on, and its type
+has to be the one `create.emit` names. Without this an event decided on `resolution: fixed` folded
+to a ticket resolved `not-fixed`: schema-valid, invariant-satisfying, and a value no `execute` on
+that command could have produced.
+
+**And an event no operation emits is refused rather than admitted on its transition.** R-97, the
+last extension: where no operation both declares the transition *and* emits the event's type there
+is no operation to put the question to, so the fold refuses the event instead of checking the
+transition alone. An event nothing emits describes no decision — there is no argument schema to hold
+its `args` to and no `set:` to hold its `changed` to, and the schema would be left deciding what an
+event the definition never emits may write. The creation event answers the same way: a first event
+whose type is not the one `create.emit` names is refused naming both types, and where the definition
+emits nothing on creation every creation event of it is invented, so no history of it can begin at
+all. This is what makes the "a creation event is required" rule below enforced rather than merely
+stated. A definition that stops emitting an event type therefore stops being able to fold the
+histories that carry it: fold them before changing the definition, or keep the emitter declared.
+
+**And a revision is one decision, holding every event it emitted.** One `execute` call
+materialises the whole `emits` list at one revision, from one context, so the fold walks the
+history a revision at a time rather than an event at a time — the reading under which an operation
+with two `emits` is foldable at all, since its second event is not "a history with a gap" but the
+same decision. The events of one revision must agree on transition, arguments and fields; they must
+be exactly the emitting operation's `emits`, in order — a subset, a superset or a reordering was
+written by no single call; and each payload must be what its template resolves to against the
+fields afterwards, the arguments and the fields before, which is the context `execute` materialised
+it with. The payload check matters most where it looks least necessary: in a definition whose
+operations have no `set:` (the AEP artifact model is one), `changed` is always empty and the
+payload is the only place a decision's particulars — who moved it, on what — are written down.
+
+**And all of it runs per revision, in `execute`'s order.** Identity, then the revision, then the
+`from_state`, then the transition, then that an operation emits these types on it, then the
+argument schema, then the preconditions, then the `changed`/`set:` agreement, then the fields are
+installed, then the schema (§ 6 step 7), then the invariants (§ 6 step 9), then the payloads (§ 6
+step 10) — for every revision, not the schema once at the end of the fold. The order is
+load-bearing rather than incidental: a wrong-typed field validated after the invariants is reported
+as a broken invariant, which is the wrong defect, and only in the definitions where some invariant
+happens to read that field; a payload compared before the fields are checked would report a schema
+defect as a payload disagreement. Where more than one operation answers for the transition, the
+arguments and the fields, the payloads decide between them, so two operations that differ only in
+what they emit both stay foldable.
+
+**What the fold cannot see.** An operation that emits nothing leaves no event, so a history folded
+from events alone does not know it ran. Where that silent decision was the last one, the fold
+returns the instance the events describe — one decision short, with nothing to refuse. Where a later
+decision did emit, its revision no longer follows the one the fold reached and the fold refuses it
+as a gap, naming the revision it stopped at: the history is unfoldable from the silent decision on.
+Both are properties of event-only history rather than of the fold — `replay` over complete decision
+records has no such gap — and the definition guide says so beside `emits`. A shell that needs to
+rebuild a subject through operations that emit nothing keeps decision records.
 
 So a fold is not a way to reach a state that could not have been reached. It is a slower way to
 reach one that could.
@@ -452,14 +527,14 @@ after defaults and validation; on a creation event, the fields. Written by the k
 defaulted, refused when missing (the envelope's rule, R-87, applied to the fact itself). Without it
 an event left by `implement` with a precondition on `$args.evidence.test_result` could not say what
 the count was, and the adopter kept that count beside its events by hand. With it the fold checks
-what `execute` checked (R-97, extended): for an event some operation emits on that transition, the
-operation's preconditions are evaluated against the event's arguments and the fields as they stood,
-and a history whose arguments would have been refused is refused. A forged `test_result: 0` does
+what `execute` checked (R-97, extended): the emitting operation's preconditions are evaluated
+against the event's arguments and the fields as they stood, and a history whose arguments would have
+been refused is refused. A forged `test_result: 0` does
 not reach `implemented` by the back door.
 
-**A creation event is required**, and a definition emitting none cannot be event-sourced. Said by
-name rather than by conjuring an empty instance to fold onto: an instance built from no record would
-be the fold asserting something no event supports.
+**A creation event is required**, and a definition emitting none cannot be event-sourced — refused
+by name, as above, rather than by conjuring an empty instance to fold onto: an instance built from
+no record would be the fold asserting something no event supports.
 
 The old note, kept because it still holds:
 
