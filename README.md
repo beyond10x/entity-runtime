@@ -260,7 +260,9 @@ batches; File Store atomicity is limited to one subject document.
 - Preconditions run before assignments; invariants run against the proposed next state; events are
   materialized last.
 - Complete decision replay re-executes normalized commands and compares the recorded result and
-  events. Legacy event folding is an explicit, weaker migration boundary.
+  events. Legacy event folding holds every revision to what the current definition's operations
+  could have produced, and is an explicit, weaker migration boundary: no definition snapshot, and
+  no view of a decision that emitted nothing.
 - `actor` and timestamps are recorded provenance, not authentication or trusted time. The host must
   supply and validate them.
 - `Unreachable` is distinct from `Absent`; a network failure is never treated as proof that data

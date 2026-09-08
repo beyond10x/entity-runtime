@@ -72,9 +72,11 @@ somewhere. Do not write an enforcement here that you cannot point at.
    `a_refusal_leaves_the_caller_owned_instance_untouched`.
 4. **There is no generic lifecycle-state write.** `create` selects the declared initial state and
    `execute` reaches another state only through a declared operation. Legacy event rehydration may
-   reconstruct a state, but it validates every event's identity and revision, requires its
-   transition to be declared by an operation, and rechecks arguments against matching emitters
-   before assigning it. There is no setter, patch-state command or delete.
+   reconstruct a state, but it folds one revision at a time as one decision and holds each to an
+   operation that emits exactly those events on that transition: identity, revision, argument
+   schema, preconditions, `changed` against the operation's `set:`, the schema, the invariants and
+   every payload, in `execute`'s order, before assigning it. There is no setter, patch-state
+   command or delete.
    *Enforced by* `create` and `execute`, by the checks in `rehydrate`, by `execute` refusing an
    instance whose state the definition does not declare (`UnknownState`), and by
    `an_instance_claiming_a_state_the_definition_does_not_declare_is_refused` plus the R-97 replay

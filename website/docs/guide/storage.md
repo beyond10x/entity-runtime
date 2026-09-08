@@ -87,10 +87,15 @@ A complete decision record contains the normalized command, exact validated defi
 result, changed fields, and events. `entity_core::replay` executes that command again and compares
 the complete outcome. Altered input, output, or event evidence is refused.
 
-Legacy event-only history can be folded with `rehydrate`, but it does not prove that the original
-commands would have passed the original definitions. Data imported by the File Store v2 migrator is
-marked with a legacy snapshot boundary. Replay verification begins with new complete records after
-that boundary; do not claim verification from genesis.
+Legacy event-only history can be folded with `rehydrate`. The fold holds every revision to the
+**current** definition: one operation must emit exactly those events on that transition, accept the
+recorded arguments under its argument schema and preconditions, write the recorded `changed` from
+its `set:`, and resolve every payload from its templates; the folded fields must pass the schema and
+the invariants after every revision. What it cannot do is prove that the original commands passed
+the definitions that decided them at the time — it has no definition snapshot — and it cannot see
+a decision that emitted nothing. Data imported by the File Store v2 migrator is marked with a
+legacy snapshot boundary. Replay verification begins with new complete records after that boundary;
+do not claim verification from genesis.
 
 ## Observations
 

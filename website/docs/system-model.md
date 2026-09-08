@@ -81,7 +81,8 @@ These are different values with different purposes:
 A decision record retains the normalized command and definition snapshot even when the operation
 emits no event. Reading `events` is therefore not a complete audit-history read. Use
 `HistoryProvider` for recorded decisions and observations; use complete decision replay to
-verify execution. [Legacy event folding](./guide/storage#replay-and-legacy-history) proves less.
+verify execution. [Legacy event folding](./guide/storage#replay-and-legacy-history) proves less:
+it checks every revision against the current definition, not against the snapshot that decided it.
 
 For example, the refund quickstart creates `refund-104` at revision 1, submits it at revision 2,
 and approves it at revision 3 with `RefundApproved`. Approval records a policy decision. A payment
