@@ -38,6 +38,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   an impossible date, an offset-bearing timestamp, a number, `null`, a list — used to register and
   then refuse every evaluation as unobservable while naming nothing to observe; it is now refused at
   registration as an invalid rule naming the operand and the forms that are read.
+- `entity-sqlite` builds on `rusqlite` 0.40.2 (`libsqlite3-sys` 0.38.2, still bundled), up from
+  0.32.1: the SQLite this provider compiles in moves with it. No API or schema change.
 - Move the scheduled comparison with current AEP lifecycle documents to Atlas; deterministic fixture and pin checks remain in the local gate. Refresh the fixture from current
   AEP source and cover the executable-system-specification lifecycle and its conformance evidence requirement.
 
