@@ -31,28 +31,31 @@ the newer state with an older result.
 Reusing a record ID for identical bytes succeeds. Reusing it for different bytes is a
 `RecordConflict`.
 
-The shared stored runtime, generated CLI, and MCP tools recognize an exact operation retry even
-after the subject has advanced. Keep the original record ID, metadata, arguments and expected
-revision; a new request still checks the current revision.
+The shared stored runtime, the `entity` command's stored verbs, the generated CLI, and MCP tools
+recognize an exact operation retry even after the subject has advanced. Keep the original record
+ID, metadata, arguments and expected revision; a new request still checks the current revision.
 
 ## Retry boundaries
 
 | Entry point | Revision used for a new operation | Exact accepted retry |
 |---|---|---|
-| `entity execute --store` | Current revision loaded by that invocation | Re-executes against current state; it does not retrieve the original operation result |
+| `entity execute --store` | Optional `--expected-revision`, defaulting to the revision loaded by that invocation | Returns the original commit for matching recorded intent and provenance |
 | Generated domain CLI | Required `--expected-revision` supplied by the caller | Returns the original commit for matching recorded intent and provenance |
 | MCP operation tool | Required `expected_revision` in the tool input | Same stored-runtime behavior as the generated CLI |
 | `Store::commit_recorded` | Caller supplies `Expect` with the complete commit | Identical stored bytes are idempotent; a reused ID with different bytes conflicts |
 
 Preserve the original expected revision, arguments, and recording metadata when recovering a lost
-response through the generated CLI or MCP. The returned commit describes the original operation;
-it is not a fresh read of the current subject. Use `get` to read current state.
+response through `entity execute --store`, the generated CLI, or MCP. The returned commit describes
+the original operation; it is not a fresh read of the current subject. Use `get` to read current
+state.
 A new record ID describes a new request and must pass current revision and policy checks.
 
-Generic `entity execute --store` is convenient for sequential local commands, but rerunning its
-approval command can fail with `invalid_transition` because the first invocation already approved
-it. Use `StoredRuntime`, the generated CLI, or MCP when an application needs to bind a proposal to
-an earlier observation and recover accepted requests reliably.
+Generic `entity execute --store` is convenient for sequential local commands: it omits
+`--expected-revision` and decides on the revision the store holds. Rerunning such an invocation
+after the subject advanced reads the newer revision, so the same `--record-id` now names a
+different request and is refused as `record_conflict` before the kernel runs. Name the revision
+the request was decided on with `--expected-revision` whenever a retry must be recoverable rather
+than refused.
 
 ## Provider guide
 

@@ -2,8 +2,8 @@
 # be cut against a shorter gate than a pull request had to pass — which is exactly what happened
 # when the two carried hand-copied step lists and only one of them ran `cargo doc`.
 #
-# These steps mirror `task check` in Taskfile.yml, in the same order, minus `plan-check`, which
-# needs the AEP `protocol` compatibility command and is a local discipline.
+# These steps mirror `task check` in Taskfile.yml, in the same order, minus the three local-only
+# steps: `plan-check` (needs the AEP `aep` command), `pin-check` and `notes-check`.
 name: Gate
 
 on:
@@ -24,7 +24,7 @@ jobs:
     # laptop prints that the Postgres tests were skipped, and this job is where they run.
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: entity
           POSTGRES_PASSWORD: entity

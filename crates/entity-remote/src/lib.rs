@@ -45,7 +45,6 @@ pub use hybrid::{
 pub use loopback::LoopbackTransport;
 
 /// The wire format both sides speak.
-/// The protocol version this build speaks.
 ///
 /// # Why this went to `/2` in 0.9.0
 ///
@@ -62,6 +61,19 @@ pub use loopback::LoopbackTransport;
 /// [`Ask::Ids`] and [`Answer::Ids`] are new variants on the same two tagged enums, so the same rule
 /// applies: a `/2` peer cannot decode either, and is told so by name rather than handed a decode
 /// failure (`story:store-enumeration`).
+///
+/// # And to `/4` for recorded history
+///
+/// 0.15.0 made the persisted unit a complete decision envelope, and that reached the wire twice
+/// over (`story:the-store-keeps-the-envelope`). [`Ask::Records`], [`Ask::Observations`],
+/// [`Ask::CommitRecorded`] and [`Ask::Observe`] are new asks; [`Answer::Documents`] and
+/// [`Answer::RecordConflict`] are their new answers — six variants a `/3` peer cannot decode, by
+/// the same rule as before.
+///
+/// The bump also covers what a variant *count* would miss: runtime structs stopped travelling as
+/// themselves and now cross as [`WireDocument`], so [`Ask::Commit`], [`Answer::Instance`] and
+/// [`Answer::Events`] changed shape too. A `/3` peer would fail on the asks it already knew, which
+/// is precisely the quiet disagreement the version exists to prevent.
 pub const WIRE_VERSION: &str = "entity.store/4";
 
 /// A wire-owned JSON document.
@@ -109,7 +121,7 @@ impl Request {
     }
 }
 
-/// The four things a store is ever asked.
+/// Everything a store is ever asked, one variant per question.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "ask", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Ask {

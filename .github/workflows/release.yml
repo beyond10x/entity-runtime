@@ -3,8 +3,9 @@
 # aarch64), macOS (x86_64, arm64) and Windows (x86_64), then one release carrying the archives, a
 # SHA256SUMS file and the tag's section of CHANGELOG.md as its notes.
 #
-# Tags are the bare version (`0.1.0`, atlas § Naming); the `v*` pattern is accepted so a tag pushed
-# with the prefix still releases rather than silently doing nothing.
+# Tags are the bare version (`0.1.0`, atlas § Naming). The trigger below matches only that shape:
+# a `v0.1.0` tag runs nothing, and the provenance job would refuse it anyway because the tag must
+# equal the workspace version byte for byte.
 #
 # Every action is pinned by commit: the release job holds a token that can publish, and a
 # retargeted mutable tag would run inside it, beside the step that computes the checksums.
@@ -146,9 +147,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          version="${TAG#v}"
           python3 scripts/changelog-section.py --self-test
-          python3 scripts/changelog-section.py CHANGELOG.md "$version" > notes.md
+          python3 scripts/changelog-section.py CHANGELOG.md "$TAG" > notes.md
           test -s notes.md
           cat notes.md
 

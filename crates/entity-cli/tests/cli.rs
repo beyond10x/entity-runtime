@@ -3,7 +3,7 @@
 use std::{
     fs,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Output, Stdio},
 };
 
@@ -822,6 +822,245 @@ fn a_second_creation_of_one_identity_is_refused_by_the_store() {
     );
 }
 
+/// Creates one stored refund in a fresh root and returns the definition and store paths.
+fn stored_refund(scratch: &str) -> (PathBuf, PathBuf) {
+    let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(scratch);
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("scratch root");
+    let definition = refund_yaml();
+    let store = root.join("store");
+    let created = entity()
+        .args(["create", "--definition"])
+        .arg(&definition)
+        .args([
+            "--id",
+            "one",
+            "--fields",
+            r#"{"order_id":"order-88","amount_cents":2500,"evidence_count":1}"#,
+            "--store",
+        ])
+        .arg(&store)
+        .args([
+            "--record-id",
+            "create-one",
+            "--recorded-at",
+            "2026-08-31T10:00:00Z",
+            "--actor",
+            "cli-test",
+        ])
+        .output()
+        .expect("runs");
+    assert_eq!(
+        created.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    (definition, store)
+}
+
+/// `submit` on the stored refund, with whatever extra arguments the caller adds.
+fn stored_submit(definition: &Path, store: &Path, record_id: &str) -> Command {
+    let mut command = entity();
+    command
+        .args(["execute", "--definition"])
+        .arg(definition)
+        .args(["--store"])
+        .arg(store)
+        .args([
+            "--id",
+            "one",
+            "--operation",
+            "submit",
+            "--record-id",
+            record_id,
+            "--recorded-at",
+            "2026-08-31T10:01:00Z",
+            "--actor",
+            "cli-test",
+        ]);
+    command
+}
+
+/// The point of `--expected-revision`: a retry names the revision its original request was decided
+/// on and gets that request's record back, even though the subject has moved on since.
+#[test]
+fn an_exact_execute_retry_through_the_store_returns_the_original_record_after_state_has_advanced() {
+    let (definition, store) = stored_refund("cli-store-retry");
+
+    // No `--expected-revision`: the revision the store holds — 1, straight from `create` — is the
+    // revision this request is decided on.
+    let mut submit = stored_submit(&definition, &store, "submit-one");
+    let accepted = submit.output().expect("runs");
+    assert_eq!(
+        accepted.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let decision: serde_json::Value =
+        serde_json::from_slice(&accepted.stdout).expect("a recorded commit on stdout");
+    assert_eq!(decision["instance"]["lifecycle_state"], "submitted");
+    assert_eq!(decision["instance"]["revision"], 2);
+
+    // State advances under a second record: the subject is no longer where `submit` found it.
+    let approved = entity()
+        .args(["execute", "--definition"])
+        .arg(&definition)
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "--id",
+            "one",
+            "--operation",
+            "approve",
+            "--arguments",
+            r#"{"actor_role":"human","reason":"supervisor approved"}"#,
+            "--record-id",
+            "approve-one",
+            "--recorded-at",
+            "2026-08-31T10:02:00Z",
+            "--actor",
+            "cli-test",
+        ])
+        .output()
+        .expect("runs");
+    assert_eq!(
+        approved.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&approved.stderr)
+    );
+    let advanced: serde_json::Value =
+        serde_json::from_slice(&approved.stdout).expect("a recorded commit on stdout");
+    assert_eq!(advanced["instance"]["revision"], 3);
+
+    // The exact first invocation again, plus the revision it was decided on. A retrying caller
+    // must pass `--expected-revision 1` — the revision *before* the operation, the same value the
+    // first request used — because the stored runtime matches a record whose own revision is
+    // exactly one past the revision named. The default would now read 3 and find nothing to match.
+    let retried = submit
+        .args(["--expected-revision", "1"])
+        .output()
+        .expect("runs");
+    assert_eq!(
+        retried.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&retried.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&retried.stdout),
+        String::from_utf8_lossy(&accepted.stdout),
+        "the original record comes back, not a fresh decision on today's state"
+    );
+
+    // And nothing was re-decided: the store still holds the revision `approve` produced.
+    let probe = stored_submit(&definition, &store, "probe-one")
+        .args(["--expected-revision", "2"])
+        .output()
+        .expect("runs");
+    assert_eq!(probe.status.code(), Some(1));
+    let refusal: serde_json::Value =
+        serde_json::from_slice(&probe.stdout).expect("the refusal is JSON");
+    assert_eq!(refusal["by"], "store");
+    assert!(
+        refusal["detail"]
+            .as_str()
+            .expect("a detail")
+            .contains("expected revision 2, found revision 3"),
+        "the retry left the subject where approve put it: {refusal}"
+    );
+}
+
+/// A record id names one request. Reusing it for a different one is the store's refusal, not a
+/// second decision and not a silent success.
+#[test]
+fn a_retry_with_the_same_record_id_but_different_intent_is_a_record_conflict() {
+    let (definition, store) = stored_refund("cli-store-record-conflict");
+    let accepted = stored_submit(&definition, &store, "submit-one")
+        .args(["--expected-revision", "1"])
+        .output()
+        .expect("runs");
+    assert_eq!(
+        accepted.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+
+    // Same record id, same revision, different arguments: only the intent differs.
+    let conflicting = stored_submit(&definition, &store, "submit-one")
+        .args([
+            "--expected-revision",
+            "1",
+            "--arguments",
+            r#"{"extra":true}"#,
+        ])
+        .output()
+        .expect("runs");
+    assert_eq!(
+        conflicting.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&conflicting.stderr)
+    );
+    let refusal: serde_json::Value =
+        serde_json::from_slice(&conflicting.stdout).expect("the refusal is JSON");
+    assert_eq!(refusal["by"], "store", "it says which side said no");
+    assert_eq!(refusal["kind"], "record_conflict");
+    assert!(
+        refusal["detail"]
+            .as_str()
+            .expect("a detail")
+            .contains("record id"),
+        "the refusal names the record id that already means something else: {refusal}"
+    );
+}
+
+/// A revision the store does not hold is refused by the observed-revision guard, ahead of the
+/// kernel: nothing is decided and nothing is written.
+#[test]
+fn execute_with_a_stale_expected_revision_is_refused_before_the_kernel_runs() {
+    let (definition, store) = stored_refund("cli-store-stale-revision");
+    let stale = stored_submit(&definition, &store, "stale-one")
+        .args(["--expected-revision", "9"])
+        .output()
+        .expect("runs");
+    assert_eq!(
+        stale.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&stale.stderr)
+    );
+    let refusal: serde_json::Value =
+        serde_json::from_slice(&stale.stdout).expect("the refusal is JSON");
+    assert_eq!(refusal["by"], "store");
+    assert_eq!(refusal["kind"], "revision_conflict");
+    assert!(
+        refusal["detail"]
+            .as_str()
+            .expect("a detail")
+            .contains("expected revision 9, found revision 1"),
+        "the refusal says what was expected and what was found: {refusal}"
+    );
+
+    // The subject is untouched, so the same operation on the revision the store really holds is
+    // still the move from revision 1.
+    let submitted = stored_submit(&definition, &store, "submit-one")
+        .output()
+        .expect("runs");
+    assert_eq!(
+        submitted.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+    let decision: serde_json::Value =
+        serde_json::from_slice(&submitted.stdout).expect("a recorded commit on stdout");
+    assert_eq!(decision["instance"]["revision"], 2);
+}
+
 #[test]
 fn list_says_what_a_store_holds_and_nothing_for_a_type_nobody_stored() {
     let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-list");
@@ -1220,22 +1459,48 @@ fn mcp_command_keeps_stdout_as_json_rpc_and_lists_definition_derived_tools() {
     );
 }
 
+/// The triple Cargo would build for by default here, asked of `rustc` rather than assumed, so the
+/// test can set `CARGO_BUILD_TARGET` to something this machine can actually run.
+fn host_triple() -> String {
+    let output = Command::new("rustc")
+        .arg("-vV")
+        .output()
+        .expect("rustc reports its configuration");
+    assert!(output.status.success(), "{}", stderr(&output));
+    stdout(&output)
+        .lines()
+        .find_map(|line| line.strip_prefix("host: ").map(str::to_owned))
+        .expect("rustc -vV names its host triple")
+}
+
 #[test]
 fn generated_rust_cli_compiles_and_executes_definition_specific_commands() {
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-rust-cli");
     let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).expect("scratch root");
     let binary = root.join(format!("refundctl{}", std::env::consts::EXE_SUFFIX));
-    let build_dir = root.join("source");
+    // A relative `--build-dir` is what the guide's invocation uses, and Cargo runs with the build
+    // directory as its working directory: a relative `--target-dir` would land under
+    // `<build-dir>/<build-dir>/target`.
+    let requested_build_dir = "build/refundctl-source";
+    let build_dir = root.join(requested_build_dir);
+    // Neither a caller's `CARGO_TARGET_DIR` nor a selected build target may decide where the
+    // generator finds what it built — the first moves the directory, the second inserts a triple
+    // component under it.
+    let misdirected = root.join("misdirected-target");
+    let triple = host_triple();
     let runtime_source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let generated = entity()
+        .current_dir(&root)
+        .env("CARGO_TARGET_DIR", &misdirected)
+        .env("CARGO_BUILD_TARGET", &triple)
         .args(["generate", "rust-cli", "--definition"])
         .arg(refund_yaml())
         .args(["--name", "refundctl", "--out"])
         .arg(&binary)
         .arg("--runtime-source")
         .arg(runtime_source)
-        .arg("--build-dir")
-        .arg(&build_dir)
+        .args(["--build-dir", requested_build_dir])
         .output()
         .expect("runs");
     assert!(
@@ -1245,6 +1510,27 @@ fn generated_rust_cli_compiles_and_executes_definition_specific_commands() {
     );
     assert!(binary.is_file(), "generated host binary");
     assert!(build_dir.join("src/main.rs").is_file(), "retained source");
+    let artifact = build_dir
+        .join("target")
+        .join(&triple)
+        .join("release")
+        .join(format!("refundctl{}", std::env::consts::EXE_SUFFIX));
+    assert!(
+        artifact.is_file(),
+        "built into the build directory the generator named: {}",
+        artifact.display()
+    );
+    for candidate in [
+        misdirected.join("release"),
+        misdirected.join(&triple).join("release"),
+    ] {
+        assert!(
+            !candidate
+                .join(format!("refundctl{}", std::env::consts::EXE_SUFFIX))
+                .exists(),
+            "the environment's target directory was overridden, not honoured"
+        );
+    }
 
     let store = root.join("store");
     let created = Command::new(&binary)

@@ -298,7 +298,7 @@ changelog heading agree. There is no generated-notes fallback: cut the section f
 
 ```console
 task check
-$EDITOR CHANGELOG.md                      # move [Unreleased] under ## [X.Y.Z] - YYYY-MM-DD
+$EDITOR CHANGELOG.md                      # move [Unreleased] under ## [X.Y.Z] — YYYY-MM-DD (em dash: provenance greps for it)
 ```
 
 The private Atlas release procedure owns the commit, annotated tag and push. This repository owns

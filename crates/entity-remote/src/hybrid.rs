@@ -715,12 +715,16 @@ impl<L: Store, R: Store> Store for Hybrid<L, R> {
                         // report as a conflict for a person.
                         Err(error) => {
                             self.divergences.push(Divergence {
-                                entity, id, local_revision: decision.instance.revision,
+                                entity,
+                                id,
+                                local_revision: decision.instance.revision,
                                 source: StoreSide::Remote,
                                 destination: StoreSide::Local,
                                 record_id: None,
                                 detail: format!(
-                                    "the replica accepted revision {} and this store refused it:                                      {error}", decision.instance.revision
+                                    "the replica accepted revision {} and this store refused it: \
+                                     {error}",
+                                    decision.instance.revision
                                 ),
                             });
                             Err(error)

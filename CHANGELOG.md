@@ -6,8 +6,52 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Changed
 
+- Rebuilding an instance from its events (`rehydrate`) now holds every event to what the kernel
+  would have written for it, in `execute`'s own order. Per event: an operation event's `changed`
+  must be exactly what the emitting operation's `set:` writes from the arguments that event records
+  (one operation has to accept the arguments under its argument schema and preconditions and
+  produce the fields, because one `execute` call did); a creation event's `changed` must equal its recorded fields; then the folded fields are
+  validated against the schema and the invariants evaluated, after each event rather than once at
+  the end. A legacy history that folded before is refused if any event's `changed` was hand-written
+  or was produced by a definition whose `set:` has since changed, or if a step falls short of the
+  schema or an invariant; the refusal names the event index, its type, the operation tried and the
+  fields in dispute. An event whose type no operation emits on its transition, and a creation
+  event whose type is not the one `create.emit` names, are refused outright: an event nothing
+  emits describes no decision. A revision is folded as one decision: its events must agree on
+  transition, arguments and fields, must be exactly the operation's `emits` in order, and each
+  payload must be what its template resolves to — so an operation with two `emits` now folds (its
+  second event was refused as a revision gap before) and a forged payload is refused. Fold your
+  histories before upgrading, and keep an emitter declared for every event type your histories
+  still carry.
+- `entity create --store` and `entity execute --store` now run through the shared stored runtime
+  that the generated CLI and the MCP tools already use. `execute --store` takes an optional
+  `--expected-revision N` (default: the revision the store holds when the command runs). Repeating
+  an accepted `--record-id` with the same operation, arguments, provenance and expected revision
+  returns the original record even after the subject has advanced; the same id with different
+  intent is refused as `record_conflict`; a stale `--expected-revision` is refused as
+  `revision_conflict` before the kernel runs. Store refusals now carry a `kind` field in their JSON,
+  the same vocabulary MCP reports, and `execute --store` on an id the store does not hold is a
+  store refusal (exit 1, `kind: not_found`) rather than an invalid invocation (exit 2).
+  `--instance` and `--store` now conflict instead of `--instance` being silently ignored.
+- A `before`/`after` operand that is a literal must now be an instant the kernel reads
+  (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SS[.fff][Z]`). A definition carrying an unreadable literal —
+  an impossible date, an offset-bearing timestamp, a number, `null`, a list — used to register and
+  then refuse every evaluation as unobservable while naming nothing to observe; it is now refused at
+  registration as an invalid rule naming the operand and the forms that are read.
 - Move the scheduled comparison with current AEP lifecycle documents to Atlas; deterministic fixture and pin checks remain in the local gate. Refresh the fixture from current
   AEP source and cover the executable-system-specification lifecycle and its conformance evidence requirement.
+
+### Fixed
+
+- `entity generate rust-cli` no longer fails with `cannot open built binary …/release/<name>` when
+  Cargo's output location is overridden. The build directory is made absolute before use, so a
+  relative `--build-dir` — including the default `build/entity-runtime/<name>` — is no longer
+  resolved a second time against itself; `--target-dir <build-dir>/target` keeps `CARGO_TARGET_DIR`
+  or a `build.target-dir` in a parent `.cargo/config.toml` from moving the build; and the generator
+  installs the executable Cargo reports having built rather than guessing its path, so a
+  `CARGO_BUILD_TARGET` or `build.target` that inserts a target-triple component is followed.
+- The hybrid store's divergence detail for a replica-accepted, authority-refused write no longer
+  carries a run of spaces before the error text.
 
 ### Documentation
 

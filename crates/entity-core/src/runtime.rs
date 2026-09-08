@@ -537,7 +537,7 @@ pub(crate) fn check_preconditions(
     Ok(())
 }
 
-fn check_invariants(
+pub(crate) fn check_invariants(
     definition: &EntityDefinition,
     context: &TemplateContext<'_>,
 ) -> Result<(), CoreError> {
@@ -877,7 +877,7 @@ fn materialize_event(
 /// A creation has no "before", so every field it set is written. Derived from the two field maps
 /// rather than from the `set:` block, so a field an invariant or a default settled is recorded too
 /// — the record is what the instance *became*, not what the author remembered to list.
-fn changed_fields(context: &TemplateContext<'_>) -> Map<String, Value> {
+pub(crate) fn changed_fields(context: &TemplateContext<'_>) -> Map<String, Value> {
     context
         .new_fields
         .iter()
@@ -896,7 +896,10 @@ pub(crate) struct TemplateContext<'a> {
     pub(crate) to_state: &'a str,
 }
 
-fn resolve_template(value: &Value, context: &TemplateContext<'_>) -> Result<Value, CoreError> {
+pub(crate) fn resolve_template(
+    value: &Value,
+    context: &TemplateContext<'_>,
+) -> Result<Value, CoreError> {
     match value {
         Value::String(literal) if literal.starts_with("$$") => {
             Ok(Value::String(literal[1..].to_owned()))
@@ -989,7 +992,7 @@ fn into_object(value: Value, path: &str) -> Result<Map<String, Value>, CoreError
     }
 }
 
-fn canonical_object(object: Map<String, Value>) -> Map<String, Value> {
+pub(crate) fn canonical_object(object: Map<String, Value>) -> Map<String, Value> {
     let ordered: std::collections::BTreeMap<_, _> = object
         .into_iter()
         .map(|(key, value)| (key, canonicalize(value)))
@@ -997,7 +1000,7 @@ fn canonical_object(object: Map<String, Value>) -> Map<String, Value> {
     ordered.into_iter().collect()
 }
 
-fn canonicalize(value: Value) -> Value {
+pub(crate) fn canonicalize(value: Value) -> Value {
     match value {
         Value::Object(object) => Value::Object(canonical_object(object)),
         Value::Array(values) => Value::Array(values.into_iter().map(canonicalize).collect()),

@@ -35,17 +35,17 @@ for rebuilding; dependency resolution during the initial generation uses the ava
 ## Build the command
 
 ```bash
-env -u CARGO_TARGET_DIR -u CARGO_BUILD_TARGET entity generate rust-cli \
+entity generate rust-cli \
   --definition refund.yaml \
   --name refundctl \
   --out ./bin/refundctl \
   --runtime-source ./runtime-source
 ```
 
-In 0.17.7 the generator expects Cargo's default host output location. Unsetting these overrides
-prevents Cargo from placing the binary somewhere the generator will not find; a custom Cargo
-configuration must likewise leave the generated project's target directory and build target at
-their defaults.
+The generator builds into `<build-dir>/target` and installs the executable Cargo reports building,
+so a `CARGO_TARGET_DIR`, a `CARGO_BUILD_TARGET` or a `.cargo/config.toml` override changes neither
+where the build lands nor where the generator looks for its result. A non-host `CARGO_BUILD_TARGET`
+still produces a binary for that target, which is what asking for it means.
 
 The executable is `./bin/refundctl`. Its Clap-derived source and embedded YAML remain under
 `build/entity-runtime/refundctl`. The command validates those definitions on startup and uses File

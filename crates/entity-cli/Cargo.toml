@@ -15,6 +15,8 @@ path = "src/main.rs"
 entity-core = { path = "../entity-core", version = "0.17.7" }
 entity-graph = { path = "../entity-graph", version = "0.17.7" }
 entity-mcp = { path = "../entity-mcp", version = "0.17.7" }
+# The store-backed verbs share the exact-retry rule with MCP and the generated CLI, so they share
+# the one implementation of it rather than each keeping their own.
 entity-shell = { path = "../entity-shell", version = "0.17.7" }
 entity-surface = { path = "../entity-surface", version = "0.17.7" }
 # The shell's half of R-80: the CLI is a shell, so this is where a store belongs.

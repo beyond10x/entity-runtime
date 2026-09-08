@@ -6,7 +6,7 @@
 use entity_core::{Decision, DomainEvent, EntityInstance, Registry, Runtime};
 use entity_remote::{
     Authority, Divergence, Hybrid, LoopbackTransport, OnDivergence, Policy, ReadPath, RemoteStore,
-    WhenUnreachable,
+    StoreSide, WhenUnreachable,
 };
 use entity_store::{
     conformance, EventProvider, Expect, MemoryStore, StateProvider, Store, StoreError,
@@ -361,6 +361,193 @@ fn refusing_on_divergence_leaves_the_authority_untouched() {
         None,
         "the authority holds nothing: the write the caller was told failed did not half-happen"
     );
+}
+
+#[test]
+fn under_local_authority_and_refuse_a_replica_that_accepted_while_the_authority_refused_is_recorded_as_a_divergence(
+) {
+    // The residual case of `Refuse`, and the reason this is not two-phase commit: under `Refuse`
+    // the replica is asked first, it takes the write, and the authority then refuses it. Nothing
+    // here can undo the replica, so the fact is recorded rather than claimed impossible — and the
+    // record has to be readable by the person who has to act on it, which is why the shape of the
+    // message is pinned here too. A run of spaces where one belongs shipped once because no test
+    // reached this branch at all.
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let created = opened(&registry);
+    let closed = runtime
+        .execute(&created.instance, "close", json!({}))
+        .expect("permitted");
+
+    // The replica holds revision 1 and the authority holds nothing, so revision 2 is a write the
+    // replica accepts and the authority cannot.
+    let mut replica = remote();
+    replica.commit(&created, Expect::Absent).expect("accepted");
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        replica,
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::Refuse,
+            OnDivergence::Refuse,
+        ),
+    );
+
+    let error = store
+        .commit(&closed, Expect::Revision(1))
+        .expect_err("the authority holds nothing, so it cannot take revision 2");
+    assert_eq!(
+        error,
+        StoreError::RevisionConflict {
+            entity: "ticket".to_owned(),
+            id: "one".to_owned(),
+            expected: Expect::Revision(1),
+            found: None,
+        },
+        "the caller is told what was expected and what was there"
+    );
+
+    assert_eq!(
+        store.divergences().len(),
+        1,
+        "the replica moved and the authority did not; that is a divergence, not silence"
+    );
+    let divergence = &store.divergences()[0];
+    assert_eq!(divergence.source, StoreSide::Remote);
+    assert_eq!(divergence.destination, StoreSide::Local);
+    assert_eq!(divergence.record_id, None, "no record was in play");
+    assert_eq!(divergence.local_revision, closed.instance.revision);
+    assert!(
+        divergence
+            .detail
+            .starts_with("the replica accepted revision "),
+        "it says which way round: {}",
+        divergence.detail
+    );
+    assert!(
+        divergence.detail.contains(" and this store refused it: "),
+        "and it says the authority is the side that refused: {}",
+        divergence.detail
+    );
+    assert!(
+        !divergence.detail.contains("refused it:  "),
+        "one space before the error text, not a run of them: {:?}",
+        divergence.detail
+    );
+    assert!(
+        divergence.detail.ends_with(&error.to_string()),
+        "and the authority's own words end the record: {}",
+        divergence.detail
+    );
+
+    // The divergence is real rather than bookkeeping: the two sides genuinely disagree.
+    assert_eq!(
+        store
+            .remote()
+            .load("ticket", "one")
+            .expect("answers")
+            .expect("held")
+            .revision,
+        2,
+        "the replica took the write and nothing here can undo it"
+    );
+    assert_eq!(
+        store.local().load("ticket", "one").expect("answers"),
+        None,
+        "and the authority never held it"
+    );
+}
+
+#[test]
+fn a_recorded_commit_the_replica_accepted_and_the_authority_refused_is_recorded_as_a_divergence() {
+    // The same residual case on the recorded path, where the record id is part of what a person
+    // needs to repair it: a divergence that cannot name the envelope leaves them hunting for it.
+    use entity_store::RecordedCommit;
+
+    let registry = registry();
+    let created = RecordedCommit::new(opened(&registry), &recording("created")).expect("sealed");
+    let closed = RecordedCommit::new(
+        Runtime::new(&registry)
+            .execute(&created.instance, "close", json!({}))
+            .expect("permitted"),
+        &recording("closed"),
+    )
+    .expect("sealed");
+
+    let mut replica = remote();
+    replica
+        .commit_recorded(&created, Expect::Absent)
+        .expect("accepted");
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        replica,
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::Refuse,
+            OnDivergence::Refuse,
+        ),
+    );
+
+    let error = store
+        .commit_recorded(&closed, Expect::Revision(1))
+        .expect_err("the authority holds nothing, so it cannot take revision 2");
+    assert_eq!(
+        error,
+        StoreError::RevisionConflict {
+            entity: "ticket".to_owned(),
+            id: "one".to_owned(),
+            expected: Expect::Revision(1),
+            found: None,
+        }
+    );
+
+    assert_eq!(store.divergences().len(), 1);
+    let divergence = &store.divergences()[0];
+    assert_eq!(divergence.source, StoreSide::Remote);
+    assert_eq!(divergence.destination, StoreSide::Local);
+    assert_eq!(
+        divergence.record_id.as_deref(),
+        Some("closed"),
+        "the envelope a person has to reconcile is named"
+    );
+    assert_eq!(divergence.local_revision, closed.instance.revision);
+    assert!(
+        divergence
+            .detail
+            .starts_with("the replica accepted record at revision "),
+        "it says which way round: {}",
+        divergence.detail
+    );
+    assert!(
+        divergence
+            .detail
+            .contains(" and the authority refused it: "),
+        "and what refused: {}",
+        divergence.detail
+    );
+    assert!(
+        !divergence.detail.contains("refused it:  "),
+        "one space before the error text, not a run of them: {:?}",
+        divergence.detail
+    );
+    assert!(
+        divergence.detail.ends_with(&error.to_string()),
+        "and the authority's own words end the record: {}",
+        divergence.detail
+    );
+
+    assert_eq!(
+        store
+            .remote()
+            .load("ticket", "one")
+            .expect("answers")
+            .expect("held")
+            .revision,
+        2
+    );
+    assert_eq!(store.local().load("ticket", "one").expect("answers"), None);
 }
 
 #[test]

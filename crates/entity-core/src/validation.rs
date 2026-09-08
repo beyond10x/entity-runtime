@@ -456,8 +456,10 @@ fn validate_condition_definition(
         }
         Condition::Not { not } => validate_condition_definition(not, &format!("{path}.not"), scope),
         Condition::Exists { exists } => validate_operand(exists, &format!("{path}.exists"), scope),
-        Condition::Before { before } => validate_pair(before, &format!("{path}.before"), scope),
-        Condition::After { after } => validate_pair(after, &format!("{path}.after"), scope),
+        Condition::Before { before } => {
+            validate_instant_pair(before, &format!("{path}.before"), scope)
+        }
+        Condition::After { after } => validate_instant_pair(after, &format!("{path}.after"), scope),
         Condition::Eq { eq } => validate_pair(eq, &format!("{path}.eq"), scope),
         Condition::Ne { ne } => validate_pair(ne, &format!("{path}.ne"), scope),
         Condition::Gt { gt } => validate_pair(gt, &format!("{path}.gt"), scope),
@@ -474,6 +476,77 @@ fn validate_condition_definition(
 fn validate_pair(values: &[Value; 2], path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
     validate_operand(&values[0], &format!("{path}[0]"), scope)?;
     validate_operand(&values[1], &format!("{path}[1]"), scope)
+}
+
+/// The forms `crate::timestamp` reads, named in every refusal so the author can fix the value
+/// without going to read the parser.
+const INSTANT_FORMS: &str = "`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SS[.fff][Z]`, where a space may \
+                             stand in for the `T` and an explicit offset is not read";
+
+/// The two operands of `before`/`after`, each of which has to be readable as an instant.
+fn validate_instant_pair(
+    values: &[Value; 2],
+    path: &str,
+    scope: Scope<'_>,
+) -> Result<(), DefinitionError> {
+    validate_instant_operand(&values[0], &format!("{path}[0]"), scope)?;
+    validate_instant_operand(&values[1], &format!("{path}[1]"), scope)
+}
+
+/// One operand of `before`/`after`: a `$` reference, or a literal this kernel can actually read.
+///
+/// Registration is where a defect that could never work is caught, and an unreadable literal is
+/// exactly that. `compare_instants` answers [`Unknown`](crate::Truth::Unknown) for a value it
+/// cannot read — the deliberate half of the three-valued design, because *this is not a timestamp I
+/// can read* is a statement about the reader rather than an observation about the instance. But a
+/// literal is not an instance: nothing a caller ever supplies can change it, so the rule is
+/// unobservable at **every** evaluation, and for a literal that does not begin with `$` the refusal
+/// it produces names nothing at all, because `compare_instants` records an unread operand only when
+/// what was *written* starts with one. A gate that can only ever refuse, without saying what to
+/// fix, is worse than no gate; so it is refused where it is written.
+///
+/// The reference walk runs **first**, at every depth, so a `$` reference nested inside a list or an
+/// object is still reported with its own path and the reason it cannot resolve; the instant rule
+/// then refuses whatever survives the walk. Reversed, the typo in
+/// `before: [["$fields.nope"], "2026-08-25"]` would be reported only as *not an instant* one level
+/// up — a refusal naming nothing the author could act on, which is the failure this whole rule
+/// exists to prevent.
+fn validate_instant_operand(
+    value: &Value,
+    path: &str,
+    scope: Scope<'_>,
+) -> Result<(), DefinitionError> {
+    validate_operand(value, path, scope)?;
+
+    match value {
+        // `$$2026-08-25` resolves to the literal `$2026-08-25`, which no reading of it parses.
+        // Refused rather than quietly read as the text after the escape: `resolve_operand` strips
+        // one `$` at run time, and honouring the escape differently here would need two rules to
+        // agree forever about a spelling nobody has a reason to write.
+        Value::String(escaped) if escaped.starts_with("$$") => unreadable_instant(
+            path,
+            format!(
+                "{value} escapes to the literal '{}', which is not an instant this kernel reads",
+                &escaped[1..]
+            ),
+        ),
+        // The walk above already said whether this reference resolves; what it resolves *to* is
+        // the instance's business, so there is nothing further to check here.
+        Value::String(expression) if expression.starts_with('$') => Ok(()),
+        Value::String(literal) if crate::timestamp::parse(literal).is_some() => Ok(()),
+        _ => unreadable_instant(path, format!("{value} is not an instant this kernel reads")),
+    }
+}
+
+fn unreadable_instant(path: &str, detail: String) -> Result<(), DefinitionError> {
+    invalid_rule(
+        path,
+        format!(
+            "{detail}, so the comparison would be unobservable at every evaluation; an operand of \
+             'before'/'after' is either a '$' reference or a literal instant written \
+             {INSTANT_FORMS}"
+        ),
+    )
 }
 
 fn validate_operand(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {

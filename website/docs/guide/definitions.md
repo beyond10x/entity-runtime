@@ -116,8 +116,12 @@ operations:
 - `preconditions` run against the current fields, validated arguments, and selected transition.
 - `set` assigns fields from templates. Every assignment reads the pre-operation fields, so entry
   order has no meaning. The resulting fields are validated again.
-- `emits` contains zero or more event templates. `emit` is accepted as an alias. Events see the
-  post-operation fields and are materialized last.
+- `emits` contains zero or more event templates. `emit` is accepted as an alias for the same
+  list (under `create`, `emit` is a single template). Events see the post-operation fields and
+  are materialized last. An operation that emits nothing leaves no event, so an event-only
+  history cannot see that it ran: a fold stops short if it was the last decision and refuses
+  the next revision as a gap otherwise. Keep decision records if you need to rebuild such a
+  subject.
 
 Revision is `1` after creation and increases by one per accepted operation. Execution refuses before
 exceeding the supported signed 64-bit revision range.
@@ -166,7 +170,10 @@ Every condition carries exactly one operator.
 
 There are no calls, loops, arithmetic expressions, clocks, random sources, or lookups. Time enters
 as a field or operation argument. `before` and `after` parse strict calendar dates or timestamps;
-equal instants satisfy neither operator.
+equal instants satisfy neither operator. A literal operand of `before` or `after` must itself be a
+readable instant — an impossible date, an offset-bearing timestamp, a number or any other value the
+kernel cannot read is refused at registration, because it would leave the rule unobservable at every
+evaluation.
 
 ### Three-valued results
 
