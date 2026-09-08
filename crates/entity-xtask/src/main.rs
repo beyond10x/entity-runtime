@@ -5,7 +5,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-const MINIMUM_PROTOCOL: (u64, u64, u64) = (0, 26, 0);
+const MINIMUM_AEP_PROTOCOL: (u64, u64, u64) = (0, 26, 0);
 
 #[derive(Debug, Parser)]
 #[command(name = "entity-xtask")]
@@ -17,13 +17,21 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Check {
-    /// Refuse a protocol compatibility command too old for the planning journal.
-    ProtocolVersion,
+    /// Refuse an `aep` command too old for the planning journal.
+    AepVersion {
+        /// The `aep` the caller's shell resolves — `$(command -v aep)` in the Taskfile. Passed in
+        /// because `cargo run` prepends its own directories to this process's PATH, so a lookup
+        /// from here can find an `aep` the next Taskfile line, run by the shell, will not. An empty
+        /// value means the shell found none, and is refused as such; clap's own path parser calls
+        /// an empty value missing, so `shell_path` accepts it and the check says what it means.
+        #[arg(long, value_parser = shell_path)]
+        binary: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
-        Check::ProtocolVersion => check_protocol_version(),
+        Check::AepVersion { binary } => check_aep_version(binary),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -34,21 +42,36 @@ fn main() -> ExitCode {
     }
 }
 
-fn check_protocol_version() -> Result<(), (u8, String)> {
-    let binary = find_on_path("protocol").ok_or_else(|| {
-        (
-            2,
-            "protocol is not on PATH; install the compatibility command from the AEP workspace"
-                .to_owned(),
-        )
-    })?;
+// `aep` is the binary the gate actually runs against the planning store, so it is the one whose
+// version matters. There is deliberately no fallback to the older `protocol` name: a machine
+// carrying a stale `aep` beside a current `protocol` would otherwise pass while writing the store
+// with the build this guard exists to refuse.
+fn check_aep_version(binary: Option<PathBuf>) -> Result<(), (u8, String)> {
+    let binary = match binary {
+        Some(path) if path.as_os_str().is_empty() => {
+            return Err((
+                2,
+                "aep is not on the shell's PATH; install the AEP CLI, which is what reads and \
+                 writes this store"
+                    .to_owned(),
+            ))
+        }
+        Some(path) => path,
+        None => find_on_path("aep").ok_or_else(|| {
+            (
+                2,
+                "aep is not on PATH; install the AEP CLI, which is what reads and writes this store"
+                    .to_owned(),
+            )
+        })?,
+    };
     let output = Command::new(&binary)
         .arg("--version")
         .output()
         .map_err(|error| {
             (
                 2,
-                format!("protocol at {} could not run: {error}", binary.display()),
+                format!("aep at {} could not run: {error}", binary.display()),
             )
         })?;
     let rendered = if output.stdout.is_empty() {
@@ -60,7 +83,7 @@ fn check_protocol_version() -> Result<(), (u8, String)> {
         return Err((
             1,
             format!(
-                "protocol at {} exited {} while reporting its version: {}",
+                "aep at {} exited {} while reporting its version: {}",
                 binary.display(),
                 output.status,
                 rendered.trim()
@@ -71,30 +94,35 @@ fn check_protocol_version() -> Result<(), (u8, String)> {
         (
             1,
             format!(
-                "protocol at {} printed no semantic version: {:?}",
+                "aep at {} printed no semantic version: {:?}",
                 binary.display(),
                 rendered.trim()
             ),
         )
     })?;
-    if version < MINIMUM_PROTOCOL {
+    if version < MINIMUM_AEP_PROTOCOL {
         return Err((
             1,
             format!(
-                "protocol at {} reports {}; this store needs at least {}",
+                "aep at {} reports {}; this store needs at least {}",
                 binary.display(),
                 render_version(version),
-                render_version(MINIMUM_PROTOCOL)
+                render_version(MINIMUM_AEP_PROTOCOL)
             ),
         ));
     }
     println!(
-        "protocol {} at {} (needs {})",
+        "aep implements protocol {} at {} (needs {})",
         render_version(version),
         binary.display(),
-        render_version(MINIMUM_PROTOCOL)
+        render_version(MINIMUM_AEP_PROTOCOL)
     );
     Ok(())
+}
+
+/// `$(command -v aep)` verbatim, empty included: the emptiness is the finding.
+fn shell_path(value: &str) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(value))
 }
 
 fn find_on_path(name: &str) -> Option<PathBuf> {
@@ -105,6 +133,8 @@ fn find_on_path(name: &str) -> Option<PathBuf> {
     })
 }
 
+// Tolerant of whatever precedes the digits: `aep --version` prints the protocol version it
+// implements rather than its own name, so the leading word is not something to match on.
 fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
     text.split(|character: char| !(character.is_ascii_digit() || character == '.'))
         .filter(|part| !part.is_empty())
@@ -128,9 +158,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn protocol_versions_are_extracted_without_accepting_partial_numbers() {
-        assert_eq!(parse_version("protocol 0.40.0\n"), Some((0, 40, 0)));
-        assert_eq!(parse_version("protocol version forty"), None);
-        assert_eq!(parse_version("protocol 0.40"), None);
+    fn an_aep_version_line_is_extracted_without_accepting_partial_numbers() {
+        assert_eq!(parse_version("protocol 0.54.0\n"), Some((0, 54, 0)));
+        assert_eq!(parse_version("aep version fifty-four"), None);
+        assert_eq!(parse_version("protocol 0.54"), None);
     }
 }

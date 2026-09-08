@@ -69,7 +69,8 @@ responsible for accepting only trusted instances.
 - `--record-id ID`;
 - `--recorded-at INSTANT`;
 - exactly one of `--actor ID` and `--no-actor`;
-- optional `--correlation ID` and `--causation ID`.
+- optional `--correlation ID` and `--causation ID`;
+- optional `--expected-revision N` on `execute` (store only).
 
 ```bash
 entity execute --definition refund.yaml --store ./refund-store \
@@ -84,11 +85,16 @@ The output is the exact `RecordedCommit` persisted. An incomplete recording enve
 invocation. At the provider boundary, an identical recorded commit is idempotent and a reused ID
 with different bytes is refused.
 
-Generic `entity execute --store` loads current state and evaluates again on every invocation. It
-has no `--expected-revision` flag and does not recover a prior accepted operation by record ID.
-The [generated CLI](./generated-cli) and [MCP tools](./mcp) require the caller's observed revision
-and use the shared stored runtime's exact-retry path. See [storage](./storage#retry-boundaries)
-before turning a local command into a retrying service.
+`execute --store` takes an optional `--expected-revision N`: the revision of the stored instance
+the request was decided on. Without it the command uses whatever revision the store holds when it
+runs, which is what a sequential local command wants. It runs through the same shared stored
+runtime as the [generated CLI](./generated-cli) and [MCP tools](./mcp), so it shares their
+exact-retry path: repeating an accepted `--record-id` with the same operation, arguments,
+provenance and expected revision returns that request's original record, even after the subject has
+advanced. Pass the original `--expected-revision` when retrying — the default now reads the newer
+revision and matches nothing. A record ID reused for a different request is refused as
+`record_conflict`. See [storage](./storage#retry-boundaries) before turning a local command into a
+retrying service.
 
 ## Output formats
 
@@ -114,9 +120,10 @@ JSON decisions include:
 | `2` | invalid invocation or unreadable singular input | stderr |
 
 `validate` always reports each requested file and exits `1` when any is invalid, including files it
-could not read or parse. Kernel refusals carry `kind`. File Store refusals carry
-`{ "refused": true, "by": "store", "detail": "..." }`. Programs should match those fields, never
-stderr sentences.
+could not read or parse. Kernel refusals carry `kind`. Store refusals carry
+`{ "refused": true, "by": "store", "kind": "...", "detail": "..." }`, with the same `kind`
+vocabulary the MCP tools report (`revision_conflict`, `record_conflict`, `not_found`, …).
+Programs should match those fields, never stderr sentences.
 
 ## Render the Agent Skill
 

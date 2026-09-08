@@ -13,16 +13,16 @@ use entity_core::{
     CoreError, Decision, DefinitionErrors, EntityDefinition, EntityInstance, Registry, Runtime,
     ValidationError,
 };
-use entity_store::{
-    migrate_file_store_v1, Expect, FileStore, RecordedCommit, Recording, StateProvider, Store,
-};
+use entity_shell::{ShellError, StoredRuntime};
+use entity_store::{migrate_file_store_v1, FileStore, RecordedCommit, Recording, StateProvider};
 use serde_json::{json, Value};
 use std::{
+    ffi::OsStr,
     fmt::Write as _,
     fs,
     io::{self, BufReader, Read, Write},
     path::{Path, PathBuf},
-    process::{Command as ProcessCommand, ExitCode},
+    process::{Command as ProcessCommand, ExitCode, Stdio},
 };
 
 const ABOUT: &str =
@@ -117,8 +117,9 @@ enum Command {
         definition: DefinitionArg,
         /// The current instance (or a Decision holding one), as inline JSON, `@<path>` or `-`.
         ///
-        /// Not needed when `--store` and `--id` say where to find it.
-        #[arg(long, required_unless_present = "store")]
+        /// Not needed when `--store` and `--id` say where to find it, and refused beside them: two
+        /// sources for one instance would leave the caller guessing which one decided.
+        #[arg(long, required_unless_present = "store", conflicts_with = "store")]
         instance: Option<String>,
         /// A directory holding the instance, written by an earlier `create --store`.
         ///
@@ -142,6 +143,14 @@ enum Command {
         /// The arguments, as inline JSON, `@<path>` or `-` for stdin.
         #[arg(long, default_value = "{}")]
         arguments: String,
+        /// The revision of the stored instance this request was decided on.
+        ///
+        /// Defaults to whatever the store holds when the command runs, which is what a sequential
+        /// local command wants. Pass it when retrying: an already-accepted `--record-id` is
+        /// returned as the original record only when the retry names the same revision the first
+        /// request was decided on, so a lost response can be recovered after the subject moved.
+        #[arg(long, requires = "store")]
+        expected_revision: Option<u64>,
         /// Provenance required when the decision is stored.
         #[command(flatten)]
         recording: RecordingArgs,
@@ -338,7 +347,12 @@ enum Failure {
     Refused(CoreError),
     /// The store refused. Exit 1, beside the kernel's refusals rather than beside a usage error:
     /// a revision conflict is not a wrong invocation, it is somebody else having moved first.
-    StoreRefused(String),
+    StoreRefused {
+        /// The shared shell's stable machine-readable kind, as MCP already reports it.
+        kind: &'static str,
+        /// The sentence a person reads.
+        detail: String,
+    },
     /// Already reported in full on stdout — `validate` prints a line per file. Exit 1.
     Reported,
     /// The invocation was wrong. Exit 2. Printed to stderr.
@@ -354,6 +368,24 @@ impl From<CoreError> for Failure {
 impl From<DefinitionErrors> for Failure {
     fn from(error: DefinitionErrors) -> Self {
         Self::Refused(error.into())
+    }
+}
+
+impl From<ShellError> for Failure {
+    /// Keeps the exit codes and output shapes the command already promises: the kernel's refusals
+    /// stay the kernel's, the provider's stay the store's, and only bad invocation input is a
+    /// usage error.
+    fn from(error: ShellError) -> Self {
+        match error {
+            ShellError::Core(error) => Self::Refused(error),
+            ShellError::Recording(detail) => Self::Usage(detail),
+            ShellError::Store(_)
+            | ShellError::NotFound { .. }
+            | ShellError::StaleRevision { .. } => Self::StoreRefused {
+                kind: error.kind(),
+                detail: error.to_string(),
+            },
+        }
     }
 }
 
@@ -373,21 +405,23 @@ fn main() -> ExitCode {
             eprintln!("refused: {error}");
             ExitCode::from(1)
         }
-        Err(Failure::StoreRefused(message)) => {
+        Err(Failure::StoreRefused { kind, detail }) => {
             // Same shape as a kernel refusal — JSON on stdout for a pipeline, a sentence on stderr
             // for a person — because to a caller it is the same class of answer: no, and here is
-            // exactly what was found instead.
+            // exactly what was found instead. The `kind` is the shared shell's, so a caller
+            // switching between this command, MCP and the generated CLI branches on one vocabulary.
             let _ = writeln!(
                 out,
                 "{}",
                 serde_json::to_string_pretty(&json!({
                     "refused": true,
                     "by": "store",
-                    "detail": message,
+                    "kind": kind,
+                    "detail": detail,
                 }))
                 .expect("json")
             );
-            eprintln!("refused: {message}");
+            eprintln!("refused: {detail}");
             ExitCode::from(1)
         }
         Err(Failure::Reported) => ExitCode::from(1),
@@ -445,17 +479,29 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             let registry = load_registry(&definition.definitions)?;
             let (entity, version) = chosen_type(&registry, wanted.as_deref())?;
             let fields = read_value(&fields, "--fields", &mut StdinOnce::default())?;
-            let decision = Runtime::new(&registry).create(&entity, version, id, fields)?;
             let recording = recording.into_recording(store.is_some())?;
-            if let Some(recording) = recording {
-                let recorded = RecordedCommit::new(decision, &recording)
-                    .map_err(|error| Failure::Usage(error.to_string()))?;
-                if let Some(root) = &store {
-                    commit(root, &recorded, Expect::Absent)?;
+            match (&store, &recording) {
+                // Stored: the shared shell decides and commits as one step, so this command, MCP
+                // and a generated command all record a creation the same way.
+                (Some(root), Some(recording)) => {
+                    let mut store = FileStore::open(root);
+                    let recorded = StoredRuntime::new(&registry, &mut store)
+                        .create(&entity, version, id, fields, recording)?;
+                    write_recorded(out, &recorded, format)
                 }
-                write_recorded(out, &recorded, format)
-            } else {
-                write_decision(out, &decision, format)
+                // Provenance without a store: the record is printed, and nothing keeps it.
+                (None, Some(recording)) => {
+                    let decision = Runtime::new(&registry).create(&entity, version, id, fields)?;
+                    let recorded = RecordedCommit::new(decision, recording)
+                        .map_err(|error| Failure::Usage(error.to_string()))?;
+                    write_recorded(out, &recorded, format)
+                }
+                // The kernel's own shape: decide, print, hold nothing. `--store` cannot reach here
+                // because it requires the recording flags.
+                (_, None) => {
+                    let decision = Runtime::new(&registry).create(&entity, version, id, fields)?;
+                    write_decision(out, &decision, format)
+                }
             }
         }
         Command::Execute {
@@ -466,6 +512,7 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             wanted_entity,
             operation,
             arguments,
+            expected_revision,
             recording,
             format,
         } => {
@@ -473,41 +520,43 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             // One reader, so a second `-` is refused rather than silently handed an empty
             // document: the caller's arguments would otherwise be consumed as the instance.
             let mut stdin = StdinOnce::default();
-            let (instance, from_store) = match (&store, &id) {
+            match (&store, &id) {
                 (Some(root), Some(id)) => {
                     let (entity, _) = chosen_type(&registry, wanted_entity.as_deref())?;
-                    let held = FileStore::open(root)
-                        .load(&entity, id)
-                        .map_err(|error| Failure::Usage(error.to_string()))?
-                        .ok_or_else(|| {
-                            Failure::Usage(format!(
-                                "the store at {} holds no {entity} with id {id}",
-                                root.display()
-                            ))
-                        })?;
-                    (held, true)
+                    let arguments = read_value(&arguments, "--arguments", &mut stdin)?;
+                    let recording = recording
+                        .into_recording(true)?
+                        .expect("--store requires the recording flags");
+                    let mut store = FileStore::open(root);
+                    let mut runtime = StoredRuntime::new(&registry, &mut store);
+                    // The revision the caller observed. Without `--expected-revision` it is
+                    // whatever the store holds now, which keeps a sequential local command
+                    // working; passing it is what lets a retry name the revision its original
+                    // request was decided on, so an accepted operation can be recovered by
+                    // record id after the subject has moved.
+                    let expected = match expected_revision {
+                        Some(revision) => revision,
+                        None => runtime.get(&entity, id)?.revision,
+                    };
+                    let recorded = runtime
+                        .execute(&entity, id, expected, &operation, arguments, &recording)?;
+                    write_recorded(out, &recorded, format)
                 }
                 _ => {
                     let source = instance.as_deref().expect("clap requires one of the two");
-                    (read_instance(source, &mut stdin)?, false)
+                    let instance = read_instance(source, &mut stdin)?;
+                    let arguments = read_value(&arguments, "--arguments", &mut stdin)?;
+                    let decision =
+                        Runtime::new(&registry).execute(&instance, &operation, arguments)?;
+                    let recording = recording.into_recording(false)?;
+                    if let Some(recording) = recording {
+                        let recorded = RecordedCommit::new(decision, &recording)
+                            .map_err(|error| Failure::Usage(error.to_string()))?;
+                        write_recorded(out, &recorded, format)
+                    } else {
+                        write_decision(out, &decision, format)
+                    }
                 }
-            };
-            let arguments = read_value(&arguments, "--arguments", &mut stdin)?;
-            // The revision *as loaded*, so a writer that moved in between is refused rather than
-            // overwritten. Reading it before executing is the point: the decision's own revision is
-            // already one ahead.
-            let expected = Expect::Revision(instance.revision);
-            let decision = Runtime::new(&registry).execute(&instance, &operation, arguments)?;
-            let recording = recording.into_recording(from_store)?;
-            if let Some(recording) = recording {
-                let recorded = RecordedCommit::new(decision, &recording)
-                    .map_err(|error| Failure::Usage(error.to_string()))?;
-                if from_store {
-                    commit(store.as_ref().expect("checked above"), &recorded, expected)?;
-                }
-                write_recorded(out, &recorded, format)
-            } else {
-                write_decision(out, &decision, format)
             }
         }
         Command::List {
@@ -758,6 +807,16 @@ fn generate_rust_cli(
     let build_dir = requested_build_dir
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("build/entity-runtime").join(name));
+    // Cargo runs with the build directory as its working directory, so every path handed to it —
+    // `--target-dir` above all — has to be absolute or Cargo resolves it against the build
+    // directory again. `absolute` does not require the path to exist, which matters because the
+    // directory is created below.
+    let build_dir = std::path::absolute(&build_dir).map_err(|error| {
+        Failure::Usage(format!(
+            "cannot resolve build directory {}: {error}",
+            build_dir.display()
+        ))
+    })?;
     if build_dir.parent().is_none() {
         return Err(Failure::Usage(
             "--build-dir must not be a filesystem root".into(),
@@ -810,11 +869,12 @@ fn generate_rust_cli(
     )
     .map_err(|error| Failure::Usage(format!("cannot write generated Rust source: {error}")))?;
 
+    // The target directory is named rather than inherited so the retained source stays
+    // self-contained: a `CARGO_TARGET_DIR` in the environment or a `build.target-dir` in a parent
+    // `.cargo/config.toml` would otherwise scatter the build somewhere else.
+    let target_dir = build_dir.join("target");
     run_cargo(&build_dir, &["generate-lockfile", "--offline"])?;
-    run_cargo(&build_dir, &["build", "--release", "--locked", "--offline"])?;
-    let built = build_dir
-        .join("target/release")
-        .join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+    let built = cargo_build_executable(&build_dir, &target_dir, name)?;
     let parent = destination.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)
         .map_err(|error| Failure::Usage(format!("cannot create {}: {error}", parent.display())))?;
@@ -822,7 +882,7 @@ fn generate_rust_cli(
         ".{}.installing.{}",
         destination
             .file_name()
-            .unwrap_or_else(|| std::ffi::OsStr::new(name))
+            .unwrap_or_else(|| OsStr::new(name))
             .to_string_lossy(),
         std::process::id()
     ));
@@ -860,7 +920,7 @@ fn generate_rust_cli(
             ".{}.replaced.{}",
             destination
                 .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new(name))
+                .unwrap_or_else(|| OsStr::new(name))
                 .to_string_lossy(),
             std::process::id()
         ));
@@ -911,7 +971,7 @@ fn valid_binary_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-fn run_cargo(build_dir: &Path, arguments: &[&str]) -> Result<(), Failure> {
+fn run_cargo(build_dir: &Path, arguments: &[impl AsRef<OsStr>]) -> Result<(), Failure> {
     let status = ProcessCommand::new("cargo")
         .args(arguments)
         .current_dir(build_dir)
@@ -920,11 +980,87 @@ fn run_cargo(build_dir: &Path, arguments: &[&str]) -> Result<(), Failure> {
     if status.success() {
         Ok(())
     } else {
+        let printed: Vec<String> = arguments
+            .iter()
+            .map(|argument| argument.as_ref().to_string_lossy().into_owned())
+            .collect();
         Err(Failure::Usage(format!(
             "Cargo {} failed with {status}",
-            arguments.join(" ")
+            printed.join(" ")
         )))
     }
+}
+
+/// Build the generated crate and return the executable *Cargo says it produced*.
+///
+/// The path is asked for rather than guessed. `<target-dir>/release/<name>` is only where the
+/// binary lands when no build target is selected; a `CARGO_BUILD_TARGET` in the environment or a
+/// `build.target` in a parent `.cargo/config.toml` moves it to
+/// `<target-dir>/<triple>/release/<name>`, and a future profile or naming change would move it
+/// again. `--message-format=json-render-diagnostics` keeps the human-readable diagnostics on
+/// stderr, where the caller sees them, and puts one JSON message per line on stdout; the
+/// `compiler-artifact` message for the generated binary carries the answer.
+fn cargo_build_executable(
+    build_dir: &Path,
+    target_dir: &Path,
+    name: &str,
+) -> Result<PathBuf, Failure> {
+    let arguments = [
+        OsStr::new("build"),
+        OsStr::new("--release"),
+        OsStr::new("--locked"),
+        OsStr::new("--offline"),
+        OsStr::new("--message-format=json-render-diagnostics"),
+        OsStr::new("--target-dir"),
+        target_dir.as_os_str(),
+    ];
+    let output = ProcessCommand::new("cargo")
+        .args(arguments)
+        .current_dir(build_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|error| Failure::Usage(format!("cannot run Cargo: {error}")))?;
+    if !output.status.success() {
+        let printed: Vec<String> = arguments
+            .iter()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect();
+        return Err(Failure::Usage(format!(
+            "Cargo {} in {} failed with {}",
+            printed.join(" "),
+            build_dir.display(),
+            output.status
+        )));
+    }
+    let mut named = None;
+    let mut binary = None;
+    for line in output.stdout.split(|byte| *byte == b'\n') {
+        let Ok(message) = serde_json::from_slice::<Value>(line) else {
+            continue;
+        };
+        if message["reason"] != "compiler-artifact" {
+            continue;
+        }
+        let Some(executable) = message["executable"].as_str() else {
+            continue;
+        };
+        let target = &message["target"];
+        if target["name"] == *name {
+            named = Some(PathBuf::from(executable));
+        } else if target["kind"]
+            .as_array()
+            .is_some_and(|kinds| kinds.iter().any(|kind| kind == "bin"))
+        {
+            binary = Some(PathBuf::from(executable));
+        }
+    }
+    named.or(binary).ok_or_else(|| {
+        Failure::Usage(format!(
+            "Cargo built {} without reporting an executable for {name}",
+            build_dir.display()
+        ))
+    })
 }
 
 fn generated_manifest(name: &str, runtime_source: &Path) -> String {
@@ -1247,16 +1383,6 @@ fn render_skill(stdout: &mut impl Write, path: Option<&Path>, force: bool) -> Re
         let _ = fs::remove_file(&temporary);
     }
     result
-}
-
-/// Commits a decision to the store at `root`, turning a refusal into a usage failure.
-///
-/// Exit 1 rather than 2: a revision conflict is not a wrong invocation, it is the store answering
-/// that somebody else moved first — the same class of "no" as the kernel refusing an operation.
-fn commit(root: &Path, decision: &RecordedCommit, expect: Expect) -> Result<(), Failure> {
-    FileStore::open(root)
-        .commit_recorded(decision, expect)
-        .map_err(|error| Failure::StoreRefused(error.to_string()))
 }
 
 // --- Loading ---------------------------------------------------------------------------------------
