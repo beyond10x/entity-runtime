@@ -2,10 +2,10 @@
 format: aep.planning-md/1
 id: initiative:entity-runtime
 kind: initiative
-status: draft
+status: implemented
 title: Schema-driven entity runtime
 summary: Entity types declared as data and executed by an IO-free deterministic kernel, offered as a Rust library and a CLI; the foundation the engineering-protocols artifact model is to be driven by.
-revision: 2
+revision: 6
 ---
 # Initiative: Schema-driven entity runtime
 
@@ -33,3 +33,9 @@ closed status vocabulary and unchecked completion claims without a Rust change t
 
 The kernel never admits IO; a refusal never changes state; the lifecycle state never gains a setter.
 Anything that needs a clock, an identifier or a store is the shell's.
+
+## Implementation evidence
+
+Moved to implemented on 2026-09-09 after an audit of every non-implemented artifact against `CHANGELOG.md`, `docs/roadmap.md` and the crates.
+
+The success clause is met: the kernel decides `aep artifact move` with the verdict-equivalence suite in `crates/entity-yaml/tests/aep_lifecycles.rs`, and the status vocabulary was opened without a Rust enum change — `docs/roadmap.md` § 2 rows A–C and the phase 2/4 rows.

@@ -2,12 +2,13 @@
 format: aep.planning-md/1
 id: story:the-store-keeps-the-envelope
 kind: story
-status: draft
+status: implemented
 title: The store keeps the envelope, not only the event
 summary: Recording seals an event with recorded_at/correlation/causation/actor and every provider then stores the bare DomainEvent; an adopter that needs who/when durable has to smuggle the seal into payload.
 relations:
 - decomposes: epic:the-store-an-adopter-runs-on
-revision: 4
+- serves: vision:O2
+revision: 8
 ---
 # Story: The store keeps the decision envelope
 
@@ -28,3 +29,9 @@ Every provider commits and reads the complete recorded decision envelope, stored
 ## Compatibility
 
 This changes provider storage and Remote Store bytes, so it ships only in coordinated release 0.15.0 under the Atlas migration ADR. Existing File Stores cross the boundary only through the explicit out-of-place v1-to-v2 command; database migrations retain old material behind an unverified snapshot marker rather than inventing missing provenance.
+
+## Implementation evidence
+
+Moved to implemented on 2026-09-09 after an audit of every non-implemented artifact against `CHANGELOG.md`, `docs/roadmap.md` and the crates.
+
+The persisted unit is `RecordedCommit` with `Envelope<DecisionRecord>`; `RecordedObservation` is stored separately and ordered; retry identity is record id plus byte equality in the shared conformance suite — `crates/entity-store/src/lib.rs`, `envelope.rs`, `conformance.rs` (`verify_recorded`).
