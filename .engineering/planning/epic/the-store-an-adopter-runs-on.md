@@ -7,7 +7,7 @@ title: The store an adopter runs on
 summary: 'What engineering-protocols'' storage waves F, G and H need from the SPI: enumeration, the decision basis on events, and a provider with a server — each with no adopter vocabulary in it.'
 relations:
 - decomposes: initiative:entity-runtime
-revision: 4
+revision: 5
 ---
 # Epic: The store an adopter runs on
 
@@ -32,3 +32,9 @@ needs it, and the arrow stays one way (`atlas/architecture/adr/0002`).
 The three stories ship, each with its requirement rows and pins; the adopter's waves F, G and H
 cite the release that carried each; nothing in `entity-core`'s dependency list or purity scan
 changes.
+
+## Open items
+
+Audited 2026-09-09; left where it is because the acceptance is only partly met.
+
+The three capabilities this epic names are implemented (`story:store-enumeration`, `story:events-carry-what-they-were-decided-on`, `story:remote-provider`). Whether the adopter's waves F/G/H consumed them is evidence that lives in the AEP repository, not here; this epic stays open until that is cited.

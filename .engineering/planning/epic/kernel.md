@@ -7,7 +7,7 @@ title: 'The kernel: definitions as data, an IO-free decider'
 summary: 'Grow entity-core from the 0.1 kernel toward the generalized object runtime: richer rules, references, replay, migrations, an SPI — without ever admitting IO.'
 relations:
 - decomposes: initiative:entity-runtime
-revision: 2
+revision: 3
 ---
 # Epic: The kernel — definitions as data, an IO-free decider
 
@@ -28,3 +28,9 @@ which revises R-54 deliberately and says so.
 
 Each story lands with its requirement rows added to the register, its tests cited there, and the
 gate green.
+
+## Open items
+
+Audited 2026-09-09; left where it is because the acceptance is only partly met.
+
+Delivered: three-valued rules, accumulating validation, typed references, verified replay, projections, the 2026-09-08 fold hardening. Still open under this epic (2026-09-09): `story:explain-verb`, `story:definition-migrations`, `story:named-predicates`, `story:schema-fragments`, `story:definition-json-schema`, `story:pedantic-lints` — see `docs/roadmap.md` § 6 for the ranking.

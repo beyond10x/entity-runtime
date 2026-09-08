@@ -18,12 +18,12 @@ Or install from the tagged source with Rust 1.85 or newer:
 
 ```bash
 cargo install --git https://github.com/beyond10x/entity-runtime \
-  --tag 0.17.7 --locked entity-cli
+  --tag 0.18.0 --locked entity-cli
 entity --version
 ```
 
 The complete definition used here is
-[`examples/refund.yaml`](https://github.com/beyond10x/entity-runtime/blob/0.17.7/examples/refund.yaml).
+[`examples/refund.yaml`](https://github.com/beyond10x/entity-runtime/blob/0.18.0/examples/refund.yaml).
 The following Bash setup downloads that exact version into a fresh temporary directory. It needs
 `curl`; subsequent commands use that directory so another run cannot collide with its files or store.
 The sample actor names and timestamps are demonstration data, not authenticated identities or a
@@ -34,7 +34,7 @@ set -euo pipefail
 refund_demo_dir="$(mktemp -d)"
 cd "$refund_demo_dir"
 curl --fail --show-error --location --max-time 30 \
-  https://raw.githubusercontent.com/beyond10x/entity-runtime/0.17.7/examples/refund.yaml \
+  https://raw.githubusercontent.com/beyond10x/entity-runtime/0.18.0/examples/refund.yaml \
   --output refund.yaml
 ```
 
