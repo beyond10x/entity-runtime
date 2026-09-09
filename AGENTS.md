@@ -141,7 +141,7 @@ The local gate runs these steps in this order: `fmt-check` · `clippy` (`--works
 (`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml` and
 `examples/aep/*.yaml`, `examples/references/*.yaml`) · `req-check` · `pin-check` (every `PIN.md` under `crates/` still hashes to
 what it records, in both directions — a moved copy and an unpinned file beside it) ·
-`plan-check` (`aep artifact validate`) · `postgres-check` (the Postgres provider's tests
+`postgres-check` (the Postgres provider's tests
 against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they did not run) ·
 `notes-check`. Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
@@ -154,9 +154,15 @@ the consumer comparison runs above both repositories and does not add a reverse 
 The check still reports added, retired and changed ladders, including the historical failure where
 `vision.yaml` landed upstream while this repository's equivalence test covered only older ladders.
 
+Planning validation is a separate consumer check: `task plan-check` checks the AEP executable
+version and runs `aep plan artifact validate`. Atlas runs it after ER and AEP source composition,
+using the composed AEP executable, and in its scheduled consumer compatibility workflow. It is
+not a prerequisite of ER's source gate: AEP itself consumes ER. Preserve this check and its failure
+evidence when validating the composition (Atlas ADR 0046).
+
 CI's reusable `.github/workflows/gate.yml` runs format, Clippy, tests, rustdoc, examples,
 requirements and the PostgreSQL provider against its service container; both `check.yml` and
-`release.yml` call it. CI also has an MSRV job on 1.85.0. `pin-check`, `plan-check` and
+`release.yml` call it. CI also has an MSRV job on 1.85.0. `pin-check` and
 `notes-check` remain local-only, and the website has its own required Docusaurus build. If a local
 gate step should run in CI too, add it to both the Taskfile and `gate.yml` deliberately rather than
 assuming the two are identical.
