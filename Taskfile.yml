@@ -12,7 +12,6 @@ tasks:
       - task: example-check
       - task: req-check
       - task: pin-check
-      - task: plan-check
       - task: postgres-check
       - task: notes-check
 
@@ -68,7 +67,7 @@ tasks:
       - python3 scripts/check-pin.py
 
   plan-check:
-    desc: the planning store validates, with an `aep` new enough to be trusted with it
+    desc: separate consumer compatibility check, after ER and AEP sources are composed
     # The version first, and it is not ceremony. `aep artifact` is the only thing that writes
     # this store, and it is ambient — nothing here pins it. A build predating the store journal
     # printed every status move it made and recorded none of them, and `artifact validate` stayed
@@ -78,7 +77,7 @@ tasks:
     # child's PATH, so a lookup inside the check could find an `aep` the next line will not.
     cmds:
       - cargo run -q -p entity-xtask --locked -- aep-version --binary "$(command -v aep)"
-      - aep artifact validate
+      - aep plan artifact validate
 
   fmt:
     desc: rustfmt, in place
