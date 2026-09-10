@@ -63,6 +63,7 @@ pub(crate) enum ValueProfile {
     ScalarPredicates,
     OptionalTemplates,
     DecimalOperands,
+    Binary64Values,
 }
 
 impl ValueProfile {
@@ -703,6 +704,7 @@ fn validate_scalar_operand(
         ValueProfile::ScalarPredicates
             | ValueProfile::OptionalTemplates
             | ValueProfile::DecimalOperands
+            | ValueProfile::Binary64Values
     ) {
         return invalid_rule(path, "scalar predicates require outcome profile 6");
     }
@@ -839,7 +841,10 @@ fn validate_operand_reference(expression: &str, scope: Scope<'_>) -> Result<(), 
     let Some(reference) = expression.strip_prefix("$decimal.") else {
         return validate_reference(expression, scope);
     };
-    if scope.profile != ValueProfile::DecimalOperands {
+    if !matches!(
+        scope.profile,
+        ValueProfile::DecimalOperands | ValueProfile::Binary64Values
+    ) {
         return Err("decimal operands require outcome profile 9".into());
     }
     let reference = format!("${reference}");
@@ -909,7 +914,9 @@ pub(crate) fn validate_template_field(
     if let Some(reference) = value.as_str().and_then(|s| s.strip_prefix("$optional.")) {
         if !matches!(
             scope.profile,
-            ValueProfile::OptionalTemplates | ValueProfile::DecimalOperands
+            ValueProfile::OptionalTemplates
+                | ValueProfile::DecimalOperands
+                | ValueProfile::Binary64Values
         ) {
             return Err(DefinitionError::InvalidTemplate {
                 path: path.into(),
@@ -1048,6 +1055,9 @@ fn validate_constraint_applicability(
     if field.union.is_some() && field.kind != FieldKind::Union {
         return refuse("union", "a union field");
     }
+    if field.number_encoding.is_some() && field.kind != FieldKind::Number {
+        return refuse("number_encoding", "a number field");
+    }
     if field.encoding.is_some() && field.kind != FieldKind::String {
         return refuse("encoding", "a string field");
     }
@@ -1087,6 +1097,12 @@ fn validate_field_definition(
             message: "nullable and map require outcome profile 2".into(),
         });
     }
+    if field.number_encoding.is_some() && profile != ValueProfile::Binary64Values {
+        defects.push(DefinitionError::InvalidField {
+            path: path.into(),
+            message: "number_encoding requires outcome profile 10".into(),
+        });
+    }
     if field.kind == FieldKind::Union
         && !matches!(
             profile,
@@ -1096,6 +1112,7 @@ fn validate_field_definition(
                 | ValueProfile::ScalarPredicates
                 | ValueProfile::OptionalTemplates
                 | ValueProfile::DecimalOperands
+                | ValueProfile::Binary64Values
         )
     {
         defects.push(DefinitionError::InvalidField {
@@ -1111,6 +1128,7 @@ fn validate_field_definition(
                 | ValueProfile::ScalarPredicates
                 | ValueProfile::OptionalTemplates
                 | ValueProfile::DecimalOperands
+                | ValueProfile::Binary64Values
         )
     {
         defects.push(DefinitionError::InvalidField {
@@ -1129,6 +1147,7 @@ fn validate_field_definition(
                 | ValueProfile::ScalarPredicates
                 | ValueProfile::OptionalTemplates
                 | ValueProfile::DecimalOperands
+                | ValueProfile::Binary64Values
         ) {
             defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
@@ -1266,32 +1285,46 @@ fn validate_field_definition(
 
 // --- Values --------------------------------------------------------------------------------------
 
-/// Fills in declared defaults, at every depth an object or array element already reaches.
+/// Fills declared defaults and normalizes encoded numbers at every reached schema depth.
 ///
 /// A default inside an object that was not supplied at all is **not** materialised: filling it
 /// would invent an object the caller never sent. A default inside an object that *is* present —
 /// `{"address": {}}` — is filled, which is what a `default` on a nested property means.
 pub(crate) fn apply_defaults(schema: &ObjectSchema, object: &mut Map<String, Value>) {
-    apply_member_defaults(&schema.fields, object);
+    prepare_members(&schema.fields, object, true);
 }
 
-fn apply_member_defaults(
+fn prepare_members(
     fields: &BTreeMap<String, FieldDefinition>,
     object: &mut Map<String, Value>,
+    defaults: bool,
 ) {
     for (name, definition) in fields {
-        if !object.contains_key(name) {
+        if defaults && !object.contains_key(name) {
             if let Some(default) = definition.default.as_value() {
                 object.insert(name.clone(), default.clone());
             }
         }
         if let Some(value) = object.get_mut(name) {
-            apply_nested_defaults(definition, value);
+            prepare_field(definition, value, defaults);
         }
     }
 }
 
+pub(crate) fn normalize_object(schema: &ObjectSchema, object: &mut Map<String, Value>) {
+    prepare_members(&schema.fields, object, false);
+}
+
 fn apply_nested_defaults(definition: &FieldDefinition, value: &mut Value) {
+    prepare_field(definition, value, true);
+}
+
+fn prepare_field(definition: &FieldDefinition, value: &mut Value, defaults: bool) {
+    if definition.number_encoding.is_some() {
+        if let Some(number) = value.as_number().and_then(crate::binary64::normalize) {
+            *value = Value::Number(number);
+        }
+    }
     match definition.kind {
         FieldKind::Union => {
             if let (Some(union), Value::Object(envelope)) = (&definition.union, value) {
@@ -1301,31 +1334,31 @@ fn apply_nested_defaults(definition: &FieldDefinition, value: &mut Value) {
                     .and_then(|tag| union.variants.get(tag));
                 if let (Some(variant), Some(payload)) = (variant, envelope.get_mut(&union.content))
                 {
-                    apply_nested_defaults(variant, payload);
+                    prepare_field(variant, payload, defaults);
                 }
             }
         }
         FieldKind::Nullable if !value.is_null() => {
             if let Some(inner) = &definition.items {
-                apply_nested_defaults(inner, value);
+                prepare_field(inner, value, defaults);
             }
         }
         FieldKind::Map => {
             if let (Some(items), Value::Object(values)) = (&definition.items, value) {
                 for element in values.values_mut() {
-                    apply_nested_defaults(items, element);
+                    prepare_field(items, element, defaults);
                 }
             }
         }
         FieldKind::Object => {
             if let Value::Object(map) = value {
-                apply_member_defaults(&definition.properties, map);
+                prepare_members(&definition.properties, map, defaults);
             }
         }
         FieldKind::Array => {
             if let (Some(items), Value::Array(values)) = (&definition.items, value) {
                 for element in values {
-                    apply_nested_defaults(items, element);
+                    prepare_field(items, element, defaults);
                 }
             }
         }
@@ -1496,7 +1529,17 @@ fn validate_value(
             }
         }
         FieldKind::Number => match value.as_number() {
-            Some(number) => validate_number(definition, number, path, errors),
+            Some(number) => {
+                if definition.number_encoding.is_some()
+                    && crate::binary64::normalize(number).as_ref() != Some(number)
+                {
+                    errors.push(ValidationError::new(
+                        path,
+                        "expected normalized finite binary64 number",
+                    ));
+                }
+                validate_number(definition, number, path, errors);
+            }
             None => wrong_type(path, "number", errors),
         },
         FieldKind::Boolean => {

@@ -53,6 +53,9 @@ pub enum DefinitionFormat {
     /// Exact numeric observations of declared decimal-text fields in predicates.
     #[serde(rename = "entity-outcome-definition/9")]
     V9,
+    /// Finite Binary64 field conversion with typed raw-JSON ingestion.
+    #[serde(rename = "entity-outcome-definition/10")]
+    V10,
 }
 
 /// One entity's named command semantics, parsed but not yet validated.
@@ -216,6 +219,9 @@ pub enum RecordFormat {
     /// Complete decisions under outcome definition profile 9.
     #[serde(rename = "entity-outcome-record/9")]
     V9,
+    /// Complete decisions with normalized finite Binary64 values.
+    #[serde(rename = "entity-outcome-record/10")]
+    V10,
 }
 
 /// Complete comparison evidence for replay, including observations before an entity exists.
@@ -353,6 +359,7 @@ impl Validated {
             DefinitionFormat::V6 | DefinitionFormat::V7 => ValueProfile::ScalarPredicates,
             DefinitionFormat::V8 => ValueProfile::OptionalTemplates,
             DefinitionFormat::V9 => ValueProfile::DecimalOperands,
+            DefinitionFormat::V10 => ValueProfile::Binary64Values,
         };
         let base = ValidatedDefinition::for_outcome(definition.entity.clone(), profile)
             .map_err(|e| defect("entity", e))?;
@@ -635,6 +642,7 @@ impl Validated {
                         fields.insert(key.clone(), value);
                     }
                 }
+                validation::normalize_object(&self.base.schema, &mut fields);
                 identity::matches(&self.definition, &fields, identity.as_ref())?;
                 let decision =
                     crate::create(&self.base, invocation.id.clone(), Value::Object(fields))?;
@@ -672,7 +680,10 @@ impl Validated {
                 payload,
                 schema,
             } => {
-                let payload = resolve_template(payload, &context)?;
+                let mut payload = resolve_template(payload, &context)?;
+                if let Some(object) = payload.as_object_mut() {
+                    validation::normalize_object(schema, object);
+                }
                 check_payload(schema, &payload, "error.payload")?;
                 error = Some(BusinessError {
                     name: identity.clone(),
@@ -681,7 +692,10 @@ impl Validated {
             }
         }
         if let Effect::Create { emits, .. } | Effect::Change { emits, .. } = effect {
-            for (index, (event, typed)) in events.iter().zip(emits).enumerate() {
+            for (index, (event, typed)) in events.iter_mut().zip(emits).enumerate() {
+                if let Some(object) = event.payload.as_object_mut() {
+                    validation::normalize_object(&typed.schema, object);
+                }
                 check_payload(
                     &typed.schema,
                     &event.payload,
@@ -703,6 +717,7 @@ impl Validated {
                 DefinitionFormat::V7 => RecordFormat::V7,
                 DefinitionFormat::V8 => RecordFormat::V8,
                 DefinitionFormat::V9 => RecordFormat::V9,
+                DefinitionFormat::V10 => RecordFormat::V10,
             },
             definition: self.definition.clone(),
             invocation,

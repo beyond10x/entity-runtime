@@ -415,6 +415,7 @@ pub fn execute(
         }
     }
 
+    crate::validation::normalize_object(&definition.schema, &mut new_fields);
     let state_errors = validate_object(&definition.schema, &new_fields, "fields");
     if !state_errors.is_empty() {
         return Err(CoreError::Validation(state_errors));

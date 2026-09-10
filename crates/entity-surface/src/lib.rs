@@ -317,7 +317,13 @@ fn field_schema(field: &FieldDefinition) -> Value {
             }
         }
         FieldKind::Integer => set_type(&mut out, "integer"),
-        FieldKind::Number => set_type(&mut out, "number"),
+        FieldKind::Number => {
+            set_type(&mut out, "number");
+            if field.number_encoding.is_some() {
+                out.insert("format".into(), json!("double"));
+                out.insert("x-entity-number-encoding".into(), json!("binary64"));
+            }
+        }
         FieldKind::Boolean => set_type(&mut out, "boolean"),
         FieldKind::Enum => {
             set_type(&mut out, "string");
@@ -1012,6 +1018,20 @@ const STYLE: &str = r#":root{color-scheme:light dark;font:16px/1.55 system-ui,sa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binary64_projection_identifies_conversion_without_claiming_schema_enforcement() {
+        let field: FieldDefinition = serde_json::from_value(json!({
+            "type":"number", "number_encoding":"binary64"
+        }))
+        .unwrap();
+        let schema = field_schema(&field);
+        assert_eq!(schema["format"], "double");
+        assert_eq!(schema["x-entity-number-encoding"], "binary64");
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&json!(9007199254740993_u64)));
+        assert!(!validator.is_valid(&json!("1")));
+    }
 
     #[test]
     fn value_invariants_remain_explicit_runtime_obligations_in_projected_schemas() {

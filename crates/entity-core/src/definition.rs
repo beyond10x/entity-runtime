@@ -154,6 +154,14 @@ pub struct FieldDefinition {
     )]
     pub encoding: Option<StringEncoding>,
 
+    /// Profile 10: finite numeric conversion and recorded representation. Number only.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_number_encoding",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub number_encoding: Option<NumberEncoding>,
+
     /// Profile 4: the wire grammar of every map key. Values still follow `items`.
     #[serde(
         default,
@@ -954,5 +962,37 @@ impl<'a, T> IntoIterator for &'a OneOrMany<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
+    }
+}
+
+/// Opt-in conversion of a JSON numeric value before predicate evaluation and persistence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NumberEncoding {
+    /// Finite nearest-even IEEE-754 binary64, preserving signed zero.
+    Binary64,
+}
+
+fn deserialize_number_encoding<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<NumberEncoding>, D::Error> {
+    NumberEncoding::deserialize(deserializer).map(Some)
+}
+
+impl ObjectSchema {
+    /// Decode original JSON numeric tokens using this schema's declared codecs.
+    ///
+    /// Binary64 preserves lexical negative zero through typed containers. This does not register
+    /// the schema, apply defaults or validate all constraints; execution still performs admission.
+    /// Passing a previously parsed Value cannot recover a token or sign already discarded.
+    ///
+    /// # Errors
+    /// Refuses malformed JSON, a non-object root, wrong typed container/scalar kinds, or nonfinite
+    /// Binary64 conversion. Other schema constraints are checked by execution.
+    pub fn decode_json(
+        &self,
+        text: &str,
+    ) -> Result<serde_json::Map<String, Value>, serde_json::Error> {
+        crate::binary64::decode_object(self, text)
     }
 }

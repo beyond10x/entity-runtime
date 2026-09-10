@@ -6,6 +6,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Outcome profile 10 adds finite Binary64 number encoding. New values are rounded before
+  predicates and recorded effects, preserving signed zero; nonfinite values and unnormalized
+  historical state are refused. Typed `ObjectSchema::decode_json` retains original numeric
+  tokens through containers, including lexical `-0`. Generic pre-parsed values cannot recover
+  signs already discarded. Earlier profiles and unencoded numbers keep their contract.
+
 - Outcome profile 9 adds explicit decimal predicate operands over declared decimal-text fields.
   Comparisons preserve every digit while stored strings keep their original spelling.
   Missing/null observations stay unknown, templates cannot coerce values, and earlier profiles

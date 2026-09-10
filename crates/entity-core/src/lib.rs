@@ -103,6 +103,7 @@
 //! is a question about the value, and that is the one nothing can answer when the value is not
 //! there.
 
+mod binary64;
 mod definition;
 mod error;
 mod number;
@@ -118,9 +119,9 @@ mod validation;
 
 pub use definition::{
     Condition, CreateDefinition, DeclaredDefault, EntityDefinition, EventDefinition,
-    FieldDefinition, FieldKind, LifecycleDefinition, ObjectSchema, OneOrMany, OperationDefinition,
-    Quantified, RuleDefinition, ScalarCompareOp, ScalarComparison, StringEncoding, TaggedUnion,
-    TransitionDefinition, CONDITION_OPERATORS,
+    FieldDefinition, FieldKind, LifecycleDefinition, NumberEncoding, ObjectSchema, OneOrMany,
+    OperationDefinition, Quantified, RuleDefinition, ScalarCompareOp, ScalarComparison,
+    StringEncoding, TaggedUnion, TransitionDefinition, CONDITION_OPERATORS,
 };
 pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
 pub use registry::{Registry, ValidatedDefinition};

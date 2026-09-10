@@ -104,15 +104,25 @@ pub(super) fn read<'de, D: serde::Deserializer<'de>>(
 
 pub(super) fn validate(definition: &Definition) -> Result<(), Failure> {
     let identity = match (&definition.identity, definition.format) {
-        (None, DefinitionFormat::V7 | DefinitionFormat::V8 | DefinitionFormat::V9) => {
+        (
+            None,
+            DefinitionFormat::V7
+            | DefinitionFormat::V8
+            | DefinitionFormat::V9
+            | DefinitionFormat::V10,
+        ) => {
             return Err(defect(
                 "identity",
                 "profile 7 or later requires a typed identity field",
             ))
         }
-        (Some(identity), DefinitionFormat::V7 | DefinitionFormat::V8 | DefinitionFormat::V9) => {
-            identity
-        }
+        (
+            Some(identity),
+            DefinitionFormat::V7
+            | DefinitionFormat::V8
+            | DefinitionFormat::V9
+            | DefinitionFormat::V10,
+        ) => identity,
         (Some(_), _) => {
             return Err(defect(
                 "identity",
