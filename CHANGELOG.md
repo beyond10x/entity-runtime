@@ -6,6 +6,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- SQLite and PostgreSQL support ordered atomic batches of complete recorded decisions. PostgreSQL
+  caller transactions expose recorded history and can query their staged state; a caught batch
+  refusal rolls back its state and provenance while leaving the outer transaction usable.
 - An Eventlog recorded provider preserves decisions and observations with atomic global record-id
   claims, ordered batches and file reopen support. It has an explicit Rust 1.91 baseline and is
   included in the standard local and CI gates; existing ER crates keep Rust 1.85.

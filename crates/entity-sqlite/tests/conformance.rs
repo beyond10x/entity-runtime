@@ -38,6 +38,12 @@ fn the_sqlite_provider_conforms() {
 }
 
 #[test]
+fn sqlite_recorded_batches_keep_provenance_and_rollback_every_prefix() {
+    let mut store = SqliteStore::in_memory().expect("a database");
+    conformance::verify_recorded_batch(&mut store).expect("SQLite recorded batch contract");
+}
+
+#[test]
 fn it_survives_being_closed_and_reopened() {
     let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("reopen.sqlite3");
     let _ = std::fs::remove_file(&path);

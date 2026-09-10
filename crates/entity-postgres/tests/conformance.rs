@@ -64,6 +64,15 @@ fn registry() -> Registry {
 }
 
 #[test]
+fn postgres_recorded_batches_keep_provenance_and_rollback_every_prefix() {
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "recorded_batch");
+    let result = conformance::verify_recorded_batch(&mut store);
+    store.drop_schema(&schema).expect("dropped");
+    result.expect("PostgreSQL recorded batch contract");
+}
+
+#[test]
 fn the_postgres_provider_conforms() {
     let Some(url) = url() else { return };
     let (mut store, schema) = fresh(&url, "conforms");
@@ -323,6 +332,226 @@ fn recording(id: &str) -> entity_store::Recording {
         causation: None,
         actor: None,
     }
+}
+
+fn recorded_creation(
+    id: &str,
+    record_id: &str,
+) -> entity_store::asynchronous::AtomicRecordedCommit {
+    entity_store::asynchronous::AtomicRecordedCommit {
+        commit: entity_store::RecordedCommit::new(
+            Runtime::new(&registry())
+                .create("ticket", 1, id, json!({"title": "Recorded session"}))
+                .unwrap(),
+            &recording(record_id),
+        )
+        .unwrap(),
+        expect: Expect::Absent,
+    }
+}
+
+#[test]
+fn a_recorded_session_queries_its_own_history_and_outer_rollback_discards_every_write() {
+    use entity_store::{asynchronous::AtomicRecordedStore, HistoryProvider};
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "recorded_session");
+    let observer = PostgresStore::connect_in_schema(&url, &schema).unwrap();
+    let first = recorded_creation("one", "session-create");
+    let second = entity_store::asynchronous::AtomicRecordedCommit {
+        commit: entity_store::RecordedCommit::new(
+            Runtime::new(&registry())
+                .execute(&first.commit.instance, "close", json!({}))
+                .unwrap(),
+            &recording("session-close"),
+        )
+        .unwrap(),
+        expect: Expect::Revision(1),
+    };
+    let batch = [first, second];
+    let query = DocumentQuery::for_entity("ticket").matching("title", json!("Recorded session"));
+    let refusal: Result<(), StoreError> = store.with_transaction(|session| {
+        session.lock_identity("session", "one")?;
+        assert_eq!(session.reserve_sequence("session-sequence", 3)?, 0);
+        session.commit_recorded_batch(&batch)?;
+        assert_eq!(
+            session.query_documents(&query).unwrap().items,
+            [batch[1].commit.instance.clone()]
+        );
+        assert_eq!(
+            session.records("ticket", "one")?,
+            batch
+                .iter()
+                .map(|entry| entry.commit.envelope.clone())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            session.events("ticket", "one")?,
+            batch
+                .iter()
+                .flat_map(|entry| entry.commit.envelope.record.events.clone())
+                .collect::<Vec<_>>()
+        );
+        assert!(session.observations("ticket", "one")?.is_empty());
+        assert_eq!(
+            observer.load("ticket", "one")?,
+            None,
+            "staged state is private"
+        );
+        assert!(
+            observer.records("ticket", "one")?.is_empty(),
+            "staged history is private"
+        );
+        Err(StoreError::Backend("caller refused".into()))
+    });
+    assert_eq!(refusal, Err(StoreError::Backend("caller refused".into())));
+    assert_eq!(store.load("ticket", "one").unwrap(), None);
+    assert!(store.records("ticket", "one").unwrap().is_empty());
+    assert!(store.query_documents(&query).unwrap().items.is_empty());
+    assert_eq!(
+        store
+            .with_transaction(|session| session.reserve_sequence("session-sequence", 1))
+            .unwrap(),
+        0,
+        "outer rollback includes sequence reservations"
+    );
+    store.commit_recorded_batch(&batch).unwrap();
+    assert_eq!(
+        store.load("ticket", "one").unwrap(),
+        Some(batch[1].commit.instance.clone())
+    );
+    let observation = entity_store::RecordedObservation {
+        entity: "ticket".into(),
+        id: "one".into(),
+        revision: 2,
+        envelope: recording("session-observation")
+            .seal(json!({"reachable": true}))
+            .unwrap(),
+    };
+    store.observe(&observation).unwrap();
+    store
+        .with_transaction(|session| {
+            assert_eq!(session.observations("ticket", "one")?, vec![observation]);
+            assert_eq!(session.records("ticket", "one")?.len(), 2);
+            Ok(())
+        })
+        .unwrap();
+    drop(observer);
+    store.drop_schema(&schema).unwrap();
+}
+
+#[test]
+fn a_caught_recorded_batch_refusal_rolls_back_provenance_and_keeps_the_session_usable() {
+    use entity_store::HistoryProvider;
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "recorded_savepoint");
+    let first = recorded_creation("one", "caught-create");
+    let mut second = recorded_creation("two", "caught-other");
+    second.expect = Expect::Revision(17);
+    let mut replacement = first.clone();
+    replacement.commit.envelope.actor = Some("replacement".into());
+    store
+        .with_transaction(|session| {
+            let error = session.commit_recorded_batch(&[first, second]).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    StoreError::RevisionConflict {
+                        expected: Expect::Revision(17),
+                        found: None,
+                        ..
+                    }
+                ),
+                "{error}"
+            );
+            assert_eq!(
+                session.load_for_update("ticket", "one")?,
+                None,
+                "a caught error must leave no state prefix"
+            );
+            assert!(
+                session.records("ticket", "one")?.is_empty(),
+                "a caught error must leave no history prefix"
+            );
+            assert!(session.events("ticket", "one")?.is_empty());
+            assert!(session
+                .query_documents(&DocumentQuery::for_entity("ticket"))
+                .unwrap()
+                .items
+                .is_empty());
+            assert_eq!(session.reserve_sequence("still-usable", 1)?, 0);
+            session.commit_recorded_batch(std::slice::from_ref(&replacement))?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        store.records("ticket", "one").unwrap(),
+        vec![replacement.commit.envelope]
+    );
+    assert_eq!(store.load("ticket", "two").unwrap(), None);
+    store.drop_schema(&schema).unwrap();
+}
+
+#[test]
+fn opposite_recorded_batches_publish_one_complete_winner() {
+    use entity_store::{asynchronous::AtomicRecordedStore, HistoryProvider};
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "recorded_concurrent");
+    let originals = [
+        recorded_creation("a", "initial-a"),
+        recorded_creation("b", "initial-b"),
+    ];
+    store.commit_recorded_batch(&originals).unwrap();
+    let make = |prefix: &str| {
+        originals
+            .iter()
+            .map(|entry| entity_store::asynchronous::AtomicRecordedCommit {
+                commit: entity_store::RecordedCommit::new(
+                    Runtime::new(&registry())
+                        .execute(&entry.commit.instance, "close", json!({}))
+                        .unwrap(),
+                    &recording(&format!("{prefix}-{}", entry.commit.instance.id)),
+                )
+                .unwrap(),
+                expect: Expect::Revision(1),
+            })
+            .collect::<Vec<_>>()
+    };
+    let left = make("left");
+    let mut right = make("right");
+    right.reverse();
+    let mut a = PostgresStore::connect_in_schema(&url, &schema).unwrap();
+    let mut b = PostgresStore::connect_in_schema(&url, &schema).unwrap();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let outcomes = std::thread::scope(|threads| {
+        let barrier_b = barrier.clone();
+        let one = threads.spawn(move || {
+            barrier.wait();
+            a.commit_recorded_batch(&left)
+        });
+        let two = threads.spawn(move || {
+            barrier_b.wait();
+            b.commit_recorded_batch(&right)
+        });
+        (one.join().unwrap(), two.join().unwrap())
+    });
+    assert_ne!(outcomes.0.is_ok(), outcomes.1.is_ok());
+    let winner = if outcomes.0.is_ok() { "left" } else { "right" };
+    let error = outcomes.0.err().or(outcomes.1.err()).unwrap();
+    assert!(
+        matches!(error, StoreError::RevisionConflict { found: Some(2), .. }),
+        "{error}"
+    );
+    for id in ["a", "b"] {
+        let records = store.records("ticket", id).unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(
+            records[1].record_id,
+            format!("{winner}-{id}"),
+            "no mixed winner prefix"
+        );
+        assert_eq!(store.load("ticket", id).unwrap().unwrap().revision, 2);
+    }
+    store.drop_schema(&schema).unwrap();
 }
 
 #[test]

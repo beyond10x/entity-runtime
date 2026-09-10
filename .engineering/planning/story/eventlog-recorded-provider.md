@@ -29,7 +29,7 @@ scope:
   path: docs/design
 - confidence: cited
   path: docs/requirements.md
-revision: 8
+revision: 9
 ---
 ## Outcome
 Implement the Eventlog persistence adapter required by the authorized ESS evolution migration, consuming current Eventlog source 55d90845ac22689c64b9bc96dcad2f9750075804.
@@ -77,3 +77,7 @@ The adapter now pins published Eventlog 06c8e1c806ece76bf2874107d73691ca71e4f18f
 Final task eventlog-check passed on Rust 1.91: format, strict all-target/all-feature Clippy, ten file/SQLite cases in 0.38 seconds and rustdoc. The requirements checker reported 97 requirements, 314 test functions and no findings. The explicit PostgreSQL task refuses an absent database URL; CI selects it unconditionally against its PostgreSQL service. Every case has a 20-second timeout. The disposable fixture was stopped and removed after verification. Eventlog's published prerequisite worktree was cleaned through worktree finish and reviewed exact-ID GC; its evidence logs are retained. No full gate or remote production proof was run.
 
 Evidence: local-evidence:ess-evolution-20260910/er-eventlog-postgres-final.log, er-eventlog-inventory-mutation.log, er-eventlog-inventory-restored.log, er-eventlog-inventory-gate.log, er-postgres-missing-url.log and er-postgres-fixture.txt. The new provider dependency is published on feat/committed-stream-enumeration; both Eventlog and ER main integration remain outstanding. Query/transaction and legacy facade convergence, catalog dependency intent, the single AEP migration story, ESS semantics convergence and application acceptance remain required by the broader evolution goal. Next owner is this continuing session, starting with the existing provider-query-v0.1 contract and Eventlog projection transaction capability gap.
+
+## Native query and transaction gap
+
+Current source review distinguishes legacy preservation from Eventlog convergence. The accepted provider-query-v0.1 contract has recursive JSON containment with exact numeric meaning, query-bound keyset cursors and a PostgreSQL GIN index; PostgresSession adds transaction-local queries, point/absent-identity locks, sequence reservations and staged writes. Eventlog ProjectionStore currently exposes scalar indexed find/get/get_for_update plus guard reservations, not that complete query/session surface. Replacing queries with ids()+load() loops or invoking the outer store from a locked projector would not satisfy the migration contract. Native convergence must retain provider-owned indexed filtering, transaction-local reads and write atomicity, explicit hosted migration/application-role separation, and backward-compatible projection declarations. The legacy-recorded-batch-compatibility story closes complete-record support in the existing SQL transaction boundary; it does not close this Eventlog-native gap or authorize declaring facade migration complete.

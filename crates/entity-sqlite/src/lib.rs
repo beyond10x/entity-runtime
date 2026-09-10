@@ -37,6 +37,7 @@ use std::path::Path;
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 use entity_store::{
+    asynchronous::{AtomicRecordedCommit, AtomicRecordedStore},
     check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
     RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
 };
@@ -346,6 +347,31 @@ fn write_decision(
     Ok(())
 }
 
+fn write_recorded(
+    transaction: &Transaction<'_>,
+    commit: &RecordedCommit,
+    expect: Expect,
+) -> Result<(), StoreError> {
+    let document = serde_json::to_string(&commit.envelope)
+        .map_err(|error| backend("serialising the decision envelope", &error))?;
+    if let Some(existing) = existing_record(transaction, &commit.envelope.record_id)? {
+        if existing == document {
+            return Ok(());
+        }
+        return Err(StoreError::RecordConflict {
+            record_id: commit.envelope.record_id.clone(),
+        });
+    }
+    write_decision(transaction, &commit.decision(), expect, false)?;
+    let position =
+        next_history_position(transaction, &commit.instance.entity, &commit.instance.id)?;
+    transaction.execute(
+        "INSERT INTO history (entity, id, position, kind, record_id, document) VALUES (?1, ?2, ?3, 'decision', ?4, ?5)",
+        params![commit.instance.entity, commit.instance.id, position, commit.envelope.record_id, document],
+    ).map_err(|error| backend("appending the decision record", &error))?;
+    Ok(())
+}
+
 impl Store for SqliteStore {
     fn history(&self) -> Option<&dyn HistoryProvider> {
         Some(self)
@@ -364,35 +390,7 @@ impl Store for SqliteStore {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| backend("beginning the recorded transaction", &error))?;
-        let document = serde_json::to_string(&commit.envelope)
-            .map_err(|error| backend("serialising the decision envelope", &error))?;
-        if let Some(existing) = existing_record(&transaction, &commit.envelope.record_id)? {
-            if existing == document {
-                transaction
-                    .commit()
-                    .map_err(|error| backend("committing the retry", &error))?;
-                return Ok(());
-            }
-            return Err(StoreError::RecordConflict {
-                record_id: commit.envelope.record_id.clone(),
-            });
-        }
-        write_decision(&transaction, &commit.decision(), expect, false)?;
-        let position =
-            next_history_position(&transaction, &commit.instance.entity, &commit.instance.id)?;
-        transaction
-            .execute(
-                "INSERT INTO history (entity, id, position, kind, record_id, document) \
-                 VALUES (?1, ?2, ?3, 'decision', ?4, ?5)",
-                params![
-                    commit.instance.entity,
-                    commit.instance.id,
-                    position,
-                    commit.envelope.record_id,
-                    document
-                ],
-            )
-            .map_err(|error| backend("appending the decision record", &error))?;
+        write_recorded(&transaction, commit, expect)?;
         transaction
             .commit()
             .map_err(|error| backend("committing the recorded decision", &error))
@@ -448,6 +446,28 @@ impl Store for SqliteStore {
         transaction
             .commit()
             .map_err(|error| backend("committing the observation", &error))
+    }
+}
+
+impl AtomicRecordedStore for SqliteStore {
+    fn commit_recorded_batch(
+        &mut self,
+        commits: &[AtomicRecordedCommit],
+    ) -> Result<(), StoreError> {
+        if commits.is_empty() {
+            return Ok(());
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| backend("beginning the recorded batch", &error))?;
+        for entry in commits {
+            entry.commit.validate()?;
+            write_recorded(&transaction, &entry.commit, entry.expect)?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| backend("committing the recorded batch", &error))
     }
 }
 

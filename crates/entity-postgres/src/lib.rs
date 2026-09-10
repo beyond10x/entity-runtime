@@ -53,6 +53,7 @@ use std::sync::Mutex;
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 use entity_query::{DocumentPage, DocumentQuery, DocumentQueryProvider, QueryError};
 use entity_store::{
+    asynchronous::{AtomicRecordedCommit, AtomicRecordedStore},
     check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
     RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
 };
@@ -381,6 +382,45 @@ impl PostgresSession<'_> {
             .commit()
             .map_err(|e| database("releasing batch savepoint", &e))
     }
+
+    /// Reads complete decision envelopes from this transaction, including staged writes.
+    pub fn records(
+        &mut self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
+        read_history(&mut self.transaction, entity, id, "decision")
+    }
+
+    /// Reads non-state-changing observations from this transaction in append order.
+    pub fn observations(
+        &mut self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Vec<RecordedObservation>, StoreError> {
+        read_history(&mut self.transaction, entity, id, "observation")
+    }
+
+    /// Stages complete recorded decisions in order without committing this caller transaction.
+    ///
+    /// A savepoint contains state, history and identity locks: a caller may catch a batch refusal
+    /// and continue without publishing any part of the refused batch.
+    pub fn commit_recorded_batch(
+        &mut self,
+        commits: &[AtomicRecordedCommit],
+    ) -> Result<(), StoreError> {
+        let mut batch = self
+            .transaction
+            .transaction()
+            .map_err(|error| database("starting recorded batch savepoint", &error))?;
+        lock_recorded_writes(&mut batch, commits.iter().map(|entry| &entry.commit))?;
+        for entry in commits {
+            write_recorded(&mut batch, &entry.commit, entry.expect)?;
+        }
+        batch
+            .commit()
+            .map_err(|error| database("releasing recorded batch savepoint", &error))
+    }
 }
 
 impl PostgresStore {
@@ -610,48 +650,8 @@ impl Store for PostgresStore {
         let mut transaction = client
             .transaction()
             .map_err(|error| database("beginning the recorded transaction", &error))?;
-        let document = serde_json::to_string(&commit.envelope)
-            .map_err(|error| backend("serialising the decision envelope", &error))?;
-        lock_record(&mut transaction, &commit.envelope.record_id)?;
-        if let Some(row) = transaction
-            .query_opt(
-                "SELECT document FROM history WHERE record_id = $1",
-                &[&commit.envelope.record_id],
-            )
-            .map_err(|error| database("checking the record id", &error))?
-        {
-            let existing: String = row.get(0);
-            if existing == document {
-                transaction
-                    .commit()
-                    .map_err(|error| database("committing the retry", &error))?;
-                return Ok(());
-            }
-            return Err(StoreError::RecordConflict {
-                record_id: commit.envelope.record_id.clone(),
-            });
-        }
-        write_decision(&mut transaction, &commit.decision(), expect, false)?;
-        let position: i64 = transaction
-            .query_one(
-                "SELECT COALESCE(MAX(position) + 1, 0) FROM history WHERE entity = $1 AND id = $2",
-                &[&commit.instance.entity, &commit.instance.id],
-            )
-            .map_err(|error| database("reading the history position", &error))?
-            .get(0);
-        transaction
-            .execute(
-                "INSERT INTO history (entity, id, position, kind, record_id, document) \
-                 VALUES ($1, $2, $3, 'decision', $4, $5)",
-                &[
-                    &commit.instance.entity,
-                    &commit.instance.id,
-                    &position,
-                    &commit.envelope.record_id,
-                    &document,
-                ],
-            )
-            .map_err(|error| database("appending the decision record", &error))?;
+        lock_recorded_writes(&mut transaction, std::iter::once(commit))?;
+        write_recorded(&mut transaction, commit, expect)?;
         transaction
             .commit()
             .map_err(|error| database("committing the recorded decision", &error))
@@ -724,6 +724,80 @@ impl Store for PostgresStore {
     }
 }
 
+fn lock_recorded_writes<'a>(
+    transaction: &mut postgres::Transaction<'_>,
+    commits: impl Iterator<Item = &'a RecordedCommit>,
+) -> Result<(), StoreError> {
+    let mut records = std::collections::BTreeSet::new();
+    let mut subjects = std::collections::BTreeSet::new();
+    for commit in commits {
+        commit.validate()?;
+        records.insert(commit.envelope.record_id.as_str());
+        subjects.insert((commit.instance.entity.as_str(), commit.instance.id.as_str()));
+    }
+    // Lock order is independent of request order, including subjects with no row yet.
+    for record in records {
+        lock_record(transaction, record)?;
+    }
+    for (entity, id) in subjects {
+        transaction
+            .query_one(
+                "SELECT pg_advisory_xact_lock(hashtextextended($2, hashtextextended($1, 412732)))",
+                &[&entity, &id],
+            )
+            .map_err(|error| database("locking recorded subject", &error))?;
+    }
+    Ok(())
+}
+
+fn write_recorded(
+    transaction: &mut postgres::Transaction<'_>,
+    commit: &RecordedCommit,
+    expect: Expect,
+) -> Result<(), StoreError> {
+    let document = serde_json::to_string(&commit.envelope)
+        .map_err(|error| backend("serialising the decision envelope", &error))?;
+    if let Some(row) = transaction
+        .query_opt(
+            "SELECT document FROM history WHERE record_id = $1",
+            &[&commit.envelope.record_id],
+        )
+        .map_err(|error| database("checking the record id", &error))?
+    {
+        if row.get::<_, String>(0) == document {
+            return Ok(());
+        }
+        return Err(StoreError::RecordConflict {
+            record_id: commit.envelope.record_id.clone(),
+        });
+    }
+    write_decision(transaction, &commit.decision(), expect, false)?;
+    let position: i64 = transaction
+        .query_one(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM history WHERE entity = $1 AND id = $2",
+            &[&commit.instance.entity, &commit.instance.id],
+        )
+        .map_err(|error| database("reading the history position", &error))?
+        .get(0);
+    transaction.execute(
+        "INSERT INTO history (entity, id, position, kind, record_id, document) VALUES ($1, $2, $3, 'decision', $4, $5)",
+        &[&commit.instance.entity, &commit.instance.id, &position, &commit.envelope.record_id, &document],
+    ).map_err(|error| database("appending the decision record", &error))?;
+    Ok(())
+}
+
+impl AtomicRecordedStore for PostgresStore {
+    fn commit_recorded_batch(
+        &mut self,
+        commits: &[AtomicRecordedCommit],
+    ) -> Result<(), StoreError> {
+        if commits.is_empty() {
+            return Ok(());
+        }
+        self.with_transaction(|session| session.commit_recorded_batch(commits))
+    }
+}
+
 impl AtomicBatchStore for PostgresStore {
     fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError> {
         let mut client = self.client()?;
@@ -749,20 +823,7 @@ impl PostgresStore {
         kind: &str,
     ) -> Result<Vec<T>, StoreError> {
         let mut client = self.client()?;
-        let rows = client
-            .query(
-                "SELECT document FROM history WHERE entity = $1 AND id = $2 AND kind = $3 \
-                 ORDER BY position",
-                &[&entity, &id, &kind],
-            )
-            .map_err(|error| database("reading history", &error))?;
-        rows.into_iter()
-            .map(|row| {
-                let text: String = row.get(0);
-                serde_json::from_str(&text)
-                    .map_err(|error| backend("parsing a history record", &error))
-            })
-            .collect()
+        read_history(&mut *client, entity, id, kind)
     }
 
     /// The connection, for one statement or one transaction.
@@ -773,4 +834,25 @@ impl PostgresStore {
             )
         })
     }
+}
+
+fn read_history<T: serde::de::DeserializeOwned>(
+    client: &mut impl GenericClient,
+    entity: &str,
+    id: &str,
+    kind: &str,
+) -> Result<Vec<T>, StoreError> {
+    let rows = client
+        .query(
+            "SELECT document FROM history WHERE entity = $1 AND id = $2 AND kind = $3 \
+                 ORDER BY position",
+            &[&entity, &id, &kind],
+        )
+        .map_err(|error| database("reading history", &error))?;
+    rows.into_iter()
+        .map(|row| {
+            let text: String = row.get(0);
+            serde_json::from_str(&text).map_err(|error| backend("parsing a history record", &error))
+        })
+        .collect()
 }

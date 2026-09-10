@@ -128,6 +128,142 @@ pub fn run_atomic(store: &mut dyn AtomicBatchStore) -> Report {
     Report { outcomes }
 }
 
+/// Exercises ordered recorded batches against a provider's actual transaction boundary.
+///
+/// # Errors
+/// Names lost provenance, incorrect retry identity, or any surviving prefix of a refused batch.
+pub fn verify_recorded_batch(
+    store: &mut dyn crate::asynchronous::AtomicRecordedStore,
+) -> Result<(), String> {
+    use crate::asynchronous::AtomicRecordedCommit;
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let create = |id: &str, record_id: &str| -> Result<AtomicRecordedCommit, String> {
+        Ok(AtomicRecordedCommit {
+            commit: RecordedCommit::new(
+                runtime
+                    .create("conformance-ticket", 1, id, json!({"title": "Batch"}))
+                    .map_err(|error| error.to_string())?,
+                &recording(record_id, "12:00:00"),
+            )
+            .map_err(|error| error.to_string())?,
+            expect: Expect::Absent,
+        })
+    };
+    let mut first = create("recorded-batch-one", "batch-creation-one")?;
+    if !first.commit.envelope.record.events.is_empty() {
+        return Err("recorded batch genesis fixture must emit no events".into());
+    }
+    let second = AtomicRecordedCommit {
+        commit: RecordedCommit::new(
+            runtime
+                .execute(&first.commit.instance, "close", json!({}))
+                .map_err(|error| error.to_string())?,
+            &recording("batch-close-one", "12:00:01"),
+        )
+        .map_err(|error| error.to_string())?,
+        expect: Expect::Revision(1),
+    };
+    let third = create("recorded-batch-two", "batch-creation-two")?;
+    let mut wrong = third.clone();
+    wrong.expect = Expect::Revision(99);
+    let refused = store.commit_recorded_batch(&[first.clone(), second.clone(), wrong]);
+    if !matches!(
+        refused,
+        Err(StoreError::RevisionConflict {
+            expected: Expect::Revision(99),
+            found: None,
+            ..
+        })
+    ) {
+        return Err(format!(
+            "late recorded batch expected a revision conflict, got {refused:?}"
+        ));
+    }
+    if store
+        .load("conformance-ticket", "recorded-batch-one")
+        .map_err(|e| e.to_string())?
+        .is_some()
+        || !store
+            .records("conformance-ticket", "recorded-batch-one")
+            .map_err(|e| e.to_string())?
+            .is_empty()
+        || !store
+            .events("conformance-ticket", "recorded-batch-one")
+            .map_err(|e| e.to_string())?
+            .is_empty()
+    {
+        return Err("refused recorded batch left state, history or events".into());
+    }
+    // A changed payload under an aborted id proves its identity reservation also rolled back.
+    let replacement = create("recorded-batch-replacement", "batch-creation-one")?;
+    store
+        .commit_recorded(&replacement.commit, replacement.expect)
+        .map_err(|e| e.to_string())?;
+    first.commit.envelope.record_id = "batch-creation-one-accepted".into();
+    let batch = [first.clone(), second.clone(), third.clone()];
+    store
+        .commit_recorded_batch(&batch)
+        .map_err(|e| e.to_string())?;
+    store
+        .commit_recorded_batch(&batch)
+        .map_err(|e| format!("exact batch retry: {e}"))?;
+    store
+        .commit_recorded_batch(&[])
+        .map_err(|e| e.to_string())?;
+    if store
+        .records("conformance-ticket", "recorded-batch-one")
+        .map_err(|e| e.to_string())?
+        != vec![
+            first.commit.envelope.clone(),
+            second.commit.envelope.clone(),
+        ]
+    {
+        return Err(
+            "batch did not preserve zero-event genesis and complete ordered envelopes".into(),
+        );
+    }
+    if store
+        .load("conformance-ticket", "recorded-batch-one")
+        .map_err(|e| e.to_string())?
+        != Some(second.commit.instance.clone())
+    {
+        return Err("later batch decision did not see the earlier revision".into());
+    }
+    let prefix = create("recorded-batch-refused-prefix", "batch-refused-prefix")?;
+    let collision = create("recorded-batch-foreign", "batch-creation-one-accepted")?;
+    let refused = store.commit_recorded_batch(&[prefix.clone(), collision]);
+    if !matches!(refused, Err(StoreError::RecordConflict { ref record_id }) if record_id == "batch-creation-one-accepted")
+    {
+        return Err(format!(
+            "global recorded identity must conflict, got {refused:?}"
+        ));
+    }
+    if store
+        .load("conformance-ticket", "recorded-batch-refused-prefix")
+        .map_err(|e| e.to_string())?
+        .is_some()
+        || !store
+            .records("conformance-ticket", "recorded-batch-refused-prefix")
+            .map_err(|e| e.to_string())?
+            .is_empty()
+    {
+        return Err("global identity conflict left a committed prefix".into());
+    }
+    store
+        .commit_recorded(&prefix.commit, prefix.expect)
+        .map_err(|e| e.to_string())?;
+    let mut changed = third;
+    changed.commit.envelope.actor = Some("changed-actor".into());
+    let refused = store.commit_recorded_batch(&[changed]);
+    if !matches!(refused, Err(StoreError::RecordConflict { .. })) {
+        return Err(format!(
+            "changed batch provenance must conflict, got {refused:?}"
+        ));
+    }
+    Ok(())
+}
+
 /// Exercises the recorded-history contract shared by every 0.15 provider.
 ///
 /// # Errors
