@@ -31,7 +31,7 @@ scope:
   path: docs/design
 - confidence: cited
   path: docs/requirements.md
-revision: 14
+revision: 15
 ---
 ## Outcome
 Implement the Eventlog persistence adapter required by the authorized ESS evolution migration, consuming current Eventlog source 55d90845ac22689c64b9bc96dcad2f9750075804.
@@ -119,3 +119,9 @@ The restored adapter tests passed against real File, SQLite and PostgreSQL provi
 Evidence: local-evidence:ess-evolution-20260910/er-native-sessions-final.log; er-native-sessions-scope-mutation.log; er-native-sessions-error-mutation.log; er-native-sessions-clippy.log; er-native-sessions-rustdoc.log; er-native-sessions-msrv.log. The reused disposable PostgreSQL fixture is described by eventlog-sessions-fixture.txt. This is focused native adoption evidence, not a full task check, hosted production proof, main integration or completed ESS/application acceptance.
 
 The Eventlog prerequisite was bot-published on feat/native-transaction-sessions and its managed worktree was removed through reviewed exact-ID GC after compiler cleanup. The ER continuation remains the working branch for compatible SQLite/PostgreSQL facade replacement and legacy-layout migration. Its main integration still needs catalog dependency intent and integration review. These are required next steps, not accepted permanent duplication. Keep this repository's operator-controlled story lifecycle unchanged; this body records implemented native adoption without claiming the wider migration is complete.
+
+## SQL facade compatibility audit
+
+Source inspection of entity-postgres, entity-sqlite and AEP aep-backend-postgres shows that native recorded sessions alone cannot replace every compatibility path. AEP SessionPostgresBackend still calls commit_batch with legacy Decision values, including explicit Decision::legacy_import; these must never be relabeled as replayable pinned commands. PostgresStore::from_client accepts an existing synchronous postgres::Client, whose connection authority cannot be silently reconstructed as an unrelated asynchronous connection. Both SQL crates and their existing AEP consumer promise Rust 1.85, while Eventlog and the isolated recorded adapter require Rust 1.91. Preserve these distinctions during facade migration; an unconditional dependency or constructor substitution would break actual consumers.
+
+The existing File Store v2 legacy_snapshot boundary and kernel refusal to replay DecisionCommand::LegacyImport are authoritative. A compatible cutover must preserve available legacy state/events and original recorded envelopes, use an explicit legacy origin where provenance is absent, and fence/switch writers without a hybrid authority. Required follow-up includes an explicit compatibility/transport boundary and coordinated compiler-baseline policy; no blanket MSRV change or invented historical command is authorized by a passing recorded-adapter test. First close the already-required Atlas dependency intent so the implemented native provider and prerequisites can be integrated independently of that legacy conversion. The migration remains required and is not declared blocked or completed.
