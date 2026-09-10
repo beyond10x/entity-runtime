@@ -6,6 +6,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Outcome profile 3 adds closed tagged unions with recursively validated payload alternatives,
+  selected nested defaults, checked tag/payload references and complete replay. Older outcome
+  profiles refuse unions; their existing definition and record bytes remain unchanged. Reference
+  diagrams retain edges declared inside every union alternative.
+
 - Outcome profile 2 adds typed nullable values, string-keyed typed maps and scoped `forall` /
   `any_element` predicates. Complete command replay retains nulls and validates nested values;
   legacy definitions and outcome profile 1 refuse the new vocabulary.

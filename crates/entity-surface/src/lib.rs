@@ -341,6 +341,26 @@ fn field_schema(field: &FieldDefinition) -> Value {
                 out.insert("additionalProperties".into(), field_schema(items));
             }
         }
+        FieldKind::Union => {
+            if let Some(union) = &field.union {
+                let branches: Vec<_> = union
+                    .variants
+                    .iter()
+                    .map(|(tag, variant)| {
+                        json!({
+                            "type": "object",
+                            "properties": {
+                                &union.tag: {"type": "string", "const": tag},
+                                &union.content: field_schema(variant)
+                            },
+                            "required": [&union.tag, &union.content],
+                            "additionalProperties": false
+                        })
+                    })
+                    .collect();
+                out.insert("oneOf".into(), Value::Array(branches));
+            }
+        }
         FieldKind::Object => {
             let schema = ObjectSchema {
                 fields: field.properties.clone(),
@@ -970,6 +990,37 @@ const STYLE: &str = r#":root{color-scheme:light dark;font:16px/1.55 system-ui,sa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tagged_union_schema_requires_the_selected_payload_and_closed_envelope() {
+        let field: FieldDefinition = serde_json::from_value(json!({
+            "type":"union", "union":{"tag":"value","content":"payload","variants":{
+                "text":{"type":"string"},
+                "count":{"type":"integer","min":1},
+                "none":{"type":"nullable","items":{"type":"boolean"}}
+            }}
+        }))
+        .unwrap();
+        let schema = field_schema(&field);
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        for (value, admitted) in [
+            (json!({"value":"text","payload":"literal"}), true),
+            (json!({"value":"count","payload":1}), true),
+            (json!({"value":"none","payload":null}), true),
+            (json!({"value":"none","payload":true}), true),
+            (json!({"value":"count","payload":"1"}), false),
+            (json!({"value":"count","payload":0}), false),
+            (json!({"value":"none"}), false),
+            (json!({"value":"unknown","payload":1}), false),
+            (
+                json!({"value":"text","payload":"literal","extra":true}),
+                false,
+            ),
+            (json!({"value":null,"payload":null}), false),
+        ] {
+            assert_eq!(validator.is_valid(&value), admitted, "{value}");
+        }
+    }
 
     #[test]
     fn nullable_map_schemas_enforce_the_inner_value_contract() {

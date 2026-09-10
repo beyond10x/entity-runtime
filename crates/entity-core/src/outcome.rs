@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 use crate::runtime::{
     canonical_object, evaluate_condition, materialize_event, resolve_template, TemplateContext,
 };
-use crate::validation::{self, Scope, ScopeKind};
+use crate::validation::{self, Scope, ScopeKind, ValueProfile};
 use crate::{
     Condition, CoreError, DefinitionErrors, DomainEvent, EntityDefinition, EntityInstance,
     EventDefinition, FieldKind, ObjectSchema, OperationDefinition, TransitionDefinition, Truth,
@@ -28,6 +28,9 @@ pub enum DefinitionFormat {
     /// Typed nullable collections and lexically scoped element predicates.
     #[serde(rename = "entity-outcome-definition/2")]
     V2,
+    /// Closed adjacent-tag envelopes with recursively typed payload alternatives.
+    #[serde(rename = "entity-outcome-definition/3")]
+    V3,
 }
 
 /// One entity's named command semantics, parsed but not yet validated.
@@ -163,6 +166,9 @@ pub enum RecordFormat {
     /// Complete decisions under outcome definition profile 2.
     #[serde(rename = "entity-outcome-record/2")]
     V2,
+    /// Complete decisions under outcome definition profile 3.
+    #[serde(rename = "entity-outcome-record/3")]
+    V3,
 }
 
 /// Complete comparison evidence for replay, including observations before an entity exists.
@@ -245,8 +251,8 @@ fn defect(path: &str, detail: impl ToString) -> Failure {
         detail: detail.to_string(),
     }
 }
-fn schema(schema: &ObjectSchema, path: &str, collections: bool) -> Result<(), Failure> {
-    let errors = validation::validate_schema_definition(schema, path, collections);
+fn schema(schema: &ObjectSchema, path: &str, profile: ValueProfile) -> Result<(), Failure> {
+    let errors = validation::validate_schema_definition(schema, path, profile);
     if errors.is_empty() {
         Ok(())
     } else {
@@ -289,8 +295,13 @@ impl Validated {
     /// # Errors
     /// A located definition failure; no partial handle is returned.
     pub fn new(definition: Definition) -> Result<Self, Failure> {
-        let collections = definition.format == DefinitionFormat::V2;
-        let base = ValidatedDefinition::for_outcome(definition.entity.clone(), collections)
+        let profile = match definition.format {
+            DefinitionFormat::V1 => ValueProfile::Legacy,
+            DefinitionFormat::V2 => ValueProfile::Collections,
+            DefinitionFormat::V3 => ValueProfile::TaggedUnions,
+        };
+        let collections = profile.collections();
+        let base = ValidatedDefinition::for_outcome(definition.entity.clone(), profile)
             .map_err(|e| defect("entity", e))?;
         if base.create.emit.is_some() || !base.operations.is_empty() {
             return Err(defect(
@@ -307,15 +318,11 @@ impl Validated {
             if command_name.trim().is_empty() {
                 return Err(defect(&path, "command name is empty"));
             }
-            schema(
-                &command.arguments,
-                &format!("{path}.arguments"),
-                collections,
-            )?;
+            schema(&command.arguments, &format!("{path}.arguments"), profile)?;
             schema(
                 &command.observations,
                 &format!("{path}.observations"),
-                collections,
+                profile,
             )?;
             if command.observations.additional_fields
                 || command
@@ -387,7 +394,7 @@ impl Validated {
                                 .map_err(|e| defect(&at, e))?;
                         }
                         for event in emits {
-                            schema(&event.schema, &at, collections)?;
+                            schema(&event.schema, &at, profile)?;
                             validation::validate_event_definition(
                                 &event.template,
                                 &at,
@@ -406,7 +413,7 @@ impl Validated {
                         emits,
                     } => {
                         for event in emits {
-                            schema(&event.schema, &at, collections)?;
+                            schema(&event.schema, &at, profile)?;
                         }
                         let mut prepared = base.as_definition().clone();
                         prepared.operations.insert(
@@ -421,7 +428,7 @@ impl Validated {
                         );
                         changes.insert(
                             (command_name.clone(), name.clone()),
-                            ValidatedDefinition::for_outcome(prepared, collections)
+                            ValidatedDefinition::for_outcome(prepared, profile)
                                 .map_err(|e| defect(&at, e))?,
                         );
                     }
@@ -433,7 +440,7 @@ impl Validated {
                         if error.trim().is_empty() {
                             return Err(defect(&at, "error name is empty"));
                         }
-                        schema(shape, &at, collections)?;
+                        schema(shape, &at, profile)?;
                         validation::validate_template(payload, &at, input_scope)
                             .map_err(|e| defect(&at, e))?;
                     }
@@ -621,6 +628,7 @@ impl Validated {
             format: match self.definition.format {
                 DefinitionFormat::V1 => RecordFormat::V1,
                 DefinitionFormat::V2 => RecordFormat::V2,
+                DefinitionFormat::V3 => RecordFormat::V3,
             },
             definition: self.definition.clone(),
             invocation,

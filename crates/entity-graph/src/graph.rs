@@ -211,4 +211,9 @@ fn collect_field(field: &FieldDefinition, label: &str, found: &mut Vec<(String, 
     for (name, property) in &field.properties {
         collect_field(property, &format!("{label}.{name}"), found);
     }
+    if let Some(union) = &field.union {
+        for (name, variant) in &union.variants {
+            collect_field(variant, &format!("{label}.union.variants[{name:?}]"), found);
+        }
+    }
 }

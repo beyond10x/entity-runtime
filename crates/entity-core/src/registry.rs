@@ -26,9 +26,9 @@ impl ValidatedDefinition {
     /// Outcome-only preparation; the handle remains private to that execution profile.
     pub(crate) fn for_outcome(
         definition: EntityDefinition,
-        collections: bool,
+        profile: crate::validation::ValueProfile,
     ) -> Result<Self, DefinitionErrors> {
-        crate::validation::validate_definition_for(&definition, collections)?;
+        crate::validation::validate_definition_for(&definition, profile)?;
         Ok(Self(definition))
     }
 

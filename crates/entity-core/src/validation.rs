@@ -49,13 +49,28 @@ impl Defects {
 }
 
 pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), DefinitionErrors> {
-    validate_definition_for(definition, false)
+    validate_definition_for(definition, ValueProfile::Legacy)
+}
+
+/// Schema vocabulary is admitted only through the selected outcome envelope.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ValueProfile {
+    Legacy,
+    Collections,
+    TaggedUnions,
+}
+
+impl ValueProfile {
+    pub(crate) fn collections(self) -> bool {
+        self != Self::Legacy
+    }
 }
 
 pub(crate) fn validate_definition_for(
     definition: &EntityDefinition,
-    collections: bool,
+    profile: ValueProfile,
 ) -> Result<(), DefinitionErrors> {
+    let collections = profile.collections();
     let mut defects = Defects::default();
 
     if definition.entity.trim().is_empty() {
@@ -97,7 +112,7 @@ pub(crate) fn validate_definition_for(
     defects.extend(validate_schema_definition(
         &definition.schema,
         "schema",
-        collections,
+        profile,
     ));
 
     let invariant_scope = Scope {
@@ -177,7 +192,7 @@ pub(crate) fn validate_definition_for(
         defects.extend(validate_schema_definition(
             &operation.arguments,
             &format!("operations.{operation_name}.arguments"),
-            collections,
+            profile,
         ));
 
         let mut operation_source_states = BTreeSet::new();
@@ -446,7 +461,8 @@ fn field_path<'a, 'p>(
     root: &str,
 ) -> Result<Option<&'a FieldDefinition>, String> {
     let mut walked = root.to_owned();
-    for segment in segments {
+    let mut segments = segments.peekable();
+    while let Some(segment) = segments.next() {
         field = non_nullable(field)?;
         match field.kind {
             FieldKind::Json => return Ok(None),
@@ -455,6 +471,42 @@ fn field_path<'a, 'p>(
                 None if field.additional_properties => return Ok(None),
                 None => return Err(format!("'{walked}' declares no property '{segment}'")),
             },
+            FieldKind::Union => {
+                let union = field
+                    .union
+                    .as_ref()
+                    .ok_or("union must declare its envelope")?;
+                if segment == union.tag {
+                    return if segments.peek().is_none() {
+                        // A known scalar address, never an untyped collection binding.
+                        Ok(None)
+                    } else {
+                        Err(format!(
+                            "'{walked}.{segment}' is a union tag, not an object"
+                        ))
+                    };
+                }
+                if segment != union.content {
+                    return Err(format!("'{walked}' declares no union property '{segment}'"));
+                }
+                walked.push('.');
+                walked.push_str(segment);
+                let rest: Vec<_> = segments.collect();
+                let mut resolved = Vec::new();
+                for (name, variant) in &union.variants {
+                    resolved.push(
+                        field_path(variant, rest.iter().copied(), &walked)
+                            .map_err(|error| format!("union variant '{name}': {error}"))?,
+                    );
+                }
+                // A typed binder requires the same schema in every alternative. Ordinary
+                // templates may use an address checked against all alternatives independently.
+                return Ok(resolved
+                    .first()
+                    .copied()
+                    .flatten()
+                    .filter(|first| resolved.iter().all(|candidate| *candidate == Some(*first))));
+            }
             kind => {
                 return Err(format!(
                     "'{walked}' is a {kind} field, so '{segment}' resolves to nothing"
@@ -754,11 +806,11 @@ fn invalid_rule(path: &str, message: impl Into<String>) -> Result<(), Definition
 pub(crate) fn validate_schema_definition(
     schema: &ObjectSchema,
     path: &str,
-    collections: bool,
+    profile: ValueProfile,
 ) -> Vec<DefinitionError> {
     let mut defects = Vec::new();
     for (name, field) in &schema.fields {
-        validate_field_definition(field, &format!("{path}.{name}"), collections, &mut defects);
+        validate_field_definition(field, &format!("{path}.{name}"), profile, &mut defects);
     }
     defects
 }
@@ -801,6 +853,11 @@ fn collect_field_targets(field: &FieldDefinition, path: &str, found: &mut Vec<(S
     for (name, property) in &field.properties {
         collect_field_targets(property, &format!("{path}.{name}"), found);
     }
+    if let Some(union) = &field.union {
+        for (name, variant) in &union.variants {
+            collect_field_targets(variant, &format!("{path}.union.variants[{name:?}]"), found);
+        }
+    }
 }
 
 /// Which constraints a kind admits. A constraint outside its kind's list is refused rather than
@@ -830,6 +887,9 @@ fn validate_constraint_applicability(
     if !field.values.is_empty() && field.kind != FieldKind::Enum {
         return refuse("values", "an enum field");
     }
+    if field.union.is_some() && field.kind != FieldKind::Union {
+        return refuse("union", "a union field");
+    }
     if field.items.is_some()
         && !matches!(
             field.kind,
@@ -854,13 +914,19 @@ fn validate_constraint_applicability(
 fn validate_field_definition(
     field: &FieldDefinition,
     path: &str,
-    collections: bool,
+    profile: ValueProfile,
     defects: &mut Vec<DefinitionError>,
 ) {
-    if !collections && matches!(field.kind, FieldKind::Nullable | FieldKind::Map) {
+    if !profile.collections() && matches!(field.kind, FieldKind::Nullable | FieldKind::Map) {
         defects.push(DefinitionError::InvalidField {
             path: path.to_owned(),
             message: "nullable and map require outcome profile 2".into(),
+        });
+    }
+    if field.kind == FieldKind::Union && profile != ValueProfile::TaggedUnions {
+        defects.push(DefinitionError::InvalidField {
+            path: path.to_owned(),
+            message: "union requires outcome profile 3".into(),
         });
     }
     if let Err(defect) = validate_constraint_applicability(field, path) {
@@ -885,6 +951,12 @@ fn validate_field_definition(
     }
 
     match field.kind {
+        FieldKind::Union if field.union.is_none() => {
+            defects.push(DefinitionError::InvalidField {
+                path: path.to_owned(),
+                message: "union must declare 'union'".into(),
+            });
+        }
         FieldKind::Enum if field.values.is_empty() => {
             defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
@@ -925,10 +997,37 @@ fn validate_field_definition(
     }
 
     if let Some(items) = &field.items {
-        validate_field_definition(items, &format!("{path}[]"), collections, defects);
+        validate_field_definition(items, &format!("{path}[]"), profile, defects);
     }
     for (name, property) in &field.properties {
-        validate_field_definition(property, &format!("{path}.{name}"), collections, defects);
+        validate_field_definition(property, &format!("{path}.{name}"), profile, defects);
+    }
+    if let Some(union) = &field.union {
+        if union.tag.trim().is_empty()
+            || union.content.trim().is_empty()
+            || union.tag == union.content
+        {
+            defects.push(DefinitionError::InvalidField {
+                path: format!("{path}.union"),
+                message: "union tag and content must be nonempty distinct property names".into(),
+            });
+        }
+        if union.variants.is_empty() {
+            defects.push(DefinitionError::InvalidField {
+                path: format!("{path}.union.variants"),
+                message: "union must declare at least one variant".into(),
+            });
+        }
+        for (name, variant) in &union.variants {
+            let at = format!("{path}.union.variants[{name:?}]");
+            if name.trim().is_empty() {
+                defects.push(DefinitionError::InvalidField {
+                    path: at.clone(),
+                    message: "union variant name cannot be blank".into(),
+                });
+            }
+            validate_field_definition(variant, &at, profile, defects);
+        }
     }
 
     if let Some(default) = field.default.as_value() {
@@ -974,6 +1073,18 @@ fn apply_member_defaults(
 
 fn apply_nested_defaults(definition: &FieldDefinition, value: &mut Value) {
     match definition.kind {
+        FieldKind::Union => {
+            if let (Some(union), Value::Object(envelope)) = (&definition.union, value) {
+                let variant = envelope
+                    .get(&union.tag)
+                    .and_then(Value::as_str)
+                    .and_then(|tag| union.variants.get(tag));
+                if let (Some(variant), Some(payload)) = (variant, envelope.get_mut(&union.content))
+                {
+                    apply_nested_defaults(variant, payload);
+                }
+            }
+        }
         FieldKind::Nullable if !value.is_null() => {
             if let Some(inner) = &definition.items {
                 apply_nested_defaults(inner, value);
@@ -1064,6 +1175,56 @@ fn validate_value(
     errors: &mut Vec<ValidationError>,
 ) {
     match definition.kind {
+        FieldKind::Union => match value.as_object() {
+            Some(envelope) => {
+                if let Some(union) = &definition.union {
+                    for key in envelope.keys() {
+                        if key != &union.tag && key != &union.content {
+                            errors.push(ValidationError::new(
+                                member_path(path, key),
+                                "unknown union property",
+                            ));
+                        }
+                    }
+                    let tag_path = member_path(path, &union.tag);
+                    let variant = match envelope.get(&union.tag) {
+                        Some(Value::String(tag)) => match union.variants.get(tag) {
+                            Some(variant) => Some(variant),
+                            None => {
+                                errors.push(ValidationError::new(
+                                    tag_path,
+                                    format!("unknown union tag '{tag}'"),
+                                ));
+                                None
+                            }
+                        },
+                        Some(_) => {
+                            wrong_type(&tag_path, "union tag string", errors);
+                            None
+                        }
+                        None => {
+                            errors.push(ValidationError::new(
+                                tag_path,
+                                "required union tag is missing",
+                            ));
+                            None
+                        }
+                    };
+                    let content_path = member_path(path, &union.content);
+                    match (variant, envelope.get(&union.content)) {
+                        (_, None) => errors.push(ValidationError::new(
+                            content_path,
+                            "required union payload is missing",
+                        )),
+                        (Some(variant), Some(payload)) => {
+                            validate_value(variant, payload, &content_path, errors)
+                        }
+                        (None, Some(_)) => {}
+                    }
+                }
+            }
+            None => wrong_type(path, "union object", errors),
+        },
         FieldKind::Nullable => {
             if !value.is_null() {
                 if let Some(inner) = &definition.items {

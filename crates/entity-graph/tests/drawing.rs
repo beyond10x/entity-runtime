@@ -8,6 +8,32 @@ fn definition(value: serde_json::Value) -> EntityDefinition {
     serde_json::from_value(value).expect("a well-formed definition")
 }
 
+#[test]
+fn references_in_every_union_alternative_remain_visible() {
+    let definition = definition(json!({
+        "entity":"choice", "lifecycle":{"initial":"open","states":["open"]},
+        "schema":{"fields":{"target":{"type":"union","union":{
+            "tag":"kind","content":"value","variants":{
+                "account":{"type":"ref","entity":"account"},
+                "groups":{"type":"array","items":{"type":"ref","entity":"group"}}
+            }
+        }}}}
+    }));
+    let graph = Graph::references([&definition]);
+    let edges: Vec<_> = graph
+        .edges
+        .iter()
+        .map(|edge| (edge.label.as_str(), edge.to.as_str()))
+        .collect();
+    assert_eq!(
+        edges,
+        vec![
+            ("target.union.variants[\"account\"]", "account"),
+            ("target.union.variants[\"groups\"][]", "group")
+        ]
+    );
+}
+
 /// The four-beat ladder, with a step back up it — which is the shape almost every real lifecycle
 /// has and the reason the layout has to classify back edges at all.
 fn story() -> EntityDefinition {

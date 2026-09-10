@@ -163,6 +163,15 @@ pub struct FieldDefinition {
     #[serde(default)]
     pub items: Option<Box<FieldDefinition>>,
 
+    /// Profile 3: an adjacent tag and its selected typed payload. `union` only.
+    /// Absent on old definitions, preserving their serialized representation.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_union",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub union: Option<TaggedUnion>,
+
     /// The nested properties. `object` only.
     #[serde(default)]
     pub properties: BTreeMap<String, FieldDefinition>,
@@ -262,6 +271,28 @@ impl FieldDefinition {
     }
 }
 
+/// A closed adjacent-tag envelope with a different payload type for each tag value.
+///
+/// Both property names are explicit: a wire binding, rather than the kernel, chooses them.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct TaggedUnion {
+    /// Required string property selecting exactly one declared alternative.
+    pub tag: String,
+    /// Required property holding the selected value; must differ from `tag`.
+    pub content: String,
+    /// Complete payload definitions, including nested defaults and constraints.
+    pub variants: BTreeMap<String, FieldDefinition>,
+}
+
+// A present null is malformed metadata, not absence. Otherwise old profiles would start
+// admitting a previously unknown `union: null` key without selecting the new vocabulary.
+fn deserialize_union<'de, D: serde::Deserializer<'de>>(
+    reader: D,
+) -> Result<Option<TaggedUnion>, D::Error> {
+    TaggedUnion::deserialize(reader).map(Some)
+}
+
 /// The kinds a field may have.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -285,6 +316,8 @@ pub enum FieldKind {
     Nullable,
     /// Profile 2: an object whose string-keyed values each satisfy `items`.
     Map,
+    /// Profile 3: a closed envelope satisfying its `union` declaration.
+    Union,
     /// Any JSON value, unchecked.
     Json,
     /// An identifier naming an instance of another entity type; `entity` applies and is required.
@@ -311,6 +344,7 @@ impl FieldKind {
             Self::Object => "object",
             Self::Nullable => "nullable",
             Self::Map => "map",
+            Self::Union => "union",
             Self::Json => "json",
             Self::Ref => "ref",
         }
