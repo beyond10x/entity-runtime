@@ -26,8 +26,8 @@ The crates are currently consumed from the tagged repository:
 
 ```toml
 [dependencies]
-entity-core = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.18.0" }
-entity-yaml = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.18.0" }
+entity-core = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.18.1" }
+entity-yaml = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.18.1" }
 ```
 
 Keep all runtime crate dependencies on the same release tag. The

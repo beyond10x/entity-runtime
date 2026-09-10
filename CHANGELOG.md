@@ -6,6 +6,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Outcome profile 7 binds a required typed identity field to a deterministic instance key.
+  Invalid keys, mismatched state identities and identity changes are refused during execution
+  and replay. Earlier profiles keep their string identity contract and serialized bytes.
+
 - Outcome profile 6 adds scalar truthiness and exact numeric or declared-scale
   comparisons. Missing, unreadable and ambiguously ordered observations stay
   unknown, including under negation and replay. Existing operators and profiles
@@ -58,6 +62,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   exact retries, zero-event decisions and non-state-changing observations. A named blocking
   adapter preserves synchronous providers; an optional recorded batch capability retains full
   provenance and rollback, with MemoryStore as its reference implementation.
+
+## [0.18.1] — 2026-09-10
+
+- No change to the runtime, its CLI or any refusal. The published product guide, README and
+  system model now name 0.18.1 as the release a reader installs and links to.
+- The Docusaurus site consumes the shared documentation components at Docs System 0.7.0
+  (`86cd6c6efd02184c51a37e80012ffe9d3f77d40a`), pinned exactly in `website/package.json` and
+  `website/package-lock.json`.
 
 ## [0.18.0] — 2026-09-09
 

@@ -9,6 +9,9 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+mod identity;
+pub use identity::{identity_key, identity_value, Identity};
+
 use crate::runtime::{
     canonical_object, evaluate_condition, materialize_event, resolve_template, TemplateContext,
 };
@@ -40,6 +43,9 @@ pub enum DefinitionFormat {
     /// Scalar truthiness and comparisons with explicit text scales.
     #[serde(rename = "entity-outcome-definition/6")]
     V6,
+    /// A required typed entity identity bound to a canonical instance key.
+    #[serde(rename = "entity-outcome-definition/7")]
+    V7,
 }
 
 /// One entity's named command semantics, parsed but not yet validated.
@@ -48,6 +54,13 @@ pub enum DefinitionFormat {
 pub struct Definition {
     /// Explicit profile identity; never inferred from other fields.
     pub format: DefinitionFormat,
+    /// Profile 7: the required typed identity field; absent on earlier profiles.
+    #[serde(
+        default,
+        deserialize_with = "identity::read",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub identity: Option<Identity>,
     /// Schema, lifecycle and invariants. Legacy operations and creation events must be empty.
     pub entity: EntityDefinition,
     /// Public commands; internal branch programs are not caller-addressable.
@@ -187,6 +200,9 @@ pub enum RecordFormat {
     /// Complete decisions under outcome definition profile 6.
     #[serde(rename = "entity-outcome-record/6")]
     V6,
+    /// Complete decisions under outcome definition profile 7.
+    #[serde(rename = "entity-outcome-record/7")]
+    V7,
 }
 
 /// Complete comparison evidence for replay, including observations before an entity exists.
@@ -243,6 +259,8 @@ pub enum Failure {
     InstanceAlreadyExists,
     /// The invocation does not address the supplied instance.
     IdentityMismatch,
+    /// A typed identity key has an unknown format or noncanonical encoding.
+    IdentityKey,
     /// A record disagrees with the complete recomputed history.
     Replay {
         /// First disagreeing record.
@@ -319,10 +337,11 @@ impl Validated {
             DefinitionFormat::V3 => ValueProfile::TaggedUnions,
             DefinitionFormat::V4 => ValueProfile::EncodedStrings,
             DefinitionFormat::V5 => ValueProfile::ValueInvariants,
-            DefinitionFormat::V6 => ValueProfile::ScalarPredicates,
+            DefinitionFormat::V6 | DefinitionFormat::V7 => ValueProfile::ScalarPredicates,
         };
         let base = ValidatedDefinition::for_outcome(definition.entity.clone(), profile)
             .map_err(|e| defect("entity", e))?;
+        identity::validate(&definition)?;
         if base.create.emit.is_some() || !base.operations.is_empty() {
             return Err(defect(
                 "entity",
@@ -401,6 +420,12 @@ impl Validated {
                 }
                 match &outcome.effect {
                     Effect::Create { set, emits } => {
+                        if self::identity_missing(&definition, set) {
+                            return Err(defect(
+                                &at,
+                                "creation must explicitly set the identity field",
+                            ));
+                        }
                         for (field, value) in set {
                             if !base.schema.additional_fields
                                 && !base.schema.fields.contains_key(field)
@@ -494,6 +519,7 @@ impl Validated {
         if invocation.id.trim().is_empty() {
             return Err(Failure::IdentityMismatch);
         }
+        let identity = identity::admit(&self.definition, &invocation.id)?;
         if let Some(instance) = before {
             if instance.id != invocation.id {
                 return Err(Failure::IdentityMismatch);
@@ -503,6 +529,7 @@ impl Validated {
                 return Err(Failure::IdentityMismatch);
             }
             check_object(&self.base.schema, &instance.fields, "before.fields")?;
+            identity::matches(&self.definition, &instance.fields, identity.as_ref())?;
         }
         let command = self
             .definition
@@ -591,6 +618,7 @@ impl Validated {
                     .iter()
                     .map(|(key, value)| Ok((key.clone(), resolve_template(value, &context)?)))
                     .collect::<Result<Map<_, _>, CoreError>>()?;
+                identity::matches(&self.definition, &fields, identity.as_ref())?;
                 let decision =
                     crate::create(&self.base, invocation.id.clone(), Value::Object(fields))?;
                 let context = TemplateContext {
@@ -644,6 +672,9 @@ impl Validated {
                 )?;
             }
         }
+        if let Some(instance) = &result {
+            identity::matches(&self.definition, &instance.fields, identity.as_ref())?;
+        }
         Ok(Record {
             format: match self.definition.format {
                 DefinitionFormat::V1 => RecordFormat::V1,
@@ -652,6 +683,7 @@ impl Validated {
                 DefinitionFormat::V4 => RecordFormat::V4,
                 DefinitionFormat::V5 => RecordFormat::V5,
                 DefinitionFormat::V6 => RecordFormat::V6,
+                DefinitionFormat::V7 => RecordFormat::V7,
             },
             definition: self.definition.clone(),
             invocation,
@@ -661,6 +693,13 @@ impl Validated {
             events,
         })
     }
+}
+
+fn identity_missing(definition: &Definition, set: &BTreeMap<String, Value>) -> bool {
+    definition
+        .identity
+        .as_ref()
+        .is_some_and(|identity| !set.contains_key(&identity.field))
 }
 
 /// Recompute a complete, single-identity history, including pre-creation observations.

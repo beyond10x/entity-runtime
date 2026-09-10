@@ -76,7 +76,7 @@ pulling IO into the kernel.
 
 ## Model coverage and release status
 
-This guide targets [0.18.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.18.0).
+This guide targets [0.18.1](https://github.com/beyond10x/entity-runtime/releases/tag/0.18.1).
 The API remains in development. Entity definitions drive execution and generated domain interfaces;
 the runtime itself has authored Rust subsystem contracts, not a whole-system ESS specification.
 The [system model and derivation map](/docs/system-model) shows command, event, provider, and query
