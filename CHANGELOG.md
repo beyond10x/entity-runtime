@@ -6,6 +6,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- An opt-in pure-kernel outcome profile selects named command branches, emits complete creation
+  event vectors at one revision, and records accepted/refused observations without changing state.
+  Replay recomputes outcomes and refuses substituted definitions or altered records. Existing
+  definition and decision readers retain their formats; full ESS lowering remains pending.
+
 - The Eventlog provider exposes native caller transactions for dynamic recorded execution, indexed
   queries, locks and scoped sequence reservations. Sessions share replay and record identity logic
   with ordinary operations, preserve typed callback refusals and discard staged caches on rollback.

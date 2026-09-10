@@ -80,7 +80,8 @@ pub struct DomainEvent {
     pub changed: Map<String, Value>,
 
     /// The arguments the operation was decided on — what the rules read when they permitted it —
-    /// verbatim, after defaults and schema validation. On a creation event, the creation's fields.
+    /// verbatim, after defaults and schema validation. On a legacy [`create`] event these are the
+    /// creation's fields; the opt-in [`crate::outcome`] profile records its named command arguments.
     ///
     /// The kernel has no clock and no lookup (R-62): what the world knew entered as `$args`, and
     /// a precondition that read `$args.evidence.test_result >= 1` left an event that could not say
@@ -580,7 +581,7 @@ pub(crate) fn check_invariants(
 /// addresses have been recorded when the answer comes back is not, and a refusal that names one
 /// missing fact out of three costs the operator three round trips. Evaluation here is pure and
 /// cannot fail partway, so there is nothing to be bought by stopping early.
-fn evaluate_condition(
+pub(crate) fn evaluate_condition(
     condition: &Condition,
     context: &TemplateContext<'_>,
     unobserved: &mut Unobserved,
@@ -824,7 +825,7 @@ fn resolve_operand(
     }
 }
 
-fn ensure_instance_matches(
+pub(crate) fn ensure_instance_matches(
     definition: &EntityDefinition,
     instance: &EntityInstance,
 ) -> Result<(), CoreError> {
@@ -852,7 +853,7 @@ fn ensure_instance_matches(
     Ok(())
 }
 
-fn materialize_event(
+pub(crate) fn materialize_event(
     definition: &EventDefinition,
     context: &TemplateContext<'_>,
     revision: u64,

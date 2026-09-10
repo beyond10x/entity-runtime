@@ -106,6 +106,7 @@
 mod definition;
 mod error;
 mod number;
+pub mod outcome;
 pub use number::compare as compare_numbers;
 mod registry;
 mod replay;

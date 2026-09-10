@@ -241,7 +241,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
     defects.into_result()
 }
 
-fn validate_event_definition(
+pub(crate) fn validate_event_definition(
     event: &EventDefinition,
     path: &str,
     operation: Option<&String>,
@@ -264,16 +264,20 @@ fn validate_event_definition(
 /// that could read `$state` would be reading the state the operation is heading *for* while
 /// looking like it reads the state it starts from.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum ScopeKind {
+pub(crate) enum ScopeKind {
     Invariant,
     Precondition,
     CreateTemplate,
     OperationTemplate,
+    Input,
+    CommandCreate,
 }
 
 impl ScopeKind {
     fn allowed(self) -> &'static str {
         match self {
+            Self::Input => "$id, $entity, $version, $args, $args.<path>",
+            Self::CommandCreate => "$id, $entity, $version, $args, $args.<path>, $state, $to_state, $fields, $fields.<path>",
             Self::Invariant => "$id, $entity, $version, $state, $fields, $fields.<path>",
             Self::Precondition => {
                 "$id, $entity, $version, $from_state, $to_state, $args, $args.<path>, $fields, \
@@ -295,6 +299,8 @@ impl ScopeKind {
 
     fn what(self) -> &'static str {
         match self {
+            Self::Input => "a command input expression",
+            Self::CommandCreate => "a command creation event",
             Self::Invariant => "an entity invariant",
             Self::Precondition => "an operation precondition",
             Self::CreateTemplate => "a creation event payload",
@@ -304,20 +310,28 @@ impl ScopeKind {
 }
 
 #[derive(Clone, Copy)]
-struct Scope<'a> {
-    kind: ScopeKind,
-    fields: &'a ObjectSchema,
-    args: Option<&'a ObjectSchema>,
+pub(crate) struct Scope<'a> {
+    pub(crate) kind: ScopeKind,
+    pub(crate) fields: &'a ObjectSchema,
+    pub(crate) args: Option<&'a ObjectSchema>,
 }
 
 impl Scope<'_> {
     /// Whether a bare reference (no path) is available here.
     fn allows(&self, expression: &str) -> bool {
         match expression {
-            "$id" | "$entity" | "$version" | "$fields" => true,
-            "$state" => !matches!(self.kind, ScopeKind::Precondition),
-            "$to_state" => !matches!(self.kind, ScopeKind::Invariant),
-            "$from_state" | "$args" | "$old_fields" => matches!(
+            "$id" | "$entity" | "$version" => true,
+            "$fields" => self.kind != ScopeKind::Input,
+            "$state" => !matches!(self.kind, ScopeKind::Precondition | ScopeKind::Input),
+            "$to_state" => !matches!(self.kind, ScopeKind::Invariant | ScopeKind::Input),
+            "$args" => matches!(
+                self.kind,
+                ScopeKind::Precondition
+                    | ScopeKind::OperationTemplate
+                    | ScopeKind::Input
+                    | ScopeKind::CommandCreate
+            ),
+            "$from_state" | "$old_fields" => matches!(
                 self.kind,
                 ScopeKind::Precondition | ScopeKind::OperationTemplate
             ),
@@ -429,7 +443,7 @@ fn validate_rule_definition(
     validate_condition_definition(&rule.condition, &format!("{path}.assert"), scope)
 }
 
-fn validate_condition_definition(
+pub(crate) fn validate_condition_definition(
     condition: &Condition,
     path: &str,
     scope: Scope<'_>,
@@ -568,7 +582,11 @@ fn validate_operand(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), D
 }
 
 /// The same walk for a `set` value or an event payload, reported as a template defect.
-fn validate_template(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
+pub(crate) fn validate_template(
+    value: &Value,
+    path: &str,
+    scope: Scope<'_>,
+) -> Result<(), DefinitionError> {
     validate_operand(value, path, scope)
 }
 
@@ -607,7 +625,10 @@ fn invalid_rule(path: &str, message: impl Into<String>) -> Result<(), Definition
 
 // --- Field definitions ---------------------------------------------------------------------------
 
-fn validate_schema_definition(schema: &ObjectSchema, path: &str) -> Vec<DefinitionError> {
+pub(crate) fn validate_schema_definition(
+    schema: &ObjectSchema,
+    path: &str,
+) -> Vec<DefinitionError> {
     let mut defects = Vec::new();
     for (name, field) in &schema.fields {
         validate_field_definition(field, &format!("{path}.{name}"), &mut defects);

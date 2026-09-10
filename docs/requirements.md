@@ -194,6 +194,12 @@ meant; what changed is that a rule nobody can answer no longer borrows one of th
 | R-124 | The asynchronous Eventlog document query capability filters natively with bounded query-bound pages, requires complete inline projection coverage before readiness, and verifies selected derived candidates against recorded history rather than trusting stale, forged or redacted state. | design (`eventlog-recorded-provider.md`), `postgres_native_queries_match_memory_and_preserve_scoped_cursors_after_reopen`, `postgres_query_readiness_refuses_missing_and_watermark_incomplete_rebuilds`, `postgres_native_queries_reject_forged_or_redacted_candidates_and_rollback_late_failures` |
 | R-125 | Native Eventlog caller sessions share recorded verification and indexed queries, compose dynamic staged writes with locks and scoped sequences, preserve typed callback refusal, and discard all staged authority on rollback or cancellation. | design (`eventlog-recorded-provider.md`), `postgres_native_session_composes_recorded_execution_queries_and_exact_retries`, `postgres_native_session_refusal_rolls_back_cached_history_claims_queries_and_sequences`, `postgres_native_session_catches_a_late_group_refusal_without_retaining_its_prefix`, `postgres_native_session_cancellation_discards_staged_state_and_counter_values` |
 
+## Named outcome profile
+
+| id | requirement | evidence |
+| --- | --- | --- |
+| R-126 | The opt-in named outcome profile selects conditions in the pure kernel, refuses ambiguous and unobservable selection, creates all events at one revision, preserves non-mutating observations including refused creation, validates payloads, and recomputes complete records while retaining old-reader separation. | design (`kernel-outcomes-v1.md`), `creation_materializes_every_typed_event_at_one_revision_and_replays`, `refused_creation_then_change_and_wrong_state_observation_keep_exact_revisions`, `unobserved_conditions_never_become_a_default_or_a_known_other_branch`, `external_observations_are_separate_and_have_no_implicit_priority`, `every_materialized_payload_is_validated_before_a_record_escapes`, `replay_recomputes_selection_events_results_and_definition_identity`, `new_formats_are_closed_and_old_readers_refuse_them` |
+
 ## Roadmap, not requirements
 
 The proof of concept named what it would add next, and the 0.1.0 review added to the list. None of

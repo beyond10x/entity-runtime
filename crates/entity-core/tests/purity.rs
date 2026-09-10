@@ -74,13 +74,33 @@ use scan_support::words;
 fn use_paths(code: &str) -> Vec<String> {
     let mut paths = Vec::new();
     let mut rest = code;
-    while let Some(start) = rest.find("use ") {
-        let after = &rest[start + 4..];
+    while let Some(start) = rest.find("use") {
+        let after = &rest[start + 3..];
+        // `Refuse { .. }` and a variable called `refuse` contain these letters too. Feeding
+        // their expression bodies to the import-group parser can underflow its brace depth.
+        let continuation = rest[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_');
+        if continuation || !after.starts_with(char::is_whitespace) {
+            rest = after;
+            continue;
+        }
         let Some(end) = after.find(';') else { break };
         expand(after[..end].trim(), String::new(), &mut paths);
         rest = &after[end..];
     }
     paths
+}
+
+#[test]
+fn the_use_scan_ignores_refusal_identifiers_but_keeps_real_imports() {
+    assert_eq!(
+        use_paths("match effect { Effect::Refuse { error, payload } => {} }; let refuse = |s| Failure { detail: s }; use\nstd::{fs, env}; use\tstd::net::TcpStream;"),
+        ["std::fs", "std::env", "std::net::TcpStream"]
+    );
+    assert!(!offences("use\nstd::{fs, env};").is_empty());
+    assert!(!offences("use\tstd::net::TcpStream;").is_empty());
 }
 
 fn expand(fragment: &str, prefix: String, out: &mut Vec<String>) {
