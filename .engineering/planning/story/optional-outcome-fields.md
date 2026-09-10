@@ -15,7 +15,7 @@ scope:
   path: docs/design/kernel-optional-templates-v8.md
 - confidence: cited
   path: docs/requirements.md
-revision: 3
+revision: 4
 ---
 ## Source authority
 
@@ -46,3 +46,9 @@ A deliberate mutation converted absent optional references into Some(Null). The 
 The standalone Rust compatibility probe compares the current source to published profile-7 commit 38132946a924d276b6d528e18d4d1ed10841ee8f. Profiles 1-7 produce byte-identical definitions and records and replay under both readers; the exact prior reader rejects profile-8 definitions and records. Probe source/lock: local-evidence:ess-evolution-20260910/er-optional-probe; output er-optional-probe.log. The new dependency is local during implementation and will be changed to the exact published source before worktree retirement.
 
 Domain events retain their existing changed-value map; complete outcome records are the replay authority for field removals, as already required for zero-event decisions. No standalone legacy event rehydration capability is claimed. ESS lowering, generated wiring and Connectors adoption remain follow-on work. No full, database, ownership, remote correctness or release gate ran. No dependency lockfile changed.
+
+## Published source
+
+Implementation f9f0545e66fbde40e6eb36e92d71f325dfd0d86c is published on origin/feat/optional-outcome-fields through standalone b10x-gates bot, with exact organization bot author and committer verified. The App-authorized feature-branch creation succeeded; no branch protection, hooks or gate configuration changed and no pull request or release was created.
+
+The standalone compatibility probe now pins both libraries by their exact public Git revisions: current f9f0545e66fbde40e6eb36e92d71f325dfd0d86c and prior 38132946a924d276b6d528e18d4d1ed10841ee8f. Its rebuilt published-source run passed (local-evidence:ess-evolution-20260910/er-optional-published-probe.log); no dependency points into the retiring worktree. ESS is consuming this published prerequisite in story:ess-entity-runtime-lowering. Main integration, SDK/application adoption and broader evolution are not claimed by this feature publication.
