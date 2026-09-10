@@ -111,6 +111,7 @@ pub use number::compare as compare_numbers;
 mod registry;
 mod replay;
 mod runtime;
+mod scalar;
 mod timestamp;
 mod truth;
 mod validation;
@@ -118,8 +119,8 @@ mod validation;
 pub use definition::{
     Condition, CreateDefinition, DeclaredDefault, EntityDefinition, EventDefinition,
     FieldDefinition, FieldKind, LifecycleDefinition, ObjectSchema, OneOrMany, OperationDefinition,
-    Quantified, RuleDefinition, StringEncoding, TaggedUnion, TransitionDefinition,
-    CONDITION_OPERATORS,
+    Quantified, RuleDefinition, ScalarCompareOp, ScalarComparison, StringEncoding, TaggedUnion,
+    TransitionDefinition, CONDITION_OPERATORS,
 };
 pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
 pub use registry::{Registry, ValidatedDefinition};

@@ -635,6 +635,27 @@ pub(crate) fn evaluate_condition(
 ) -> Result<Truth, CoreError> {
     match condition {
         Condition::Literal(value) => Ok(Truth::from_bool(*value)),
+        Condition::Truthy { truthy } => {
+            let result = resolve_operand(truthy, context, unobserved)?
+                .as_ref()
+                .and_then(crate::scalar::truthy);
+            if result.is_none() {
+                unread_scalar(truthy, unobserved);
+            }
+            Ok(result.map_or(Truth::Unknown, Truth::from_bool))
+        }
+        Condition::ScalarCompare { scalar_compare } => {
+            let left = resolve_operand(&scalar_compare.left, context, unobserved)?;
+            let right = resolve_operand(&scalar_compare.right, context, unobserved)?;
+            let result = left.as_ref().zip(right.as_ref()).and_then(|(left, right)| {
+                crate::scalar::compare(left, right, scalar_compare.op, &scalar_compare.scales)
+            });
+            if left.is_some() && right.is_some() && result.is_none() {
+                unread_scalar(&scalar_compare.left, unobserved);
+                unread_scalar(&scalar_compare.right, unobserved);
+            }
+            Ok(result.map_or(Truth::Unknown, Truth::from_bool))
+        }
         Condition::Forall { forall } => evaluate_quantified(forall, true, context, unobserved),
         Condition::AnyElement { any_element } => {
             evaluate_quantified(any_element, false, context, unobserved)
@@ -737,6 +758,14 @@ fn values_equal(left: &Value, right: &Value) -> bool {
                 })
         }
         _ => left == right,
+    }
+}
+
+fn unread_scalar(written: &Value, unobserved: &mut Unobserved) {
+    if let Value::String(expression) = written {
+        if expression.starts_with('$') && !expression.starts_with("$$") {
+            unobserved.insert(expression.clone());
+        }
     }
 }
 

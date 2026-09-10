@@ -6,6 +6,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Outcome profile 6 adds scalar truthiness and exact numeric or declared-scale
+  comparisons. Missing, unreadable and ambiguously ordered observations stay
+  unknown, including under negation and replay. Existing operators and profiles
+  retain their behavior.
+
 - Outcome profile 5 enforces local invariants on nested typed values, including
   arguments, defaults, state, events and business errors. Rules have checked local
   scope, accumulate sibling failures and remain explicit runtime obligations in

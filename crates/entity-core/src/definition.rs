@@ -556,6 +556,8 @@ pub struct RuleDefinition {
 
 /// Every operator a condition may use, in the order the documentation lists them.
 pub const CONDITION_OPERATORS: &[&str] = &[
+    "truthy",
+    "scalar_compare",
     "all",
     "any",
     "not",
@@ -606,6 +608,16 @@ pub const CONDITION_OPERATORS: &[&str] = &[
 pub enum Condition {
     /// `true` or `false`, literally.
     Literal(bool),
+    /// Profile 6: scalar truth, distinct from presence; unreadable values are Unknown.
+    Truthy {
+        /// Checked reference or scalar literal.
+        truthy: Value,
+    },
+    /// Profile 6: exact numeric or declared-scale ordering and scalar equality.
+    ScalarCompare {
+        /// Operands, operation and persisted scale declarations.
+        scalar_compare: ScalarComparison,
+    },
     /// Profile 2: every collection element satisfies the scoped body.
     Forall {
         /// The typed collection and its lexical body.
@@ -714,6 +726,39 @@ pub struct Quantified {
     pub body: Box<Condition>,
 }
 
+/// Scalar comparison with all text-ordering authority retained in the definition.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ScalarComparison {
+    /// Checked left reference or scalar literal.
+    pub left: Value,
+    /// Checked right reference or scalar literal.
+    pub right: Value,
+    /// The relation to ask; ordering an unreadable pair is Unknown.
+    pub op: ScalarCompareOp,
+    /// Named lowest-first scales; overlapping scales must agree on the pair's order.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub scales: BTreeMap<String, Vec<String>>,
+}
+
+/// Scalar relation, independent of the legacy numeric-only ordering operators.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ScalarCompareOp {
+    /// Equal scalar values, with exact numeric equality.
+    Eq,
+    /// Different scalar values.
+    Ne,
+    /// Lower rank or numeric value.
+    Lt,
+    /// Lower or equal rank or numeric value.
+    Le,
+    /// Higher rank or numeric value.
+    Gt,
+    /// Higher or equal rank or numeric value.
+    Ge,
+}
+
 impl<'de> Deserialize<'de> for Condition {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -770,6 +815,11 @@ impl Condition {
 
         let (operator, operand) = map.into_iter().next().expect("exactly one entry");
         match operator.as_str() {
+            "truthy" => Ok(Self::Truthy { truthy: operand }),
+            "scalar_compare" => Ok(Self::ScalarCompare {
+                scalar_compare: serde_json::from_value(operand)
+                    .map_err(|error| error.to_string())?,
+            }),
             "all" => Ok(Self::All {
                 all: children(operand, "all")?,
             }),

@@ -60,6 +60,7 @@ pub(crate) enum ValueProfile {
     TaggedUnions,
     EncodedStrings,
     ValueInvariants,
+    ScalarPredicates,
 }
 
 impl ValueProfile {
@@ -72,7 +73,6 @@ pub(crate) fn validate_definition_for(
     definition: &EntityDefinition,
     profile: ValueProfile,
 ) -> Result<(), DefinitionErrors> {
-    let collections = profile.collections();
     let mut defects = Defects::default();
 
     if definition.entity.trim().is_empty() {
@@ -118,7 +118,7 @@ pub(crate) fn validate_definition_for(
     ));
 
     let invariant_scope = Scope {
-        collections,
+        profile,
         bindings: &[],
         kind: ScopeKind::Invariant,
         fields: &definition.schema,
@@ -141,7 +141,7 @@ pub(crate) fn validate_definition_for(
             validate_reference(
                 &projection.key,
                 Scope {
-                    collections,
+                    profile,
                     bindings: &[],
                     kind: ScopeKind::Invariant,
                     fields: &definition.schema,
@@ -172,7 +172,7 @@ pub(crate) fn validate_definition_for(
             "create.emit",
             None,
             Scope {
-                collections,
+                profile,
                 bindings: &[],
                 kind: ScopeKind::CreateTemplate,
                 fields: &definition.schema,
@@ -230,7 +230,7 @@ pub(crate) fn validate_definition_for(
         }
 
         let rule_scope = Scope {
-            collections,
+            profile,
             bindings: &[],
             kind: ScopeKind::Precondition,
             fields: &definition.schema,
@@ -245,7 +245,7 @@ pub(crate) fn validate_definition_for(
         }
 
         let template_scope = Scope {
-            collections,
+            profile,
             bindings: &[],
             kind: ScopeKind::OperationTemplate,
             fields: &definition.schema,
@@ -356,7 +356,7 @@ impl ScopeKind {
 
 #[derive(Clone, Copy)]
 pub(crate) struct Scope<'a> {
-    pub(crate) collections: bool,
+    pub(crate) profile: ValueProfile,
     pub(crate) bindings: &'a [(&'a str, &'a FieldDefinition)],
     pub(crate) kind: ScopeKind,
     pub(crate) fields: &'a ObjectSchema,
@@ -596,6 +596,21 @@ pub(crate) fn validate_condition_definition(
 ) -> Result<(), DefinitionError> {
     match condition {
         Condition::Literal(_) => Ok(()),
+        Condition::Truthy { truthy } => {
+            validate_scalar_operand(truthy, &format!("{path}.truthy"), scope)
+        }
+        Condition::ScalarCompare { scalar_compare } => {
+            validate_scalar_operand(
+                &scalar_compare.left,
+                &format!("{path}.scalar_compare.left"),
+                scope,
+            )?;
+            validate_scalar_operand(
+                &scalar_compare.right,
+                &format!("{path}.scalar_compare.right"),
+                scope,
+            )
+        }
         Condition::Forall { forall } => validate_quantified(forall, path, scope),
         Condition::AnyElement { any_element } => validate_quantified(any_element, path, scope),
         Condition::All { all } => {
@@ -640,7 +655,7 @@ fn validate_quantified(
     path: &str,
     scope: Scope<'_>,
 ) -> Result<(), DefinitionError> {
-    if !scope.collections {
+    if !scope.profile.collections() {
         return invalid_rule(path, "element quantifiers require outcome profile 2");
     }
     let mut letters = quantified.bind.bytes();
@@ -674,6 +689,64 @@ fn validate_quantified(
             ..scope
         },
     )
+}
+
+fn validate_scalar_operand(
+    value: &Value,
+    path: &str,
+    scope: Scope<'_>,
+) -> Result<(), DefinitionError> {
+    if scope.profile != ValueProfile::ScalarPredicates {
+        return invalid_rule(path, "scalar predicates require outcome profile 6");
+    }
+    validate_operand(value, path, scope)?;
+    match value {
+        Value::Bool(_) | Value::Number(_) => Ok(()),
+        Value::String(expression) => {
+            if !expression.starts_with('$') || expression.starts_with("$$") {
+                return Ok(());
+            }
+            if matches!(
+                expression.as_str(),
+                "$id" | "$entity" | "$version" | "$state" | "$from_state" | "$to_state"
+            ) {
+                return Ok(()); // Scope admission was checked before recognizing scalar metadata.
+            }
+            if matches!(expression.as_str(), "$fields" | "$old_fields" | "$args") {
+                return invalid_rule(path, "scalar predicate cannot read an entire object");
+            }
+            let field = reference_field(expression, scope).map_err(|message| {
+                DefinitionError::InvalidRule {
+                    path: path.into(),
+                    message,
+                }
+            })?;
+            if let Some(field) = field {
+                let field =
+                    non_nullable(field).map_err(|message| DefinitionError::InvalidRule {
+                        path: path.into(),
+                        message,
+                    })?;
+                if !matches!(
+                    field.kind,
+                    FieldKind::Boolean
+                        | FieldKind::Integer
+                        | FieldKind::Number
+                        | FieldKind::String
+                        | FieldKind::Enum
+                        | FieldKind::Ref
+                        | FieldKind::Json
+                ) {
+                    return invalid_rule(path, "scalar predicate requires a scalar field");
+                }
+            }
+            Ok(())
+        }
+        _ => invalid_rule(
+            path,
+            "scalar predicate literal must be a boolean, number or string",
+        ),
+    }
 }
 
 fn validate_pair(values: &[Value; 2], path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
@@ -946,6 +1019,7 @@ fn validate_field_definition(
             ValueProfile::TaggedUnions
                 | ValueProfile::EncodedStrings
                 | ValueProfile::ValueInvariants
+                | ValueProfile::ScalarPredicates
         )
     {
         defects.push(DefinitionError::InvalidField {
@@ -956,7 +1030,9 @@ fn validate_field_definition(
     if (field.encoding.is_some() || field.key_encoding.is_some())
         && !matches!(
             profile,
-            ValueProfile::EncodedStrings | ValueProfile::ValueInvariants
+            ValueProfile::EncodedStrings
+                | ValueProfile::ValueInvariants
+                | ValueProfile::ScalarPredicates
         )
     {
         defects.push(DefinitionError::InvalidField {
@@ -969,7 +1045,10 @@ fn validate_field_definition(
     }
 
     if let Some(rules) = &field.invariants {
-        if profile != ValueProfile::ValueInvariants {
+        if !matches!(
+            profile,
+            ValueProfile::ValueInvariants | ValueProfile::ScalarPredicates
+        ) {
             defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
                 message: "value invariants require outcome profile 5".into(),
@@ -978,7 +1057,7 @@ fn validate_field_definition(
         let empty = ObjectSchema::default();
         let bindings = [("value", field)];
         let scope = Scope {
-            collections: profile.collections(),
+            profile,
             bindings: &bindings,
             kind: ScopeKind::ValueInvariant,
             fields: &empty,

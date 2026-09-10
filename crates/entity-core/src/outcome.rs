@@ -37,6 +37,9 @@ pub enum DefinitionFormat {
     /// Locally scoped invariants on every typed value.
     #[serde(rename = "entity-outcome-definition/5")]
     V5,
+    /// Scalar truthiness and comparisons with explicit text scales.
+    #[serde(rename = "entity-outcome-definition/6")]
+    V6,
 }
 
 /// One entity's named command semantics, parsed but not yet validated.
@@ -181,6 +184,9 @@ pub enum RecordFormat {
     /// Complete decisions under outcome definition profile 5.
     #[serde(rename = "entity-outcome-record/5")]
     V5,
+    /// Complete decisions under outcome definition profile 6.
+    #[serde(rename = "entity-outcome-record/6")]
+    V6,
 }
 
 /// Complete comparison evidence for replay, including observations before an entity exists.
@@ -313,8 +319,8 @@ impl Validated {
             DefinitionFormat::V3 => ValueProfile::TaggedUnions,
             DefinitionFormat::V4 => ValueProfile::EncodedStrings,
             DefinitionFormat::V5 => ValueProfile::ValueInvariants,
+            DefinitionFormat::V6 => ValueProfile::ScalarPredicates,
         };
-        let collections = profile.collections();
         let base = ValidatedDefinition::for_outcome(definition.entity.clone(), profile)
             .map_err(|e| defect("entity", e))?;
         if base.create.emit.is_some() || !base.operations.is_empty() {
@@ -360,7 +366,7 @@ impl Validated {
                 return Err(defect(&path, "exactly one otherwise outcome is required"));
             }
             let input_scope = Scope {
-                collections,
+                profile,
                 bindings: &[],
                 kind: ScopeKind::Input,
                 fields: &base.schema,
@@ -645,6 +651,7 @@ impl Validated {
                 DefinitionFormat::V3 => RecordFormat::V3,
                 DefinitionFormat::V4 => RecordFormat::V4,
                 DefinitionFormat::V5 => RecordFormat::V5,
+                DefinitionFormat::V6 => RecordFormat::V6,
             },
             definition: self.definition.clone(),
             invocation,
