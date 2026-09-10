@@ -21,7 +21,7 @@ scope:
   path: docs/design/kernel-typed-identity-v7.md
 - confidence: cited
   path: docs/requirements.md
-revision: 5
+revision: 6
 ---
 ## Source and outcome
 
@@ -54,3 +54,9 @@ Sensitivity was verified by replacing the identity correspondence refusal with s
 Integrated current remote release eaf43090636abce025649e565e5af271c4513eae into the feature candidate. Its README and website bytes remain identical. The sole merge conflict was the changelog: retained both all unpublished feature notes and the incoming 0.18.1 release section. The excluded Eventlog adapter lock changes only the four local path-package versions to 0.18.1; locked offline metadata resolves, and the adapter's own package/version and external pins remain unchanged. This avoids leaving the release merge with a stale standalone lockfile. Release-note checks pass (er-identity-notes.log).
 
 The story remains draft under the repository's explicit status-move rule. Publishing a source branch does not merge or release it. Complete ESS command identity/input/event wiring, other missing kernel capabilities, SDK delegation, persistence adoption, and actual connectors_v2 runtime proof remain required by the full goal.
+
+## Published source and pinned comparison
+
+Published the implementation and release-baseline integration as 38132946a924d276b6d528e18d4d1ed10841ee8f on feat/typed-outcome-identity through standalone b10x-gates bot. Both author and committer are the organization bot, and the remote branch advertises that exact commit. This is feature-source publication, not main integration or release; no PR or remote correctness workflow was started.
+
+The retained comparison now pins current ER to published 38132946a924d276b6d528e18d4d1ed10841ee8f, the old reader to published 9a5693602b4a7c896b0601d58420e79796ead2a9, and ESS to local committed 6516192fe8d047640ff14ea8d5cc1f3c697a2820. ESS is fetched from the local repository because its public publication remains blocked; no mutable worktree path remains in the probe dependencies. The exact-pinned comparison passes (local-evidence:ess-evolution-20260910/er-identity-pinned.log). Retain its Cargo manifest, lock, authored fixture and Rust source for reproduction. Runtime behavior is unchanged from the code commit; this section records publication and reproducible comparison evidence.
