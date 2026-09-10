@@ -6,6 +6,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Outcome profile 9 adds explicit decimal predicate operands over declared decimal-text fields.
+  Comparisons preserve every digit while stored strings keep their original spelling.
+  Missing/null observations stay unknown, templates cannot coerce values, and earlier profiles
+  retain their existing semantics and replay bytes.
+
 - Outcome profile 8 adds explicit optional property references in templates. Missing values
   omit properties (or remove explicitly assigned state fields), while null remains null.
   Unknown paths, root/array omission and ordinary missing references remain errors;

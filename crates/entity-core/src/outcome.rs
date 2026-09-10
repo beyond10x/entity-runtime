@@ -50,6 +50,9 @@ pub enum DefinitionFormat {
     /// Explicit omission of missing object properties in templates, with typed identity.
     #[serde(rename = "entity-outcome-definition/8")]
     V8,
+    /// Exact numeric observations of declared decimal-text fields in predicates.
+    #[serde(rename = "entity-outcome-definition/9")]
+    V9,
 }
 
 /// One entity's named command semantics, parsed but not yet validated.
@@ -210,6 +213,9 @@ pub enum RecordFormat {
     /// Complete profile-8 replay record retaining omitted versus null properties.
     #[serde(rename = "entity-outcome-record/8")]
     V8,
+    /// Complete decisions under outcome definition profile 9.
+    #[serde(rename = "entity-outcome-record/9")]
+    V9,
 }
 
 /// Complete comparison evidence for replay, including observations before an entity exists.
@@ -346,6 +352,7 @@ impl Validated {
             DefinitionFormat::V5 => ValueProfile::ValueInvariants,
             DefinitionFormat::V6 | DefinitionFormat::V7 => ValueProfile::ScalarPredicates,
             DefinitionFormat::V8 => ValueProfile::OptionalTemplates,
+            DefinitionFormat::V9 => ValueProfile::DecimalOperands,
         };
         let base = ValidatedDefinition::for_outcome(definition.entity.clone(), profile)
             .map_err(|e| defect("entity", e))?;
@@ -695,6 +702,7 @@ impl Validated {
                 DefinitionFormat::V6 => RecordFormat::V6,
                 DefinitionFormat::V7 => RecordFormat::V7,
                 DefinitionFormat::V8 => RecordFormat::V8,
+                DefinitionFormat::V9 => RecordFormat::V9,
             },
             definition: self.definition.clone(),
             invocation,

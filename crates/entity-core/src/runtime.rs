@@ -927,6 +927,26 @@ fn resolve_operand(
         Value::String(literal) if literal.starts_with("$$") => {
             Ok(Some(Value::String(literal[1..].to_owned())))
         }
+        Value::String(expression) if expression.starts_with("$decimal.") => {
+            let reference = format!("${}", &expression[9..]);
+            match resolve_expression_optional(&reference, context)? {
+                Some(Value::Null) | None => {
+                    unobserved.insert(expression.clone());
+                    Ok(None)
+                }
+                Some(Value::String(text)) if crate::StringEncoding::DecimalText.accepts(&text) => {
+                    // arbitrary_precision preserves the admitted decimal digits; storage stays text.
+                    let number = text.parse::<serde_json::Number>().map_err(|_| {
+                        template_error(expression, "decimal operand is not an exact number")
+                    })?;
+                    Ok(Some(Value::Number(number)))
+                }
+                Some(_) => Err(template_error(
+                    expression,
+                    "decimal operand is not decimal text",
+                )),
+            }
+        }
         Value::String(expression) if expression.starts_with('$') => {
             match resolve_expression_optional(expression, context)? {
                 Some(Value::Null) | None => {

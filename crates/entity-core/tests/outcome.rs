@@ -387,7 +387,7 @@ fn new_formats_are_closed_and_old_readers_refuse_them() {
     let mut source = document();
     let error = serde_json::from_value::<EntityDefinition>(source.clone()).unwrap_err();
     assert!(error.to_string().contains("unknown field"), "{error}");
-    source["format"] = json!("entity-outcome-definition/9");
+    source["format"] = json!("entity-outcome-definition/10");
     let error = serde_json::from_value::<Definition>(source).unwrap_err();
     assert!(error.to_string().contains("unknown variant"), "{error}");
     let record = serde_json::to_value(create(&checked(document()), 7)).unwrap();

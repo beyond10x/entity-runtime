@@ -8,7 +8,7 @@
 
 use crate::{
     Condition, DefinitionError, DefinitionErrors, EntityDefinition, EventDefinition,
-    FieldDefinition, FieldKind, ObjectSchema, RuleDefinition, ValidationError,
+    FieldDefinition, FieldKind, ObjectSchema, RuleDefinition, StringEncoding, ValidationError,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -62,6 +62,7 @@ pub(crate) enum ValueProfile {
     ValueInvariants,
     ScalarPredicates,
     OptionalTemplates,
+    DecimalOperands,
 }
 
 impl ValueProfile {
@@ -699,7 +700,9 @@ fn validate_scalar_operand(
 ) -> Result<(), DefinitionError> {
     if !matches!(
         scope.profile,
-        ValueProfile::ScalarPredicates | ValueProfile::OptionalTemplates
+        ValueProfile::ScalarPredicates
+            | ValueProfile::OptionalTemplates
+            | ValueProfile::DecimalOperands
     ) {
         return invalid_rule(path, "scalar predicates require outcome profile 6");
     }
@@ -709,6 +712,9 @@ fn validate_scalar_operand(
         Value::String(expression) => {
             if !expression.starts_with('$') || expression.starts_with("$$") {
                 return Ok(());
+            }
+            if expression.starts_with("$decimal.") {
+                return Ok(()); // The operand walk already checked its profile and decimal schema.
             }
             if matches!(
                 expression.as_str(),
@@ -829,9 +835,27 @@ fn unreadable_instant(path: &str, detail: String) -> Result<(), DefinitionError>
     )
 }
 
+fn validate_operand_reference(expression: &str, scope: Scope<'_>) -> Result<(), String> {
+    let Some(reference) = expression.strip_prefix("$decimal.") else {
+        return validate_reference(expression, scope);
+    };
+    if scope.profile != ValueProfile::DecimalOperands {
+        return Err("decimal operands require outcome profile 9".into());
+    }
+    let reference = format!("${reference}");
+    validate_reference(&reference, scope)?;
+    let field = reference_field(&reference, scope)?
+        .ok_or("decimal operand requires a declared decimal-text field")?;
+    let field = non_nullable(field)?;
+    if field.kind != FieldKind::String || field.encoding != Some(StringEncoding::DecimalText) {
+        return Err("decimal operand requires a declared decimal-text field".into());
+    }
+    Ok(())
+}
+
 fn validate_operand(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
     walk_references(value, path, scope, &mut |expression, path, scope| {
-        validate_reference(expression, scope).map_err(|message| {
+        validate_operand_reference(expression, scope).map_err(|message| {
             if scope.kind.is_rule() {
                 DefinitionError::InvalidRule {
                     path: path.to_owned(),
@@ -854,6 +878,12 @@ pub(crate) fn validate_template(
     scope: Scope<'_>,
 ) -> Result<(), DefinitionError> {
     match value {
+        Value::String(reference) if reference.starts_with("$decimal.") => {
+            Err(DefinitionError::InvalidTemplate {
+                path: path.into(),
+                message: "decimal operands are only available in predicates".into(),
+            })
+        }
         Value::Array(values) => {
             for (index, value) in values.iter().enumerate() {
                 validate_template(value, &format!("{path}[{index}]"), scope)?;
@@ -877,7 +907,10 @@ pub(crate) fn validate_template_field(
     scope: Scope<'_>,
 ) -> Result<(), DefinitionError> {
     if let Some(reference) = value.as_str().and_then(|s| s.strip_prefix("$optional.")) {
-        if scope.profile != ValueProfile::OptionalTemplates {
+        if !matches!(
+            scope.profile,
+            ValueProfile::OptionalTemplates | ValueProfile::DecimalOperands
+        ) {
             return Err(DefinitionError::InvalidTemplate {
                 path: path.into(),
                 message: "optional template properties require outcome profile 8".into(),
@@ -1062,6 +1095,7 @@ fn validate_field_definition(
                 | ValueProfile::ValueInvariants
                 | ValueProfile::ScalarPredicates
                 | ValueProfile::OptionalTemplates
+                | ValueProfile::DecimalOperands
         )
     {
         defects.push(DefinitionError::InvalidField {
@@ -1076,6 +1110,7 @@ fn validate_field_definition(
                 | ValueProfile::ValueInvariants
                 | ValueProfile::ScalarPredicates
                 | ValueProfile::OptionalTemplates
+                | ValueProfile::DecimalOperands
         )
     {
         defects.push(DefinitionError::InvalidField {
@@ -1093,6 +1128,7 @@ fn validate_field_definition(
             ValueProfile::ValueInvariants
                 | ValueProfile::ScalarPredicates
                 | ValueProfile::OptionalTemplates
+                | ValueProfile::DecimalOperands
         ) {
             defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
