@@ -6,7 +6,7 @@ description: The properties Entity Runtime enforces, the responsibilities it lea
 
 # Guarantees and limits
 
-These are the guarantees of the 0.18.0 runtime. Its API remains in development; definition
+These are the guarantees of the 0.18.1 runtime. Its API remains in development; definition
 versions, runtime releases, and storage formats are separate compatibility boundaries.
 The [system model](./system-model) identifies the source and coverage of each contract.
 

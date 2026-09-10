@@ -4,6 +4,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.18.1] — 2026-09-10
+
+- No change to the runtime, its CLI or any refusal. The published product guide, README and
+  system model now name 0.18.1 as the release a reader installs and links to.
+- The Docusaurus site consumes the shared documentation components at Docs System 0.7.0
+  (`86cd6c6efd02184c51a37e80012ffe9d3f77d40a`), pinned exactly in `website/package.json` and
+  `website/package-lock.json`.
+
 ## [0.18.0] — 2026-09-09
 
 ### Changed
