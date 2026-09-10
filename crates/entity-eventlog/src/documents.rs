@@ -125,7 +125,7 @@ impl Projector for EntityDocumentProjector {
     }
 }
 
-impl<S: AtomicEventStore + ?Sized> EventlogStore<S> {
+impl<S: StoreIo> RecordedStore<S> {
     /// Verifies that an inline document projection covers this tenant and namespace completely.
     ///
     /// This explicit startup scan validates committed histories and their derived row positions.
@@ -135,11 +135,6 @@ impl<S: AtomicEventStore + ?Sized> EventlogStore<S> {
     /// Unsupported/unregistered queries, incomplete coverage, changed or invalid recorded history.
     pub async fn enable_document_queries(&mut self) -> Result<(), QueryError> {
         self.documents_ready = false;
-        if !self.store.is_inline(DOCUMENT_PROJECTION.name).await {
-            return Err(QueryError::Invalid(
-                "register the entity document projector inline before enabling queries".into(),
-            ));
-        }
         self.store
             .projection_query(
                 &DOCUMENT_PROJECTION,
@@ -192,7 +187,7 @@ impl<S: AtomicEventStore + ?Sized> EventlogStore<S> {
     }
 }
 
-impl<S: AtomicEventStore + ?Sized> AsyncDocumentQueryProvider for EventlogStore<S> {
+impl<S: StoreIo> AsyncDocumentQueryProvider for RecordedStore<S> {
     fn query_documents<'a>(
         &'a mut self,
         query: &'a DocumentQuery,

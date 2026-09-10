@@ -6,6 +6,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- The Eventlog provider exposes native caller transactions for dynamic recorded execution, indexed
+  queries, locks and scoped sequence reservations. Sessions share replay and record identity logic
+  with ordinary operations, preserve typed callback refusals and discard staged caches on rollback.
+
 - The Eventlog provider supports optional native PostgreSQL document queries through the async
   query port. Inline projection coverage is verified before readiness, selected candidates are
   checked against recorded history, and query-bound cursors retain the existing containment rules.

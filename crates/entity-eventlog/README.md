@@ -19,7 +19,12 @@ The explicit PostgreSQL lane is `task eventlog-postgres-check`. Assign a disposa
 `ENTITY_EVENTLOG_POSTGRES_URL`; selecting the lane without it fails. CI supplies its existing service,
 and local `task check` reports the lane as not run when no URL is assigned. Each case is bounded to
 20 seconds. The fixture must be test-owned: acceptance creates and drops prefixed tables.
-Legacy-provider facade migration and indexed query/transaction convergence remain open.
+Register `EntityDocumentProjector` inline and call `enable_document_queries` before querying.
+When the provider implements native transactions, `with_transaction(|mut session| Box::pin(async
+move { ... }))` provides the same recorded/query ports plus `load_for_update`, `lock_identity` and
+`reserve_sequence`. All staged work rolls back on callback refusal or cancellation. The callback
+returns an owned value only after commit; unknown outcomes never cause automatic callback replay.
+Legacy-layout migration and compatible SQL facade replacement remain open.
 
 See [the persistence design](../../docs/design/eventlog-recorded-provider.md) for the versioned
 mapping, cache invalidation and refusal rules.

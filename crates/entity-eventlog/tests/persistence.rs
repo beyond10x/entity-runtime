@@ -1138,3 +1138,332 @@ mod document_queries {
         });
     }
 }
+
+#[cfg(feature = "postgres-tests")]
+mod native_sessions {
+    use super::*;
+    use entity_eventlog::EntityDocumentProjector;
+    use entity_query::{AsyncDocumentQueryProvider, DocumentQuery};
+
+    fn failure(error: impl std::fmt::Display) -> StoreError {
+        StoreError::Backend(error.to_string())
+    }
+
+    #[test]
+    fn postgres_native_session_composes_recorded_execution_queries_and_exact_retries() {
+        run_postgres(async {
+            let raw = postgres("er_session_dynamic").await;
+            raw.register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let mut store = adapter(raw.clone());
+            store.enable_document_queries().await.unwrap();
+            let mut observer = adapter(raw.clone());
+            let registry = registry();
+            let created = creation(&registry, "one", "create");
+            let returned = store
+                .with_transaction(move |mut session| {
+                    Box::pin(async move {
+                        session.lock_identity("logical", "one").await?;
+                        assert_eq!(session.load_for_update("thing", "one").await?, None);
+                        assert_eq!(session.reserve_sequence("ids", 3).await?, 0);
+                        session
+                            .commit_recorded(&created.commit, created.expect)
+                            .await?;
+                        session
+                            .commit_recorded(&created.commit, created.expect)
+                            .await?;
+                        assert_eq!(session.ids("thing").await?, vec!["one"]);
+                        assert!(
+                            observer.ids("thing").await?.is_empty(),
+                            "outside inventory saw staged history"
+                        );
+                        let observation = RecordedObservation {
+                            entity: "thing".into(),
+                            id: "one".into(),
+                            revision: 1,
+                            envelope: recording("observed").seal(json!({"seen":true})).unwrap(),
+                        };
+                        session.observe(&observation).await?;
+                        let changed = AsyncStoredRuntime::new(&registry, &mut session)
+                            .execute("thing", "one", 1, "finish", json!({}), &recording("finish"))
+                            .await
+                            .map_err(failure)?;
+                        let page = session
+                            .query_documents(&DocumentQuery::for_entity("thing"))
+                            .await
+                            .map_err(failure)?;
+                        assert_eq!(page.items, vec![changed.instance.clone()]);
+                        assert_eq!(session.records("thing", "one").await?.len(), 2);
+                        assert_eq!(
+                            session.observations("thing", "one").await?,
+                            vec![observation]
+                        );
+                        assert!(session.events("thing", "one").await?.is_empty());
+                        assert_eq!(session.reserve_sequence("ids", 1).await?, 3);
+                        Ok(changed.instance)
+                    })
+                })
+                .await
+                .unwrap();
+            assert_eq!(
+                store.load("thing", "one").await.unwrap(),
+                Some(returned.clone())
+            );
+            assert_eq!(returned.revision, 2);
+            raw.shutdown().await.unwrap();
+            let reopened = postgres("er_session_dynamic").await;
+            let mut store = adapter(reopened.clone());
+            assert_eq!(store.load("thing", "one").await.unwrap(), Some(returned));
+            reopened.shutdown().await.unwrap();
+        });
+    }
+
+    #[test]
+    fn postgres_native_session_refusal_rolls_back_cached_history_claims_queries_and_sequences() {
+        run_postgres(async {
+            let raw = postgres("er_session_refusal").await;
+            raw.register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let mut store = adapter(raw.clone());
+            store.enable_document_queries().await.unwrap();
+            let registry = registry();
+            let stable = creation(&registry, "stable", "stable");
+            store
+                .commit_recorded(&stable.commit, stable.expect)
+                .await
+                .unwrap();
+            let cached = store.verified_history("thing", "stable").await.unwrap();
+            let result: Result<(), _> = store
+                .with_transaction(move |mut session| {
+                    Box::pin(async move {
+                        assert_eq!(session.reserve_sequence("ids", 2).await?, 0);
+                        let created = creation(&registry, "discarded", "discarded-record");
+                        session
+                            .commit_recorded(&created.commit, created.expect)
+                            .await?;
+                        AsyncStoredRuntime::new(&registry, &mut session)
+                            .execute(
+                                "thing",
+                                "stable",
+                                1,
+                                "finish",
+                                json!({}),
+                                &recording("finish"),
+                            )
+                            .await
+                            .map_err(failure)?;
+                        assert_eq!(
+                            session
+                                .verified_history("thing", "stable")
+                                .await?
+                                .records()
+                                .len(),
+                            2
+                        );
+                        assert_eq!(
+                            session
+                                .query_documents(&DocumentQuery::for_entity("thing"))
+                                .await
+                                .map_err(failure)?
+                                .items
+                                .len(),
+                            2
+                        );
+                        Err(StoreError::RecordConflict {
+                            record_id: "caller-refusal".into(),
+                        })
+                    })
+                })
+                .await;
+            assert!(
+                matches!(result, Err(StoreError::RecordConflict { record_id }) if record_id == "caller-refusal"),
+                "typed callback refusal was lost"
+            );
+            assert_eq!(store.load("thing", "discarded").await.unwrap(), None);
+            assert_eq!(
+                store.load("thing", "stable").await.unwrap(),
+                Some(stable.commit.instance)
+            );
+            assert_eq!(cached.records().len(), 1);
+            assert_eq!(
+                store
+                    .query_documents(&DocumentQuery::for_entity("thing"))
+                    .await
+                    .unwrap()
+                    .items
+                    .len(),
+                1
+            );
+            store
+                .with_transaction(|mut session| {
+                    Box::pin(async move {
+                        assert_eq!(
+                            session.reserve_sequence("ids", 1).await?,
+                            0,
+                            "refused callback consumed sequence values"
+                        );
+                        let replacement =
+                            creation(&super::registry(), "replacement", "discarded-record");
+                        session
+                            .commit_recorded(&replacement.commit, replacement.expect)
+                            .await?;
+                        assert_eq!(session.load("thing", "stable").await?.unwrap().revision, 1);
+                        Ok(())
+                    })
+                })
+                .await
+                .unwrap();
+            let mut other_namespace = EventlogStore::new(
+                raw.clone(),
+                TenantId::new("tenant-a").unwrap(),
+                "other",
+                "subject",
+                "actor",
+            )
+            .unwrap();
+            let mut other_tenant = EventlogStore::new(
+                raw.clone(),
+                TenantId::new("tenant-b").unwrap(),
+                "application",
+                "subject",
+                "actor",
+            )
+            .unwrap();
+            for other in [&mut other_namespace, &mut other_tenant] {
+                assert_eq!(
+                    other
+                        .with_transaction(|mut session| Box::pin(async move {
+                            session.reserve_sequence("ids", 1).await
+                        }))
+                        .await
+                        .unwrap(),
+                    0,
+                    "sequence escaped the tenant/ER namespace boundary"
+                );
+            }
+            raw.shutdown().await.unwrap();
+        });
+    }
+
+    struct RefuseLate;
+    impl Projector for RefuseLate {
+        fn name(&self) -> &'static str {
+            "session_refuse_late"
+        }
+        fn projections(&self) -> &'static [ProjectionSpec] {
+            &[]
+        }
+        fn apply<'a>(
+            &'a self,
+            event: &'a RecordedEvent,
+            _store: &'a mut dyn ProjectionStore,
+        ) -> BoxFuture<'a, Result<(), EventLogError>> {
+            Box::pin(async move {
+                if event.data["payload"]["record"]["instance"]["id"] == "rejected" {
+                    return Err(EventLogError::GuardRefused {
+                        code: "assigned_late_refusal".into(),
+                    });
+                }
+                Ok(())
+            })
+        }
+    }
+
+    #[test]
+    fn postgres_native_session_catches_a_late_group_refusal_without_retaining_its_prefix() {
+        run_postgres(async {
+            let raw = postgres("er_session_savepoint").await;
+            raw.register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            raw.register_inline(Arc::new(RefuseLate)).await.unwrap();
+            let mut store = adapter(raw.clone());
+            store.enable_document_queries().await.unwrap();
+            store.with_transaction(|mut session| Box::pin(async move {
+                let registry = registry();
+                let kept = creation(&registry, "kept", "kept");
+                session.commit_recorded(&kept.commit, kept.expect).await?;
+                let batch = [creation(&registry, "discarded", "discarded"), creation(&registry, "rejected", "rejected")];
+                assert!(matches!(session.commit_recorded_batch(&batch).await, Err(StoreError::Backend(detail)) if detail.contains("assigned_late_refusal")));
+                assert_eq!(session.load("thing", "discarded").await?, None, "caught failure retained the first subject");
+                assert_eq!(session.ids("thing").await?, vec!["kept"]);
+                assert_eq!(session.query_documents(&DocumentQuery::for_entity("thing")).await.map_err(failure)?.items, vec![kept.commit.instance]);
+                let replacement = creation(&registry, "replacement", "discarded");
+                session.commit_recorded(&replacement.commit, replacement.expect).await?;
+                Ok(())
+            })).await.unwrap();
+            assert_eq!(
+                store.ids("thing").await.unwrap(),
+                vec!["kept", "replacement"]
+            );
+            raw.shutdown().await.unwrap();
+        });
+    }
+
+    #[test]
+    fn postgres_native_session_cancellation_discards_staged_state_and_counter_values() {
+        run_postgres(async {
+            use std::sync::atomic::{AtomicBool, Ordering};
+            let raw = postgres("er_session_cancel").await;
+            raw.register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let mut store = adapter(raw.clone());
+            store.enable_document_queries().await.unwrap();
+            let reached = Arc::new(AtomicBool::new(false));
+            let staged = reached.clone();
+            let pending = store.with_transaction(move |mut session| {
+                Box::pin(async move {
+                    let created = creation(&registry(), "discarded", "record");
+                    session.reserve_sequence("ids", 1).await?;
+                    session
+                        .commit_recorded(&created.commit, created.expect)
+                        .await?;
+                    assert_eq!(
+                        session.load("thing", "discarded").await?,
+                        Some(created.commit.instance)
+                    );
+                    staged.store(true, Ordering::Release);
+                    std::future::pending::<()>().await;
+                    Ok(())
+                })
+            });
+            tokio::time::timeout(std::time::Duration::from_millis(100), pending)
+                .await
+                .expect_err("the staged callback must be cancelled by its deadline");
+            assert!(
+                reached.load(Ordering::Acquire),
+                "cancellation happened before the staged write"
+            );
+            raw.shutdown().await.unwrap();
+            let reopened = postgres("er_session_cancel").await;
+            reopened
+                .register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let mut store = adapter(reopened.clone());
+            assert_eq!(store.load("thing", "discarded").await.unwrap(), None);
+            store.enable_document_queries().await.unwrap();
+            assert!(
+                store
+                    .query_documents(&DocumentQuery::for_entity("thing"))
+                    .await
+                    .unwrap()
+                    .items
+                    .is_empty()
+            );
+            assert_eq!(
+                store
+                    .with_transaction(|mut session| Box::pin(async move {
+                        session.reserve_sequence("ids", 1).await
+                    }))
+                    .await
+                    .unwrap(),
+                0
+            );
+            reopened.shutdown().await.unwrap();
+        });
+    }
+}

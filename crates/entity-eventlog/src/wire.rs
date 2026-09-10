@@ -1,4 +1,8 @@
-use super::*;
+use entity_core::EntityInstance;
+use entity_store::{Expect, RecordedCommit, RecordedObservation, StoreError};
+use eventlog_core::{RecordedEvent, StreamId};
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeSet, sync::Arc};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 enum Format {

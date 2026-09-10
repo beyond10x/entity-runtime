@@ -1,11 +1,11 @@
 # Recorded Eventlog provider
 
-This design owns R-122 and R-124.
+This design owns R-122, R-124 and R-125.
 
 `entity-eventlog` implements the asynchronous ER ports over `AtomicEventStore`. The caller owns
 the Eventlog provider, exact tenant, namespace and opaque transport attribution. The adapter
 opens no path and selects no credentials, clock or async executor. Eventlog is pinned to
-6f7ea5a113d76a3334cf04d2bccef7770e1aae4e, the published native document-query follow-up to 0.2.0.
+f5cfba50afe6418dedac92a5b34e3d5f8fd6577a, the published native transaction follow-up to 0.2.0.
 
 ## Persistence contract
 
@@ -102,10 +102,8 @@ projection that disagrees with history. The caller may issue another read; the a
 retry mutations or change query identity. Separate pages do not promise a common snapshot.
 
 The optional capability is PostgreSQL-native today. File/SQLite point and recorded APIs retain
-their behavior, while document projector registration refuses on those providers. This does not
-complete a caller-scoped ER transaction session over Eventlog: transaction-local queries plus
-sequence/identity locks and dynamically staged decisions remain required before retiring the
-legacy SQL implementations.
+their behavior, while document projector registration refuses on those providers. Native sessions below reuse this query implementation inside the caller transaction. Legacy SQL
+layout migration and compatible facade replacement remain separate required work.
 
 ## Build and completion boundaries
 
@@ -118,6 +116,50 @@ cover reopening, independent writer handles and late transaction failure. Postgr
 immediate enumeration under an independently withheld feed. The explicit PostgreSQL lane requires
 an assigned disposable database and bounds each case to 20 seconds; CI selects it against its service.
 Existing ER provider layouts are still
-readable through their original packages; this addition does not migrate them. PostgreSQL facade
-convergence, native transaction-session adaptation, AEP migration and application adoption remain required
+readable through their original packages; this addition does not migrate them. SQL facade
+convergence, AEP migration and application adoption remain required
 evolution work. Small functional tests are not a production throughput claim.
+
+## Native transactions (R-125)
+
+`EventlogStore::with_transaction` is available when the caller's provider implements native
+`TransactionalEventStore`. The callback receives an owned `EventlogSession` whose storage borrow
+is limited to that callback; capture owned inputs and return an owned, Send value. No transaction,
+connection or executor is owned by ER. The value is returned only after Eventlog confirms commit.
+The callback runs once. There is no nested runtime or independent-write fallback.
+
+The outer handle and scoped session forward the same async recorded/query ports to one private
+`RecordedStore` implementation. Its narrow IO port forwards either to the caller-owned provider
+or to the active Eventlog transaction. Replay, record equality, identity claims, physical/logical
+revision checks, batching and document candidate verification are not copied. Session reads see
+earlier staged writes. Each session starts with an empty bounded cache and discards it at the end;
+neither successful nor rolled-back staged prefixes are copied into the outer cache. An outer
+read still checks native generation and head before reusing its own earlier prefix.
+
+`load_for_update` locks the exact history stream used by ordinary and grouped writers, including
+an absent subject, then verifies its current state. Logical identity locks and sequence namespaces
+hash a typed tuple containing the ER history namespace; Eventlog additionally enforces its tenant
+boundary. Arbitrary application identity text is hashed into the lock coordinate. Positive sequence
+reservations return the value before their range, matching the compatibility provider. The caller
+owns ordering across multiple locks. Generation capture protects verified history against redaction
+until transaction end, and the native publication gate precedes all callback locks.
+
+The host establishes document readiness on the outer handle before starting query-bearing sessions.
+The session inherits that readiness and performs native transaction-local filtering and candidate
+verification. It exposes no registration or implicit rebuild method. A caught append-group refusal
+rolls back the failed group's body/projection/claim prefix through Eventlog's savepoint; earlier
+successful groups remain staged. Returning an error rolls back the complete callback, including
+sequences. Ordinary unfinished SQL and caught cancellation cannot be converted into commit.
+
+A bounded in-memory error slot carries a callback's original typed StoreError across Eventlog's
+error boundary. It is read only when Eventlog reports the matching callback refusal after rollback;
+settlement and unknown-outcome errors take precedence. No error is serialized into an event or
+replaced by a new mutation. Cancellation drops the scoped cache and relies on Eventlog's quarantine
+for the in-flight connection. Exact recorded identities remain retry authority. A sequence-only
+unknown outcome has no deduplicated receipt and must not trigger blind callback replay.
+
+The focused PostgreSQL cases exercise dynamic recorded execution and native queries, external
+invisibility, exact retries, complete outer rollback with cached history, typed callback refusal,
+namespace/tenant sequence separation, late projection savepoint refusal, and cancellation after
+a complete recorded write. Existing file/SQLite/PostgreSQL cases exercise the shared implementation.
+These are functional compatibility observations, not throughput or hosted deployment approval.

@@ -31,7 +31,7 @@ scope:
   path: docs/design
 - confidence: cited
   path: docs/requirements.md
-revision: 12
+revision: 14
 ---
 ## Outcome
 Implement the Eventlog persistence adapter required by the authorized ESS evolution migration, consuming current Eventlog source 55d90845ac22689c64b9bc96dcad2f9750075804.
@@ -101,3 +101,21 @@ The three new PostgreSQL cases passed in 1.26 seconds. The restored adapter run 
 Evidence: local-evidence:ess-evolution-20260910/er-native-query-final.log; er-native-query-coverage-mutation.log; er-native-query-provenance-mutation.log; er-native-query-port.log; er-native-query-clippy.log; er-native-query-port-clippy.log; er-native-query-rustdoc.log; er-native-query-port-rustdoc.log; er-native-query-port-msrv.log; er-native-query-fixture.txt. These are focused checks, not a full task check, hosted production proof, main integration or completed consumer adoption.
 
 The continuing session retains the published ER continuation for the next required step: native caller-scoped transactions combining locks, sequences, queries and dynamically staged recorded writes, then SQL facade convergence. This query capability does not retire those legacy implementations by itself. Keep the existing lifecycle status under this repository's operator-controlled move rule; implementation evidence is recorded here rather than claiming the full migration has landed.
+
+## Native transaction adoption in progress
+
+Consume published Eventlog f5cfba50afe6418dedac92a5b34e3d5f8fd6577a. Reuse one private recorded-store implementation for the outer handle and callback-scoped session, with a narrow IO view forwarding either to the provider or the active native transaction. Do not implement another SQL provider, copy replay/identity/query logic, re-enter the outer store or create a nested runtime. Each callback session owns an isolated cache which is discarded at transaction end; rolled-back staged history must never survive as a reusable proof.
+
+Expose transaction-local recorded reads, observations, atomic recorded batches, indexed queries, stream/absent-identity locks and scoped sequence reservations. Preserve typed caller StoreError on explicit refusal, return the caller value only after native commit, and perform no automatic retry after UnknownCommit. Query readiness is established before starting the callback and reused inside its scoped view. Native sequences and logical identities include the ER namespace so independent ER namespaces do not share their counters or locks accidentally.
+
+Validate real PostgreSQL dynamic decisions, read-your-writes queries/history, external invisibility, outer rollback of records/claims/counters/projections, caught late projector refusal, exact retry, namespace isolation and cancellation. Reuse existing file/SQLite/PG adapter evidence after the shared implementation changes; no full or expensive remote gate. This closes the native session gap, while legacy layout-compatible facade retirement still requires its explicit migration and remains outstanding.
+
+## Native transaction adoption result
+
+The adapter now consumes Eventlog f5cfba50afe6418dedac92a5b34e3d5f8fd6577a. EventlogStore and EventlogSession forward the recorded/query ports to one private RecordedStore implementation through a narrow provider/session IO interface. Replay, request identity, batches and candidate verification remain one implementation. No SQL driver or async runtime was added to the library. Callback sessions inherit verified query readiness, have independent bounded caches, and expose native stream/identity locks and tenant-plus-ER-namespace sequence reservations. The callback receives a scoped session value and returns an owned Send result only after commit. A private bounded error slot preserves its exact StoreError after a successful rollback; native settlement failures take precedence.
+
+The restored adapter tests passed against real File, SQLite and PostgreSQL providers. New PostgreSQL coverage proves dynamic AsyncStoredRuntime execution over staged records, own-history/query reads, external inventory invisibility, exact retries and reopen; complete refusal rollback including cached histories, projection candidates, record claims and sequence values; counter isolation across ER namespaces and tenants; a caught late projector failure with no surviving group prefix; and caller cancellation after a complete staged write. The reconnect fixture explicitly registers its inline projector before traffic. Removing ER namespace participation failed the counter-isolation assertion, and converting callback refusal to Backend failed the typed-error assertion. Both deliberate mutations were restored before final tests. Strict all-target/all-feature Clippy, Rustdoc with warnings denied, adapter Rust 1.91 compilation, formatting and requirement pins passed. The final lint-only timeout assertion rewrite preserves the same elapsed-deadline check and does not justify repeating unchanged persistence tests.
+
+Evidence: local-evidence:ess-evolution-20260910/er-native-sessions-final.log; er-native-sessions-scope-mutation.log; er-native-sessions-error-mutation.log; er-native-sessions-clippy.log; er-native-sessions-rustdoc.log; er-native-sessions-msrv.log. The reused disposable PostgreSQL fixture is described by eventlog-sessions-fixture.txt. This is focused native adoption evidence, not a full task check, hosted production proof, main integration or completed ESS/application acceptance.
+
+The Eventlog prerequisite was bot-published on feat/native-transaction-sessions and its managed worktree was removed through reviewed exact-ID GC after compiler cleanup. The ER continuation remains the working branch for compatible SQLite/PostgreSQL facade replacement and legacy-layout migration. Its main integration still needs catalog dependency intent and integration review. These are required next steps, not accepted permanent duplication. Keep this repository's operator-controlled story lifecycle unchanged; this body records implemented native adoption without claiming the wider migration is complete.
