@@ -9,6 +9,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - An Eventlog recorded provider preserves decisions and observations with atomic global record-id
   claims, ordered batches and file reopen support. It has an explicit Rust 1.91 baseline and is
   included in the standard local and CI gates; existing ER crates keep Rust 1.85.
+- Recorded Eventlog persistence is exercised against PostgreSQL as well as file and SQLite,
+  including reconnects, competing writers and late rollback. Immediate enumeration reads committed
+  inventory instead of the potentially delayed feed; CI requires the real PostgreSQL lane.
 - Verified history can be extended one decision at a time and shared between storage and command
   execution. Eventlog reuses unchanged prefixes after checking generation and head, and both
   command shells share retry matching.

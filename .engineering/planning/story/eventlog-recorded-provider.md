@@ -29,7 +29,7 @@ scope:
   path: docs/design
 - confidence: cited
   path: docs/requirements.md
-revision: 5
+revision: 8
 ---
 ## Outcome
 Implement the Eventlog persistence adapter required by the authorized ESS evolution migration, consuming current Eventlog source 55d90845ac22689c64b9bc96dcad2f9750075804.
@@ -61,3 +61,19 @@ Final task eventlog-check passed: strict format, Clippy, ten real-provider tests
 The core/store/shell test selection passed after extracting shared verification (including all existing kernel replay and purity tests). The added incremental-prefix refusal test also passed. Strict Clippy for all targets of those three crates passed, as did their Rust 1.85 check. The requirements checker passed with no findings. No full task check or ESS consumer gate was run.
 
 Retained evidence: local-evidence:ess-evolution-20260910/er-eventlog-gate.log, er-eventlog-atomicity-mutation.log, er-eventlog-cache-mutation.log, er-verified-history-tests.log, er-verified-prefix-test.log, er-shared-history-clippy.log and er-shared-history-msrv.log. Work remains on the continuation branch, not main. PostgreSQL adapter acceptance, facade/query/transaction convergence, provider dependency catalog intent before integration, AEP migration and application adoption remain unfinished.
+
+## PostgreSQL acceptance follow-up
+
+The next implementation slice closes the missing real PostgreSQL evidence for the existing Eventlog adapter. Reuse the same recorded contract exercised by file and SQLite, then verify reconnect/replay, concurrent independent handles, and rollback of both identity claims and subject bodies on a late required projection refusal. Use a disposable loopback PostgreSQL fixture and bounded tests, never an existing application database. Add an explicit PostgreSQL test feature and task; an enabled lane without its assigned URL must fail, while an unselected local lane reports that it did not run. CI must select the lane against its existing PostgreSQL service. Source authority: crates/entity-eventlog/tests/persistence.rs, .github/workflows/gate.yml and Eventlog crates/eventlog-postgres/src/lib.rs at 55d90845ac22689c64b9bc96dcad2f9750075804. Query/transaction facade convergence remains required after this evidence slice.
+
+## Enumeration compatibility finding
+
+The first PostgreSQL acceptance run failed at recorded_contract's immediate ids("thing") assertion: the durable subject existed but enumeration returned []. The adapter incorrectly used Eventlog's feed as a current inventory; an unrelated transaction can withhold that feed under its documented PostgreSQL watermark. Fix enumeration through the new optional committed-stream inventory capability owned by Eventlog story:committed-stream-enumeration. Validate each selected ER history after resolving its first record. Preserve feed semantics and use point stream reads for physical-position assertions. Add an independent adapter test holding an unrelated assigned transaction to prove immediate enumeration while the feed remains empty. This is a compatibility fix, not a test sleep or an eventual-consistency exception.
+
+## PostgreSQL verification result
+
+The adapter now pins published Eventlog 06c8e1c806ece76bf2874107d73691ca71e4f18f and enumerates committed stream inventory. Four PostgreSQL cases passed in 0.25 seconds against an isolated PostgreSQL 17 fixture: shared recorded contract with reconnect/replay, late projection rollback of bodies and identity claims, independent-handle conflicts/exact retries, and immediate enumeration under a deliberately withheld feed. The original empty-list failure is fixed without altering Eventlog feed semantics. Reintroducing a feed dependency made the deterministic adapter regression fail with [] instead of ["one"]; restoring inventory passed the exact case.
+
+Final task eventlog-check passed on Rust 1.91: format, strict all-target/all-feature Clippy, ten file/SQLite cases in 0.38 seconds and rustdoc. The requirements checker reported 97 requirements, 314 test functions and no findings. The explicit PostgreSQL task refuses an absent database URL; CI selects it unconditionally against its PostgreSQL service. Every case has a 20-second timeout. The disposable fixture was stopped and removed after verification. Eventlog's published prerequisite worktree was cleaned through worktree finish and reviewed exact-ID GC; its evidence logs are retained. No full gate or remote production proof was run.
+
+Evidence: local-evidence:ess-evolution-20260910/er-eventlog-postgres-final.log, er-eventlog-inventory-mutation.log, er-eventlog-inventory-restored.log, er-eventlog-inventory-gate.log, er-postgres-missing-url.log and er-postgres-fixture.txt. The new provider dependency is published on feat/committed-stream-enumeration; both Eventlog and ER main integration remain outstanding. Query/transaction and legacy facade convergence, catalog dependency intent, the single AEP migration story, ESS semantics convergence and application acceptance remain required by the broader evolution goal. Next owner is this continuing session, starting with the existing provider-query-v0.1 contract and Eventlog projection transaction capability gap.

@@ -24,7 +24,11 @@ fn run<T>(future: impl Future<Output = T>) -> T {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(future)
+        .block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(20), future)
+                .await
+                .expect("recorded-provider acceptance exceeded 20 seconds")
+        })
 }
 
 fn registry() -> Registry {
@@ -173,10 +177,15 @@ async fn recorded_contract<S: AtomicEventStore + ?Sized>(store: Arc<S>) {
         provider.records("thing", "batch-one").await.unwrap().len(),
         2
     );
-    let history = store
-        .read_feed(&TenantId::new("tenant-a").unwrap(), 0, 100)
-        .await
-        .unwrap();
+    // Published stream-coordinate vector for (application, thing, one). Point reads have
+    // read-your-writes semantics; PostgreSQL feeds intentionally may lag unrelated transactions.
+    let stream = eventlog_core::StreamId::new(
+        TenantId::new("tenant-a").unwrap(),
+        "er-history-v1-07bfaea5744adaf1fcbe59bbd917ab2c4cdbcba37f12613cf43ed69b2bff6487",
+        "a5fc3c6ce3a24ba19069d56eee588bdc880b2a2880e6a06b4daa85c588f7863b",
+    )
+    .unwrap();
+    let history = store.read_stream(&stream, 0, 100).await.unwrap();
     let one: Vec<_> = history
         .events
         .iter()
@@ -209,6 +218,137 @@ fn sqlite_provider_preserves_the_same_recorded_entity_contract() {
             SqliteEventStore::in_memory("entity_test").await.unwrap(),
         ))
         .await;
+    });
+}
+
+#[cfg(feature = "postgres-tests")]
+fn postgres_url() -> String {
+    std::env::var("ENTITY_EVENTLOG_POSTGRES_URL")
+        .ok()
+        .filter(|url| !url.trim().is_empty())
+        .expect(
+            "PostgreSQL acceptance requires ENTITY_EVENTLOG_POSTGRES_URL for a disposable database",
+        )
+}
+
+#[cfg(feature = "postgres-tests")]
+async fn postgres(prefix: &str) -> Arc<eventlog_postgres::PostgresEventStore> {
+    Arc::new(
+        eventlog_postgres::PostgresEventStore::connect(&postgres_url(), prefix)
+            .await
+            .unwrap(),
+    )
+}
+
+#[test]
+#[cfg(feature = "postgres-tests")]
+fn postgres_provider_preserves_the_same_contract_after_reconnecting() {
+    run(async {
+        let store = postgres("er_recorded_contract").await;
+        recorded_contract(store.clone()).await;
+        let mut provider = adapter(store.clone());
+        let state = provider.load("thing", "one").await.unwrap().unwrap();
+        let records = provider.records("thing", "one").await.unwrap();
+        let observations = provider.observations("thing", "one").await.unwrap();
+        drop(provider);
+        store.shutdown().await.unwrap();
+        drop(store);
+
+        let reopened = postgres("er_recorded_contract").await;
+        let mut provider = adapter(reopened.clone());
+        // Replaying pinned decisions must not require a current definition registration.
+        let empty_registry = Registry::new();
+        assert_eq!(
+            AsyncStoredRuntime::new(&empty_registry, &mut provider)
+                .get("thing", "one")
+                .await
+                .unwrap(),
+            state
+        );
+        assert_eq!(provider.records("thing", "one").await.unwrap(), records);
+        assert_eq!(
+            provider.observations("thing", "one").await.unwrap(),
+            observations
+        );
+        let created = creation(&registry(), "one", "create");
+        provider
+            .commit_recorded(&created.commit, Expect::Absent)
+            .await
+            .unwrap();
+        assert_eq!(provider.records("thing", "one").await.unwrap().len(), 2);
+        reopened.drop_tables().await.unwrap();
+        reopened.shutdown().await.unwrap();
+    });
+}
+
+#[test]
+#[cfg(feature = "postgres-tests")]
+fn postgres_late_failure_rolls_back_bodies_and_identity_claims() {
+    run(async {
+        let store = postgres("er_recorded_rollback").await;
+        store
+            .register_inline(Arc::new(FailSecondSubject))
+            .await
+            .unwrap();
+        late_failure_contract(store.clone()).await;
+        store.drop_tables().await.unwrap();
+        store.shutdown().await.unwrap();
+    });
+}
+
+#[test]
+#[cfg(feature = "postgres-tests")]
+fn postgres_enumeration_reads_its_writes_while_the_feed_is_withheld() {
+    run(async {
+        let store = postgres("er_recorded_inventory").await;
+        let (mut client, connection) =
+            tokio_postgres::connect(&postgres_url(), tokio_postgres::NoTls)
+                .await
+                .unwrap();
+        let driver = tokio::spawn(connection);
+        let transaction = client.transaction().await.unwrap();
+        transaction
+            .simple_query("SELECT pg_current_xact_id()")
+            .await
+            .unwrap();
+        let mut provider = adapter(store.clone());
+        let created = creation(&registry(), "one", "create");
+        provider
+            .commit_recorded(&created.commit, Expect::Absent)
+            .await
+            .unwrap();
+        assert!(
+            store
+                .read_feed(&TenantId::new("tenant-a").unwrap(), 0, 10)
+                .await
+                .unwrap()
+                .events
+                .is_empty(),
+            "fixture must actually withhold the feed"
+        );
+        assert_eq!(
+            provider.ids("thing").await.unwrap(),
+            vec!["one"],
+            "enumeration must observe its successful write"
+        );
+        transaction.rollback().await.unwrap();
+        drop(client);
+        driver.await.unwrap().unwrap();
+        store.drop_tables().await.unwrap();
+        store.shutdown().await.unwrap();
+    });
+}
+
+#[test]
+#[cfg(feature = "postgres-tests")]
+fn postgres_independent_handles_resolve_conflicts_and_identical_retries() {
+    run(async {
+        let left = postgres("er_recorded_concurrent").await;
+        let right = postgres("er_recorded_concurrent").await;
+        concurrent_contract(left.clone(), right.clone()).await;
+        right.shutdown().await.unwrap();
+        left.drop_tables().await.unwrap();
+        left.shutdown().await.unwrap();
     });
 }
 
@@ -291,89 +431,97 @@ fn a_late_transaction_failure_rolls_back_subjects_and_global_identity_claims() {
             .register_inline(Arc::new(FailSecondSubject))
             .await
             .unwrap();
-        let registry = registry();
-        let mut provider = adapter(store.clone());
-        let error = provider
-            .commit_recorded_batch(&[
-                creation(&registry, "one", "record-one"),
-                creation(&registry, "two", "record-two"),
-            ])
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(error, StoreError::Backend(ref message) if message.contains("second_subject_refused")),
-            "{error:?}"
-        );
-        assert!(provider.ids("thing").await.unwrap().is_empty());
-        assert!(
-            store
-                .read_feed(&TenantId::new("tenant-a").unwrap(), 0, 100)
-                .await
-                .unwrap()
-                .events
-                .is_empty()
-        );
-        let reused = creation(&registry, "different", "record-one");
-        provider
-            .commit_recorded(&reused.commit, Expect::Absent)
-            .await
-            .unwrap();
-        assert_eq!(provider.ids("thing").await.unwrap(), vec!["different"]);
+        late_failure_contract(store).await;
     });
+}
+
+async fn late_failure_contract<S: AtomicEventStore + ?Sized>(store: Arc<S>) {
+    let registry = registry();
+    let mut provider = adapter(store.clone());
+    let error = provider
+        .commit_recorded_batch(&[
+            creation(&registry, "one", "record-one"),
+            creation(&registry, "two", "record-two"),
+        ])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StoreError::Backend(ref message) if message.contains("second_subject_refused")),
+        "{error:?}"
+    );
+    assert!(provider.ids("thing").await.unwrap().is_empty());
+    assert!(
+        store
+            .read_feed(&TenantId::new("tenant-a").unwrap(), 0, 100)
+            .await
+            .unwrap()
+            .events
+            .is_empty()
+    );
+    let reused = creation(&registry, "different", "record-one");
+    provider
+        .commit_recorded(&reused.commit, Expect::Absent)
+        .await
+        .unwrap();
+    assert_eq!(provider.ids("thing").await.unwrap(), vec!["different"]);
 }
 
 #[test]
 fn concurrent_file_handles_publish_one_revision_and_resolve_identical_retries() {
     run(async {
         let directory = tempfile::tempdir().unwrap();
-        let registry = registry();
         let left = Arc::new(FileEventStore::open(directory.path()).await.unwrap());
         let right = Arc::new(FileEventStore::open(directory.path()).await.unwrap());
-        let mut a = adapter(left);
-        let mut b = adapter(right);
-        let created = creation(&registry, "one", "create");
-        a.commit_recorded(&created.commit, Expect::Absent)
-            .await
-            .unwrap();
-        let decision = Runtime::new(&registry)
-            .execute(&created.commit.instance, "touch", json!({}))
-            .unwrap();
-        let first = RecordedCommit::new(decision.clone(), &recording("first")).unwrap();
-        let other = RecordedCommit::new(decision, &recording("other")).unwrap();
-        let (one, two) = tokio::join!(
-            a.commit_recorded(&first, Expect::Revision(1)),
-            b.commit_recorded(&other, Expect::Revision(1))
-        );
-        assert_ne!(one.is_ok(), two.is_ok());
-        let error = one.err().or(two.err()).unwrap();
-        assert!(
-            matches!(
-                error,
-                StoreError::RevisionConflict {
-                    expected: Expect::Revision(1),
-                    found: Some(2),
-                    ..
-                }
-            ),
-            "{error:?}"
-        );
-        let current = a.load("thing", "one").await.unwrap().unwrap();
-        let next = RecordedCommit::new(
-            Runtime::new(&registry)
-                .execute(&current, "finish", json!({}))
-                .unwrap(),
-            &recording("identical"),
-        )
-        .unwrap();
-        let (one, two) = tokio::join!(
-            a.commit_recorded(&next, Expect::Revision(2)),
-            b.commit_recorded(&next, Expect::Revision(2))
-        );
-        one.unwrap();
-        two.unwrap();
-        assert_eq!(a.records("thing", "one").await.unwrap().len(), 3);
-        assert_eq!(b.load("thing", "one").await.unwrap().unwrap().revision, 3);
+        concurrent_contract(left, right).await;
     });
+}
+
+async fn concurrent_contract<S: AtomicEventStore + ?Sized>(left: Arc<S>, right: Arc<S>) {
+    let registry = registry();
+    let mut a = adapter(left);
+    let mut b = adapter(right);
+    let created = creation(&registry, "one", "create");
+    a.commit_recorded(&created.commit, Expect::Absent)
+        .await
+        .unwrap();
+    let decision = Runtime::new(&registry)
+        .execute(&created.commit.instance, "touch", json!({}))
+        .unwrap();
+    let first = RecordedCommit::new(decision.clone(), &recording("first")).unwrap();
+    let other = RecordedCommit::new(decision, &recording("other")).unwrap();
+    let (one, two) = tokio::join!(
+        a.commit_recorded(&first, Expect::Revision(1)),
+        b.commit_recorded(&other, Expect::Revision(1))
+    );
+    assert_ne!(one.is_ok(), two.is_ok());
+    let error = one.err().or(two.err()).unwrap();
+    assert!(
+        matches!(
+            error,
+            StoreError::RevisionConflict {
+                expected: Expect::Revision(1),
+                found: Some(2),
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+    let current = a.load("thing", "one").await.unwrap().unwrap();
+    let next = RecordedCommit::new(
+        Runtime::new(&registry)
+            .execute(&current, "finish", json!({}))
+            .unwrap(),
+        &recording("identical"),
+    )
+    .unwrap();
+    let (one, two) = tokio::join!(
+        a.commit_recorded(&next, Expect::Revision(2)),
+        b.commit_recorded(&next, Expect::Revision(2))
+    );
+    one.unwrap();
+    two.unwrap();
+    assert_eq!(a.records("thing", "one").await.unwrap().len(), 3);
+    assert_eq!(b.load("thing", "one").await.unwrap().unwrap().revision, 3);
 }
 
 #[test]

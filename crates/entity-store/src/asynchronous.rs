@@ -22,7 +22,8 @@ pub type StoreFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, StoreError>>
 /// durably commits the complete envelope, resulting state and events together. Cancellation or a
 /// transport failure after submission may have an unknown outcome; retry the same record, never
 /// manufacture a new id. Read methods return append order, and `ids` returns sorted identities.
-/// Every method is required, so lack of history can never silently become event-only success.
+/// Record reads and writes are required; the verified-history helper may reuse those reads.
+/// Lack of history can never silently become event-only success.
 pub trait AsyncRecordedStore: Send {
     /// A verified decision prefix shared with the executor without a second replay.
     ///

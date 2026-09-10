@@ -5,7 +5,7 @@ This design owns R-122.
 `entity-eventlog` implements the asynchronous ER ports over `AtomicEventStore`. The caller owns
 the Eventlog provider, exact tenant, namespace and opaque transport attribution. The adapter
 opens no path and selects no credentials, clock or async executor. Eventlog is pinned to
-55d90845ac22689c64b9bc96dcad2f9750075804, the inspected 0.2.0 source revision.
+06c8e1c806ece76bf2874107d73691ca71e4f18f, the published committed-inventory follow-up to 0.2.0.
 
 ## Persistence contract
 
@@ -37,6 +37,11 @@ resolve the same record identity rather than inventing a fresh command.
 
 ## Shared verification and cache authority
 
+Enumeration uses Eventlog's committed stream inventory and validates selected ER histories. It
+cannot use the catch-up feed: PostgreSQL deliberately withholds that feed behind unrelated older
+transactions, including after this caller's append has succeeded. Inventory pagination is a series
+of fresh reads, not a cross-page snapshot; concurrent inserts before a cursor need a fresh scan.
+
 `entity-core::VerifiedReplay` verifies one next decision using the same path as genesis replay.
 Its state is private and cannot be loaded from an unverified snapshot. `VerifiedHistory` adds
 subject and envelope identity checks and shares the resulting proof between a provider and the
@@ -62,8 +67,11 @@ Eventlog requires Rust 1.91; the existing ER workspace retains Rust 1.85. The ad
 independent workspace and lockfile, and is included in `task check` through `task eventlog-check`
 and in the existing required CI Gate job. It cannot silently escape normal verification.
 
-File and SQLite tests exercise the same adapter contract. File-specific tests cover reopening,
-independent writer handles and late transaction failure. Existing ER provider layouts are still
+File, SQLite and PostgreSQL tests exercise the same adapter contract. File and PostgreSQL tests
+cover reopening, independent writer handles and late transaction failure. PostgreSQL also verifies
+immediate enumeration under an independently withheld feed. The explicit PostgreSQL lane requires
+an assigned disposable database and bounds each case to 20 seconds; CI selects it against its service.
+Existing ER provider layouts are still
 readable through their original packages; this addition does not migrate them. PostgreSQL facade
 convergence, query/transaction adaptation, AEP migration and application adoption remain required
 evolution work. Small functional tests are not a production throughput claim.

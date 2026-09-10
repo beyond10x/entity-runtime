@@ -410,33 +410,55 @@ impl<S: AtomicEventStore + ?Sized> AsyncRecordedStore for EventlogStore<S> {
     fn ids<'a>(&'a mut self, entity: &'a str) -> StoreFuture<'a, Vec<String>> {
         Box::pin(async move {
             let mut ids = BTreeSet::new();
-            let mut cursor = 0;
+            let mut cursor: Option<String> = None;
             loop {
-                let page = self
+                let streams = self
                     .store
-                    .read_feed(&self.tenant, cursor, eventlog_core::MAX_READ_LIMIT)
+                    .list_streams(
+                        &self.tenant,
+                        &self.history_type,
+                        cursor.as_deref(),
+                        eventlog_core::MAX_READ_LIMIT,
+                    )
                     .await
                     .map_err(backend)?;
-                for event in &page.events {
-                    if event.stream_type != self.history_type {
-                        continue;
+                for stream in &streams {
+                    if stream.tenant() != &self.tenant
+                        || stream.stream_type() != self.history_type
+                        || cursor
+                            .as_deref()
+                            .is_some_and(|after| stream.stream_id() <= after)
+                    {
+                        return Err(invalid(
+                            "inventory has a wrong scope or non-advancing identity",
+                        ));
                     }
+                    let first = self
+                        .store
+                        .read_stream(stream, 0, 1)
+                        .await
+                        .map_err(backend)?;
+                    let event = first
+                        .events
+                        .first()
+                        .ok_or_else(|| invalid("enumerated history has no creation record"))?;
                     let record = decode(event)?;
                     let (kind, id) = record.payload.subject();
-                    if event.stream().map_err(backend)? != self.history_stream(kind, id)? {
-                        return Err(invalid("feed record has the wrong subject stream"));
+                    if event.version != 1
+                        || event.stream().map_err(backend)? != *stream
+                        || *stream != self.history_stream(kind, id)?
+                    {
+                        return Err(invalid("enumerated record has the wrong subject stream"));
                     }
                     if kind == entity {
+                        self.read_subject(kind, id).await?;
                         ids.insert(id.to_owned());
                     }
+                    cursor = Some(stream.stream_id().into());
                 }
-                if !page.has_more {
+                if streams.len() < eventlog_core::MAX_READ_LIMIT {
                     break;
                 }
-                if page.next_position <= cursor {
-                    return Err(invalid("feed cursor did not advance"));
-                }
-                cursor = page.next_position;
             }
             Ok(ids.into_iter().collect())
         })

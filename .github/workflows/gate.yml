@@ -38,6 +38,7 @@ jobs:
           --health-retries 10
     env:
       ENTITY_POSTGRES_URL: postgres://entity:entity@127.0.0.1:5432/entity
+      ENTITY_EVENTLOG_POSTGRES_URL: postgres://entity:entity@127.0.0.1:5432/entity
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -89,8 +90,9 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: |
           cargo +1.91.0 fmt --manifest-path crates/entity-eventlog/Cargo.toml -- --check
-          cargo +1.91.0 clippy --manifest-path crates/entity-eventlog/Cargo.toml --all-targets --locked -- -D warnings
+          cargo +1.91.0 clippy --manifest-path crates/entity-eventlog/Cargo.toml --all-targets --all-features --locked -- -D warnings
           cargo +1.91.0 test --manifest-path crates/entity-eventlog/Cargo.toml --locked
+          cargo +1.91.0 test --manifest-path crates/entity-eventlog/Cargo.toml --locked --features postgres-tests --test persistence postgres_
           cargo +1.91.0 doc --manifest-path crates/entity-eventlog/Cargo.toml --no-deps --locked
 
   msrv:

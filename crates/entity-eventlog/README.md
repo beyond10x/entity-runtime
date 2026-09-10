@@ -11,8 +11,15 @@ Clippy, tests and rustdoc. The ordinary local and required CI gates include thos
 
 The provider retains full pinned decisions, including zero-event decisions, and observations
 without treating physical log positions as entity revisions. Global record identity and ordered
-batch rollback share one Eventlog transaction. Reopened file stores and SQLite are exercised by
-the same contract tests. PostgreSQL acceptance and legacy-provider facade migration remain open.
+batch rollback share one Eventlog transaction. File, SQLite and PostgreSQL share the same contract
+assertions. Enumeration uses committed stream inventory so an unrelated PostgreSQL transaction
+holding back the feed cannot hide a just-created subject.
+
+The explicit PostgreSQL lane is `task eventlog-postgres-check`. Assign a disposable database via
+`ENTITY_EVENTLOG_POSTGRES_URL`; selecting the lane without it fails. CI supplies its existing service,
+and local `task check` reports the lane as not run when no URL is assigned. Each case is bounded to
+20 seconds. The fixture must be test-owned: acceptance creates and drops prefixed tables.
+Legacy-provider facade migration and indexed query/transaction convergence remain open.
 
 See [the persistence design](../../docs/design/eventlog-recorded-provider.md) for the versioned
 mapping, cache invalidation and refusal rules.

@@ -15,6 +15,12 @@ tasks:
       - task: postgres-check
       - task: notes-check
       - task: eventlog-check
+      - cmd: |
+          if [ -n "${ENTITY_EVENTLOG_POSTGRES_URL:-}" ]; then
+            task eventlog-postgres-check
+          else
+            echo "eventlog-postgres-check: not run, ENTITY_EVENTLOG_POSTGRES_URL unset"
+          fi
 
   eventlog-check:
     desc: Verify the Eventlog adapter on its separate Rust 1.91 baseline
@@ -22,11 +28,21 @@ tasks:
       RUSTUP_AUTO_INSTALL: '0'
     cmds:
       - cargo +1.91.0 fmt --manifest-path crates/entity-eventlog/Cargo.toml -- --check
-      - cargo +1.91.0 clippy --manifest-path crates/entity-eventlog/Cargo.toml --all-targets --locked -- -D warnings
+      - cargo +1.91.0 clippy --manifest-path crates/entity-eventlog/Cargo.toml --all-targets --all-features --locked -- -D warnings
       - cargo +1.91.0 test --manifest-path crates/entity-eventlog/Cargo.toml --locked
       - cmd: cargo +1.91.0 doc --manifest-path crates/entity-eventlog/Cargo.toml --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
+
+  eventlog-postgres-check:
+    desc: Verify recorded Eventlog persistence against an assigned disposable PostgreSQL database
+    env:
+      RUSTUP_AUTO_INSTALL: '0'
+    preconditions:
+      - sh: test -n "${ENTITY_EVENTLOG_POSTGRES_URL:-}"
+        msg: ENTITY_EVENTLOG_POSTGRES_URL must name a disposable PostgreSQL database
+    cmds:
+      - cargo +1.91.0 test --manifest-path crates/entity-eventlog/Cargo.toml --locked --features postgres-tests --test persistence postgres_
 
   postgres-check:
     desc: the Postgres provider's tests, against the server ENTITY_POSTGRES_URL names — or one line saying they did not run
