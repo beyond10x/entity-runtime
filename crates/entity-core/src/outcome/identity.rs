@@ -104,17 +104,17 @@ pub(super) fn read<'de, D: serde::Deserializer<'de>>(
 
 pub(super) fn validate(definition: &Definition) -> Result<(), Failure> {
     let identity = match (&definition.identity, definition.format) {
-        (None, DefinitionFormat::V7) => {
+        (None, DefinitionFormat::V7 | DefinitionFormat::V8) => {
             return Err(defect(
                 "identity",
-                "profile 7 requires a typed identity field",
+                "profile 7 or later requires a typed identity field",
             ))
         }
-        (Some(identity), DefinitionFormat::V7) => identity,
+        (Some(identity), DefinitionFormat::V7 | DefinitionFormat::V8) => identity,
         (Some(_), _) => {
             return Err(defect(
                 "identity",
-                "typed identity requires outcome profile 7",
+                "typed identity requires outcome profile 7 or later",
             ))
         }
         (None, _) => return Ok(()),

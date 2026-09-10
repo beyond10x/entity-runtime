@@ -77,6 +77,9 @@ pub struct DomainEvent {
     /// instance: `set:` assignments would be lost, and a rehydrated instance would silently differ
     /// from the one the operations returned. An event that cannot rebuild what it describes is a
     /// notification, not a record.
+    ///
+    /// Outcome profiles require the complete [`crate::outcome::Record`] for replay. This legacy
+    /// changed-value map alone cannot encode removed fields or decisions with no events.
     pub changed: Map<String, Value>,
 
     /// The arguments the operation was decided on — what the rules read when they permitted it —
@@ -402,8 +405,14 @@ pub fn execute(
 
     let mut new_fields = canonical_object(old_fields.clone());
     for (field, template) in &operation.set {
-        let value = resolve_template(template, &context)?;
-        new_fields.insert(field.clone(), value);
+        match resolve_template_field(template, &context)? {
+            Some(value) => {
+                new_fields.insert(field.clone(), value);
+            }
+            None => {
+                new_fields.remove(field);
+            }
+        }
     }
 
     let state_errors = validate_object(&definition.schema, &new_fields, "fields");
@@ -1057,11 +1066,24 @@ pub(crate) fn resolve_template(
         Value::Object(values) => {
             let mut resolved = Map::new();
             for (key, value) in values {
-                resolved.insert(key.clone(), resolve_template(value, context)?);
+                if let Some(value) = resolve_template_field(value, context)? {
+                    resolved.insert(key.clone(), value);
+                }
             }
             Ok(Value::Object(resolved))
         }
         other => Ok(other.clone()),
+    }
+}
+
+/// A declared optional reference can omit its property; present null remains a value.
+pub(crate) fn resolve_template_field(
+    value: &Value,
+    context: &TemplateContext<'_>,
+) -> Result<Option<Value>, CoreError> {
+    match value.as_str().and_then(|s| s.strip_prefix("$optional.")) {
+        Some(reference) => resolve_expression_optional(&format!("${reference}"), context),
+        None => resolve_template(value, context).map(Some),
     }
 }
 

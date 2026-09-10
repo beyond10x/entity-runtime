@@ -6,6 +6,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Outcome profile 8 adds explicit optional property references in templates. Missing values
+  omit properties (or remove explicitly assigned state fields), while null remains null.
+  Unknown paths, root/array omission and ordinary missing references remain errors;
+  complete replay retains these distinctions and profiles 1–7 stay unchanged.
+
 - Outcome profile 7 binds a required typed identity field to a deterministic instance key.
   Invalid keys, mismatched state identities and identity changes are refused during execution
   and replay. Earlier profiles keep their string identity contract and serialized bytes.

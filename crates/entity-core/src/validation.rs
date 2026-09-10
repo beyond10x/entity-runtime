@@ -61,6 +61,7 @@ pub(crate) enum ValueProfile {
     EncodedStrings,
     ValueInvariants,
     ScalarPredicates,
+    OptionalTemplates,
 }
 
 impl ValueProfile {
@@ -260,7 +261,7 @@ pub(crate) fn validate_definition_for(
                 });
                 // The template is checked anyway: its own references are a separate fault.
             }
-            defects.check(validate_template(
+            defects.check(validate_template_field(
                 template,
                 &format!("operations.{operation_name}.set.{field}"),
                 template_scope,
@@ -696,7 +697,10 @@ fn validate_scalar_operand(
     path: &str,
     scope: Scope<'_>,
 ) -> Result<(), DefinitionError> {
-    if scope.profile != ValueProfile::ScalarPredicates {
+    if !matches!(
+        scope.profile,
+        ValueProfile::ScalarPredicates | ValueProfile::OptionalTemplates
+    ) {
         return invalid_rule(path, "scalar predicates require outcome profile 6");
     }
     validate_operand(value, path, scope)?;
@@ -849,7 +853,44 @@ pub(crate) fn validate_template(
     path: &str,
     scope: Scope<'_>,
 ) -> Result<(), DefinitionError> {
-    validate_operand(value, path, scope)
+    match value {
+        Value::Array(values) => {
+            for (index, value) in values.iter().enumerate() {
+                validate_template(value, &format!("{path}[{index}]"), scope)?;
+            }
+            Ok(())
+        }
+        Value::Object(values) => {
+            for (key, value) in values {
+                validate_template_field(value, &format!("{path}.{key}"), scope)?;
+            }
+            Ok(())
+        }
+        _ => validate_operand(value, path, scope),
+    }
+}
+
+/// Only object properties (including explicit state assignments) may be omitted.
+pub(crate) fn validate_template_field(
+    value: &Value,
+    path: &str,
+    scope: Scope<'_>,
+) -> Result<(), DefinitionError> {
+    if let Some(reference) = value.as_str().and_then(|s| s.strip_prefix("$optional.")) {
+        if scope.profile != ValueProfile::OptionalTemplates {
+            return Err(DefinitionError::InvalidTemplate {
+                path: path.into(),
+                message: "optional template properties require outcome profile 8".into(),
+            });
+        }
+        return validate_reference(&format!("${reference}"), scope).map_err(|message| {
+            DefinitionError::InvalidTemplate {
+                path: path.into(),
+                message,
+            }
+        });
+    }
+    validate_template(value, path, scope)
 }
 
 /// Visits every `$` string inside a value, at any depth. `$$literal` is not a reference.
@@ -1020,6 +1061,7 @@ fn validate_field_definition(
                 | ValueProfile::EncodedStrings
                 | ValueProfile::ValueInvariants
                 | ValueProfile::ScalarPredicates
+                | ValueProfile::OptionalTemplates
         )
     {
         defects.push(DefinitionError::InvalidField {
@@ -1033,6 +1075,7 @@ fn validate_field_definition(
             ValueProfile::EncodedStrings
                 | ValueProfile::ValueInvariants
                 | ValueProfile::ScalarPredicates
+                | ValueProfile::OptionalTemplates
         )
     {
         defects.push(DefinitionError::InvalidField {
@@ -1047,7 +1090,9 @@ fn validate_field_definition(
     if let Some(rules) = &field.invariants {
         if !matches!(
             profile,
-            ValueProfile::ValueInvariants | ValueProfile::ScalarPredicates
+            ValueProfile::ValueInvariants
+                | ValueProfile::ScalarPredicates
+                | ValueProfile::OptionalTemplates
         ) {
             defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),

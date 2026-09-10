@@ -13,7 +13,8 @@ mod identity;
 pub use identity::{identity_key, identity_value, Identity};
 
 use crate::runtime::{
-    canonical_object, evaluate_condition, materialize_event, resolve_template, TemplateContext,
+    canonical_object, evaluate_condition, materialize_event, resolve_template,
+    resolve_template_field, TemplateContext,
 };
 use crate::validation::{self, Scope, ScopeKind, ValueProfile};
 use crate::{
@@ -46,6 +47,9 @@ pub enum DefinitionFormat {
     /// A required typed entity identity bound to a canonical instance key.
     #[serde(rename = "entity-outcome-definition/7")]
     V7,
+    /// Explicit omission of missing object properties in templates, with typed identity.
+    #[serde(rename = "entity-outcome-definition/8")]
+    V8,
 }
 
 /// One entity's named command semantics, parsed but not yet validated.
@@ -203,6 +207,9 @@ pub enum RecordFormat {
     /// Complete decisions under outcome definition profile 7.
     #[serde(rename = "entity-outcome-record/7")]
     V7,
+    /// Complete profile-8 replay record retaining omitted versus null properties.
+    #[serde(rename = "entity-outcome-record/8")]
+    V8,
 }
 
 /// Complete comparison evidence for replay, including observations before an entity exists.
@@ -338,6 +345,7 @@ impl Validated {
             DefinitionFormat::V4 => ValueProfile::EncodedStrings,
             DefinitionFormat::V5 => ValueProfile::ValueInvariants,
             DefinitionFormat::V6 | DefinitionFormat::V7 => ValueProfile::ScalarPredicates,
+            DefinitionFormat::V8 => ValueProfile::OptionalTemplates,
         };
         let base = ValidatedDefinition::for_outcome(definition.entity.clone(), profile)
             .map_err(|e| defect("entity", e))?;
@@ -435,7 +443,7 @@ impl Validated {
                                     format!("undeclared creation field {field}"),
                                 ));
                             }
-                            validation::validate_template(value, &at, input_scope)
+                            validation::validate_template_field(value, &at, input_scope)
                                 .map_err(|e| defect(&at, e))?;
                         }
                         for event in emits {
@@ -614,10 +622,12 @@ impl Validated {
                 if before.is_some() {
                     return Err(Failure::InstanceAlreadyExists);
                 }
-                let fields = set
-                    .iter()
-                    .map(|(key, value)| Ok((key.clone(), resolve_template(value, &context)?)))
-                    .collect::<Result<Map<_, _>, CoreError>>()?;
+                let mut fields = Map::new();
+                for (key, value) in set {
+                    if let Some(value) = resolve_template_field(value, &context)? {
+                        fields.insert(key.clone(), value);
+                    }
+                }
                 identity::matches(&self.definition, &fields, identity.as_ref())?;
                 let decision =
                     crate::create(&self.base, invocation.id.clone(), Value::Object(fields))?;
@@ -684,6 +694,7 @@ impl Validated {
                 DefinitionFormat::V5 => RecordFormat::V5,
                 DefinitionFormat::V6 => RecordFormat::V6,
                 DefinitionFormat::V7 => RecordFormat::V7,
+                DefinitionFormat::V8 => RecordFormat::V8,
             },
             definition: self.definition.clone(),
             invocation,
