@@ -15,7 +15,7 @@ scope:
   path: docs/design/kernel-decimal-operands-v9.md
 - confidence: cited
   path: docs/requirements.md
-revision: 3
+revision: 4
 ---
 ## Source authority
 
@@ -46,3 +46,9 @@ Local verification: cargo test --offline --locked -p entity-core -p entity-graph
 The independent old-reader probe compares representative definition/record bytes and replay for profiles 1–8 against exact published f9f0545e66fbde40e6eb36e92d71f325dfd0d86c, and proves that reader refuses profile-9 definitions/records. This is compatibility evidence for the probe corpus, not a claim of exhaustive equivalence. Replacing decimal parsing with f64 made the precision test fail on 9007199254740993 versus 9007199254740992; production code was restored byte-for-byte before the passing package run. Initial fixture spelling errors were corrected before verification.
 
 Logs: local-evidence:ess-evolution-20260910/er-decimal-{tests,packages,mutation,probe,clippy,msrv,rustdoc}.log. Probe source and locked dependencies are retained under er-decimal-probe/. ESS adoption and its legacy representable-value conformance remain the next step; ESS literal readers and canonical-number migration are unchanged.
+
+## Publication
+
+Implementation c05710cab9f1aa4ff9086d620997ce18c0f08a32 is published on origin/feat/decimal-outcome-operands through standalone b10x-gates bot. Both author and committer were verified as b10x-bot[bot]. Remote main eaf43090636abce025649e565e5af271c4513eae remains an ancestor. The remote acknowledged the App-authorized branch-creation bypass; no protection was changed and no PR or remote correctness gate was triggered.
+
+The compatibility probe now consumes both current c05710cab9f1aa4ff9086d620997ce18c0f08a32 and previous f9f0545e66fbde40e6eb36e92d71f325dfd0d86c from exact public Git revisions, with no worktree path dependency. It passes representative profiles 1–8 byte/replay comparisons and old-reader profile-9 refusal; local-evidence:ess-evolution-20260910/er-decimal-published-probe.log. Preserve that source/lock/log, reclaim the three owned /tmp build targets, then finish and garbage-collect only wt-cedb56a53ec3 after publishing this receipt. Story remains draft under the repository's specific-move policy; ESS adoption continues in its existing active lowering story.
