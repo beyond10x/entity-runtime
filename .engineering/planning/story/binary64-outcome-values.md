@@ -17,7 +17,7 @@ scope:
   path: docs/design/kernel-binary64-values-v10.md
 - confidence: cited
   path: docs/requirements.md
-revision: 3
+revision: 4
 ---
 ## Source authority
 
@@ -44,3 +44,11 @@ Five new core behavioral tests pass, covering independently authored IEEE bit pa
 Strict all-target Clippy for core/surface, Rust 1.85.0 all-target core checking, strict core/surface rustdoc, formatting and diff checks pass. Clippy's one test-only unnecessary clone was replaced by slice::from_ref. The exact previous-reader probe against public c05710cab9f1aa4ff9086d620997ce18c0f08a32 passes representative profile 1–9 definition/record byte and replay comparisons, and proves that reader rejects profile-10 definitions/records. This is evidence for that corpus, not exhaustive equivalence. A deliberate abs() mutation in conversion made the raw-decoder test fail with 0 instead of the negative-zero sign bit; the production file was restored byte-for-byte before the passing package run.
 
 Logs: local-evidence:ess-evolution-20260910/er-binary64-{tests,mutation,packages,probe,msrv,clippy-final,rustdoc}.log. Retain the probe source/lock and logs; build targets are owned under /tmp with two jobs, debug information and incremental compilation disabled. No full, database, ownership, remote correctness or release gate ran. ESS must still select the codec and integrate typed raw ingestion, including normalized identity-key construction; SDK/application adoption and ESS synthesis/conformance remain separate required work.
+
+## Publication
+
+Implementation d0d189036673876a0ef714f62682cb52ef7e0f3b is published on origin/feat/binary64-outcome-values through standalone b10x-gates bot. Both author and committer are verified b10x-bot[bot]. The remote acknowledged App-authorized feature-branch creation; no policy/rules were changed and no PR or expensive remote gate was launched. Remote main eaf43090636abce025649e565e5af271c4513eae remains an ancestor.
+
+The compatibility probe now consumes current d0d189036673876a0ef714f62682cb52ef7e0f3b and previous c05710cab9f1aa4ff9086d620997ce18c0f08a32 through exact public Git pins, with no managed-tree dependency. It passes representative profiles 1–9 byte/replay comparisons and old-reader refusal of profile 10; local-evidence:ess-evolution-20260910/er-binary64-published-probe.log. Retain the probe source/lock and all verification logs, reclaim the three owned /tmp build targets, then finish and exact-ID garbage-collect wt-0f030b5b8e1e after publishing this receipt. Keep the initial story status under repository lifecycle policy.
+
+The same goal session owns the next action in ESS story:ess-entity-runtime-lowering: consume this exact revision, select NumberEncoding::Binary64/profile 10, expose typed raw source input decoding and normalize values before deriving typed identity keys. Preserve existing ESS generic literal/canonical contracts and standalone structural codecs; general synthesis/conformance refusals remain until independently implemented. Connectors adoption is not proven by this prerequisite.
