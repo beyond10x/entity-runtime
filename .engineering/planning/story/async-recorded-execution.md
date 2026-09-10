@@ -19,7 +19,7 @@ scope:
   path: docs/design
 - confidence: cited
   path: docs/requirements.md
-revision: 3
+revision: 4
 ---
 ## Outcome
 Provide the asynchronous recorded-store boundary and executor required by the authorized ESS evolution migration, outside the IO-free kernel.
@@ -51,3 +51,9 @@ Local verification on 2026-09-10: cargo test --locked -p entity-shell -p entity-
 Evidence: local-evidence:ess-evolution-20260910/er-async-affected-tests.log, er-async-final-tests.log, er-async-clippy.log, er-async-purity.log, er-async-msrv.log and er-async-tamper-mutation.log. Builds used two jobs with debug information, incremental compilation and compiler wrappers disabled. Retained source is based on faadc04f2f273517e21815d32ba3866f3aea7642.
 
 No full task check or application adoption gate has run for this change. Keep the work in a continuation branch pending integration verification. Eventlog-backed execution and the consumer migrations remain required; this does not establish completed ESS evolution. The story retains its initial draft lifecycle because repository instructions reserve advancement for an explicit lifecycle request; this evidence records the actual implemented and verified subset without claiming landed completion.
+
+## Refreshed upstream baseline
+
+On the operator's request, fetched origin in AEP, ESS and Eventlog and compared each primary HEAD to its fetched origin/main. All three were already equal with zero commits on either side: AEP 28abe09bb6e5b0a6b4db839f6bf5693957d39324 (0.55.0), ESS 0de935d92c49df1147f8196e2424f49634ec2925 (0.22.0), and Eventlog 55d90845ac22689c64b9bc96dcad2f9750075804 (0.2.0). No merge or history rewrite was needed. AEP's existing local planning and documentation edits were preserved; ESS and Eventlog were clean.
+
+ESS now includes at-most-once bindings, independent Gates adoption, and native test-profile scoping. Eventlog's published changes since the previously verified file-provider prerequisite are release and gate/documentation changes; its provider source directories are unchanged. The next persistence adapter must resolve its dependency against the refreshed Eventlog commit. The planning writer used for this record reports protocol 0.54.0; refreshing source does not claim that an installed executable was upgraded. The ER continuation remains source 550c54c879e944543ca9478f9d3744b7039ba69c on feat/async-recorded-execution, not integrated main.
