@@ -497,6 +497,7 @@ pub fn rehydrate(
         // and `$fields…` (R-52), so the empty arguments and previous fields below are what an
         // invariant is allowed to see, not a narrowing of it.
         let context = TemplateContext {
+            bindings: &[],
             definition,
             id: &first.id,
             args: &empty,
@@ -523,6 +524,7 @@ pub fn rehydrate(
             Some(_) => (&first.args, &before_fields),
         };
         let materialised = TemplateContext {
+            bindings: &[],
             definition,
             id: &first.id,
             args: payload_args,
@@ -639,6 +641,7 @@ fn operations_that_would_have_produced<'a>(
             continue;
         }
         let context = TemplateContext {
+            bindings: &[],
             definition,
             id: &first.id,
             args: &first.args,
@@ -681,6 +684,7 @@ fn operations_that_would_have_produced<'a>(
         // `changed` through the same function `execute` records it with, so the comparison is
         // between two decisions rather than between two ways of describing one.
         let after = TemplateContext {
+            bindings: &[],
             definition,
             id: &first.id,
             args: &first.args,

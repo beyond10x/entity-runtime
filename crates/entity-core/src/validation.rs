@@ -49,6 +49,13 @@ impl Defects {
 }
 
 pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), DefinitionErrors> {
+    validate_definition_for(definition, false)
+}
+
+pub(crate) fn validate_definition_for(
+    definition: &EntityDefinition,
+    collections: bool,
+) -> Result<(), DefinitionErrors> {
     let mut defects = Defects::default();
 
     if definition.entity.trim().is_empty() {
@@ -87,9 +94,15 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         });
     }
 
-    defects.extend(validate_schema_definition(&definition.schema, "schema"));
+    defects.extend(validate_schema_definition(
+        &definition.schema,
+        "schema",
+        collections,
+    ));
 
     let invariant_scope = Scope {
+        collections,
+        bindings: &[],
         kind: ScopeKind::Invariant,
         fields: &definition.schema,
         args: None,
@@ -111,6 +124,8 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
             validate_reference(
                 &projection.key,
                 Scope {
+                    collections,
+                    bindings: &[],
                     kind: ScopeKind::Invariant,
                     fields: &definition.schema,
                     args: None,
@@ -140,6 +155,8 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
             "create.emit",
             None,
             Scope {
+                collections,
+                bindings: &[],
                 kind: ScopeKind::CreateTemplate,
                 fields: &definition.schema,
                 args: None,
@@ -160,6 +177,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         defects.extend(validate_schema_definition(
             &operation.arguments,
             &format!("operations.{operation_name}.arguments"),
+            collections,
         ));
 
         let mut operation_source_states = BTreeSet::new();
@@ -195,6 +213,8 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         }
 
         let rule_scope = Scope {
+            collections,
+            bindings: &[],
             kind: ScopeKind::Precondition,
             fields: &definition.schema,
             args: Some(&operation.arguments),
@@ -208,6 +228,8 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         }
 
         let template_scope = Scope {
+            collections,
+            bindings: &[],
             kind: ScopeKind::OperationTemplate,
             fields: &definition.schema,
             args: Some(&operation.arguments),
@@ -311,6 +333,8 @@ impl ScopeKind {
 
 #[derive(Clone, Copy)]
 pub(crate) struct Scope<'a> {
+    pub(crate) collections: bool,
+    pub(crate) bindings: &'a [(&'a str, &'a FieldDefinition)],
     pub(crate) kind: ScopeKind,
     pub(crate) fields: &'a ObjectSchema,
     pub(crate) args: Option<&'a ObjectSchema>,
@@ -350,6 +374,9 @@ fn validate_reference(expression: &str, scope: Scope<'_>) -> Result<(), String> 
         ))
     };
 
+    if let Some(path) = expression.strip_prefix("$bound.") {
+        return bound_field(path, scope).map(|_| ());
+    }
     if scope.allows(expression) {
         return Ok(());
     }
@@ -382,39 +409,95 @@ fn validate_reference(expression: &str, scope: Scope<'_>) -> Result<(), String> 
 /// Walks `path` through the schema, so `$fields.address.countri` is refused where
 /// `$fields.address.country` is accepted.
 fn validate_reference_path(schema: &ObjectSchema, path: &str, noun: &str) -> Result<(), String> {
+    schema_field(schema, path, noun).map(|_| ())
+}
+
+fn schema_field<'a>(
+    schema: &'a ObjectSchema,
+    path: &str,
+    noun: &str,
+) -> Result<Option<&'a FieldDefinition>, String> {
     let mut segments = path.split('.');
     let root = segments.next().unwrap_or_default();
     if root.is_empty() {
         return Err("the path is empty".into());
     }
-
-    let mut field = match schema.fields.get(root) {
+    let field = match schema.fields.get(root) {
         Some(field) => field,
-        None if schema.additional_fields => return Ok(()),
+        None if schema.additional_fields => return Ok(None),
         None => return Err(format!("unknown {noun} '{root}'")),
     };
+    field_path(field, segments, root)
+}
 
+fn non_nullable(mut field: &FieldDefinition) -> Result<&FieldDefinition, String> {
+    while field.kind == FieldKind::Nullable {
+        field = field
+            .items
+            .as_deref()
+            .ok_or("nullable must declare items")?;
+    }
+    Ok(field)
+}
+
+fn field_path<'a, 'p>(
+    mut field: &'a FieldDefinition,
+    segments: impl Iterator<Item = &'p str>,
+    root: &str,
+) -> Result<Option<&'a FieldDefinition>, String> {
     let mut walked = root.to_owned();
     for segment in segments {
+        field = non_nullable(field)?;
         match field.kind {
-            FieldKind::Json => return Ok(()),
+            FieldKind::Json => return Ok(None),
             FieldKind::Object => match field.properties.get(segment) {
                 Some(next) => field = next,
-                None if field.additional_properties => return Ok(()),
-                None => {
-                    return Err(format!("'{walked}' declares no property '{segment}'"));
-                }
+                None if field.additional_properties => return Ok(None),
+                None => return Err(format!("'{walked}' declares no property '{segment}'")),
             },
             kind => {
                 return Err(format!(
                     "'{walked}' is a {kind} field, so '{segment}' resolves to nothing"
-                ));
+                ))
             }
         }
         walked.push('.');
         walked.push_str(segment);
     }
-    Ok(())
+    Ok(Some(field))
+}
+
+fn bound_field<'a>(path: &str, scope: Scope<'a>) -> Result<Option<&'a FieldDefinition>, String> {
+    let mut segments = path.split('.');
+    let name = segments.next().unwrap_or_default();
+    let field = scope
+        .bindings
+        .iter()
+        .rev()
+        .find(|(bind, _)| *bind == name)
+        .map(|(_, field)| *field)
+        .ok_or_else(|| format!("unknown lexical binder '{name}'"))?;
+    field_path(field, segments, name)
+}
+
+fn reference_field<'a>(
+    expression: &str,
+    scope: Scope<'a>,
+) -> Result<Option<&'a FieldDefinition>, String> {
+    validate_reference(expression, scope)?;
+    if let Some(path) = expression.strip_prefix("$bound.") {
+        return bound_field(path, scope);
+    }
+    for (prefix, schema, noun) in [
+        ("$fields.", Some(scope.fields), "field"),
+        ("$old_fields.", Some(scope.fields), "field"),
+        ("$args.", scope.args, "argument"),
+    ] {
+        if let (Some(path), Some(schema)) = (expression.strip_prefix(prefix), schema) {
+            return schema_field(schema, path, noun);
+        }
+    }
+    Err("quantifier target must reference a declared collection field".into())
 }
 
 // --- Rules ---------------------------------------------------------------------------------------
@@ -450,6 +533,8 @@ pub(crate) fn validate_condition_definition(
 ) -> Result<(), DefinitionError> {
     match condition {
         Condition::Literal(_) => Ok(()),
+        Condition::Forall { forall } => validate_quantified(forall, path, scope),
+        Condition::AnyElement { any_element } => validate_quantified(any_element, path, scope),
         Condition::All { all } => {
             if all.is_empty() {
                 return invalid_rule(path, "'all' must contain at least one condition");
@@ -485,6 +570,47 @@ pub(crate) fn validate_condition_definition(
             validate_pair(contains, &format!("{path}.contains"), scope)
         }
     }
+}
+
+fn validate_quantified(
+    quantified: &crate::definition::Quantified,
+    path: &str,
+    scope: Scope<'_>,
+) -> Result<(), DefinitionError> {
+    if !scope.collections {
+        return invalid_rule(path, "element quantifiers require outcome profile 2");
+    }
+    let mut letters = quantified.bind.bytes();
+    if !letters
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
+        || !letters.all(|c| c.is_ascii_alphanumeric() || c == b'_')
+    {
+        return invalid_rule(path, "quantifier binder must be an identifier");
+    }
+    let field = reference_field(&quantified.over, scope)
+        .and_then(|field| field.ok_or("quantifier target is not a typed collection".into()))
+        .and_then(non_nullable)
+        .map_err(|message| DefinitionError::InvalidRule {
+            path: path.into(),
+            message,
+        })?;
+    if !matches!(field.kind, FieldKind::Array | FieldKind::Map) {
+        return invalid_rule(path, "quantifier target must be an array or map");
+    }
+    let Some(element) = field.items.as_deref() else {
+        return invalid_rule(path, "quantifier collection must declare items");
+    };
+    let mut bindings = scope.bindings.to_vec();
+    bindings.push((&quantified.bind, element));
+    validate_condition_definition(
+        &quantified.body,
+        &format!("{path}.body"),
+        Scope {
+            bindings: &bindings,
+            ..scope
+        },
+    )
 }
 
 fn validate_pair(values: &[Value; 2], path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
@@ -628,10 +754,11 @@ fn invalid_rule(path: &str, message: impl Into<String>) -> Result<(), Definition
 pub(crate) fn validate_schema_definition(
     schema: &ObjectSchema,
     path: &str,
+    collections: bool,
 ) -> Vec<DefinitionError> {
     let mut defects = Vec::new();
     for (name, field) in &schema.fields {
-        validate_field_definition(field, &format!("{path}.{name}"), &mut defects);
+        validate_field_definition(field, &format!("{path}.{name}"), collections, &mut defects);
     }
     defects
 }
@@ -703,8 +830,13 @@ fn validate_constraint_applicability(
     if !field.values.is_empty() && field.kind != FieldKind::Enum {
         return refuse("values", "an enum field");
     }
-    if field.items.is_some() && field.kind != FieldKind::Array {
-        return refuse("items", "an array field");
+    if field.items.is_some()
+        && !matches!(
+            field.kind,
+            FieldKind::Array | FieldKind::Nullable | FieldKind::Map
+        )
+    {
+        return refuse("items", "an array, nullable or map field");
     }
     if (!field.properties.is_empty() || field.additional_properties)
         && field.kind != FieldKind::Object
@@ -722,8 +854,15 @@ fn validate_constraint_applicability(
 fn validate_field_definition(
     field: &FieldDefinition,
     path: &str,
+    collections: bool,
     defects: &mut Vec<DefinitionError>,
 ) {
+    if !collections && matches!(field.kind, FieldKind::Nullable | FieldKind::Map) {
+        defects.push(DefinitionError::InvalidField {
+            path: path.to_owned(),
+            message: "nullable and map require outcome profile 2".into(),
+        });
+    }
     if let Err(defect) = validate_constraint_applicability(field, path) {
         defects.push(defect);
     }
@@ -752,10 +891,10 @@ fn validate_field_definition(
                 message: "enum must declare at least one value".into(),
             });
         }
-        FieldKind::Array if field.items.is_none() => {
+        FieldKind::Array | FieldKind::Nullable | FieldKind::Map if field.items.is_none() => {
             defects.push(DefinitionError::InvalidField {
                 path: path.to_owned(),
-                message: "array must declare 'items'".into(),
+                message: format!("{} must declare 'items'", field.kind),
             });
         }
         // A `ref` that does not say what it points at is a string with extra ceremony. Naming the
@@ -786,10 +925,10 @@ fn validate_field_definition(
     }
 
     if let Some(items) = &field.items {
-        validate_field_definition(items, &format!("{path}[]"), defects);
+        validate_field_definition(items, &format!("{path}[]"), collections, defects);
     }
     for (name, property) in &field.properties {
-        validate_field_definition(property, &format!("{path}.{name}"), defects);
+        validate_field_definition(property, &format!("{path}.{name}"), collections, defects);
     }
 
     if let Some(default) = field.default.as_value() {
@@ -835,6 +974,18 @@ fn apply_member_defaults(
 
 fn apply_nested_defaults(definition: &FieldDefinition, value: &mut Value) {
     match definition.kind {
+        FieldKind::Nullable if !value.is_null() => {
+            if let Some(inner) = &definition.items {
+                apply_nested_defaults(inner, value);
+            }
+        }
+        FieldKind::Map => {
+            if let (Some(items), Value::Object(values)) = (&definition.items, value) {
+                for element in values.values_mut() {
+                    apply_nested_defaults(items, element);
+                }
+            }
+        }
         FieldKind::Object => {
             if let Value::Object(map) = value {
                 apply_member_defaults(&definition.properties, map);
@@ -913,6 +1064,23 @@ fn validate_value(
     errors: &mut Vec<ValidationError>,
 ) {
     match definition.kind {
+        FieldKind::Nullable => {
+            if !value.is_null() {
+                if let Some(inner) = &definition.items {
+                    validate_value(inner, value, path, errors);
+                }
+            }
+        }
+        FieldKind::Map => match value.as_object() {
+            Some(values) => {
+                if let Some(items) = &definition.items {
+                    for (key, value) in values {
+                        validate_value(items, value, &format!("{path}[{key:?}]"), errors);
+                    }
+                }
+            }
+            None => wrong_type(path, "map", errors),
+        },
         FieldKind::String => match value.as_str() {
             Some(string) => validate_string(definition, string, path, errors),
             None => wrong_type(path, "string", errors),

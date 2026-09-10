@@ -25,6 +25,9 @@ pub enum DefinitionFormat {
     /// The first explicitly selected outcome profile.
     #[serde(rename = "entity-outcome-definition/1")]
     V1,
+    /// Typed nullable collections and lexically scoped element predicates.
+    #[serde(rename = "entity-outcome-definition/2")]
+    V2,
 }
 
 /// One entity's named command semantics, parsed but not yet validated.
@@ -157,6 +160,9 @@ pub enum RecordFormat {
     /// Complete named command decision or observation.
     #[serde(rename = "entity-outcome-record/1")]
     V1,
+    /// Complete decisions under outcome definition profile 2.
+    #[serde(rename = "entity-outcome-record/2")]
+    V2,
 }
 
 /// Complete comparison evidence for replay, including observations before an entity exists.
@@ -239,8 +245,8 @@ fn defect(path: &str, detail: impl ToString) -> Failure {
         detail: detail.to_string(),
     }
 }
-fn schema(schema: &ObjectSchema, path: &str) -> Result<(), Failure> {
-    let errors = validation::validate_schema_definition(schema, path);
+fn schema(schema: &ObjectSchema, path: &str, collections: bool) -> Result<(), Failure> {
+    let errors = validation::validate_schema_definition(schema, path, collections);
     if errors.is_empty() {
         Ok(())
     } else {
@@ -283,8 +289,9 @@ impl Validated {
     /// # Errors
     /// A located definition failure; no partial handle is returned.
     pub fn new(definition: Definition) -> Result<Self, Failure> {
-        let base =
-            ValidatedDefinition::new(definition.entity.clone()).map_err(|e| defect("entity", e))?;
+        let collections = definition.format == DefinitionFormat::V2;
+        let base = ValidatedDefinition::for_outcome(definition.entity.clone(), collections)
+            .map_err(|e| defect("entity", e))?;
         if base.create.emit.is_some() || !base.operations.is_empty() {
             return Err(defect(
                 "entity",
@@ -300,8 +307,16 @@ impl Validated {
             if command_name.trim().is_empty() {
                 return Err(defect(&path, "command name is empty"));
             }
-            schema(&command.arguments, &format!("{path}.arguments"))?;
-            schema(&command.observations, &format!("{path}.observations"))?;
+            schema(
+                &command.arguments,
+                &format!("{path}.arguments"),
+                collections,
+            )?;
+            schema(
+                &command.observations,
+                &format!("{path}.observations"),
+                collections,
+            )?;
             if command.observations.additional_fields
                 || command
                     .observations
@@ -324,6 +339,8 @@ impl Validated {
                 return Err(defect(&path, "exactly one otherwise outcome is required"));
             }
             let input_scope = Scope {
+                collections,
+                bindings: &[],
                 kind: ScopeKind::Input,
                 fields: &base.schema,
                 args: Some(&command.arguments),
@@ -370,7 +387,7 @@ impl Validated {
                                 .map_err(|e| defect(&at, e))?;
                         }
                         for event in emits {
-                            schema(&event.schema, &at)?;
+                            schema(&event.schema, &at, collections)?;
                             validation::validate_event_definition(
                                 &event.template,
                                 &at,
@@ -389,7 +406,7 @@ impl Validated {
                         emits,
                     } => {
                         for event in emits {
-                            schema(&event.schema, &at)?;
+                            schema(&event.schema, &at, collections)?;
                         }
                         let mut prepared = base.as_definition().clone();
                         prepared.operations.insert(
@@ -404,7 +421,8 @@ impl Validated {
                         );
                         changes.insert(
                             (command_name.clone(), name.clone()),
-                            ValidatedDefinition::new(prepared).map_err(|e| defect(&at, e))?,
+                            ValidatedDefinition::for_outcome(prepared, collections)
+                                .map_err(|e| defect(&at, e))?,
                         );
                     }
                     Effect::Refuse {
@@ -415,7 +433,7 @@ impl Validated {
                         if error.trim().is_empty() {
                             return Err(defect(&at, "error name is empty"));
                         }
-                        schema(shape, &at)?;
+                        schema(shape, &at, collections)?;
                         validation::validate_template(payload, &at, input_scope)
                             .map_err(|e| defect(&at, e))?;
                     }
@@ -476,6 +494,7 @@ impl Validated {
         let empty = Map::new();
         let fields = before.map_or(&empty, |i| &i.fields);
         let context = TemplateContext {
+            bindings: &[],
             definition: &self.base,
             id: &invocation.id,
             args: &invocation.arguments,
@@ -548,6 +567,7 @@ impl Validated {
                 let decision =
                     crate::create(&self.base, invocation.id.clone(), Value::Object(fields))?;
                 let context = TemplateContext {
+                    bindings: &[],
                     new_fields: &decision.instance.fields,
                     to_state: &decision.instance.lifecycle_state,
                     ..context
@@ -598,7 +618,10 @@ impl Validated {
             }
         }
         Ok(Record {
-            format: RecordFormat::V1,
+            format: match self.definition.format {
+                DefinitionFormat::V1 => RecordFormat::V1,
+                DefinitionFormat::V2 => RecordFormat::V2,
+            },
             definition: self.definition.clone(),
             invocation,
             outcome: name.clone(),

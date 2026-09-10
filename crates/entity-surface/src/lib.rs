@@ -327,6 +327,20 @@ fn field_schema(field: &FieldDefinition) -> Value {
                 out.insert("items".into(), field_schema(items));
             }
         }
+        FieldKind::Nullable => {
+            if let Some(inner) = &field.items {
+                out.insert(
+                    "anyOf".into(),
+                    json!([{"type": "null"}, field_schema(inner)]),
+                );
+            }
+        }
+        FieldKind::Map => {
+            set_type(&mut out, "object");
+            if let Some(items) = &field.items {
+                out.insert("additionalProperties".into(), field_schema(items));
+            }
+        }
         FieldKind::Object => {
             let schema = ObjectSchema {
                 fields: field.properties.clone(),
@@ -956,6 +970,23 @@ const STYLE: &str = r#":root{color-scheme:light dark;font:16px/1.55 system-ui,sa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nullable_map_schemas_enforce_the_inner_value_contract() {
+        let field: FieldDefinition = serde_json::from_value(json!({
+            "type":"nullable", "items":{"type":"map", "items":{
+                "type":"nullable", "items":{"type":"integer", "min":1}
+            }}
+        }))
+        .unwrap();
+        let schema = field_schema(&field);
+        for valid in [json!(null), json!({}), json!({"a.b":null,"count":2})] {
+            assert!(jsonschema::is_valid(&schema, &valid), "{valid}");
+        }
+        for invalid in [json!([]), json!({"a":0}), json!({"a":true})] {
+            assert!(!jsonschema::is_valid(&schema, &invalid), "{invalid}");
+        }
+    }
 
     fn definition() -> EntityDefinition {
         serde_json::from_value(json!({

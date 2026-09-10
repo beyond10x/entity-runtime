@@ -288,6 +288,7 @@ pub fn create(
 
     let empty = Map::new();
     let context = TemplateContext {
+        bindings: &[],
         definition,
         id: &instance.id,
         args: &empty,
@@ -388,6 +389,7 @@ pub fn execute(
     let old_fields = &instance.fields;
 
     let context = TemplateContext {
+        bindings: &[],
         definition,
         id: &instance.id,
         args: &args,
@@ -428,6 +430,7 @@ pub fn execute(
     };
 
     let context = TemplateContext {
+        bindings: &[],
         definition,
         id: &instance.id,
         args: &args,
@@ -588,6 +591,10 @@ pub(crate) fn evaluate_condition(
 ) -> Result<Truth, CoreError> {
     match condition {
         Condition::Literal(value) => Ok(Truth::from_bool(*value)),
+        Condition::Forall { forall } => evaluate_quantified(forall, true, context, unobserved),
+        Condition::AnyElement { any_element } => {
+            evaluate_quantified(any_element, false, context, unobserved)
+        }
         Condition::All { all } => {
             let mut result = Truth::True;
             for condition in all {
@@ -767,6 +774,57 @@ fn resolve_pair(
     Ok((left, right))
 }
 
+/// Fold a declared collection without treating missing observations as empty.
+fn evaluate_quantified(
+    quantified: &crate::definition::Quantified,
+    universal: bool,
+    context: &TemplateContext<'_>,
+    unobserved: &mut Unobserved,
+) -> Result<Truth, CoreError> {
+    let Some(collection) =
+        resolve_operand(&Value::String(quantified.over.clone()), context, unobserved)?
+    else {
+        return Ok(Truth::Unknown);
+    };
+    match &collection {
+        Value::Array(values) => {
+            fold_elements(values.iter(), quantified, universal, context, unobserved)
+        }
+        Value::Object(values) => {
+            fold_elements(values.values(), quantified, universal, context, unobserved)
+        }
+        _ => Err(template_error(
+            &quantified.over,
+            "quantifier expected an array or map",
+        )),
+    }
+}
+
+fn fold_elements<'a>(
+    values: impl Iterator<Item = &'a Value>,
+    quantified: &crate::definition::Quantified,
+    universal: bool,
+    context: &TemplateContext<'_>,
+    unobserved: &mut Unobserved,
+) -> Result<Truth, CoreError> {
+    let mut result = Truth::from_bool(universal);
+    for value in values {
+        let mut bindings = context.bindings.to_vec();
+        bindings.push((&quantified.bind, value));
+        let bound = TemplateContext {
+            bindings: &bindings,
+            ..*context
+        };
+        let truth = evaluate_condition(&quantified.body, &bound, unobserved)?;
+        result = if universal {
+            result.and(truth)
+        } else {
+            result.or(truth)
+        };
+    }
+    Ok(result)
+}
+
 /// Resolves an operand, where nothing to observe is `None` rather than an error — which is what
 /// makes a comparison against it [`Truth::Unknown`].
 ///
@@ -888,6 +946,7 @@ pub(crate) fn changed_fields(context: &TemplateContext<'_>) -> Map<String, Value
 }
 
 pub(crate) struct TemplateContext<'a> {
+    pub(crate) bindings: &'a [(&'a str, &'a Value)],
     pub(crate) definition: &'a EntityDefinition,
     pub(crate) id: &'a str,
     pub(crate) args: &'a Map<String, Value>,
@@ -934,6 +993,25 @@ fn resolve_expression_optional(
     expression: &str,
     context: &TemplateContext<'_>,
 ) -> Result<Option<Value>, CoreError> {
+    if let Some(path) = expression.strip_prefix("$bound.") {
+        let (name, rest) = path
+            .split_once('.')
+            .map_or((path, None), |(name, rest)| (name, Some(rest)));
+        let value = context
+            .bindings
+            .iter()
+            .rev()
+            .find(|(bind, _)| *bind == name)
+            .map(|(_, value)| *value)
+            .ok_or_else(|| template_error(expression, "unknown lexical binder"))?;
+        return Ok(match rest {
+            None => Some(value.clone()),
+            Some(rest) => value
+                .as_object()
+                .and_then(|object| lookup(object, rest))
+                .cloned(),
+        });
+    }
     match expression {
         "$id" => Ok(Some(Value::String(context.id.to_owned()))),
         "$entity" => Ok(Some(Value::String(context.definition.entity.clone()))),

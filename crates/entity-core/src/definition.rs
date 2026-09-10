@@ -158,7 +158,8 @@ pub struct FieldDefinition {
     #[serde(default)]
     pub values: Vec<String>,
 
-    /// The element definition. `array` only, and required there.
+    /// The element definition for `array` and profile-2 `map`, or the non-null definition
+    /// for profile-2 `nullable`. Required for each of those kinds.
     #[serde(default)]
     pub items: Option<Box<FieldDefinition>>,
 
@@ -280,6 +281,10 @@ pub enum FieldKind {
     Array,
     /// A nested object whose members each satisfy `properties`.
     Object,
+    /// Profile 2: null or a value satisfying the complete `items` type.
+    Nullable,
+    /// Profile 2: an object whose string-keyed values each satisfy `items`.
+    Map,
     /// Any JSON value, unchecked.
     Json,
     /// An identifier naming an instance of another entity type; `entity` applies and is required.
@@ -304,6 +309,8 @@ impl FieldKind {
             Self::Enum => "enum",
             Self::Array => "array",
             Self::Object => "object",
+            Self::Nullable => "nullable",
+            Self::Map => "map",
             Self::Json => "json",
             Self::Ref => "ref",
         }
@@ -416,8 +423,22 @@ pub struct RuleDefinition {
 
 /// Every operator a condition may use, in the order the documentation lists them.
 pub const CONDITION_OPERATORS: &[&str] = &[
-    "all", "any", "not", "exists", "eq", "ne", "gt", "gte", "lt", "lte", "in", "contains",
-    "before", "after",
+    "all",
+    "any",
+    "not",
+    "exists",
+    "eq",
+    "ne",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "in",
+    "contains",
+    "before",
+    "after",
+    "forall",
+    "any_element",
 ];
 
 /// A deliberately small, deterministic predicate language, written as data.
@@ -439,7 +460,8 @@ pub const CONDITION_OPERATORS: &[&str] = &[
 /// operator asking it. That is what keeps `not` ordinary — `not: { exists: … }` means exactly
 /// what it reads as.
 ///
-/// There is no function call, no loop, no arithmetic, no clock and no lookup. A definition can be
+/// There is no function call, arithmetic, clock or external lookup. Collection quantification
+/// is bounded by the supplied values, without mutation or user-defined iteration code. A definition can be
 /// validated at registration and evaluated the same way every time because of what this type
 /// cannot express.
 ///
@@ -451,6 +473,16 @@ pub const CONDITION_OPERATORS: &[&str] = &[
 pub enum Condition {
     /// `true` or `false`, literally.
     Literal(bool),
+    /// Profile 2: every collection element satisfies the scoped body.
+    Forall {
+        /// The typed collection and its lexical body.
+        forall: Quantified,
+    },
+    /// Profile 2: at least one collection element satisfies the scoped body.
+    AnyElement {
+        /// The typed collection and its lexical body.
+        any_element: Quantified,
+    },
     /// Every child holds. Short-circuits on the first that does not. Must not be empty.
     All {
         /// The children.
@@ -537,6 +569,18 @@ pub enum Condition {
     },
 }
 
+/// A typed collection reference with a binder visible only within its predicate body.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Quantified {
+    /// Reference to an Array or Map, possibly nullable; never a caller-supplied element list.
+    pub over: String,
+    /// Identifier addressed as `$bound.<bind>`; nested binders may shadow it.
+    pub bind: String,
+    /// Predicate checked in the extended lexical scope.
+    pub body: Box<Condition>,
+}
+
 impl<'de> Deserialize<'de> for Condition {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -603,6 +647,12 @@ impl Condition {
                 not: Box::new(Self::from_value(operand)?),
             }),
             "exists" => Ok(Self::Exists { exists: operand }),
+            "forall" => Ok(Self::Forall {
+                forall: serde_json::from_value(operand).map_err(|error| error.to_string())?,
+            }),
+            "any_element" => Ok(Self::AnyElement {
+                any_element: serde_json::from_value(operand).map_err(|error| error.to_string())?,
+            }),
             "before" => Ok(Self::Before {
                 before: pair(operand, "before")?,
             }),

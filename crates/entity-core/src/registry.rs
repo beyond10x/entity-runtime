@@ -23,6 +23,15 @@ impl ValidatedDefinition {
         Ok(Self(definition))
     }
 
+    /// Outcome-only preparation; the handle remains private to that execution profile.
+    pub(crate) fn for_outcome(
+        definition: EntityDefinition,
+        collections: bool,
+    ) -> Result<Self, DefinitionErrors> {
+        crate::validation::validate_definition_for(&definition, collections)?;
+        Ok(Self(definition))
+    }
+
     /// The validated definition data, for inspection and deterministic storage.
     #[must_use]
     pub const fn as_definition(&self) -> &EntityDefinition {

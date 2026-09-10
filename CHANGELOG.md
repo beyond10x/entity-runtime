@@ -6,6 +6,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Outcome profile 2 adds typed nullable values, string-keyed typed maps and scoped `forall` /
+  `any_element` predicates. Complete command replay retains nulls and validates nested values;
+  legacy definitions and outcome profile 1 refuse the new vocabulary.
+
 - An opt-in pure-kernel outcome profile selects named command branches, emits complete creation
   event vectors at one revision, and records accepted/refused observations without changing state.
   Replay recomputes outcomes and refuses substituted definitions or altered records. Existing
