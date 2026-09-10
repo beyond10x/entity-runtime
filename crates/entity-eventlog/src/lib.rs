@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+mod documents;
+pub use documents::{DOCUMENT_PROJECTION, EntityDocumentProjector};
 mod wire;
 use wire::{IdentityClaim, Payload, StoredRecord, Subject, decode, invalid};
 
@@ -40,6 +42,7 @@ pub struct EventlogStore<S: ?Sized> {
     subject: String,
     actor: String,
     cache: BTreeMap<(String, String), (Option<eventlog_core::SnapshotGeneration>, Subject)>,
+    documents_ready: bool,
     cache_subjects: usize,
     cache_bytes: usize,
 }
@@ -70,6 +73,7 @@ impl<S: AtomicEventStore + ?Sized> EventlogStore<S> {
             subject: subject.into(),
             actor: actor.into(),
             cache: BTreeMap::new(),
+            documents_ready: false,
             cache_subjects: 64,
             cache_bytes: 16 * 1024 * 1024,
         })
@@ -105,6 +109,58 @@ impl<S: AtomicEventStore + ?Sized> EventlogStore<S> {
             digest(&record_id)?,
         )
         .map_err(backend)
+    }
+
+    async fn subjects(&self) -> Result<Vec<(String, String)>, StoreError> {
+        let mut subjects = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let streams = self
+                .store
+                .list_streams(
+                    &self.tenant,
+                    &self.history_type,
+                    cursor.as_deref(),
+                    eventlog_core::MAX_READ_LIMIT,
+                )
+                .await
+                .map_err(backend)?;
+            for stream in &streams {
+                if stream.tenant() != &self.tenant
+                    || stream.stream_type() != self.history_type
+                    || cursor
+                        .as_deref()
+                        .is_some_and(|after| stream.stream_id() <= after)
+                {
+                    return Err(invalid(
+                        "inventory has a wrong scope or non-advancing identity",
+                    ));
+                }
+                let first = self
+                    .store
+                    .read_stream(stream, 0, 1)
+                    .await
+                    .map_err(backend)?;
+                let event = first
+                    .events
+                    .first()
+                    .ok_or_else(|| invalid("enumerated history has no creation record"))?;
+                let record = decode(event)?;
+                let (kind, id) = record.payload.subject();
+                if event.version != 1
+                    || event.stream().map_err(backend)? != *stream
+                    || *stream != self.history_stream(kind, id)?
+                {
+                    return Err(invalid("enumerated record has the wrong subject stream"));
+                }
+                subjects.push((kind.to_owned(), id.to_owned()));
+                cursor = Some(stream.stream_id().into());
+            }
+            if streams.len() < eventlog_core::MAX_READ_LIMIT {
+                break;
+            }
+        }
+        Ok(subjects)
     }
 
     async fn read_subject(&mut self, entity: &str, id: &str) -> Result<Subject, StoreError> {
@@ -410,54 +466,10 @@ impl<S: AtomicEventStore + ?Sized> AsyncRecordedStore for EventlogStore<S> {
     fn ids<'a>(&'a mut self, entity: &'a str) -> StoreFuture<'a, Vec<String>> {
         Box::pin(async move {
             let mut ids = BTreeSet::new();
-            let mut cursor: Option<String> = None;
-            loop {
-                let streams = self
-                    .store
-                    .list_streams(
-                        &self.tenant,
-                        &self.history_type,
-                        cursor.as_deref(),
-                        eventlog_core::MAX_READ_LIMIT,
-                    )
-                    .await
-                    .map_err(backend)?;
-                for stream in &streams {
-                    if stream.tenant() != &self.tenant
-                        || stream.stream_type() != self.history_type
-                        || cursor
-                            .as_deref()
-                            .is_some_and(|after| stream.stream_id() <= after)
-                    {
-                        return Err(invalid(
-                            "inventory has a wrong scope or non-advancing identity",
-                        ));
-                    }
-                    let first = self
-                        .store
-                        .read_stream(stream, 0, 1)
-                        .await
-                        .map_err(backend)?;
-                    let event = first
-                        .events
-                        .first()
-                        .ok_or_else(|| invalid("enumerated history has no creation record"))?;
-                    let record = decode(event)?;
-                    let (kind, id) = record.payload.subject();
-                    if event.version != 1
-                        || event.stream().map_err(backend)? != *stream
-                        || *stream != self.history_stream(kind, id)?
-                    {
-                        return Err(invalid("enumerated record has the wrong subject stream"));
-                    }
-                    if kind == entity {
-                        self.read_subject(kind, id).await?;
-                        ids.insert(id.to_owned());
-                    }
-                    cursor = Some(stream.stream_id().into());
-                }
-                if streams.len() < eventlog_core::MAX_READ_LIMIT {
-                    break;
+            for (kind, id) in self.subjects().await? {
+                if kind == entity {
+                    self.read_subject(&kind, &id).await?;
+                    ids.insert(id);
                 }
             }
             Ok(ids.into_iter().collect())

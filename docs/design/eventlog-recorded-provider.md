@@ -1,11 +1,11 @@
 # Recorded Eventlog provider
 
-This design owns R-122.
+This design owns R-122 and R-124.
 
 `entity-eventlog` implements the asynchronous ER ports over `AtomicEventStore`. The caller owns
 the Eventlog provider, exact tenant, namespace and opaque transport attribution. The adapter
 opens no path and selects no credentials, clock or async executor. Eventlog is pinned to
-06c8e1c806ece76bf2874107d73691ca71e4f18f, the published committed-inventory follow-up to 0.2.0.
+6f7ea5a113d76a3334cf04d2bccef7770e1aae4e, the published native document-query follow-up to 0.2.0.
 
 ## Persistence contract
 
@@ -61,6 +61,52 @@ proofs retained by callers are caller-owned. Eviction and oversized histories fa
 without changing durable state. Shared immutable collections avoid cloning every prior envelope
 and observation on an unchanged read.
 
+## Native indexed queries (R-124)
+
+`entity-query::AsyncDocumentQueryProvider` retains the existing `DocumentQuery`, containment,
+limit and query-bound cursor contract on the caller's executor. The memory implementation is the
+reference. `DocumentPage::from_page` preserves the query identity when a native provider reports
+its own continuation rather than returning a discarded extra row. No runtime enters the kernel.
+
+The host explicitly registers `entity_eventlog::EntityDocumentProjector` on every Eventlog writer
+before traffic. Its `DOCUMENT_PROJECTION` opts into Eventlog PostgreSQL's document indexes, using
+the migration role for hosted storage. Existing `ProjectionSpec` declarations and event formats
+are preserved. One projection covers version-one ER history streams across tenant/namespace
+coordinates, with rows keyed by namespace, the hashed entity discriminator, then the original
+instance ID. The last segment preserves byte ordering. Zero-event decisions update the candidate
+instance; observations advance its physical position without advancing the entity revision.
+Inline projection writes participate in the original atomic group, including late rollback.
+
+Before its first query, a handle explicitly calls `enable_document_queries`. This startup operation
+checks that the projector is inline, that native querying is admitted, and that every committed
+subject in the selected namespace has a corresponding row at the verified history's current
+physical position. It refuses missing, stale or invalid rows. This is an inventory/verification
+scan at explicit readiness, not an implicit scan for each query. The caller owns fencing: every
+writer must register the projection, and old writers must be stopped during migration. Readiness
+cannot make an independently misconfigured writer maintain a projection it never registered.
+
+For an existing owner, create/admit the projection and call Eventlog `rebuild_projection` before
+inline registration, under that fenced startup. Rebuild is derived work, not a rewrite of ER
+history. Then register inline and enable the handle. A feed watermark held by an unrelated older
+transaction can leave a rebuild incomplete; the committed inventory check refuses readiness in
+that case. The host can settle that condition and retry the explicit rebuild with a fresh
+unregistered Eventlog handle. Reads never start a background rebuild or wait indefinitely for the
+feed. A redacted or invalid decision chain is refused, not silently imported as valid state.
+
+For each ordinary query, Eventlog PostgreSQL performs JSONB containment and bounded keyset paging.
+The adapter verifies only those selected candidates against recorded history using its existing
+bounded prefix cache. A persisted projection row is not sealed kernel proof: changed instance
+bytes, wrong scope/key, missing history, redaction or a changed physical position refuses the
+query. This makes concurrent changes visible as a store error instead of silently returning a
+projection that disagrees with history. The caller may issue another read; the adapter does not
+retry mutations or change query identity. Separate pages do not promise a common snapshot.
+
+The optional capability is PostgreSQL-native today. File/SQLite point and recorded APIs retain
+their behavior, while document projector registration refuses on those providers. This does not
+complete a caller-scoped ER transaction session over Eventlog: transaction-local queries plus
+sequence/identity locks and dynamically staged decisions remain required before retiring the
+legacy SQL implementations.
+
 ## Build and completion boundaries
 
 Eventlog requires Rust 1.91; the existing ER workspace retains Rust 1.85. The adapter has an
@@ -73,5 +119,5 @@ immediate enumeration under an independently withheld feed. The explicit Postgre
 an assigned disposable database and bounds each case to 20 seconds; CI selects it against its service.
 Existing ER provider layouts are still
 readable through their original packages; this addition does not migrate them. PostgreSQL facade
-convergence, query/transaction adaptation, AEP migration and application adoption remain required
+convergence, native transaction-session adaptation, AEP migration and application adoption remain required
 evolution work. Small functional tests are not a production throughput claim.

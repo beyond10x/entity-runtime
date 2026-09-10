@@ -225,6 +225,7 @@ name = "entity-eventlog"
 version = "0.18.0"
 dependencies = [
  "entity-core",
+ "entity-query",
  "entity-shell",
  "entity-store",
  "eventlog-core",
@@ -237,6 +238,16 @@ dependencies = [
  "time",
  "tokio",
  "tokio-postgres",
+]
+
+[[package]]
+name = "entity-query"
+version = "0.18.0"
+dependencies = [
+ "entity-core",
+ "entity-store",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -271,7 +282,7 @@ dependencies = [
 [[package]]
 name = "eventlog-core"
 version = "0.2.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=06c8e1c806ece76bf2874107d73691ca71e4f18f#06c8e1c806ece76bf2874107d73691ca71e4f18f"
+source = "git+https://github.com/beyond10x/eventlog?rev=6f7ea5a113d76a3334cf04d2bccef7770e1aae4e#6f7ea5a113d76a3334cf04d2bccef7770e1aae4e"
 dependencies = [
  "serde",
  "serde_json",
@@ -284,7 +295,7 @@ dependencies = [
 [[package]]
 name = "eventlog-file"
 version = "0.2.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=06c8e1c806ece76bf2874107d73691ca71e4f18f#06c8e1c806ece76bf2874107d73691ca71e4f18f"
+source = "git+https://github.com/beyond10x/eventlog?rev=6f7ea5a113d76a3334cf04d2bccef7770e1aae4e#6f7ea5a113d76a3334cf04d2bccef7770e1aae4e"
 dependencies = [
  "eventlog-core",
  "serde",
@@ -297,7 +308,7 @@ dependencies = [
 [[package]]
 name = "eventlog-postgres"
 version = "0.2.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=06c8e1c806ece76bf2874107d73691ca71e4f18f#06c8e1c806ece76bf2874107d73691ca71e4f18f"
+source = "git+https://github.com/beyond10x/eventlog?rev=6f7ea5a113d76a3334cf04d2bccef7770e1aae4e#6f7ea5a113d76a3334cf04d2bccef7770e1aae4e"
 dependencies = [
  "eventlog-core",
  "rustls",
@@ -314,7 +325,7 @@ dependencies = [
 [[package]]
 name = "eventlog-sqlite"
 version = "0.2.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=06c8e1c806ece76bf2874107d73691ca71e4f18f#06c8e1c806ece76bf2874107d73691ca71e4f18f"
+source = "git+https://github.com/beyond10x/eventlog?rev=6f7ea5a113d76a3334cf04d2bccef7770e1aae4e#6f7ea5a113d76a3334cf04d2bccef7770e1aae4e"
 dependencies = [
  "eventlog-core",
  "rusqlite",

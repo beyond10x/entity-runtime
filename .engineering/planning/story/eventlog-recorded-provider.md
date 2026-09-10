@@ -22,6 +22,8 @@ scope:
 - confidence: cited
   path: crates/entity-eventlog
 - confidence: cited
+  path: crates/entity-query
+- confidence: cited
   path: crates/entity-shell
 - confidence: cited
   path: crates/entity-store
@@ -29,7 +31,7 @@ scope:
   path: docs/design
 - confidence: cited
   path: docs/requirements.md
-revision: 9
+revision: 12
 ---
 ## Outcome
 Implement the Eventlog persistence adapter required by the authorized ESS evolution migration, consuming current Eventlog source 55d90845ac22689c64b9bc96dcad2f9750075804.
@@ -81,3 +83,21 @@ Evidence: local-evidence:ess-evolution-20260910/er-eventlog-postgres-final.log, 
 ## Native query and transaction gap
 
 Current source review distinguishes legacy preservation from Eventlog convergence. The accepted provider-query-v0.1 contract has recursive JSON containment with exact numeric meaning, query-bound keyset cursors and a PostgreSQL GIN index; PostgresSession adds transaction-local queries, point/absent-identity locks, sequence reservations and staged writes. Eventlog ProjectionStore currently exposes scalar indexed find/get/get_for_update plus guard reservations, not that complete query/session surface. Replacing queries with ids()+load() loops or invoking the outer store from a locked projector would not satisfy the migration contract. Native convergence must retain provider-owned indexed filtering, transaction-local reads and write atomicity, explicit hosted migration/application-role separation, and backward-compatible projection declarations. The legacy-recorded-batch-compatibility story closes complete-record support in the existing SQL transaction boundary; it does not close this Eventlog-native gap or authorize declaring facade migration complete.
+
+## Native indexed query adoption
+
+Consume published Eventlog 6f7ea5a113d76a3334cf04d2bccef7770e1aae4e. Add the asynchronous optional document-query port beside the existing query types and an inline ER document projector over the existing complete recorded payload. Namespace/entity key prefixes preserve original identity byte ordering; containment runs in Eventlog PostgreSQL, never an ids()+load() filtering loop. Query results remain derived hints: verify only the selected bounded candidates against recorded history before returning them, including current physical position and redaction invalidation. Do not treat persisted projection bytes as sealed kernel proof.
+
+The host registers the projector on every writer before traffic. Enabling the query adapter validates complete namespace coverage against committed inventory once; a pre-existing unindexed namespace refuses rather than returning an empty result. Existing stores can rebuild the derived projection before inline registration under a fenced startup, then enable only when the inventory/position check proves coverage. A held feed watermark that leaves rebuild incomplete must refuse readiness. The adapter does not start a runtime or silently rebuild on reads.
+
+Reuse DocumentQuery identity binding and bounded page rules, adding a shared page constructor for a native backend's explicit continuation signal. Tests compare PostgreSQL results with the memory reference, cover observations, exact retries, namespaces/entities/tenants, reopen, partial rebuild refusal, late rollback, redaction and forged projection bodies. Mutation checks must demonstrate filtering and provenance safeguards. The full native transaction session and SQL facade retirement remain required after this query capability.
+
+## Native query implementation result
+
+The adapter now consumes published Eventlog 6f7ea5a113d76a3334cf04d2bccef7770e1aae4e and implements AsyncDocumentQueryProvider using the native indexed projection capability. EntityDocumentProjector is explicitly registered by the host; enable_document_queries verifies committed namespace coverage at startup. Query pages verify only selected candidates against the existing recorded history/generation cache. Existing unindexed histories require a fenced derived rebuild, and a held feed watermark cannot make an incomplete rebuild count as ready. No history format or kernel authority changed. The query port and native page constructor share the existing predicate/cursor contract; the memory reference remains the comparison.
+
+The three new PostgreSQL cases passed in 1.26 seconds. The restored adapter run passed all 17 cases in 1.84 seconds, including existing file/SQLite persistence, PostgreSQL concurrency/reconnect/rollback, native-vs-memory numeric containment, namespace/entity/tenant isolation, query-bound paging, zero-event transitions, observations, reopen, missing and watermark-incomplete rebuild readiness, forged candidate refusal and redaction invalidation. PostgreSQL fixtures share one test-only lock because the feed watermark is cluster-wide. Disabling coverage enumeration failed the missing-projection readiness assertion; disabling candidate/history comparison failed the forged-state refusal. Both deliberate mutations were restored before the final run. The four query-port unit tests, strict query/adapter Clippy, Rustdoc and the requirement pin checker passed. Query-port Rust 1.85.0 compatibility passed.
+
+Evidence: local-evidence:ess-evolution-20260910/er-native-query-final.log; er-native-query-coverage-mutation.log; er-native-query-provenance-mutation.log; er-native-query-port.log; er-native-query-clippy.log; er-native-query-port-clippy.log; er-native-query-rustdoc.log; er-native-query-port-rustdoc.log; er-native-query-port-msrv.log; er-native-query-fixture.txt. These are focused checks, not a full task check, hosted production proof, main integration or completed consumer adoption.
+
+The continuing session retains the published ER continuation for the next required step: native caller-scoped transactions combining locks, sequences, queries and dynamically staged recorded writes, then SQL facade convergence. This query capability does not retire those legacy implementations by itself. Keep the existing lifecycle status under this repository's operator-controlled move rule; implementation evidence is recorded here rather than claiming the full migration has landed.

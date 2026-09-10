@@ -6,6 +6,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- The Eventlog provider supports optional native PostgreSQL document queries through the async
+  query port. Inline projection coverage is verified before readiness, selected candidates are
+  checked against recorded history, and query-bound cursors retain the existing containment rules.
 - SQLite and PostgreSQL support ordered atomic batches of complete recorded decisions. PostgreSQL
   caller transactions expose recorded history and can query their staged state; a caught batch
   refusal rolls back its state and provenance while leaving the outer transaction usable.

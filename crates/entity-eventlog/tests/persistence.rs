@@ -31,6 +31,16 @@ fn run<T>(future: impl Future<Output = T>) -> T {
         })
 }
 
+#[cfg(feature = "postgres-tests")]
+fn run_postgres<T>(future: impl Future<Output = T>) -> T {
+    // xmin is cluster-wide: independent test table prefixes do not isolate a held transaction.
+    static EXCLUSIVE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _exclusive = EXCLUSIVE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    run(future)
+}
+
 fn registry() -> Registry {
     let definition: EntityDefinition = serde_json::from_value(json!({
         "entity": "thing", "schema": {},
@@ -243,7 +253,7 @@ async fn postgres(prefix: &str) -> Arc<eventlog_postgres::PostgresEventStore> {
 #[test]
 #[cfg(feature = "postgres-tests")]
 fn postgres_provider_preserves_the_same_contract_after_reconnecting() {
-    run(async {
+    run_postgres(async {
         let store = postgres("er_recorded_contract").await;
         recorded_contract(store.clone()).await;
         let mut provider = adapter(store.clone());
@@ -284,7 +294,7 @@ fn postgres_provider_preserves_the_same_contract_after_reconnecting() {
 #[test]
 #[cfg(feature = "postgres-tests")]
 fn postgres_late_failure_rolls_back_bodies_and_identity_claims() {
-    run(async {
+    run_postgres(async {
         let store = postgres("er_recorded_rollback").await;
         store
             .register_inline(Arc::new(FailSecondSubject))
@@ -299,7 +309,7 @@ fn postgres_late_failure_rolls_back_bodies_and_identity_claims() {
 #[test]
 #[cfg(feature = "postgres-tests")]
 fn postgres_enumeration_reads_its_writes_while_the_feed_is_withheld() {
-    run(async {
+    run_postgres(async {
         let store = postgres("er_recorded_inventory").await;
         let (mut client, connection) =
             tokio_postgres::connect(&postgres_url(), tokio_postgres::NoTls)
@@ -342,7 +352,7 @@ fn postgres_enumeration_reads_its_writes_while_the_feed_is_withheld() {
 #[test]
 #[cfg(feature = "postgres-tests")]
 fn postgres_independent_handles_resolve_conflicts_and_identical_retries() {
-    run(async {
+    run_postgres(async {
         let left = postgres("er_recorded_concurrent").await;
         let right = postgres("er_recorded_concurrent").await;
         concurrent_contract(left.clone(), right.clone()).await;
@@ -785,4 +795,346 @@ fn cache_eviction_and_disabled_retention_preserve_durable_state() {
             assert_eq!(uncached.ids("thing").await.unwrap(), vec!["one", "two"]);
         }
     });
+}
+
+#[cfg(feature = "postgres-tests")]
+mod document_queries {
+    use super::*;
+    use entity_eventlog::EntityDocumentProjector;
+    use entity_query::{
+        AsyncDocumentQueryProvider, DocumentQuery, DocumentQueryProvider, QueryError,
+    };
+    use entity_store::{MemoryStore, Store};
+
+    fn query_registry() -> Registry {
+        let mut registry = Registry::new();
+        for entity in ["numbers", "other"] {
+            registry.register(serde_json::from_value(json!({
+                "entity": entity,
+                "schema": {"fields": {"value": {"type": "json"}}},
+                "lifecycle": {"initial": "open", "states": ["open"]},
+                "operations": {"change": {"arguments": {"fields": {"value": {"type":"json"}}}, "transitions": [{"from":"open", "to":"open"}], "set": {"value":"$args.value"}}}
+            })).unwrap()).unwrap();
+        }
+        registry
+    }
+
+    fn numeric_creation(
+        registry: &Registry,
+        entity: &str,
+        id: &str,
+        value: serde_json::Value,
+    ) -> RecordedCommit {
+        RecordedCommit::new(
+            Runtime::new(registry)
+                .create(entity, 1, id, json!({"value":value}))
+                .unwrap(),
+            &recording(&format!("{entity}-{id}")),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn postgres_native_queries_match_memory_and_preserve_scoped_cursors_after_reopen() {
+        run_postgres(async {
+            let registry = query_registry();
+            let raw = postgres("er_query_contract").await;
+            raw.register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let mut store = adapter(raw.clone());
+            store.enable_document_queries().await.unwrap();
+            let mut memory = MemoryStore::new();
+            let mut created = Vec::new();
+            for (id, value) in [
+                (
+                    "Z",
+                    json!({"amount":100, "large":9_007_199_254_740_992_u64, "tags":[1,2]}),
+                ),
+                (
+                    "a",
+                    json!({"amount":100.0, "large":9_007_199_254_740_993_u64, "tags":[2,3], "nullable":null}),
+                ),
+                ("ä", json!({"amount":100, "tags":[2,4]})),
+                ("other", json!({"amount":99})),
+            ] {
+                let commit = numeric_creation(&registry, "numbers", id, value);
+                store
+                    .commit_recorded(&commit, Expect::Absent)
+                    .await
+                    .unwrap();
+                Store::commit_recorded(&mut memory, &commit, Expect::Absent).unwrap();
+                created.push(commit);
+            }
+            let alien_entity = numeric_creation(&registry, "other", "alien", json!({"amount":100}));
+            store
+                .commit_recorded(&alien_entity, Expect::Absent)
+                .await
+                .unwrap();
+            for (tenant, namespace) in
+                [("tenant-a", "other-namespace"), ("tenant-b", "application")]
+            {
+                let mut alien = EventlogStore::new(
+                    raw.clone(),
+                    TenantId::new(tenant).unwrap(),
+                    namespace,
+                    "subject",
+                    "actor",
+                )
+                .unwrap();
+                let commit =
+                    numeric_creation(&registry, "numbers", "foreign", json!({"amount":100}));
+                alien
+                    .commit_recorded(&commit, Expect::Absent)
+                    .await
+                    .unwrap();
+            }
+            store
+                .observe(&RecordedObservation {
+                    entity: "numbers".into(),
+                    id: "a".into(),
+                    revision: 1,
+                    envelope: recording("observed-a").seal(json!({"seen":true})).unwrap(),
+                })
+                .await
+                .unwrap();
+            store
+                .commit_recorded(&created[1], Expect::Absent)
+                .await
+                .unwrap();
+            let query = DocumentQuery::for_entity("numbers")
+                .matching("value", json!({"amount":100.0}))
+                .with_limit(2);
+            let first = store.query_documents(&query).await.unwrap();
+            assert_eq!(
+                first,
+                DocumentQueryProvider::query_documents(&memory, &query).unwrap()
+            );
+            assert_eq!(
+                first
+                    .items
+                    .iter()
+                    .map(|i| i.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["Z", "a"]
+            );
+            let cursor = first.next.unwrap();
+            assert!(matches!(
+                store
+                    .query_documents(
+                        &DocumentQuery::for_entity("numbers")
+                            .matching("value", json!({"amount":99}))
+                            .after(cursor.clone())
+                    )
+                    .await,
+                Err(QueryError::Invalid(_))
+            ));
+            let continuation = query.after(cursor);
+            assert_eq!(
+                store.query_documents(&continuation).await.unwrap(),
+                DocumentQueryProvider::query_documents(&memory, &continuation).unwrap()
+            );
+            for value in [
+                json!({"large":9_007_199_254_740_993_u64}),
+                json!({"nullable":null}),
+                json!({"tags":[3,3]}),
+            ] {
+                let query = DocumentQuery::for_entity("numbers").matching("value", value);
+                assert_eq!(
+                    store.query_documents(&query).await.unwrap(),
+                    DocumentQueryProvider::query_documents(&memory, &query).unwrap()
+                );
+            }
+            let changed = RecordedCommit::new(
+                Runtime::new(&registry)
+                    .execute(
+                        &created[0].instance,
+                        "change",
+                        json!({"value":{"amount":99}}),
+                    )
+                    .unwrap(),
+                &recording("changed-z"),
+            )
+            .unwrap();
+            store
+                .commit_recorded(&changed, Expect::Revision(1))
+                .await
+                .unwrap();
+            Store::commit_recorded(&mut memory, &changed, Expect::Revision(1)).unwrap();
+            let query =
+                DocumentQuery::for_entity("numbers").matching("value", json!({"amount":100}));
+            assert_eq!(
+                store.query_documents(&query).await.unwrap(),
+                DocumentQueryProvider::query_documents(&memory, &query).unwrap()
+            );
+            drop(store);
+            raw.shutdown().await.unwrap();
+            let reopened = postgres("er_query_contract").await;
+            reopened
+                .register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let mut store = adapter(reopened.clone());
+            assert!(matches!(
+                store.query_documents(&query).await,
+                Err(QueryError::Invalid(_))
+            ));
+            store.enable_document_queries().await.unwrap();
+            assert_eq!(
+                store.query_documents(&query).await.unwrap(),
+                DocumentQueryProvider::query_documents(&memory, &query).unwrap()
+            );
+            reopened.shutdown().await.unwrap();
+        });
+    }
+
+    #[test]
+    fn postgres_query_readiness_refuses_missing_and_watermark_incomplete_rebuilds() {
+        run_postgres(async {
+            let registry = registry();
+            let raw = postgres("er_query_backfill").await;
+            let mut store = adapter(raw.clone());
+            let created = creation(&registry, "one", "create");
+            store
+                .commit_recorded(&created.commit, Expect::Absent)
+                .await
+                .unwrap();
+            raw.shutdown().await.unwrap();
+            let raw = postgres("er_query_backfill").await;
+            raw.register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let mut store = adapter(raw.clone());
+            assert!(
+                matches!(store.enable_document_queries().await, Err(QueryError::Store(StoreError::Backend(detail))) if detail.contains("incomplete"))
+            );
+            raw.shutdown().await.unwrap();
+            let raw = postgres("er_query_backfill").await;
+            raw.rebuild_projection(
+                Arc::new(EntityDocumentProjector),
+                &TenantId::new("tenant-a").unwrap(),
+            )
+            .await
+            .unwrap();
+            raw.register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let mut store = adapter(raw.clone());
+            store.enable_document_queries().await.unwrap();
+            assert_eq!(
+                store
+                    .query_documents(&DocumentQuery::for_entity("thing"))
+                    .await
+                    .unwrap()
+                    .items,
+                vec![created.commit.instance]
+            );
+            raw.shutdown().await.unwrap();
+
+            let raw = postgres("er_query_held").await;
+            raw.create_projections(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let (mut observer, driver) =
+                tokio_postgres::connect(&postgres_url(), tokio_postgres::NoTls)
+                    .await
+                    .unwrap();
+            let driver = tokio::spawn(driver);
+            let held = observer.transaction().await.unwrap();
+            held.simple_query("SELECT pg_current_xact_id()")
+                .await
+                .unwrap();
+            let mut store = adapter(raw.clone());
+            let created = creation(&registry, "one", "create");
+            store
+                .commit_recorded(&created.commit, Expect::Absent)
+                .await
+                .unwrap();
+            raw.shutdown().await.unwrap();
+            let raw = postgres("er_query_held").await;
+            assert_eq!(
+                raw.rebuild_projection(
+                    Arc::new(EntityDocumentProjector),
+                    &TenantId::new("tenant-a").unwrap()
+                )
+                .await
+                .unwrap(),
+                0
+            );
+            raw.register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            let mut store = adapter(raw.clone());
+            assert!(matches!(
+                store.enable_document_queries().await,
+                Err(QueryError::Store(StoreError::Backend(_)))
+            ));
+            held.rollback().await.unwrap();
+            drop(observer);
+            driver.await.unwrap().unwrap();
+            raw.shutdown().await.unwrap();
+        });
+    }
+
+    #[test]
+    fn postgres_native_queries_reject_forged_or_redacted_candidates_and_rollback_late_failures() {
+        run_postgres(async {
+            let registry = registry();
+            let raw = postgres("er_query_integrity").await;
+            raw.register_inline(Arc::new(EntityDocumentProjector))
+                .await
+                .unwrap();
+            raw.register_inline(Arc::new(FailSecondSubject))
+                .await
+                .unwrap();
+            let mut store = adapter(raw.clone());
+            store.enable_document_queries().await.unwrap();
+            let first = creation(&registry, "one", "create-one");
+            let second = creation(&registry, "two", "create-two");
+            assert!(matches!(
+                store.commit_recorded_batch(&[first.clone(), second]).await,
+                Err(StoreError::Backend(_))
+            ));
+            let query = DocumentQuery::for_entity("thing");
+            assert!(
+                store
+                    .query_documents(&query)
+                    .await
+                    .unwrap()
+                    .items
+                    .is_empty()
+            );
+            store
+                .commit_recorded(&first.commit, Expect::Absent)
+                .await
+                .unwrap();
+            let expected = first.commit.instance.clone();
+            assert_eq!(
+                store.query_documents(&query).await.unwrap().items,
+                vec![expected]
+            );
+            let (sql, driver) = tokio_postgres::connect(&postgres_url(), tokio_postgres::NoTls)
+                .await
+                .unwrap();
+            let driver = tokio::spawn(driver);
+            sql.execute("UPDATE er_query_integrity_p_er_documents_v1 SET body=jsonb_set(body,'{instance,lifecycle_state}','\"done\"'::jsonb)", &[]).await.unwrap();
+            assert!(
+                matches!(store.query_documents(&query).await, Err(QueryError::Store(StoreError::Backend(detail))) if detail.contains("differs from recorded history"))
+            );
+            sql.execute("UPDATE er_query_integrity_p_er_documents_v1 SET body=jsonb_set(body,'{instance,lifecycle_state}','\"new\"'::jsonb)", &[]).await.unwrap();
+            let stream = eventlog_core::StreamId::new(
+                TenantId::new("tenant-a").unwrap(),
+                "er-history-v1-07bfaea5744adaf1fcbe59bbd917ab2c4cdbcba37f12613cf43ed69b2bff6487",
+                "a5fc3c6ce3a24ba19069d56eee588bdc880b2a2880e6a06b4daa85c588f7863b",
+            )
+            .unwrap();
+            raw.redact(&stream, 1, "privacy").await.unwrap();
+            assert!(
+                matches!(store.query_documents(&query).await, Err(QueryError::Store(StoreError::Backend(detail))) if detail.contains("redacted"))
+            );
+            drop(sql);
+            driver.await.unwrap().unwrap();
+            raw.shutdown().await.unwrap();
+        });
+    }
 }

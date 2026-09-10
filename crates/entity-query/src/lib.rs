@@ -144,6 +144,23 @@ impl DocumentPage {
         if has_more {
             items.truncate(limit);
         }
+        Self::from_page(query, items, has_more)
+    }
+
+    /// Builds a bounded page when a native provider already reports whether more rows exist.
+    ///
+    /// Providers supply ordered matching instances and preserve the exact query's cursor identity.
+    pub fn from_page(
+        query: &DocumentQuery,
+        items: Vec<EntityInstance>,
+        has_more: bool,
+    ) -> Result<Self, QueryError> {
+        let limit = query.effective_limit()?;
+        if items.len() > limit || (has_more && items.is_empty()) {
+            return Err(QueryError::Invalid(
+                "provider returned an invalid document page".into(),
+            ));
+        }
         let next = if has_more {
             items
                 .last()
@@ -186,6 +203,24 @@ impl From<StoreError> for QueryError {
 pub trait DocumentQueryProvider {
     /// Executes one containment query without requiring callers to enumerate the store.
     fn query_documents(&self, query: &DocumentQuery) -> Result<DocumentPage, QueryError>;
+}
+
+/// An asynchronous query result polled by the caller's executor.
+pub type QueryFuture<'a> = std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<DocumentPage, QueryError>> + Send + 'a>,
+>;
+
+/// An optional indexed query capability that runs on the caller's async executor.
+/// No implementation may replace native filtering with whole-store hydration implicitly.
+pub trait AsyncDocumentQueryProvider: Send {
+    /// Returns a bounded page with the same containment and cursor contract as the sync port.
+    fn query_documents<'a>(&'a mut self, query: &'a DocumentQuery) -> QueryFuture<'a>;
+}
+
+impl AsyncDocumentQueryProvider for MemoryStore {
+    fn query_documents<'a>(&'a mut self, query: &'a DocumentQuery) -> QueryFuture<'a> {
+        Box::pin(async move { DocumentQueryProvider::query_documents(self, query) })
+    }
 }
 
 impl DocumentQueryProvider for MemoryStore {
