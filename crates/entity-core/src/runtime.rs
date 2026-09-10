@@ -289,7 +289,7 @@ pub fn create(
     let empty = Map::new();
     let context = TemplateContext {
         bindings: &[],
-        definition,
+        definition: Some(definition),
         id: &instance.id,
         args: &empty,
         old_fields: &empty,
@@ -390,7 +390,7 @@ pub fn execute(
 
     let context = TemplateContext {
         bindings: &[],
-        definition,
+        definition: Some(definition),
         id: &instance.id,
         args: &args,
         old_fields,
@@ -431,7 +431,7 @@ pub fn execute(
 
     let context = TemplateContext {
         bindings: &[],
-        definition,
+        definition: Some(definition),
         id: &instance.id,
         args: &args,
         old_fields,
@@ -571,6 +571,50 @@ pub(crate) fn check_invariants(
         }
     }
     Ok(())
+}
+
+/// Value rules have no entity context. Registration admits only their local binding and
+/// nested quantifiers; unlike entity invariants, independent failures accumulate.
+pub(crate) fn check_value_invariants(
+    rules: &[RuleDefinition],
+    value: &Value,
+    path: &str,
+    errors: &mut Vec<crate::ValidationError>,
+) {
+    let empty = Map::new();
+    let bindings = [("value", value)];
+    let context = TemplateContext {
+        bindings: &bindings,
+        definition: None,
+        id: "",
+        args: &empty,
+        old_fields: &empty,
+        new_fields: &empty,
+        from_state: None,
+        to_state: "",
+    };
+    for (index, rule) in rules.iter().enumerate() {
+        let mut unobserved = Unobserved::new();
+        let result = evaluate_condition(&rule.condition, &context, &mut unobserved);
+        let reason = match result {
+            Ok(Truth::True) => continue,
+            Ok(Truth::False) => "evaluated to false".to_owned(),
+            Ok(Truth::Unknown) => format!("is unobservable; unresolved: {unobserved:?}"),
+            Err(error) => format!("could not be evaluated: {error}"),
+        };
+        let name = rule
+            .name
+            .as_deref()
+            .map_or_else(|| format!("#{index}"), |name| format!("{name:?}"));
+        let message = rule
+            .message
+            .as_deref()
+            .map_or(String::new(), |message| format!(": {message}"));
+        errors.push(crate::ValidationError::new(
+            path,
+            format!("value invariant {name} {reason}{message}"),
+        ));
+    }
 }
 
 /// Evaluates a condition to [`Truth`], recording every address a *value* question read and found
@@ -917,9 +961,12 @@ pub(crate) fn materialize_event(
     revision: u64,
     args: &Map<String, Value>,
 ) -> Result<DomainEvent, CoreError> {
+    let entity = context
+        .definition
+        .ok_or_else(|| template_error("$entity", "an event requires an entity context"))?;
     Ok(DomainEvent {
-        entity: context.definition.entity.clone(),
-        version: context.definition.version,
+        entity: entity.entity.clone(),
+        version: entity.version,
         id: context.id.to_owned(),
         revision,
         event_type: definition.event_type.clone(),
@@ -947,7 +994,7 @@ pub(crate) fn changed_fields(context: &TemplateContext<'_>) -> Map<String, Value
 
 pub(crate) struct TemplateContext<'a> {
     pub(crate) bindings: &'a [(&'a str, &'a Value)],
-    pub(crate) definition: &'a EntityDefinition,
+    pub(crate) definition: Option<&'a EntityDefinition>,
     pub(crate) id: &'a str,
     pub(crate) args: &'a Map<String, Value>,
     pub(crate) old_fields: &'a Map<String, Value>,
@@ -1012,10 +1059,20 @@ fn resolve_expression_optional(
                 .cloned(),
         });
     }
+    if context.definition.is_none() {
+        return Err(template_error(
+            expression,
+            "a value invariant can read only local bindings",
+        ));
+    }
     match expression {
         "$id" => Ok(Some(Value::String(context.id.to_owned()))),
-        "$entity" => Ok(Some(Value::String(context.definition.entity.clone()))),
-        "$version" => Ok(Some(Value::from(context.definition.version))),
+        "$entity" => Ok(context
+            .definition
+            .map(|definition| Value::String(definition.entity.clone()))),
+        "$version" => Ok(context
+            .definition
+            .map(|definition| Value::from(definition.version))),
         "$from_state" => Ok(context
             .from_state
             .map(|state| Value::String(state.to_owned()))),

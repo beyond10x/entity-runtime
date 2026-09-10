@@ -498,7 +498,7 @@ pub fn rehydrate(
         // invariant is allowed to see, not a narrowing of it.
         let context = TemplateContext {
             bindings: &[],
-            definition,
+            definition: Some(definition),
             id: &first.id,
             args: &empty,
             old_fields: &empty,
@@ -525,7 +525,7 @@ pub fn rehydrate(
         };
         let materialised = TemplateContext {
             bindings: &[],
-            definition,
+            definition: Some(definition),
             id: &first.id,
             args: payload_args,
             old_fields: payload_old,
@@ -642,7 +642,7 @@ fn operations_that_would_have_produced<'a>(
         }
         let context = TemplateContext {
             bindings: &[],
-            definition,
+            definition: Some(definition),
             id: &first.id,
             args: &first.args,
             old_fields: &before.fields,
@@ -685,7 +685,7 @@ fn operations_that_would_have_produced<'a>(
         // between two decisions rather than between two ways of describing one.
         let after = TemplateContext {
             bindings: &[],
-            definition,
+            definition: Some(definition),
             id: &first.id,
             args: &first.args,
             old_fields: &before.fields,

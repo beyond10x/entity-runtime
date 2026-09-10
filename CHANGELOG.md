@@ -6,6 +6,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Outcome profile 5 enforces local invariants on nested typed values, including
+  arguments, defaults, state, events and business errors. Rules have checked local
+  scope, accumulate sibling failures and remain explicit runtime obligations in
+  schema output. Previous profiles and serialized bytes remain unchanged.
+
 - Outcome profile 4 validates UUID, padded base64 and decimal string encodings,
   including typed map keys, without changing their spelling. Older profiles refuse
   the new metadata and retain their existing serialized bytes.

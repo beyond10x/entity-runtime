@@ -162,6 +162,15 @@ pub struct FieldDefinition {
     )]
     pub key_encoding: Option<StringEncoding>,
 
+    /// Profile 5: rules over this value, read through the local `$bound.value` binding.
+    /// An absent field is not evaluated; place rules inside a nullable wrapper to exempt null.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_value_invariants",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub invariants: Option<Vec<RuleDefinition>>,
+
     /// Minimum value. `integer` and `number` only.
     #[serde(default)]
     pub min: Option<Number>,
@@ -313,6 +322,12 @@ fn deserialize_encoding<'de, D: serde::Deserializer<'de>>(
     reader: D,
 ) -> Result<Option<StringEncoding>, D::Error> {
     StringEncoding::deserialize(reader).map(Some)
+}
+
+fn deserialize_value_invariants<'de, D: serde::Deserializer<'de>>(
+    reader: D,
+) -> Result<Option<Vec<RuleDefinition>>, D::Error> {
+    Vec::<RuleDefinition>::deserialize(reader).map(Some)
 }
 
 /// Explicit string wire grammars; admission preserves spelling rather than decoding values.

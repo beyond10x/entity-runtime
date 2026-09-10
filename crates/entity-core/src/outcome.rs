@@ -34,6 +34,9 @@ pub enum DefinitionFormat {
     /// Exact string wire grammars, including typed map keys.
     #[serde(rename = "entity-outcome-definition/4")]
     V4,
+    /// Locally scoped invariants on every typed value.
+    #[serde(rename = "entity-outcome-definition/5")]
+    V5,
 }
 
 /// One entity's named command semantics, parsed but not yet validated.
@@ -175,6 +178,9 @@ pub enum RecordFormat {
     /// Complete decisions under outcome definition profile 4.
     #[serde(rename = "entity-outcome-record/4")]
     V4,
+    /// Complete decisions under outcome definition profile 5.
+    #[serde(rename = "entity-outcome-record/5")]
+    V5,
 }
 
 /// Complete comparison evidence for replay, including observations before an entity exists.
@@ -306,6 +312,7 @@ impl Validated {
             DefinitionFormat::V2 => ValueProfile::Collections,
             DefinitionFormat::V3 => ValueProfile::TaggedUnions,
             DefinitionFormat::V4 => ValueProfile::EncodedStrings,
+            DefinitionFormat::V5 => ValueProfile::ValueInvariants,
         };
         let collections = profile.collections();
         let base = ValidatedDefinition::for_outcome(definition.entity.clone(), profile)
@@ -509,7 +516,7 @@ impl Validated {
         let fields = before.map_or(&empty, |i| &i.fields);
         let context = TemplateContext {
             bindings: &[],
-            definition: &self.base,
+            definition: Some(&self.base),
             id: &invocation.id,
             args: &invocation.arguments,
             old_fields: fields,
@@ -637,6 +644,7 @@ impl Validated {
                 DefinitionFormat::V2 => RecordFormat::V2,
                 DefinitionFormat::V3 => RecordFormat::V3,
                 DefinitionFormat::V4 => RecordFormat::V4,
+                DefinitionFormat::V5 => RecordFormat::V5,
             },
             definition: self.definition.clone(),
             invocation,

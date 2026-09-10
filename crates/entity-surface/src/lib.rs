@@ -400,6 +400,17 @@ fn field_schema(field: &FieldDefinition) -> Value {
     if let Some(max) = &field.max {
         out.insert("maximum".into(), Value::Number(max.clone()));
     }
+    if let Some(rules) = &field.invariants {
+        // This is an explicit runtime obligation, not a claim that JSON Schema can
+        // execute the ER predicate AST.
+        out.insert(
+            "x-entity-value-invariants".into(),
+            json!({
+                "binding":"$bound.value",
+                "rules":rules
+            }),
+        );
+    }
     with_default(Value::Object(out), &field.default)
 }
 
@@ -1001,6 +1012,33 @@ const STYLE: &str = r#":root{color-scheme:light dark;font:16px/1.55 system-ui,sa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn value_invariants_remain_explicit_runtime_obligations_in_projected_schemas() {
+        let rules = json!([{"name":"positive","assert":{"gt":["$bound.value",0]},"message":null}]);
+        let field: FieldDefinition = serde_json::from_value(json!({"type":"array","items":{
+            "type":"integer","invariants":rules
+        }}))
+        .unwrap();
+        let schema = field_schema(&field);
+        assert_eq!(
+            schema["items"]["x-entity-value-invariants"],
+            json!({
+                "binding":"$bound.value","rules":rules
+            })
+        );
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        // JSON Schema establishes shape only. The extension retains the rule for an
+        // ER executor; pretending a schema validator executes it would be false evidence.
+        assert!(
+            validator.is_valid(&json!([0])),
+            "the runtime obligation is not a JSON Schema assertion"
+        );
+        assert!(
+            !validator.is_valid(&json!(["0"])),
+            "ordinary type assertions remain enforced"
+        );
+    }
 
     #[test]
     fn encoded_schema_checks_map_keys_and_values_without_coercion() {

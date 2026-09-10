@@ -59,6 +59,7 @@ pub(crate) enum ValueProfile {
     Collections,
     TaggedUnions,
     EncodedStrings,
+    ValueInvariants,
 }
 
 impl ValueProfile {
@@ -303,6 +304,7 @@ pub(crate) fn validate_event_definition(
 /// looking like it reads the state it starts from.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ScopeKind {
+    ValueInvariant,
     Invariant,
     Precondition,
     CreateTemplate,
@@ -314,6 +316,7 @@ pub(crate) enum ScopeKind {
 impl ScopeKind {
     fn allowed(self) -> &'static str {
         match self {
+            Self::ValueInvariant => "$bound.value and its declared paths; local quantifier bindings",
             Self::Input => "$id, $entity, $version, $args, $args.<path>",
             Self::CommandCreate => "$id, $entity, $version, $args, $args.<path>, $state, $to_state, $fields, $fields.<path>",
             Self::Invariant => "$id, $entity, $version, $state, $fields, $fields.<path>",
@@ -332,11 +335,15 @@ impl ScopeKind {
     }
 
     fn is_rule(self) -> bool {
-        matches!(self, Self::Invariant | Self::Precondition)
+        matches!(
+            self,
+            Self::Invariant | Self::Precondition | Self::ValueInvariant
+        )
     }
 
     fn what(self) -> &'static str {
         match self {
+            Self::ValueInvariant => "a value invariant",
             Self::Input => "a command input expression",
             Self::CommandCreate => "a command creation event",
             Self::Invariant => "an entity invariant",
@@ -359,6 +366,9 @@ pub(crate) struct Scope<'a> {
 impl Scope<'_> {
     /// Whether a bare reference (no path) is available here.
     fn allows(&self, expression: &str) -> bool {
+        if self.kind == ScopeKind::ValueInvariant {
+            return false;
+        }
         match expression {
             "$id" | "$entity" | "$version" => true,
             "$fields" => self.kind != ScopeKind::Input,
@@ -933,7 +943,9 @@ fn validate_field_definition(
     if field.kind == FieldKind::Union
         && !matches!(
             profile,
-            ValueProfile::TaggedUnions | ValueProfile::EncodedStrings
+            ValueProfile::TaggedUnions
+                | ValueProfile::EncodedStrings
+                | ValueProfile::ValueInvariants
         )
     {
         defects.push(DefinitionError::InvalidField {
@@ -942,7 +954,10 @@ fn validate_field_definition(
         });
     }
     if (field.encoding.is_some() || field.key_encoding.is_some())
-        && profile != ValueProfile::EncodedStrings
+        && !matches!(
+            profile,
+            ValueProfile::EncodedStrings | ValueProfile::ValueInvariants
+        )
     {
         defects.push(DefinitionError::InvalidField {
             path: path.to_owned(),
@@ -951,6 +966,31 @@ fn validate_field_definition(
     }
     if let Err(defect) = validate_constraint_applicability(field, path) {
         defects.push(defect);
+    }
+
+    if let Some(rules) = &field.invariants {
+        if profile != ValueProfile::ValueInvariants {
+            defects.push(DefinitionError::InvalidField {
+                path: path.to_owned(),
+                message: "value invariants require outcome profile 5".into(),
+            });
+        }
+        let empty = ObjectSchema::default();
+        let bindings = [("value", field)];
+        let scope = Scope {
+            collections: profile.collections(),
+            bindings: &bindings,
+            kind: ScopeKind::ValueInvariant,
+            fields: &empty,
+            args: None,
+        };
+        for (index, rule) in rules.iter().enumerate() {
+            if let Err(error) =
+                validate_rule_definition(rule, &format!("{path}.invariants[{index}]"), scope)
+            {
+                defects.push(error);
+            }
+        }
     }
 
     if let (Some(min), Some(max)) = (field.min_length, field.max_length) {
@@ -1194,6 +1234,7 @@ fn validate_value(
     path: &str,
     errors: &mut Vec<ValidationError>,
 ) {
+    let before = errors.len();
     match definition.kind {
         FieldKind::Union => match value.as_object() {
             Some(envelope) => {
@@ -1351,6 +1392,13 @@ fn validate_value(
             Some(_) => {}
             None => wrong_type(path, "ref", errors),
         },
+    }
+    // Rules read admitted typed values. A failed child already refuses its containing value;
+    // avoid treating ill-shaped operands as an additional business-rule failure.
+    if errors.len() == before {
+        if let Some(rules) = &definition.invariants {
+            crate::runtime::check_value_invariants(rules, value, path, errors);
+        }
     }
 }
 
