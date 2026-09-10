@@ -4,6 +4,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- Runtime-neutral asynchronous recorded storage and command execution, with verified history,
+  exact retries, zero-event decisions and non-state-changing observations. A named blocking
+  adapter preserves synchronous providers; an optional recorded batch capability retains full
+  provenance and rollback, with MemoryStore as its reference implementation.
+
 ## [0.18.0] — 2026-09-09
 
 ### Changed

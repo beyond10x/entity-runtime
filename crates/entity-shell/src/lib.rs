@@ -11,6 +11,8 @@ use entity_core::{CoreError, DomainEvent, EntityInstance, Registry, Runtime};
 use entity_store::{Expect, RecordedCommit, Recording, Store, StoreError};
 use serde_json::Value;
 
+pub mod asynchronous;
+
 /// Why a provider-backed command produced no result.
 #[derive(Debug)]
 pub enum ShellError {
