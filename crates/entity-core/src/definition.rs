@@ -146,6 +146,22 @@ pub struct FieldDefinition {
     #[serde(default)]
     pub max_length: Option<usize>,
 
+    /// Profile 4: an exact wire grammar for a string, without normalization.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_encoding",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub encoding: Option<StringEncoding>,
+
+    /// Profile 4: the wire grammar of every map key. Values still follow `items`.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_encoding",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub key_encoding: Option<StringEncoding>,
+
     /// Minimum value. `integer` and `number` only.
     #[serde(default)]
     pub min: Option<Number>,
@@ -291,6 +307,74 @@ fn deserialize_union<'de, D: serde::Deserializer<'de>>(
     reader: D,
 ) -> Result<Option<TaggedUnion>, D::Error> {
     TaggedUnion::deserialize(reader).map(Some)
+}
+
+fn deserialize_encoding<'de, D: serde::Deserializer<'de>>(
+    reader: D,
+) -> Result<Option<StringEncoding>, D::Error> {
+    StringEncoding::deserialize(reader).map(Some)
+}
+
+/// Explicit string wire grammars; admission preserves spelling rather than decoding values.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StringEncoding {
+    /// ASCII hexadecimal groups of 8-4-4-4-12 digits; either case, exact hyphens.
+    UuidHyphenated,
+    /// The standard ASCII base64 alphabet with complete four-character padded groups.
+    /// Empty text and noncanonical padding bits are admitted; URL-safe spelling is not.
+    Base64Padded,
+    /// Optional minus, an integer without leading zeroes, and an optional nonempty fraction.
+    /// Scale and negative zero remain in the string; exponent notation is not admitted.
+    DecimalText,
+}
+
+impl StringEncoding {
+    /// The JSON Schema pattern for the complete admitted wire spelling.
+    pub fn pattern(self) -> &'static str {
+        match self {
+            Self::UuidHyphenated => {
+                "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+            Self::Base64Padded => {
+                "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+            }
+            Self::DecimalText => r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$",
+        }
+    }
+
+    pub(crate) fn accepts(self, text: &str) -> bool {
+        match self {
+            Self::UuidHyphenated => {
+                text.len() == 36
+                    && text.bytes().enumerate().all(|(i, b)| {
+                        if matches!(i, 8 | 13 | 18 | 23) {
+                            b == b'-'
+                        } else {
+                            b.is_ascii_hexdigit()
+                        }
+                    })
+            }
+            Self::Base64Padded => {
+                let body = text.trim_end_matches('=');
+                text.len() % 4 == 0
+                    && text.len() - body.len() <= 2
+                    && body
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/'))
+            }
+            Self::DecimalText => {
+                let unsigned = text.strip_prefix('-').unwrap_or(text);
+                let (integer, fraction) = unsigned
+                    .split_once('.')
+                    .map_or((unsigned, None), |(i, f)| (i, Some(f)));
+                let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+                digits(integer)
+                    && (integer == "0" || !integer.starts_with('0'))
+                    && fraction.is_none_or(digits)
+            }
+        }
+    }
 }
 
 /// The kinds a field may have.

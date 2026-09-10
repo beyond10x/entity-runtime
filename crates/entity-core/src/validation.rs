@@ -58,6 +58,7 @@ pub(crate) enum ValueProfile {
     Legacy,
     Collections,
     TaggedUnions,
+    EncodedStrings,
 }
 
 impl ValueProfile {
@@ -890,6 +891,12 @@ fn validate_constraint_applicability(
     if field.union.is_some() && field.kind != FieldKind::Union {
         return refuse("union", "a union field");
     }
+    if field.encoding.is_some() && field.kind != FieldKind::String {
+        return refuse("encoding", "a string field");
+    }
+    if field.key_encoding.is_some() && field.kind != FieldKind::Map {
+        return refuse("key_encoding", "a map field");
+    }
     if field.items.is_some()
         && !matches!(
             field.kind,
@@ -923,10 +930,23 @@ fn validate_field_definition(
             message: "nullable and map require outcome profile 2".into(),
         });
     }
-    if field.kind == FieldKind::Union && profile != ValueProfile::TaggedUnions {
+    if field.kind == FieldKind::Union
+        && !matches!(
+            profile,
+            ValueProfile::TaggedUnions | ValueProfile::EncodedStrings
+        )
+    {
         defects.push(DefinitionError::InvalidField {
             path: path.to_owned(),
             message: "union requires outcome profile 3".into(),
+        });
+    }
+    if (field.encoding.is_some() || field.key_encoding.is_some())
+        && profile != ValueProfile::EncodedStrings
+    {
+        defects.push(DefinitionError::InvalidField {
+            path: path.to_owned(),
+            message: "encoding and key_encoding require outcome profile 4".into(),
         });
     }
     if let Err(defect) = validate_constraint_applicability(field, path) {
@@ -1236,6 +1256,14 @@ fn validate_value(
             Some(values) => {
                 if let Some(items) = &definition.items {
                     for (key, value) in values {
+                        if let Some(encoding) = definition.key_encoding {
+                            if !encoding.accepts(key) {
+                                errors.push(ValidationError::new(
+                                    format!("{path}[{key:?}]"),
+                                    format!("map key does not match {encoding:?}"),
+                                ));
+                            }
+                        }
                         validate_value(items, value, &format!("{path}[{key:?}]"), errors);
                     }
                 }
@@ -1243,7 +1271,17 @@ fn validate_value(
             None => wrong_type(path, "map", errors),
         },
         FieldKind::String => match value.as_str() {
-            Some(string) => validate_string(definition, string, path, errors),
+            Some(string) => {
+                validate_string(definition, string, path, errors);
+                if let Some(encoding) = definition.encoding {
+                    if !encoding.accepts(string) {
+                        errors.push(ValidationError::new(
+                            path,
+                            format!("string does not match {encoding:?}"),
+                        ));
+                    }
+                }
+            }
             None => wrong_type(path, "string", errors),
         },
         // Integers are compared as f64 rather than coerced to i64: `as u64 as i64` wrapped

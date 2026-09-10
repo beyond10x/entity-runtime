@@ -6,6 +6,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Outcome profile 4 validates UUID, padded base64 and decimal string encodings,
+  including typed map keys, without changing their spelling. Older profiles refuse
+  the new metadata and retain their existing serialized bytes.
+
 - Outcome profile 3 adds closed tagged unions with recursively validated payload alternatives,
   selected nested defaults, checked tag/payload references and complete replay. Older outcome
   profiles refuse unions; their existing definition and record bytes remain unchanged. Reference

@@ -31,6 +31,9 @@ pub enum DefinitionFormat {
     /// Closed adjacent-tag envelopes with recursively typed payload alternatives.
     #[serde(rename = "entity-outcome-definition/3")]
     V3,
+    /// Exact string wire grammars, including typed map keys.
+    #[serde(rename = "entity-outcome-definition/4")]
+    V4,
 }
 
 /// One entity's named command semantics, parsed but not yet validated.
@@ -169,6 +172,9 @@ pub enum RecordFormat {
     /// Complete decisions under outcome definition profile 3.
     #[serde(rename = "entity-outcome-record/3")]
     V3,
+    /// Complete decisions under outcome definition profile 4.
+    #[serde(rename = "entity-outcome-record/4")]
+    V4,
 }
 
 /// Complete comparison evidence for replay, including observations before an entity exists.
@@ -299,6 +305,7 @@ impl Validated {
             DefinitionFormat::V1 => ValueProfile::Legacy,
             DefinitionFormat::V2 => ValueProfile::Collections,
             DefinitionFormat::V3 => ValueProfile::TaggedUnions,
+            DefinitionFormat::V4 => ValueProfile::EncodedStrings,
         };
         let collections = profile.collections();
         let base = ValidatedDefinition::for_outcome(definition.entity.clone(), profile)
@@ -629,6 +636,7 @@ impl Validated {
                 DefinitionFormat::V1 => RecordFormat::V1,
                 DefinitionFormat::V2 => RecordFormat::V2,
                 DefinitionFormat::V3 => RecordFormat::V3,
+                DefinitionFormat::V4 => RecordFormat::V4,
             },
             definition: self.definition.clone(),
             invocation,

@@ -310,7 +310,12 @@ pub fn documentation(definitions: &[EntityDefinition]) -> Result<DocumentationBu
 fn field_schema(field: &FieldDefinition) -> Value {
     let mut out = Map::new();
     match field.kind {
-        FieldKind::String => set_type(&mut out, "string"),
+        FieldKind::String => {
+            set_type(&mut out, "string");
+            if let Some(encoding) = field.encoding {
+                out.insert("pattern".into(), json!(encoding.pattern()));
+            }
+        }
         FieldKind::Integer => set_type(&mut out, "integer"),
         FieldKind::Number => set_type(&mut out, "number"),
         FieldKind::Boolean => set_type(&mut out, "boolean"),
@@ -337,6 +342,12 @@ fn field_schema(field: &FieldDefinition) -> Value {
         }
         FieldKind::Map => {
             set_type(&mut out, "object");
+            if let Some(encoding) = field.key_encoding {
+                out.insert(
+                    "propertyNames".into(),
+                    json!({"pattern": encoding.pattern()}),
+                );
+            }
             if let Some(items) = &field.items {
                 out.insert("additionalProperties".into(), field_schema(items));
             }
@@ -990,6 +1001,40 @@ const STYLE: &str = r#":root{color-scheme:light dark;font:16px/1.55 system-ui,sa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encoded_schema_checks_map_keys_and_values_without_coercion() {
+        let field: FieldDefinition = serde_json::from_value(json!({
+            "type":"map","key_encoding":"uuid_hyphenated",
+            "items":{"type":"string","encoding":"decimal_text"}
+        }))
+        .unwrap();
+        let schema = field_schema(&field);
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        for (value, expected) in [
+            (json!({}), true),
+            (
+                json!({"ABCDEFAB-1234-ABCD-9876-ABCDEF012345":"-0.00"}),
+                true,
+            ),
+            (json!({"bad.key":"1"}), false),
+            (json!({"ABCDEFAB-1234-ABCD-9876-ABCDEF012345":"01"}), false),
+            (json!({"ABCDEFAB-1234-ABCD-9876-ABCDEF012345":1}), false),
+        ] {
+            assert_eq!(validator.is_valid(&value), expected, "{value}");
+        }
+        let field: FieldDefinition =
+            serde_json::from_value(json!({"type":"string","encoding":"base64_padded"})).unwrap();
+        let validator = jsonschema::validator_for(&field_schema(&field)).unwrap();
+        for (value, expected) in [
+            (json!(""), true),
+            (json!("AB=="), true),
+            (json!("AA"), false),
+            (json!("AA-_"), false),
+        ] {
+            assert_eq!(validator.is_valid(&value), expected, "{value}");
+        }
+    }
 
     #[test]
     fn tagged_union_schema_requires_the_selected_payload_and_closed_envelope() {

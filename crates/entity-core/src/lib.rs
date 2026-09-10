@@ -118,7 +118,8 @@ mod validation;
 pub use definition::{
     Condition, CreateDefinition, DeclaredDefault, EntityDefinition, EventDefinition,
     FieldDefinition, FieldKind, LifecycleDefinition, ObjectSchema, OneOrMany, OperationDefinition,
-    Quantified, RuleDefinition, TaggedUnion, TransitionDefinition, CONDITION_OPERATORS,
+    Quantified, RuleDefinition, StringEncoding, TaggedUnion, TransitionDefinition,
+    CONDITION_OPERATORS,
 };
 pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
 pub use registry::{Registry, ValidatedDefinition};
