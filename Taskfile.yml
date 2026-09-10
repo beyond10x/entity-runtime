@@ -14,6 +14,19 @@ tasks:
       - task: pin-check
       - task: postgres-check
       - task: notes-check
+      - task: eventlog-check
+
+  eventlog-check:
+    desc: Verify the Eventlog adapter on its separate Rust 1.91 baseline
+    env:
+      RUSTUP_AUTO_INSTALL: '0'
+    cmds:
+      - cargo +1.91.0 fmt --manifest-path crates/entity-eventlog/Cargo.toml -- --check
+      - cargo +1.91.0 clippy --manifest-path crates/entity-eventlog/Cargo.toml --all-targets --locked -- -D warnings
+      - cargo +1.91.0 test --manifest-path crates/entity-eventlog/Cargo.toml --locked
+      - cmd: cargo +1.91.0 doc --manifest-path crates/entity-eventlog/Cargo.toml --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
 
   postgres-check:
     desc: the Postgres provider's tests, against the server ENTITY_POSTGRES_URL names — or one line saying they did not run

@@ -55,6 +55,8 @@ pub mod envelope;
 pub mod file;
 pub mod memory;
 pub mod projection;
+mod verified;
+pub use verified::VerifiedHistory;
 
 pub use envelope::{Envelope, EnvelopeError, Recording};
 pub use file::{migrate_file_store_v1, FileMigrationReport, FileStore};

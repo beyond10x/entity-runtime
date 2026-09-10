@@ -121,7 +121,7 @@ pub use definition::{
 };
 pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
 pub use registry::{Registry, ValidatedDefinition};
-pub use replay::{rehydrate, replay};
+pub use replay::{rehydrate, replay, VerifiedReplay};
 pub use runtime::{
     create, execute, normalize_arguments, Decision, DecisionCommand, DecisionRecord, DomainEvent,
     EntityInstance, Runtime,

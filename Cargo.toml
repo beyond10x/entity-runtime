@@ -1,5 +1,7 @@
 [workspace]
 resolver = "2"
+# Eventlog has a higher MSRV; its adapter is verified as an independent workspace.
+exclude = ["crates/entity-eventlog"]
 members = [
   "crates/entity-core",
   "crates/entity-store",

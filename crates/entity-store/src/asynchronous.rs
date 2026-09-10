@@ -3,7 +3,7 @@
 //! These ports require complete history. There is deliberately no fallback from a recorded
 //! commit to an event-only write. Providers own durable atomicity and global record-id equality.
 
-use std::{future::Future, pin::Pin};
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use entity_core::{DecisionRecord, DomainEvent, EntityInstance};
 
@@ -24,6 +24,23 @@ pub type StoreFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, StoreError>>
 /// manufacture a new id. Read methods return append order, and `ids` returns sorted identities.
 /// Every method is required, so lack of history can never silently become event-only success.
 pub trait AsyncRecordedStore: Send {
+    /// A verified decision prefix shared with the executor without a second replay.
+    ///
+    /// Providers may override this with an immutable cached proof after checking that its
+    /// underlying history generation and prefix still hold. The default verifies all records.
+    fn verified_history<'a>(
+        &'a mut self,
+        entity: &'a str,
+        id: &'a str,
+    ) -> StoreFuture<'a, Arc<crate::VerifiedHistory>> {
+        Box::pin(async move {
+            let mut history = crate::VerifiedHistory::new(entity, id);
+            for envelope in self.records(entity, id).await? {
+                history.append(envelope)?;
+            }
+            Ok(Arc::new(history))
+        })
+    }
     /// Reads the materialized state; provider failure is distinct from absence.
     fn load<'a>(
         &'a mut self,

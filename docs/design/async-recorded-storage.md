@@ -40,7 +40,7 @@ retain complete envelopes, apply entries in request order, and see earlier trans
 revisions. Every failure rolls back state, events, records and retry bookkeeping. The reference
 MemoryStore stages a clone before publication. A durable adapter must use one real transaction;
 looping over independent durable commits is forbidden. A batch is not a new persisted record or
-group identity. Eventlog group identity and persistence mapping remain adapter design work.
+group identity. [The Eventlog adapter](eventlog-recorded-provider.md) supplies its persistence mapping.
 
 ## Evidence and limits
 
@@ -49,7 +49,12 @@ zero-event history replays, retries survive registry changes, tampered/legacy hi
 observations retain their revisions, and a failed ordered batch rolls back its global retry index.
 The original kernel purity tests continue to govern `entity-core`.
 
-This boundary alone does not implement the Eventlog adapter, provider facade migration, query
-transactions, AEP migration or ESS/application adoption. Replaying a full history on every
-operation is a correctness baseline, not a throughput claim; a later verified checkpoint must
-bind its exact history prefix and remain disposable before it may replace genesis replay.
+The default asynchronous port verifies history through `VerifiedHistory`, which couples private
+incremental kernel replay state with validated envelopes. A provider may share an immutable proof
+after validating its stored prefix; the shell then does not replay it again. The Eventlog adapter
+checks generation and head before reuse and verifies only appended records. No proof is loaded
+from an unverified persisted snapshot. Synchronous and asynchronous execution use one retry matcher.
+
+Provider facade migration, query transactions, AEP migration and ESS/application adoption remain
+unfinished. Cache reuse is tested separately from persistence; no production throughput claim is
+inferred from small functional examples.

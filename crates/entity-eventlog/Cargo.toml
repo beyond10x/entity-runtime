@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+
+[package]
+name = "entity-eventlog"
+version = "0.18.0"
+edition = "2024"
+rust-version = "1.91"
+license = "Apache-2.0"
+repository = "https://github.com/beyond10x/entity-runtime"
+description = "Complete recorded Entity Runtime persistence through Eventlog atomic groups"
+
+[dependencies]
+entity-core = { path = "../entity-core", version = "0.18.0" }
+entity-store = { path = "../entity-store", version = "0.18.0" }
+# The adapter consumes the published atomic-group capability; the kernel has no Eventlog edge.
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "55d90845ac22689c64b9bc96dcad2f9750075804" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+# Parse caller-provided recording time into Eventlog metadata without choosing a clock.
+time = { version = "0.3", features = ["parsing"] }
+
+[dev-dependencies]
+entity-shell = { path = "../entity-shell", version = "0.18.0" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", rev = "55d90845ac22689c64b9bc96dcad2f9750075804" }
+eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", rev = "55d90845ac22689c64b9bc96dcad2f9750075804" }
+tempfile = "3"
+# The host of real async provider tests; no runtime is selected by the library.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = "warn"

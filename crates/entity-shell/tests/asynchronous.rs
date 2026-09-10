@@ -383,7 +383,7 @@ fn asynchronous_tampered_history_is_refused_even_for_an_exact_retry() {
         assert!(
             matches!(
                 error,
-                ShellError::Core(entity_core::CoreError::Validation(_))
+                ShellError::Store(StoreError::Backend(ref detail)) if detail.contains("recomputed")
             ),
             "{error:?}"
         );
@@ -547,4 +547,38 @@ fn asynchronous_execution_can_be_cancelled_while_awaiting_storage() {
     let port: &mut dyn AsyncRecordedStore = &mut store;
     run(AsyncStoredRuntime::new(&registry, port).create("thing", 1, "one", json!({}), &metadata))
         .unwrap();
+}
+
+#[test]
+fn incremental_history_refuses_a_bad_tail_without_losing_the_verified_prefix() {
+    let registry = registry();
+    let created = RecordedCommit::new(
+        Runtime::new(&registry)
+            .create("thing", 1, "one", json!({}))
+            .unwrap(),
+        &recording("create"),
+    )
+    .unwrap();
+    let accepted = RecordedCommit::new(
+        Runtime::new(&registry)
+            .execute(&created.instance, "touch", json!({}))
+            .unwrap(),
+        &recording("touch"),
+    )
+    .unwrap();
+    let mut history = entity_store::VerifiedHistory::new("thing", "one");
+    history.append(created.envelope.clone()).unwrap();
+    let mut forged = accepted.envelope.clone();
+    forged.record.result.lifecycle_state = "forged".into();
+    let error = history.append(forged).unwrap_err();
+    assert!(
+        matches!(error, StoreError::Backend(ref detail) if detail.contains("records[1]") && detail.contains("recomputed"))
+    );
+    assert_eq!(history.instance(), Some(&created.instance));
+    assert_eq!(history.records(), std::slice::from_ref(&created.envelope));
+    history.append(accepted.envelope.clone()).unwrap();
+    assert_eq!(history.instance(), Some(&accepted.instance));
+    let replayed =
+        entity_core::replay(&[created.envelope.record, accepted.envelope.record]).unwrap();
+    assert_eq!(history.instance(), Some(&replayed));
 }

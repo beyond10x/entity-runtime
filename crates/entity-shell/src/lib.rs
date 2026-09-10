@@ -12,6 +12,7 @@ use entity_store::{Expect, RecordedCommit, Recording, Store, StoreError};
 use serde_json::Value;
 
 pub mod asynchronous;
+mod recorded;
 
 /// Why a provider-backed command produced no result.
 #[derive(Debug)]
@@ -194,36 +195,15 @@ where
                 .into_iter()
                 .find(|entry| entry.record_id == recording.record_id)
             {
-                let matches = (|| {
-                    let record = &envelope.record;
-                    let definition =
-                        entity_core::ValidatedDefinition::new(record.definition.clone()?).ok()?;
-                    let args =
-                        entity_core::normalize_arguments(&definition, operation, arguments.clone())
-                            .ok()?;
-                    Some(
-                        record.entity == entity
-                            && record.id == id
-                            && expected_revision.checked_add(1) == Some(record.revision)
-                            && record.command
-                                == entity_core::DecisionCommand::Execute {
-                                    operation: operation.to_owned(),
-                                    arguments: args,
-                                }
-                            && recording.seal(record.clone()).ok()? == envelope,
-                    )
-                })()
-                .unwrap_or(false);
-                if !matches {
-                    return Err(StoreError::RecordConflict {
-                        record_id: recording.record_id.clone(),
-                    }
-                    .into());
-                }
-                return Ok(RecordedCommit {
-                    instance: envelope.record.result.clone(),
-                    envelope,
-                });
+                return crate::recorded::execute_retry(
+                    &envelope,
+                    (entity, id),
+                    expected_revision,
+                    operation,
+                    arguments,
+                    recording,
+                )
+                .map_err(Into::into);
             }
         }
         if instance.revision != expected_revision {

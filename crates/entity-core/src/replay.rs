@@ -111,14 +111,49 @@ use crate::ValidatedDefinition;
 /// A typed kernel refusal when the recorded command no longer evaluates, or
 /// [`CoreError::Validation`] naming the first record that differs from recomputation.
 pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
-    let refuse = |index: usize, detail: &str| {
+    let mut verified = VerifiedReplay::default();
+    for record in records {
+        verified.advance(record)?;
+    }
+    verified.instance.ok_or_else(|| {
         CoreError::Validation(vec![crate::ValidationError::new(
-            format!("records[{index}]"),
-            detail,
+            "records[0]",
+            "an instance cannot be replayed from no decision records",
         )])
-    };
-    let mut instance: Option<EntityInstance> = None;
-    for (index, record) in records.iter().enumerate() {
+    })
+}
+
+/// An incrementally verified decision prefix, constructed only through ordinary kernel replay.
+///
+/// Its state cannot be supplied or changed directly. A caller may reuse this value for an
+/// unchanged history prefix and verify only appended records. Storage owns proof that the prefix
+/// is unchanged; this value deliberately knows nothing about persistence or caches.
+#[derive(Debug, Clone, Default)]
+pub struct VerifiedReplay {
+    instance: Option<EntityInstance>,
+    count: usize,
+}
+
+impl VerifiedReplay {
+    /// The state recomputed from the accepted prefix, absent before its creation record.
+    #[must_use]
+    pub fn instance(&self) -> Option<&EntityInstance> {
+        self.instance.as_ref()
+    }
+
+    /// Verifies one next record, preserving this prefix unchanged on refusal.
+    ///
+    /// # Errors
+    /// The same indexed refusal as [`replay`] for a malformed or altered decision.
+    pub fn advance(&mut self, record: &DecisionRecord) -> Result<(), CoreError> {
+        let index = self.count;
+        let instance = &self.instance;
+        let refuse = |index: usize, detail: &str| {
+            CoreError::Validation(vec![crate::ValidationError::new(
+                format!("records[{index}]"),
+                detail,
+            )])
+        };
         let definition = record
             .definition
             .clone()
@@ -164,9 +199,10 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
                 "record differs from the decision recomputed from its definition and command",
             ));
         }
-        instance = Some(decision.instance);
+        self.instance = Some(decision.instance);
+        self.count += 1;
+        Ok(())
     }
-    instance.ok_or_else(|| refuse(0, "an instance cannot be replayed from no decision records"))
 }
 
 /// Rebuilds an instance from its events, oldest first.

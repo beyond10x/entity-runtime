@@ -3,14 +3,12 @@
 //! Complete decision history is authoritative here: the executor replays pinned definitions
 //! before acting or returning a retry. A legacy snapshot without complete records is refused.
 
-use std::collections::BTreeSet;
+use std::sync::Arc;
 
-use entity_core::{
-    DecisionCommand, DecisionRecord, EntityInstance, Registry, Runtime, ValidatedDefinition,
-};
+use entity_core::{DecisionCommand, EntityInstance, Registry, Runtime, ValidatedDefinition};
 use entity_store::{
-    asynchronous::AsyncRecordedStore, Envelope, Expect, RecordedCommit, RecordedObservation,
-    Recording, StoreError,
+    asynchronous::AsyncRecordedStore, Expect, RecordedCommit, RecordedObservation, Recording,
+    StoreError, VerifiedHistory,
 };
 use serde_json::Value;
 
@@ -40,8 +38,8 @@ impl<'a, S: AsyncRecordedStore + ?Sized> AsyncStoredRuntime<'a, S> {
         fields: Value,
         recording: &Recording,
     ) -> Result<RecordedCommit, ShellError> {
-        let records = self.store.records(entity, id).await?;
-        verify_history(entity, id, &records)?;
+        let history = self.history(entity, id).await?;
+        let records = history.records();
         let decision = if let Some(previous) = records
             .iter()
             .find(|entry| entry.record_id == recording.record_id)
@@ -80,18 +78,32 @@ impl<'a, S: AsyncRecordedStore + ?Sized> AsyncStoredRuntime<'a, S> {
     /// # Errors
     /// Missing subjects, incomplete or tampered histories, or provider failure.
     pub async fn get(&mut self, entity: &str, id: &str) -> Result<EntityInstance, ShellError> {
-        let records = self.store.records(entity, id).await?;
-        self.state(entity, id, &records).await
+        let history = self.history(entity, id).await?;
+        self.state(entity, id, &history).await
+    }
+
+    async fn history(
+        &mut self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Arc<VerifiedHistory>, ShellError> {
+        let history = self.store.verified_history(entity, id).await?;
+        if history.subject() != (entity, id) {
+            return Err(
+                StoreError::Backend("verified history belongs to another subject".into()).into(),
+            );
+        }
+        Ok(history)
     }
 
     async fn state(
         &mut self,
         entity: &str,
         id: &str,
-        records: &[Envelope<DecisionRecord>],
+        history: &VerifiedHistory,
     ) -> Result<EntityInstance, ShellError> {
-        if let Some(instance) = verify_history(entity, id, records)? {
-            return Ok(instance);
+        if let Some(instance) = history.instance() {
+            return Ok(instance.clone());
         }
         // A legacy snapshot is not absence. Never manufacture genesis records from current state.
         if self.store.load(entity, id).await?.is_some() {
@@ -130,39 +142,22 @@ impl<'a, S: AsyncRecordedStore + ?Sized> AsyncStoredRuntime<'a, S> {
         arguments: Value,
         recording: &Recording,
     ) -> Result<RecordedCommit, ShellError> {
-        let records = self.store.records(entity, id).await?;
-        let instance = self.state(entity, id, &records).await?;
-        if let Some(envelope) = records
+        let history = self.history(entity, id).await?;
+        let instance = self.state(entity, id, &history).await?;
+        if let Some(envelope) = history
+            .records()
             .iter()
             .find(|entry| entry.record_id == recording.record_id)
         {
-            let definition = ValidatedDefinition::new(
-                envelope
-                    .record
-                    .definition
-                    .clone()
-                    .expect("verified history pins a definition"),
+            return crate::recorded::execute_retry(
+                envelope,
+                (entity, id),
+                expected_revision,
+                operation,
+                arguments,
+                recording,
             )
-            .map_err(entity_core::CoreError::from)?;
-            let arguments = entity_core::normalize_arguments(&definition, operation, arguments)
-                .map_err(|_| conflict(recording))?;
-            if expected_revision.checked_add(1) != Some(envelope.record.revision)
-                || envelope.record.command
-                    != (DecisionCommand::Execute {
-                        operation: operation.into(),
-                        arguments,
-                    })
-                || recording
-                    .seal(envelope.record.clone())
-                    .map_err(|_| conflict(recording))?
-                    != *envelope
-            {
-                return Err(conflict(recording));
-            }
-            return Ok(RecordedCommit {
-                instance: envelope.record.result.clone(),
-                envelope: envelope.clone(),
-            });
+            .map_err(Into::into);
         }
         if instance.revision != expected_revision {
             return Err(ShellError::StaleRevision {
@@ -199,31 +194,4 @@ fn conflict(recording: &Recording) -> ShellError {
         record_id: recording.record_id.clone(),
     }
     .into()
-}
-
-fn verify_history(
-    entity: &str,
-    id: &str,
-    records: &[Envelope<DecisionRecord>],
-) -> Result<Option<EntityInstance>, ShellError> {
-    if records.is_empty() {
-        return Ok(None);
-    }
-    let mut identities = BTreeSet::new();
-    for envelope in records {
-        envelope
-            .validate()
-            .map_err(|error| StoreError::Backend(error.to_string()))?;
-        if envelope.record.entity != entity
-            || envelope.record.id != id
-            || !identities.insert(&envelope.record_id)
-        {
-            return Err(StoreError::Backend(
-                "recorded history has a wrong subject or duplicate record id".into(),
-            )
-            .into());
-        }
-    }
-    let decisions: Vec<_> = records.iter().map(|entry| entry.record.clone()).collect();
-    Ok(Some(entity_core::replay(&decisions)?))
 }
