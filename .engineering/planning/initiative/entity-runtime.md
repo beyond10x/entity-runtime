@@ -2,10 +2,10 @@
 format: aep.planning-md/1
 id: initiative:entity-runtime
 kind: initiative
-status: implemented
+status: active
 title: Schema-driven entity runtime
 summary: Entity types declared as data and executed by an IO-free deterministic kernel, offered as a Rust library and a CLI; the foundation the engineering-protocols artifact model is to be driven by.
-revision: 6
+revision: 8
 ---
 # Initiative: Schema-driven entity runtime
 
@@ -39,3 +39,5 @@ Anything that needs a clock, an identifier or a store is the shell's.
 Moved to implemented on 2026-09-09 after an audit of every non-implemented artifact against `CHANGELOG.md`, `docs/roadmap.md` and the crates.
 
 The success clause is met: the kernel decides `aep artifact move` with the verdict-equivalence suite in `crates/entity-yaml/tests/aep_lifecycles.rs`, and the status vocabulary was opened without a Rust enum change — `docs/roadmap.md` § 2 rows A–C and the phase 2/4 rows.
+
+Reopened to `active` on 2026-09-15, at `eaf4309` (tag `0.18.1`), by the org-state review lane `02-er-eventlog` finding F9. `implemented` was false against the store it heads: `epic:kernel`, which decomposes this initiative, is `draft` with eight draft stories under it, and `epic:the-store-an-adopter-runs-on` is `proposed`. An initiative cannot be finished while the epics that decompose it are not. The success clause quoted above is still met and nothing above is withdrawn; what changed is the claim that there is no work left under this heading. It moves back to `implemented` when those two epics do.

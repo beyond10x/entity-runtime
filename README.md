@@ -295,8 +295,9 @@ product handbook lives under [`website/docs/`](website/docs/).
 ## Ecosystem
 
 - [AEP](https://github.com/beyond10x/aep) is the first adopter.
-  Its artifact backends consume this repository's kernel and provider crates from one pinned
-  release; the dependency points from it to Entity Runtime.
+  Its artifact backends consume six of this repository's crates — the kernel, `entity-store`,
+  `entity-query`, `entity-sqlite`, `entity-postgres` and `entity-remote` — at one exact revision;
+  the dependency points from it to Entity Runtime.
 - [eventlog](https://github.com/beyond10x/eventlog) provides append-only event storage.
   Event publication is an explicit host integration, not an automatic connection from this runtime.
 - The public [Ecosystem](https://beyond10x.github.io/ecosystem/) maps the broader beyond10x system.

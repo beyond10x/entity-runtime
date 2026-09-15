@@ -22,6 +22,19 @@ release that took the dependency; every tag from `0.13.0` to `0.31.0` has been c
 `79b641c` is on none of their branches today is its own small lesson about citing a bare commit
 across a repository boundary: a tag survives a history rewrite and a hash does not.
 
+**Re-read 2026-09-15** against this tree at `eaf4309` (tag `0.18.1`) and `aep` at `28abe09b`
+(release 0.55.0). § 1 below is still the 2026-08-28 reading and is left as it was written; two of
+its rows have moved and are corrected here rather than in place:
+
+| § 1 row, as of 2026-08-28 | what 2026-09-15 finds |
+|---|---|
+| `aep` takes **five** crates | **six** — `entity-core`, `entity-store`, `entity-query`, `entity-sqlite`, `entity-postgres`, `entity-remote`, declared once in `aep/Cargo.toml` `[workspace.dependencies]`. `entity-query` was added after the 2026-08-28 reading |
+| all five at **one pin**, the release tag `0.13.0` | all six at one pin, and that pin is the bare revision `faadc04f2f273517e21815d32ba3866f3aea7642` — `git tag --points-at faadc04f` in this repository returns nothing, so the pin is a commit and not a tag, which is the hazard the paragraph above names |
+
+The rest of § 1 was not re-checked on this date; treat an unmarked row as evidence from
+2026-08-28 and re-read it before acting on it. This page remains a record of a sequencing that is
+done; the store (`aep artifact list`) is where open work lives.
+
 ## 1. Where this stands — verified 2026-08-28
 
 **Phases 0 to 4 of the adoption design have shipped, and `aep` depends on this
