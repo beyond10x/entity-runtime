@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:async-recorded-contract-executor
 kind: story
-status: active
+status: implemented
 title: Execute complete recorded commands through async atomic storage ports
 relations:
 - serves: vision:O2
@@ -31,6 +31,8 @@ scope:
 - confidence: cited
   path: crates/entity-store/tests/async_recorded_adversary.rs
 - confidence: cited
+  path: crates/entity-store/tests/async_recorded_adversary_pass2.rs
+- confidence: cited
   path: docs/design/recorded-execution-encoding-v0.1.md
 - confidence: cited
   path: docs/design/recorded-execution-v0.1.md
@@ -38,7 +40,7 @@ scope:
   path: docs/requirements.md
 - confidence: cited
   path: ess/recorded-execution/
-revision: 10
+revision: 14
 ---
 ## Outcome
 
@@ -111,3 +113,27 @@ The Eventlog adapter, explicit synchronous bridge, SQLite facade/import and Post
 remain separate implementation units consuming this full contract. Do not implement substitutes or
 weaken it for this reference provider. AEP owns exactly one planning-store migration story; this
 unit does not move real stores, change old formats, select a runtime or publish/release anything.
+
+## Correction verification
+
+Independent code reviews are recorded as er-async-adversary-pass-1 and
+er-async-adversary-pass-2. Their regressions are retained in the ordinary entity-store test targets.
+The first review's provider-completeness and imported-anchor findings were repaired and verified
+before the second review. The second review's duplicate public-request identity finding is repaired
+by a shared complete request validator enforced at the mandatory writer boundary before provider
+behavior or authority access. Direct construction and later mutation cannot bypass it.
+
+Both original independent assertions remain intact. Actual affected suites, strict Clippy,
+formatting and Rust1.85 checks passed. Controlled removal of each relevant guard caused the
+corresponding unchanged regression to fail before restoration. Root inspected the final correction
+and retained exact source identities and raw logs in the initiative's local correction2 evidence.
+Root ran the actual complete task check on the final corrected source with ENTITY_POSTGRES_URL
+selecting the disposable PostgreSQL server. The process terminated with exit0 on 2026-09-15, and
+all repository gate commands actually ran. Before/after tracked and untracked source manifests
+are byte-identical. Gate log SHA256:
+67cdc608f961ea9e1eacce24fd4ae3c680c24146ca3e45df9e91face7e1dddbc.
+Source-manifest SHA256:
+ac6d4d088d011b78630ae6184610e3d47dbe45e78c7d88afc38a79c698a1e475.
+Only this explanatory planning closure follows the gate. This accepts the first async reference
+ports/executor unit locally; Eventlog adapter, bridge, provider imports/facades and actual planning
+store migrations remain separate required work. No remote publication or release is claimed.

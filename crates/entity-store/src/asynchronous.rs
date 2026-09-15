@@ -239,6 +239,244 @@ mod tests {
     }
 
     #[test]
+    fn public_writer_revalidates_every_request_shape_and_member() {
+        enum Expected {
+            Invalid,
+            Duplicate(&'static str),
+        }
+
+        let valid_one = member(
+            Expect::Absent,
+            RecordedEntry::Decision(creation("one", "one")),
+        );
+        let valid_two = member(
+            Expect::Absent,
+            RecordedEntry::Decision(creation("two", "two")),
+        );
+        let duplicate_decision = member(
+            Expect::Absent,
+            RecordedEntry::Decision(creation("two", "shared")),
+        );
+        let duplicate_observation = member(
+            Expect::Revision(1),
+            RecordedEntry::Observation(observation("other", "shared", json!({"seen": true}))),
+        );
+        let mut invalid_entry = valid_one.clone();
+        if let RecordedEntry::Decision(commit) = &mut invalid_entry.entry {
+            commit.instance.entity.clear();
+        }
+        let mut invalid_comparison = valid_one.clone();
+        invalid_comparison.request_bytes.push(b'!');
+        assert!(matches!(
+            AppendRequest::new(
+                BatchKey::Named("constructor-validation".to_owned()),
+                vec![invalid_comparison.clone()]
+            ),
+            Err(AsyncStoreError::InvalidInput(_))
+        ));
+
+        let mut mutated_key = AppendRequest::new(
+            BatchKey::Named("mutated-key".to_owned()),
+            vec![valid_one.clone()],
+        )
+        .expect("request begins valid");
+        mutated_key.key = None;
+        let mut mutated_members = AppendRequest::new(
+            BatchKey::Named("mutated-members".to_owned()),
+            vec![
+                member(
+                    Expect::Absent,
+                    RecordedEntry::Decision(creation("mutated", "mutated-decision")),
+                ),
+                member(
+                    Expect::Revision(1),
+                    RecordedEntry::Observation(observation(
+                        "mutated",
+                        "mutated-observation",
+                        json!({"seen": true}),
+                    )),
+                ),
+            ],
+        )
+        .expect("request begins valid");
+        if let RecordedEntry::Observation(observation) = &mut mutated_members.members[1].entry {
+            observation.envelope.record_id = "mutated-decision".to_owned();
+        }
+
+        let cases = vec![
+            (mutated_key, Expected::Invalid),
+            (mutated_members, Expected::Duplicate("mutated-decision")),
+            (
+                AppendRequest {
+                    key: None,
+                    members: vec![valid_one.clone()],
+                },
+                Expected::Invalid,
+            ),
+            (
+                AppendRequest {
+                    key: Some(BatchKey::Named("claimed-empty".to_owned())),
+                    members: Vec::new(),
+                },
+                Expected::Invalid,
+            ),
+            (
+                AppendRequest {
+                    key: Some(BatchKey::Named(" ".to_owned())),
+                    members: vec![valid_one.clone()],
+                },
+                Expected::Invalid,
+            ),
+            (
+                AppendRequest {
+                    key: Some(BatchKey::SingleRecord("".to_owned())),
+                    members: vec![valid_one.clone()],
+                },
+                Expected::Invalid,
+            ),
+            (
+                AppendRequest {
+                    key: Some(BatchKey::SingleRecord("one".to_owned())),
+                    members: vec![valid_one.clone(), valid_two],
+                },
+                Expected::Invalid,
+            ),
+            (
+                AppendRequest {
+                    key: Some(BatchKey::SingleRecord("another".to_owned())),
+                    members: vec![valid_one.clone()],
+                },
+                Expected::Invalid,
+            ),
+            (
+                AppendRequest {
+                    key: Some(BatchKey::Named("cross-kind-duplicate".to_owned())),
+                    members: vec![duplicate_decision, duplicate_observation],
+                },
+                Expected::Duplicate("shared"),
+            ),
+            (
+                AppendRequest {
+                    key: Some(BatchKey::Named("invalid-entry".to_owned())),
+                    members: vec![invalid_entry],
+                },
+                Expected::Invalid,
+            ),
+            (
+                AppendRequest {
+                    key: Some(BatchKey::Named("invalid-comparison".to_owned())),
+                    members: vec![invalid_comparison],
+                },
+                Expected::Invalid,
+            ),
+        ];
+
+        let store = MemoryRecordedStore::new();
+        assert_eq!(
+            crate_test_support::block_on(AsyncRecordedWriter::append(
+                &store,
+                AppendRequest::empty()
+            ))
+            .expect("the unique empty request is inert"),
+            AppendOutcome::Empty
+        );
+        for (request, expected) in cases {
+            let error = crate_test_support::block_on(AsyncRecordedWriter::append(&store, request))
+                .expect_err("directly constructed invalid request must refuse");
+            match expected {
+                Expected::Invalid => assert!(matches!(
+                    error,
+                    WriteFailure::NotCommitted(AsyncStoreError::InvalidInput(_))
+                )),
+                Expected::Duplicate(record_id) => assert!(matches!(
+                    error,
+                    WriteFailure::NotCommitted(AsyncStoreError::DuplicateRecordId {
+                        record_id: ref found
+                    }) if found == record_id
+                )),
+            }
+        }
+        assert!(
+            store.trace().is_empty(),
+            "request validation precedes every store operation"
+        );
+    }
+
+    #[test]
+    fn refused_public_request_preserves_authority_and_a_later_exact_retry() {
+        let store = MemoryRecordedStore::new();
+        store.script_next_append(AppendScript::CommitThenUncertain);
+        let first = member(
+            Expect::Absent,
+            RecordedEntry::Decision(creation("one", "reusable-record")),
+        );
+        let second = member(
+            Expect::Absent,
+            RecordedEntry::Decision(creation("two", "reusable-record")),
+        );
+        let key = BatchKey::Named("reusable-batch".to_owned());
+        let invalid = AppendRequest {
+            key: Some(key.clone()),
+            members: vec![first.clone(), second],
+        };
+        let error = crate_test_support::block_on(AsyncRecordedWriter::append(&store, invalid))
+            .expect_err("duplicate request refuses");
+        assert!(matches!(
+            error,
+            WriteFailure::NotCommitted(AsyncStoreError::DuplicateRecordId { ref record_id })
+                if record_id == "reusable-record"
+        ));
+        assert!(
+            store.trace().is_empty(),
+            "refusal occurs before script consumption or authority access"
+        );
+
+        assert!(
+            crate_test_support::block_on(AsyncRecordedReader::lookup_record(
+                &store,
+                "reusable-record"
+            ))
+            .expect("record lookup")
+            .is_none()
+        );
+        assert!(
+            crate_test_support::block_on(AsyncRecordedReader::lookup_batch(&store, &key))
+                .expect("batch lookup")
+                .is_none()
+        );
+        for id in ["one", "two"] {
+            let subject = Subject::new("ticket", id).expect("subject");
+            assert!(
+                crate_test_support::block_on(AsyncStateReader::load(&store, &subject))
+                    .expect("state lookup")
+                    .is_none()
+            );
+            assert!(
+                crate_test_support::block_on(AsyncRecordedReader::history(&store, &subject))
+                    .expect("history lookup")
+                    .records
+                    .is_empty()
+            );
+        }
+
+        let valid = AppendRequest::new(key.clone(), vec![first]).expect("valid reuse");
+        let uncertain =
+            crate_test_support::block_on(AsyncRecordedWriter::append(&store, valid.clone()))
+                .expect_err("the rejected request did not consume the scripted response");
+        assert!(matches!(
+            uncertain,
+            WriteFailure::Uncertain { key: ref found, .. } if found == &key
+        ));
+        let retry = crate_test_support::block_on(AsyncRecordedWriter::append(&store, valid))
+            .expect("exact retry recovers the valid append");
+        assert!(retry.replayed());
+        let receipt = retry.receipt().expect("committed receipt");
+        assert_eq!(receipt.members().len(), 1);
+        assert_eq!(receipt.members()[0].position.store, 0);
+        assert_eq!(receipt.members()[0].position.subject, 0);
+    }
+
+    #[test]
     fn imported_evidence_reserves_ids_without_inventing_receipts_or_global_order() {
         let store = MemoryRecordedStore::new();
         let imported_commit = creation("legacy", "legacy-create");

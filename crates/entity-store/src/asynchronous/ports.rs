@@ -54,6 +54,10 @@ pub trait AsyncRecordedReader: Send + Sync {
 /// Mandatory complete-record atomic append; there is no bare-decision fallback.
 pub trait AsyncRecordedWriter: Send + Sync {
     /// Appends every ordered member or none.
+    ///
+    /// Implementors must invoke [`AppendRequest::validate`] at the public writer entry before
+    /// consuming provider behavior or consulting or changing any authority. Public request fields
+    /// may be directly constructed or mutated after a successful constructor call.
     fn append<'a>(
         &'a self,
         request: AppendRequest,

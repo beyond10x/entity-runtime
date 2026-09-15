@@ -345,31 +345,12 @@ impl AppendRequest {
     ///
     /// Invalid keys, a malformed single-record namespace, or duplicate record identities.
     pub fn new(key: BatchKey, members: Vec<AppendMember>) -> Result<Self, AsyncStoreError> {
-        key.validate()?;
-        if members.is_empty() {
-            return Err(AsyncStoreError::InvalidInput(
-                "use AppendRequest::empty for an inert empty batch".to_owned(),
-            ));
-        }
-        if let BatchKey::SingleRecord(record_id) = &key {
-            if members.len() != 1 || members[0].entry.record_id() != record_id {
-                return Err(AsyncStoreError::InvalidInput(
-                    "SingleRecord requires exactly one member with the same record id".to_owned(),
-                ));
-            }
-        }
-        let mut ids = std::collections::BTreeSet::new();
-        for member in &members {
-            if !ids.insert(member.entry.record_id().to_owned()) {
-                return Err(AsyncStoreError::DuplicateRecordId {
-                    record_id: member.entry.record_id().to_owned(),
-                });
-            }
-        }
-        Ok(Self {
+        let request = Self {
             key: Some(key),
             members,
-        })
+        };
+        request.validate()?;
+        Ok(request)
     }
 
     /// Constructs the unique inert request, which owns no key and performs no IO.
@@ -379,6 +360,59 @@ impl AppendRequest {
             key: None,
             members: Vec::new(),
         }
+    }
+
+    /// Checks the complete public request shape and comparison material.
+    ///
+    /// This validator is also enforced by every writer implementation because callers may
+    /// directly construct or later mutate the public key and member fields.
+    ///
+    /// # Errors
+    ///
+    /// Invalid empty/nonempty shape, keys, single-record identity, members or comparison bytes,
+    /// or a record identity repeated anywhere in the request.
+    pub fn validate(&self) -> Result<(), AsyncStoreError> {
+        let key = match (&self.key, self.members.is_empty()) {
+            (None, true) => return Ok(()),
+            (None, false) => {
+                return Err(AsyncStoreError::InvalidInput(
+                    "nonempty append has no batch key".to_owned(),
+                ));
+            }
+            (Some(_), true) => {
+                return Err(AsyncStoreError::InvalidInput(
+                    "use AppendRequest::empty for an inert empty batch".to_owned(),
+                ));
+            }
+            (Some(key), false) => key,
+        };
+        key.validate()?;
+        if let BatchKey::SingleRecord(record_id) = key {
+            if self.members.len() != 1 || self.members[0].entry.record_id() != record_id {
+                return Err(AsyncStoreError::InvalidInput(
+                    "SingleRecord requires exactly one member with the same record id".to_owned(),
+                ));
+            }
+        }
+
+        let mut ids = std::collections::BTreeSet::new();
+        for member in &self.members {
+            if !ids.insert(member.entry.record_id()) {
+                return Err(AsyncStoreError::DuplicateRecordId {
+                    record_id: member.entry.record_id().to_owned(),
+                });
+            }
+        }
+        for member in &self.members {
+            member.entry.validate()?;
+            if super::original_request_comparison_bytes(&member.entry)? != member.request_bytes {
+                return Err(AsyncStoreError::InvalidInput(format!(
+                    "request bytes do not reproduce complete record {:?}",
+                    member.entry.record_id()
+                )));
+            }
+        }
+        Ok(())
     }
 }
 

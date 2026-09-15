@@ -217,6 +217,12 @@ against the anchor subject and revision before the reference store publishes the
 an envelope identity. Evidence at or before the boundary remains partial and retains only its
 declared per-kind or subject order.
 
+Second-pass review added R-130. `AppendRequest` has one complete validator shared by its constructor
+and the mandatory writer entry. The writer invokes it before consuming scripted behavior or
+touching identity, state, history, allocation or receipt authority, so direct construction and
+later mutation of public request fields cannot bypass empty/key/single-record, duplicate identity,
+complete-member or comparison-material checks.
+
 Retain a decisive red before implementation and causal mutations for identity lookup ordering,
 omitted state/event changes, observation revision advancement, receipt duplication and partial
 commit. Preserve existing sync tests, purity, requirement pins and format fixtures. Run affected

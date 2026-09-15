@@ -7,13 +7,13 @@ use std::{
 use entity_core::EntityInstance;
 
 use super::{
-    batch_comparison_bytes, original_request_comparison_bytes, record_comparison_bytes,
-    validate_entry_against_state, validate_imported_boundary, verify_imported_record,
-    AppendOutcome, AppendRequest, AsyncRecordedReader, AsyncRecordedWriter, AsyncStateReader,
-    AsyncStoreError, BatchKey, BatchReceipt, BoxFuture, CommitReceipt, CompleteStoreSnapshot,
-    HistoryOrigin, ImportedRecordEvidence, LegacyEvidence, RecordLookup, RecordPosition,
-    RecordReceipt, StoreCoverage, StoredBatch, StoredRecord, Subject, SubjectAssurance,
-    SubjectHistory, SubjectSnapshot, WriteFailure,
+    batch_comparison_bytes, record_comparison_bytes, validate_entry_against_state,
+    validate_imported_boundary, verify_imported_record, AppendOutcome, AppendRequest,
+    AsyncRecordedReader, AsyncRecordedWriter, AsyncStateReader, AsyncStoreError, BatchKey,
+    BatchReceipt, BoxFuture, CommitReceipt, CompleteStoreSnapshot, HistoryOrigin,
+    ImportedRecordEvidence, LegacyEvidence, RecordLookup, RecordPosition, RecordReceipt,
+    StoreCoverage, StoredBatch, StoredRecord, Subject, SubjectAssurance, SubjectHistory,
+    SubjectSnapshot, WriteFailure,
 };
 
 /// Deterministic response behavior used to test uncertain and dropped append responses.
@@ -164,14 +164,10 @@ impl MemoryRecordedStore {
     }
 
     fn append_transaction(&self, request: &AppendRequest) -> Result<AppendOutcome, WriteFailure> {
-        if request.members.is_empty() {
-            return Ok(AppendOutcome::Empty);
-        }
-        let key = request.key.clone().ok_or_else(|| {
-            WriteFailure::NotCommitted(AsyncStoreError::InvalidInput(
-                "nonempty append has no batch key".to_owned(),
-            ))
-        })?;
+        let key = request
+            .key
+            .clone()
+            .expect("the public writer validated a nonempty request key");
         let mut guard = self.lock().map_err(WriteFailure::NotCommitted)?;
         guard.trace.push("append".to_owned());
         let comparison =
@@ -197,21 +193,6 @@ impl MemoryRecordedStore {
 
         let mut prior = Vec::new();
         for (index, member) in request.members.iter().enumerate() {
-            member
-                .entry
-                .validate()
-                .map_err(WriteFailure::NotCommitted)?;
-            if original_request_comparison_bytes(&member.entry)
-                .map_err(WriteFailure::NotCommitted)?
-                != member.request_bytes
-            {
-                return Err(WriteFailure::NotCommitted(AsyncStoreError::InvalidInput(
-                    format!(
-                        "request bytes do not reproduce complete record {:?}",
-                        member.entry.record_id()
-                    ),
-                )));
-            }
             if let Some(existing) = guard.records.get(member.entry.record_id()) {
                 let same = match existing {
                     RecordLookup::Committed(stored) => {
@@ -603,6 +584,9 @@ impl AsyncRecordedWriter for MemoryRecordedStore {
         &'a self,
         request: AppendRequest,
     ) -> BoxFuture<'a, Result<AppendOutcome, WriteFailure>> {
+        if let Err(error) = request.validate() {
+            return Box::pin(async move { Err(WriteFailure::NotCommitted(error)) });
+        }
         if request.members.is_empty() {
             return Box::pin(async { Ok(AppendOutcome::Empty) });
         }
