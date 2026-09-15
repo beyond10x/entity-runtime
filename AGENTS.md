@@ -40,6 +40,10 @@ its name promises.
   [`docs/design/store-v0.2.md`](docs/design/store-v0.2.md) — validated execution handles,
   verifiable decision records, recorded provider history and File Store v2. They supersede the
   matching v0.1 sections.
+* [`docs/design/recorded-execution-v0.1.md`](docs/design/recorded-execution-v0.1.md) — the additive
+  async recorded ports, executor, receipt and anchored-history contract accepted for ESS evolution.
+  Its coordinate model is `ess/recorded-execution/`; the existing complete kernel record types
+  retain their payload authority. Acceptance of the design does not claim implementation.
 
 [`docs/design/aep-adoption-v0.1.md`](docs/design/aep-adoption-v0.1.md)
 is a **proposed design with accepted portions**. Its phases 0–4 were accepted and implemented;

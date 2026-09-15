@@ -49,6 +49,7 @@ use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod asynchronous;
 pub mod conformance;
 pub mod envelope;
 pub mod file;

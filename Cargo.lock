@@ -341,6 +341,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "entity-executor"
+version = "0.18.1"
+dependencies = [
+ "entity-core",
+ "entity-store",
+ "serde_json",
+]
+
+[[package]]
 name = "entity-graph"
 version = "0.18.1"
 dependencies = [

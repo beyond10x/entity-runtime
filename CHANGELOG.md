@@ -4,6 +4,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+- Add runtime-neutral asynchronous complete-record storage ports, an atomic in-memory reference
+  provider, bounded history verification and an executor for exact single and named-batch retries.
+  Existing synchronous store APIs and bytes remain unchanged.
+
 ## [0.18.1] — 2026-09-10
 
 - No change to the runtime, its CLI or any refusal. The published product guide, README and
