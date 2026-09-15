@@ -168,7 +168,13 @@ not call that API and merely hope admission already exists. The missing validate
   shape;
 * perform no DDL, persistent registry write, journal recovery, catch-up or rebuild;
 * install the projector and projection names in the current handle before its serving freeze; and
-* refuse duplicate, missing, dirty or incompatible declarations.
+* refuse duplicate, missing or incompatible admission; preserve provider dirty markers and all
+  existing projection-use/capture refusals without claiming readiness from structural attachment.
+
+This follows the accepted Eventlog inline-projection-administration design. Worker startup still
+requires the adapter's native capture and exact independent row comparison before returning a
+ready handle. SQL has no dirty registry flag and File's marker outlives local registration; neither
+fact permits a dirty or stale adapter to serve. The adapter's redacted-authority refusal remains.
 
 This is Eventlog core/provider ownership, not queue logic. Until it and the selected nonmutating
 provider/capture construction path exist, the bridge API can be implemented against a fake owner

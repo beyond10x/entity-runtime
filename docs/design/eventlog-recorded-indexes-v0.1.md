@@ -301,9 +301,11 @@ provisioning and before any provider handle begins serving:
 2. Every runtime writer handle attaches exactly `er_recorded_v1` inline before its first append
    using a new validate-only `attach_inline_existing` capability. It checks exact already admitted
    registry/physical shape and only installs in-memory code, under the handle's registration lock
-   before serving freezes it. Missing/drifted/dirty/duplicate declarations refuse without DDL,
-   journal writes or recovery. Provider bootstrap owns attachment; adapter `open` does not call it.
-   The runtime handle passed to the adapter is already attached.
+   before serving freezes it. Missing/drifted/duplicate admission refuses without DDL, journal
+   writes or recovery. Structural attachment preserves provider dirty markers and their existing
+   use/capture refusals; it makes no freshness or correctness claim. Provider bootstrap owns
+   attachment; adapter `open` does not call it. The runtime handle passed to the adapter is already
+   attached, and still cannot serve until native capture and independent row comparison succeed.
 3. Provisioning captures the empty/binding state under maintenance, then writes the authoritative
    binding and derived singleton row atomically through the registered projector.
 
@@ -351,14 +353,15 @@ writers, erasure and readers excluded for the whole operation. Its protocol is:
 4. Before maintenance ends, take a fresh native capture and compare the complete rebuilt key/body
    sets to a separate deterministic derivation from authority. Only that check reports success.
 
-The smallest public owner/API seam is Eventlog core plus all three providers, preferably a distinct
-administrative capability rather than weakening catch-up semantics:
+The selected public owner/API seam is Eventlog core plus all three providers' separate
+InlineProjectionAdmin capability. Eventlog's accepted inline-projection-administration design
+selects the actual registered instance by name and retains catch-up semantics:
 
 ```text
 trait InlineProjectionAdmin: Send + Sync {
   fn rebuild_inline_projection<'a>(
     &'a self,
-    projector: Arc<dyn Projector>,
+    projector_name: &'a str,
     tenant: &'a TenantId
   ) -> BoxFuture<'a, Result<InlineRebuildResult, EventLogError>>;
 }
@@ -368,8 +371,18 @@ InlineRebuildResult { applied: U64, position: U64 }
 
 The operation requires the same projector name and exact specs already registered inline; it does
 not admit/create a table, unregister/re-register, or accept a differently named projector that
-happens to target the same tables. It must separate the authoritative event/blob namespace from the
-shadow projection-row namespace in the provider's `ProjectionStore` context.
+happens to target the same tables. It invokes the actual attached instance, so a different Arc with
+the same name cannot substitute different code during rebuild. It must separate the authoritative
+event/blob namespace from the shadow projection-row namespace in the provider's `ProjectionStore`
+context. Provider registration coordination remains held throughout the rebuild.
+
+The provider contract deliberately distinguishes global structural attachment from tenant readiness.
+File dirty markers survive process-local registration, and SQL has no equivalent persisted marker;
+requiring universal dirty refusal at attachment would neither be portable nor prove fresh rows.
+This amendment preserves the adapter's strict open comparison above and its refusal of redacted
+authority before rebuild. No erased record is reconstructed and no cursor is a cleanliness proof.
+It adopts Eventlog review-result:inline-projection-admin-design-pass-2; provider implementation and
+qualification, final pins and operational writer exclusion remain dependencies.
 
 Use the existing Eventlog boxed-future convention. Cancellation and uncertain commit retain the
 provider's existing bounded/quarantine/retirement contract; a dropped future is not proof that a

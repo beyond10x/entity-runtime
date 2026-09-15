@@ -44,7 +44,7 @@ scope:
   path: docs/requirements.md
 - confidence: cited
   path: ess/recorded-execution/
-revision: 16
+revision: 17
 ---
 ## Outcome
 
@@ -346,3 +346,25 @@ approve/findings[] verdict. No independent third review occurred. The final orig
 needs-revision with that finding; its separate fixed outcome records this concrete correction.
 Native capture, SQL qualification, inline attachment/rebuild and final accepted dependency pins
 still block source dispatch. Code/provider verification and final full gates remain required.
+
+## Reviewed Eventlog administration seam adoption
+
+Eventlog's inline-projection-administration design completed both technical design rounds; final
+review-result:inline-projection-admin-design-pass-2 approves with no findings and resolves the
+first three. Adopt its concrete seam in eventlog-recorded-indexes-v0.1.md and the sync bridge.
+
+Validate-only attachment is global structural admission and in-memory installation. It preserves
+provider dirty markers and existing projection-use/capture refusal, rather than pretending SQL
+has a portable dirty registry bit. This corrects the original attachment wording without allowing
+the adapter to serve stale or dirty state: startup/open still requires complete native capture
+and exact independent row comparison. Redacted authority still refuses before ER rebuild.
+
+Explicit rebuild selects the registered projector by name and invokes that actual instance,
+retaining exact spec validation, native snapshot, active blob/shadow row separation and atomic
+all-table publication. No caller-supplied alternate Arc substitutes code under the registered name.
+Provider registration coordination remains held throughout the operation. This is the concrete
+provider choice refining the earlier unimplemented Arc-taking seam, not a new ER trait or format.
+
+The reviewed provider design does not qualify its implementation. Native capture, SQL-integrity
+acceptance, inline-admin code/provider proof and exact accepted source pins remain blocking.
+No source adapter, full gate, migration or third ER design review is claimed by this amendment.
