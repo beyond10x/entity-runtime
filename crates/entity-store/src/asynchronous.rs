@@ -17,7 +17,8 @@ pub use ports::{
 pub use types::*;
 pub(crate) use verify::{validate_entry_against_state, validate_imported_boundary};
 pub use verify::{
-    verify_imported_record, verify_store_histories, verify_subject_history, verify_subject_prefix,
+    verify_complete_store, verify_imported_record, verify_store_histories, verify_subject_history,
+    verify_subject_prefix,
 };
 
 #[cfg(test)]
@@ -82,6 +83,17 @@ mod tests {
         let decision = Runtime::new(&registry)
             .create("ticket", 1, id, json!({"title": "one"}))
             .expect("creation succeeds");
+        RecordedCommit::new(decision, &recording(record_id)).expect("recording is valid")
+    }
+
+    fn closed(id: &str, record_id: &str) -> RecordedCommit {
+        let registry = registry();
+        let created = Runtime::new(&registry)
+            .create("ticket", 1, id, json!({"title": "one"}))
+            .expect("creation succeeds");
+        let decision = Runtime::new(&registry)
+            .execute(&created.instance, "close", json!({}))
+            .expect("close succeeds");
         RecordedCommit::new(decision, &recording(record_id)).expect("recording is valid")
     }
 
@@ -352,7 +364,9 @@ mod tests {
             "reference-store",
         ))
         .expect("complete snapshot");
-        let assurance = verify_store_histories(&snapshot).expect("snapshot verifies");
+        let assurance =
+            crate_test_support::block_on(verify_complete_store(&store, "reference-store"))
+                .expect("snapshot verifies");
         assert_eq!(assurance.scope, "reference-store");
         assert_eq!(assurance.coverage, StoreCoverage::CompleteSnapshot);
         assert_eq!(assurance.subjects.len(), 2);
@@ -371,6 +385,192 @@ mod tests {
         let selected_assurance = verify_store_histories(&selected).expect("selection verifies");
         assert_eq!(selected_assurance.coverage, StoreCoverage::ExplicitSet);
         assert_eq!(selected_assurance.subjects.len(), 1);
+    }
+
+    #[test]
+    fn editable_complete_markers_never_replace_a_direct_provider_capture() {
+        let store = MemoryRecordedStore::new();
+        let entry = RecordedEntry::Decision(creation("one", "create-one"));
+        crate_test_support::block_on(AsyncRecordedWriter::append(
+            &store,
+            AppendRequest::new(
+                BatchKey::SingleRecord("create-one".to_owned()),
+                vec![member(Expect::Absent, entry)],
+            )
+            .expect("append shape"),
+        ))
+        .expect("append succeeds");
+
+        let editable = crate_test_support::block_on(AsyncRecordedReader::complete_snapshot(
+            &store,
+            "reference-store",
+        ))
+        .expect("provider capture");
+        assert!(matches!(
+            verify_store_histories(&editable),
+            Err(AsyncStoreError::InvalidInput(_))
+        ));
+        let assurance =
+            crate_test_support::block_on(verify_complete_store(&store, "reference-store"))
+                .expect("direct provider capture verifies");
+        assert_eq!(assurance.coverage, StoreCoverage::CompleteSnapshot);
+        assert_eq!(assurance.subjects.len(), 1);
+    }
+
+    #[test]
+    fn all_revision_bearing_imported_evidence_is_bounded_before_publication() {
+        let anchor = creation("legacy", "anchor");
+        let later = closed("legacy", "later-decision");
+        let later_envelope = ImportedRecordEvidence::new(
+            RecordedEntry::Decision(later.clone()),
+            "source",
+            "decisions/1",
+            KnownLegacyOrder::PerKind(1),
+        )
+        .expect("complete imported envelope");
+        let later_event = later
+            .envelope
+            .record
+            .events
+            .first()
+            .expect("close emits an event")
+            .clone();
+        let cases = [
+            LegacyEvidence::Envelope(later_envelope),
+            LegacyEvidence::Decision(later.envelope.record),
+            LegacyEvidence::Event(later_event),
+        ];
+
+        for evidence in cases {
+            let store = MemoryRecordedStore::new();
+            let subject = Subject::new("ticket", "legacy").expect("subject");
+            let error = store
+                .seed_imported(SubjectHistory {
+                    subject: subject.clone(),
+                    origin: HistoryOrigin::Imported(LegacyAnchor {
+                        instance: anchor.instance.clone(),
+                        completeness: LegacyCompleteness::AvailableEvidenceOnly,
+                        order: LegacyOrderDeclaration::PerKindOnly,
+                        evidence: vec![evidence],
+                    }),
+                    records: Vec::new(),
+                })
+                .expect_err("post-anchor evidence refuses");
+            assert!(matches!(error, AsyncStoreError::CorruptHistory { .. }));
+            assert!(
+                crate_test_support::block_on(AsyncStateReader::load(&store, &subject))
+                    .expect("state lookup")
+                    .is_none()
+            );
+            assert!(
+                crate_test_support::block_on(AsyncRecordedReader::lookup_record(
+                    &store,
+                    "later-decision"
+                ))
+                .expect("identity lookup")
+                .is_none()
+            );
+            assert!(
+                crate_test_support::block_on(AsyncRecordedReader::history(&store, &subject))
+                    .expect("history lookup")
+                    .records
+                    .is_empty()
+            );
+        }
+    }
+
+    #[test]
+    fn partial_prior_imported_evidence_remains_allowed_across_all_typed_variants() {
+        let anchor = closed("legacy", "anchor-at-two");
+        let earlier = creation("legacy", "earlier-create");
+        let earlier_envelope = ImportedRecordEvidence::new(
+            RecordedEntry::Decision(earlier.clone()),
+            "source",
+            "decisions/0",
+            KnownLegacyOrder::PerKind(0),
+        )
+        .expect("complete imported envelope");
+        let anchor_event = anchor
+            .envelope
+            .record
+            .events
+            .first()
+            .expect("close emits an event")
+            .clone();
+        let subject = Subject::new("ticket", "legacy").expect("subject");
+        let store = MemoryRecordedStore::new();
+        store
+            .seed_imported(SubjectHistory {
+                subject: subject.clone(),
+                origin: HistoryOrigin::Imported(LegacyAnchor {
+                    instance: anchor.instance,
+                    completeness: LegacyCompleteness::AvailableEvidenceOnly,
+                    order: LegacyOrderDeclaration::PerKindOnly,
+                    evidence: vec![
+                        LegacyEvidence::Envelope(earlier_envelope),
+                        LegacyEvidence::Decision(earlier.envelope.record),
+                        LegacyEvidence::Event(anchor_event),
+                    ],
+                }),
+                records: Vec::new(),
+            })
+            .expect("partial evidence at or before the anchor is allowed");
+        assert!(
+            crate_test_support::block_on(AsyncRecordedReader::lookup_record(
+                &store,
+                "earlier-create"
+            ))
+            .expect("identity lookup")
+            .is_some()
+        );
+        assert_eq!(
+            crate_test_support::block_on(AsyncStateReader::load(&store, &subject))
+                .expect("state lookup")
+                .expect("anchor state")
+                .revision,
+            2
+        );
+    }
+
+    #[test]
+    fn bare_imported_decisions_and_events_must_name_the_anchor_subject() {
+        let anchor = closed("legacy", "anchor-at-two");
+        let mut wrong_decision = creation("other", "wrong-decision").envelope.record;
+        wrong_decision.revision = 1;
+        let mut wrong_event = anchor
+            .envelope
+            .record
+            .events
+            .first()
+            .expect("close emits an event")
+            .clone();
+        wrong_event.id = "other".to_owned();
+
+        for evidence in [
+            LegacyEvidence::Decision(wrong_decision),
+            LegacyEvidence::Event(wrong_event),
+        ] {
+            let store = MemoryRecordedStore::new();
+            let subject = Subject::new("ticket", "legacy").expect("subject");
+            let error = store
+                .seed_imported(SubjectHistory {
+                    subject: subject.clone(),
+                    origin: HistoryOrigin::Imported(LegacyAnchor {
+                        instance: anchor.instance.clone(),
+                        completeness: LegacyCompleteness::AvailableEvidenceOnly,
+                        order: LegacyOrderDeclaration::PerKindOnly,
+                        evidence: vec![evidence],
+                    }),
+                    records: Vec::new(),
+                })
+                .expect_err("cross-subject bare evidence refuses");
+            assert!(matches!(error, AsyncStoreError::CorruptHistory { .. }));
+            assert!(
+                crate_test_support::block_on(AsyncStateReader::load(&store, &subject))
+                    .expect("state lookup")
+                    .is_none()
+            );
+        }
     }
 
     #[test]

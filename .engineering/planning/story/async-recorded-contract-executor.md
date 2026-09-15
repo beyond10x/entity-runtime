@@ -29,6 +29,8 @@ scope:
 - confidence: inferred
   path: crates/entity-store/tests/
 - confidence: cited
+  path: crates/entity-store/tests/async_recorded_adversary.rs
+- confidence: cited
   path: docs/design/recorded-execution-encoding-v0.1.md
 - confidence: cited
   path: docs/design/recorded-execution-v0.1.md
@@ -36,7 +38,7 @@ scope:
   path: docs/requirements.md
 - confidence: cited
   path: ess/recorded-execution/
-revision: 9
+revision: 10
 ---
 ## Outcome
 

@@ -587,7 +587,12 @@ pub struct SubjectSnapshot {
     pub terminal: EntityInstance,
 }
 
-/// Explicit cross-subject verification input.
+/// Editable cross-subject transcript and provider-capture data.
+///
+/// [`StoreCoverage::CompleteSnapshot`] is descriptive data, not provenance. Passing an arbitrary
+/// value with that marker to `verify_store_histories` is refused. Whole-provider assurance is
+/// available only through [`crate::asynchronous::verify_complete_store`], which obtains a fresh
+/// capture from the port.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompleteStoreSnapshot {
     /// Caller- or provider-named logical store scope.

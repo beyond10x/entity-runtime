@@ -39,7 +39,12 @@ pub trait AsyncRecordedReader: Send + Sync {
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>>;
 
-    /// Obtains a provider-owned consistent complete snapshot for whole-store assurance.
+    /// Obtains a provider-owned consistent complete snapshot.
+    ///
+    /// Implementors must capture every subject in `scope`, their histories, and terminal states
+    /// under one authority-consistency boundary. The returned editable data is not by itself proof
+    /// of completeness; callers obtain that assurance through `verify_complete_store`, which
+    /// invokes this port directly. A deliberately lying provider remains outside this contract.
     fn complete_snapshot<'a>(
         &'a self,
         scope: &'a str,

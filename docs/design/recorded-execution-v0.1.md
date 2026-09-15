@@ -208,6 +208,15 @@ encoding; `exact_imported_retry_is_historical_and_missing_matching_facts_are_not
 assurance; and `commit_then_uncertain_and_dropped_response_recover_one_effect_and_receipt` pins
 observable uncertainty and same-identity recovery.
 
+Independent implementation review added R-128 and R-129. Whole-provider assurance now comes only
+from `verify_complete_store` invoking the provider's consistent complete-snapshot port directly;
+the returned editable transcript and its `CompleteSnapshot` marker carry no reusable provenance,
+and `verify_store_histories` accepts only explicit-set claims. Imported-boundary validation checks
+every available revision-bearing envelope, bare decision, nested decision event and bare event
+against the anchor subject and revision before the reference store publishes the anchor or reserves
+an envelope identity. Evidence at or before the boundary remains partial and retains only its
+declared per-kind or subject order.
+
 Retain a decisive red before implementation and causal mutations for identity lookup ordering,
 omitted state/event changes, observation revision advancement, receipt duplication and partial
 commit. Preserve existing sync tests, purity, requirement pins and format fixtures. Run affected

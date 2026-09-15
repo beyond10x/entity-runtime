@@ -8,8 +8,8 @@ use crate::Expect;
 use super::{
     original_request_comparison_bytes, record_comparison_bytes, AsyncStoreError,
     CompleteStoreSnapshot, HistoryOrigin, KnownLegacyOrder, LegacyEvidence, LegacyOrderDeclaration,
-    RecordKind, RecordedEntry, StoreAssurance, StoredRecord, Subject, SubjectAssurance,
-    SubjectHistory,
+    RecordKind, RecordedEntry, StoreAssurance, StoreCoverage, StoredRecord, Subject,
+    SubjectAssurance, SubjectHistory,
 };
 
 fn corrupt(subject: &Subject, detail: impl Into<String>) -> AsyncStoreError {
@@ -147,47 +147,134 @@ pub(crate) fn validate_imported_boundary(history: &SubjectHistory) -> Result<(),
     validate_revision(&history.subject, anchor.instance.revision)?;
     let mut ids = BTreeSet::new();
     for evidence in &anchor.evidence {
-        if let LegacyEvidence::Envelope(envelope) = evidence {
-            envelope.entry.validate().map_err(|error| {
-                corrupt(
+        match evidence {
+            LegacyEvidence::Envelope(envelope) => {
+                envelope.entry.validate().map_err(|error| {
+                    corrupt(
+                        &history.subject,
+                        format!("imported envelope is invalid: {error}"),
+                    )
+                })?;
+                validate_evidence_revision(
                     &history.subject,
-                    format!("imported envelope is invalid: {error}"),
-                )
-            })?;
-            if envelope.entry.subject() != history.subject {
-                return Err(corrupt(
-                    &history.subject,
-                    "imported envelope names another subject",
-                ));
+                    envelope.entry.revision(),
+                    anchor.instance.revision,
+                    "imported envelope",
+                )?;
+                if envelope.entry.subject() != history.subject {
+                    return Err(corrupt(
+                        &history.subject,
+                        "imported envelope names another subject",
+                    ));
+                }
+                if let RecordedEntry::Decision(commit) = &envelope.entry {
+                    validate_bare_decision(
+                        &history.subject,
+                        &commit.envelope.record,
+                        anchor.instance.revision,
+                    )?;
+                }
+                if envelope.source_id.trim().is_empty() || envelope.source_locator.trim().is_empty()
+                {
+                    return Err(corrupt(
+                        &history.subject,
+                        "imported envelope has blank source coordinates",
+                    ));
+                }
+                if !matches!(
+                    (anchor.order, envelope.known_order),
+                    (
+                        LegacyOrderDeclaration::PerKindOnly,
+                        KnownLegacyOrder::PerKind(_)
+                    ) | (
+                        LegacyOrderDeclaration::Subject,
+                        KnownLegacyOrder::Subject(_)
+                    )
+                ) {
+                    return Err(corrupt(
+                        &history.subject,
+                        "imported envelope order contradicts the anchor declaration",
+                    ));
+                }
+                if !ids.insert(envelope.entry.record_id()) {
+                    return Err(corrupt(
+                        &history.subject,
+                        "an imported record identity appears more than once",
+                    ));
+                }
             }
-            if envelope.source_id.trim().is_empty() || envelope.source_locator.trim().is_empty() {
-                return Err(corrupt(
-                    &history.subject,
-                    "imported envelope has blank source coordinates",
-                ));
+            LegacyEvidence::Decision(decision) => {
+                validate_bare_decision(&history.subject, decision, anchor.instance.revision)?;
             }
-            if !matches!(
-                (anchor.order, envelope.known_order),
-                (
-                    LegacyOrderDeclaration::PerKindOnly,
-                    KnownLegacyOrder::PerKind(_)
-                ) | (
-                    LegacyOrderDeclaration::Subject,
-                    KnownLegacyOrder::Subject(_)
-                )
-            ) {
-                return Err(corrupt(
-                    &history.subject,
-                    "imported envelope order contradicts the anchor declaration",
-                ));
-            }
-            if !ids.insert(envelope.entry.record_id()) {
-                return Err(corrupt(
-                    &history.subject,
-                    "an imported record identity appears more than once",
-                ));
+            LegacyEvidence::Event(event) => {
+                validate_legacy_event(&history.subject, event, anchor.instance.revision)?;
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_evidence_revision(
+    subject: &Subject,
+    revision: u64,
+    anchor_revision: u64,
+    evidence_kind: &str,
+) -> Result<(), AsyncStoreError> {
+    validate_revision(subject, revision)?;
+    if revision > anchor_revision {
+        return Err(corrupt(
+            subject,
+            format!(
+                "{evidence_kind} revision {revision} is later than anchor revision {anchor_revision}"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_bare_decision(
+    subject: &Subject,
+    decision: &entity_core::DecisionRecord,
+    anchor_revision: u64,
+) -> Result<(), AsyncStoreError> {
+    validate_evidence_revision(
+        subject,
+        decision.revision,
+        anchor_revision,
+        "imported decision",
+    )?;
+    if decision.entity != subject.entity
+        || decision.id != subject.id
+        || decision.result.entity != subject.entity
+        || decision.result.id != subject.id
+        || decision.result.revision != decision.revision
+        || decision.result.lifecycle_state != decision.to_state
+    {
+        return Err(corrupt(
+            subject,
+            "imported decision components do not reproduce its subject, revision, and result",
+        ));
+    }
+    for event in &decision.events {
+        validate_legacy_event(subject, event, anchor_revision)?;
+        if event.revision != decision.revision {
+            return Err(corrupt(
+                subject,
+                "imported decision event names another decision revision",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_legacy_event(
+    subject: &Subject,
+    event: &entity_core::DomainEvent,
+    anchor_revision: u64,
+) -> Result<(), AsyncStoreError> {
+    validate_evidence_revision(subject, event.revision, anchor_revision, "imported event")?;
+    if event.entity != subject.entity || event.id != subject.id {
+        return Err(corrupt(subject, "imported event names another subject"));
     }
     Ok(())
 }
@@ -414,19 +501,69 @@ pub fn verify_subject_prefix(
 pub fn verify_store_histories(
     snapshot: &CompleteStoreSnapshot,
 ) -> Result<StoreAssurance, AsyncStoreError> {
-    if snapshot.scope.trim().is_empty() {
+    if snapshot.coverage != StoreCoverage::ExplicitSet {
+        return Err(AsyncStoreError::InvalidInput(
+            "editable transcripts cannot claim provider-complete coverage; use verify_complete_store"
+                .to_owned(),
+        ));
+    }
+    verify_histories(
+        &snapshot.scope,
+        &snapshot.histories,
+        StoreCoverage::ExplicitSet,
+    )
+}
+
+/// Obtains and verifies one fresh provider-owned complete snapshot.
+///
+/// Completeness provenance is the direct invocation of the provider port, whose implementation
+/// promises one consistently captured logical scope. The returned capture is checked before it is
+/// exposed for editing, and only this path can return [`StoreCoverage::CompleteSnapshot`].
+///
+/// # Errors
+///
+/// Provider refusal, scope substitution, or any subject-local or cross-subject inconsistency.
+pub async fn verify_complete_store(
+    reader: &dyn super::AsyncRecordedReader,
+    scope: &str,
+) -> Result<StoreAssurance, AsyncStoreError> {
+    if scope.trim().is_empty() {
         return Err(AsyncStoreError::InvalidInput(
             "store verification requires a nonblank logical scope".to_owned(),
         ));
     }
-    let mut assurances = Vec::with_capacity(snapshot.histories.len());
+    let snapshot = reader.complete_snapshot(scope).await?;
+    if snapshot.scope != scope || snapshot.coverage != StoreCoverage::CompleteSnapshot {
+        return Err(AsyncStoreError::InvalidInput(
+            "provider snapshot did not reproduce the requested scope and complete marker"
+                .to_owned(),
+        ));
+    }
+    verify_histories(
+        &snapshot.scope,
+        &snapshot.histories,
+        StoreCoverage::CompleteSnapshot,
+    )
+}
+
+fn verify_histories(
+    scope: &str,
+    histories: &[super::SubjectSnapshot],
+    coverage: StoreCoverage,
+) -> Result<StoreAssurance, AsyncStoreError> {
+    if scope.trim().is_empty() {
+        return Err(AsyncStoreError::InvalidInput(
+            "store verification requires a nonblank logical scope".to_owned(),
+        ));
+    }
+    let mut assurances = Vec::with_capacity(histories.len());
     let mut subjects = BTreeSet::new();
     let mut record_ids: BTreeMap<String, Subject> = BTreeMap::new();
     let mut store_positions: BTreeMap<u64, Subject> = BTreeMap::new();
     let mut memberships: BTreeMap<(super::BatchKey, u64), (String, Subject, RecordKind)> =
         BTreeMap::new();
     let mut batch_orders: BTreeMap<super::BatchKey, Vec<(u64, u64, Subject)>> = BTreeMap::new();
-    for subject_snapshot in &snapshot.histories {
+    for subject_snapshot in histories {
         let history = &subject_snapshot.history;
         if !subjects.insert(history.subject.clone()) {
             return Err(corrupt(
@@ -513,8 +650,8 @@ pub fn verify_store_histories(
     }
     assurances.sort_by(|left, right| assurance_subject(left).cmp(assurance_subject(right)));
     Ok(StoreAssurance {
-        scope: snapshot.scope.clone(),
-        coverage: snapshot.coverage,
+        scope: scope.to_owned(),
+        coverage,
         subjects: assurances,
     })
 }
