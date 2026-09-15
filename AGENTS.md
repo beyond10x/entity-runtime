@@ -186,10 +186,12 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 
 ## Boundaries
 
-* **The dependency arrow points from AEP to this repository.** Its workspace
-  pins `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres` and `entity-remote` from
-  one release tag. No manifest here names one of its crates. Changing that direction or changing
-  bytes its pin verifies is a coordinated migration under the atlas ADR rules, not a local edit.
+* **The dependency arrow points from AEP to this repository.** Its workspace pins six crates —
+  `entity-core`, `entity-store`, `entity-query`, `entity-sqlite`, `entity-postgres` and
+  `entity-remote` — at one exact revision, which is a commit and not a release tag
+  (`aep/Cargo.toml` `[workspace.dependencies]`). No manifest here names one of its crates. Changing
+  that direction or changing bytes its pin verifies is a coordinated migration under the atlas ADR
+  rules, not a local edit.
 * **Provider interfaces live outside `entity-core`.** A state store, an event store, a search
   index, a blob store — each is a crate that depends on the kernel, never the reverse.
 * **IO stays at named edges.** `entity-core`, `entity-yaml`, `entity-graph` and `entity-surface` are
@@ -309,13 +311,25 @@ task check
 $EDITOR CHANGELOG.md                      # move [Unreleased] under ## [X.Y.Z] — YYYY-MM-DD (em dash: provenance greps for it)
 ```
 
-The private Atlas release procedure owns the commit, annotated tag and push. This repository owns
-the release-ready tree and its evidence, never delivery credentials or token-minting machinery.
+## Source publication
+
+This repository owns its correctness checks, required reviews and release artifacts. Ordinary
+commits, pushes and releases require no Atlas checkout, current Atlas main or organization-wide
+dependency admission (atlas ADR 0049). Use standalone `b10x-gates bot --repo . -- <git-command>`
+with protected local credentials and the existing `b10x-bot[bot]` identity. Preserve repository and
+worktree hooks. This repository holds the release-ready tree and its evidence, never delivery
+credentials or token-minting machinery.
+
+Atlas documentation validation belongs to documentation operations; it is not a prerequisite for
+source publication. Documentation failures affect documentation delivery. Organization privacy
+rules still apply; historical brand exemptions do not authorize new public associations.
 
 ## Commits
 
-* **Public history uses the organization release identity.** The private Atlas delivery procedure
-  supplies that identity and any required credentials; this repository contains neither.
+* **Public history uses the organization release identity.** Commit and push through standalone
+  `b10x-gates bot`, which supplies the `b10x-bot[bot]` identity from protected local credentials;
+  this repository carries no credential, no token-minting machinery and no bot-authenticated git
+  wrapper, and needs no Atlas checkout to commit.
 * Conventional prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 * Title, blank line, then a body explaining what changed and why. No title-only commits.
 * Ticket references go in a `Refs:` tagline at the end of the body, never in the title.
