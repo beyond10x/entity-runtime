@@ -48,7 +48,7 @@ layer, which is § 6.
 | the arrow is **one way**, and permanent | no `Cargo.toml` in this repository names a crate of theirs — `grep -rn 'aep-\|aep' --include=Cargo.toml .` returns nothing. [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md): *"`entity-runtime` takes nothing from `aep`, at any version, forever"* |
 | **phase 0** — the mapping has a verdict | **accepted in part**, 2026-08-28, in `aep`' own store: `story:entity-runtime-mapping` § *Verdict — 2026-08-28*. Accepted for states, initial states and edges; **explicitly not for the verbs** — the eleven operation names in [`examples/aep/`](https://github.com/beyond10x/entity-runtime/tree/main/examples/aep) stay ours and unendorsed |
 | the verdict has a test on **their** side too | `aep/crates/aep-backend-markdown/tests/entity_runtime_equivalence.rs` — our `examples/aep/*.yaml`, pinned at our tag `0.13.0`, compared against their `artifacts/lifecycles/*.yaml`; six tests, eleven kinds, **77 edges** in both directions. Each repository now holds a pinned copy of the other's documents |
-| **phase 1** — every ladder as a definition | shipped: 11 definitions, 77 edges, **14 tests** (`cargo test -p entity-yaml --test aep_lifecycles`), against their `artifacts/lifecycles/*.yaml` pinned at `3de6e07`. In the gate through `test`, `example-check` and `pin-check` |
+| **phase 1** — every ladder as a definition | shipped: 13 definitions, 93 edges, proved by `cargo test -p entity-yaml --test aep_lifecycles`, against their `artifacts/lifecycles/*.yaml` at the commit `crates/entity-yaml/tests/fixtures/aep-lifecycles/PIN.md` records, which `pin-check` hashes. In the gate through `test`, `example-check` and `pin-check` |
 | **phase 2** — `aep artifact move` decided by this kernel | shipped there in `aep` 0.13.0, 2026-08-25 (`f20c9d6`), with `crates/aep-backend-markdown/tests/kernel_equivalence.rs` holding the kernel's verdict identical to the lookup it replaced over all 800 ordered status pairs |
 | **phase 3** — a rung may cost evidence | shipped on both sides: `requires:` per rung upstream, three-valued rules here (R-57, R-58), and `PreconditionUnobservable` naming every address nobody supplied. Their gap register `:39` closed its mechanism half 2026-08-25 and its provenance half 2026-08-26 |
 | **phase 4** — the status vocabulary opened | shipped in `aep` 0.13.0: `ArtifactStatus` carries `Other(String)` and the *ladder* gates a status write instead of the enum. Their gap register `:70`'s vocabulary half, and the last instance of `:76` |
@@ -98,7 +98,7 @@ re-read 2026-08-28. Kept as the record of what was on the critical path and how 
 
 | # | item | state | reversible until |
 |---|---|---|---|
-| **D** | phase 1: every lifecycle as a definition | **shipped** — 11 definitions, 77 edges, 14 tests, in the gate; refreshed to `aep` `3de6e07` (0.18.0). *(Read 9/73/11 until 2026-08-28; the counts were a release behind two more ladders.)* | always, it is `examples/` |
+| **D** | phase 1: every lifecycle as a definition | **shipped** — 13 definitions, 93 edges, in the gate; refreshed to the `aep` commit `crates/entity-yaml/tests/fixtures/aep-lifecycles/PIN.md` records. *(Read 9 definitions and 73 edges until 2026-08-28; the counts were a release behind two more ladders.)* | always, it is `examples/` |
 | **C** | `story:three-valued-conditions` — the one semantics change | **shipped** — `Truth`, two new refusals, R-57/R-58 | it ships in a release |
 | **A** | put the mapping to `aep`, carrying D as evidence | **done, and answered** — `story:entity-runtime-mapping` § *Verdict — 2026-08-28*: accepted in part, and not for the verbs | it is a document |
 | **B** | the dependency arrow | **taken, and widened** — five crates now, one tag, one way: `entity-core`, `entity-store`, `entity-sqlite`, `entity-postgres`, `entity-remote` at `0.13.0` (`aep/Cargo.toml:112-116`); [`atlas/architecture/adr/0002`](https://github.com/beyond10x/atlas/blob/main/architecture/adr/0002-the-entity-runtime-dependency-arrow.md) | — the manifest lines exist |
@@ -218,11 +218,11 @@ A paper review of a mapping table is weak evidence. Eight definitions plus an eq
 proves *the definitions yield exactly the transitions your YAML declares* is the artefact that makes
 the review decidable — and it costs `examples/` in this tree, changes nothing in theirs, and is
 thrown away for free if the verdict is no. Phase 1 ships **as** phase 0's evidence, and it has:
-[`examples/aep/`](https://github.com/beyond10x/entity-runtime/tree/main/examples/aep) — **11
-definitions, 77 edges, 14 tests** (read 8/64/11 until 2026-08-28, when three more ladders had
-landed), `example-check` and `cargo test` both in `task check`. The equivalence was verified in both
-directions by breaking it: an invented edge fails naming the edge, and a rung added to the pinned
-fixture fails naming what the definitions do not express.
+[`examples/aep/`](https://github.com/beyond10x/entity-runtime/tree/main/examples/aep) — **13
+definitions, 93 edges** (read 8 definitions and 64 edges until 2026-08-28, when three more ladders
+had landed), `example-check` and `cargo test` both in `task check`. The equivalence was verified
+in both directions by breaking it: an invented edge fails naming the edge, and a rung added to the
+pinned fixture fails naming what the definitions do not express.
 
 **It worked.** The verdict came back on 2026-08-28 accepting exactly what the test pins — states,
 initial states and edges — and refusing exactly what it could not pin: the verbs. A paper review

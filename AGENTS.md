@@ -186,12 +186,27 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 
 ## Boundaries
 
-* **The dependency arrow points from AEP to this repository.** Its workspace pins six crates —
-  `entity-core`, `entity-store`, `entity-query`, `entity-sqlite`, `entity-postgres` and
-  `entity-remote` — at one exact revision, which is a commit and not a release tag
-  (`aep/Cargo.toml` `[workspace.dependencies]`). No manifest here names one of its crates. Changing
-  that direction or changing bytes its pin verifies is a coordinated migration under the atlas ADR
-  rules, not a local edit.
+* **The dependency arrow points from consumers to this repository, and the consumers do not move
+  together.** Six sibling checkouts of five repositories pin eight of this workspace's crates at
+  five distinct values, none of them this repository's latest tag. Read on 2026-09-15 at each
+  consumer's `origin/main`; re-measure with
+  `git -C <repo> grep -n beyond10x/entity-runtime origin/main -- '*Cargo.toml'` rather than trusting
+  the list:
+  * aep — `entity-core`, `entity-store`, `entity-query`, `entity-sqlite`, `entity-postgres` and
+    `entity-remote` at rev `faadc04f` (`Cargo.toml` `[workspace.dependencies]`), which is a commit
+    and not a release tag.
+  * aep-service — `entity-core`, `entity-store`, `entity-query` and `entity-postgres` at tag
+    `0.17.6`.
+  * atlas — `entity-core`, `entity-store`, `entity-shell` and `entity-yaml` at rev `e5ee9d6c`.
+  * bench — the same four crates as atlas at tag `0.17.3` (`crates/bench-cli/Cargo.toml`).
+  * org-brain and org-brain-successor, two checkouts of `beyond10x/org-brain` — `entity-core`,
+    `entity-store`, `entity-query`, `entity-shell` and `entity-yaml` at tag `0.17.7`.
+
+  `entity-shell` and `entity-yaml` are consumer surface, not internal: four of the six checkouts
+  pin them, so a change to either is the same coordinated migration under the atlas ADR rules that
+  a kernel change is — re-pin every consumer above that names the changed crate, in one migration,
+  and correct this list in the same change. No manifest here names a crate of any consumer, and
+  changing that direction is a coordinated migration too, not a local edit.
 * **Provider interfaces live outside `entity-core`.** A state store, an event store, a search
   index, a blob store — each is a crate that depends on the kernel, never the reverse.
 * **IO stays at named edges.** `entity-core`, `entity-yaml`, `entity-graph` and `entity-surface` are
