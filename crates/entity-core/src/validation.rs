@@ -711,11 +711,13 @@ fn validate_identity(definition: &EntityDefinition) -> Vec<DefinitionError> {
     }
 }
 
-/// The half of a relation one definition can answer: a `references` carrier lives here, has the
-/// row's kind and carries the row's optionality.
+/// The half of a relation one definition can answer: a `references` carrier is declared here, its
+/// `many` row is a list, and each row carries the optionality its row admits.
 ///
-/// The `owns` half is [`Registry::validate_all`](crate::Registry::validate_all)'s, because for an
-/// `owns` relation the carrying document is not the one the author is reading.
+/// **The carrier's kind is not one of these**, on either row. § 8.1 types every carrier by the
+/// *related* entity's identity field, and one definition does not hold the other, so every kind
+/// comparison is [`Registry::validate_all`](crate::Registry::validate_all)'s — as is the whole
+/// `owns` half, where the carrying document is not even the one the author is reading.
 fn validate_relations(definition: &EntityDefinition) -> Vec<DefinitionError> {
     let mut defects = Vec::new();
     for (name, relation) in &definition.relations {
@@ -731,37 +733,35 @@ fn validate_relations(definition: &EntityDefinition) -> Vec<DefinitionError> {
             });
             continue;
         };
-        match relation.cardinality {
-            // The target's identity type, or an optional one — the only row the source offers an
-            // optional carrier for, so both optionalities are admitted here and nowhere else.
-            Cardinality::One => {
-                if field.kind == FieldKind::Array {
-                    defects.push(DefinitionError::RelationViaWrongShape {
-                        relation: name.clone(),
-                        via: relation.via.clone(),
-                        expected: "the target's identity kind".to_owned(),
-                        found: "an array field".to_owned(),
-                    });
-                }
+        // The `one` row admits `target.identity.type_ref` or `Optional<it>`
+        // (`ESS/crates/specify/ess-domain/src/entity.rs:1399-1402`), so both optionalities are
+        // admitted — this is the only row the source offers an optional carrier for — and the kind
+        // is whatever shape the target's identity has, including a list. **Nothing here is
+        // answerable about that kind and nothing is guessed:** an earlier draft refused every array
+        // carrier on this row, which refused exactly the source-admitted case of a list identity,
+        // and it could not have known better, because one definition does not hold the target. The
+        // whole question is `Registry::validate_all`'s.
+        if relation.cardinality == Cardinality::One {
+            continue;
+        }
+
+        // The `many` row is `List<target identity type>` with no optional offered. The outer list
+        // is the cardinality and is answerable here; its element is the target's identity shape and
+        // is not.
+        if field.kind == FieldKind::Array {
+            if !field.required {
+                defects.push(DefinitionError::RelationCarrierOptionality {
+                    relation: name.clone(),
+                    via: relation.via.clone(),
+                });
             }
-            // `List<target identity type>`, and no optional offered.
-            Cardinality::Many => {
-                if field.kind == FieldKind::Array {
-                    if !field.required {
-                        defects.push(DefinitionError::RelationCarrierOptionality {
-                            relation: name.clone(),
-                            via: relation.via.clone(),
-                        });
-                    }
-                } else {
-                    defects.push(DefinitionError::RelationViaWrongShape {
-                        relation: name.clone(),
-                        via: relation.via.clone(),
-                        expected: "an array of the target's identity kind".to_owned(),
-                        found: format!("a {} field", field.kind),
-                    });
-                }
-            }
+        } else {
+            defects.push(DefinitionError::RelationViaWrongShape {
+                relation: name.clone(),
+                via: relation.via.clone(),
+                expected: "an array of the target's identity kind".to_owned(),
+                found: format!("a {} field", field.kind),
+            });
         }
     }
     defects
@@ -1168,6 +1168,19 @@ fn validate_condition_definition(
             limit: MAX_CONDITION_DEPTH,
         });
     }
+    // A separate pass over the whole tree, and the separateness is the load-bearing part: it runs
+    // outside `validate_quantifier`, whose `map_err` relabels a defect from a quantifier **body** as
+    // `QuantifierBodyScope`. An unreadable literal is not a scope defect, and keeping the walk out
+    // of that call is what leaves it named for the observation domain, with its own path.
+    //
+    // The *order* of the two passes is not load-bearing, and was measured rather than assumed:
+    // running this one second leaves every case in
+    // `an_unobservable_numeric_literal_is_refused_in_every_service_1_operator_and_at_every_depth`
+    // green, because the scope walk answers nothing about an authored number. Order decides only
+    // which of two independent defects a document carrying both is refused with first.
+    if scope.service() {
+        unobservable_condition_literals(condition, path)?;
+    }
     validate_condition_body(condition, path, scope)
 }
 
@@ -1196,9 +1209,6 @@ fn validate_condition_body(
                     });
                 }
                 validate_operand(operand, &format!("{path}.compare.{side}"), scope)?;
-                if let Value::Number(number) = operand {
-                    unobservable_literal(number, &format!("{path}.compare.{side}"))?;
-                }
             }
             Ok(())
         }
@@ -1245,6 +1255,97 @@ fn validate_condition_body(
 fn validate_pair(values: &[Value; 2], path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
     validate_operand(&values[0], &format!("{path}[0]"), scope)?;
     validate_operand(&values[1], &format!("{path}[1]"), scope)
+}
+
+/// Every authored numeric literal a `service/1` condition writes, wherever it is written.
+///
+/// The observability rule belongs to the **operand**, not to one operator: `compare`, `eq`, `ne`,
+/// `in`, `contains`, the ordering operators and `truthy` all read what is written there, so
+/// refusing an unreadable literal in only one of them leaves the same defect admitted in the others
+/// under a different key — and a membership list is where it hides best, because the literal is
+/// nested one level below the operand. The match below is exhaustive on purpose: a new operator is
+/// a compile error here rather than a gap nobody notices.
+///
+/// Under `kernel/1` this is not reached at all. That door is `number::compare`, which reads every
+/// token this runtime can hold, so nothing a `kernel/1` definition admits today stops being
+/// admitted.
+fn unobservable_condition_literals(
+    condition: &Condition,
+    path: &str,
+) -> Result<(), DefinitionError> {
+    let pair = |values: &[Value; 2], operator: &str| {
+        let path = format!("{path}.{operator}");
+        unobservable_literals(&values[0], &format!("{path}[0]"))?;
+        unobservable_literals(&values[1], &format!("{path}[1]"))
+    };
+    match condition {
+        Condition::Literal(_) => Ok(()),
+        Condition::Compare { compare } => {
+            unobservable_literals(&compare.left, &format!("{path}.compare.left"))?;
+            unobservable_literals(&compare.right, &format!("{path}.compare.right"))
+        }
+        Condition::Truthy { truthy } => unobservable_literals(truthy, &format!("{path}.truthy")),
+        Condition::ForAll { for_all } => quantifier_literals(for_all, path, "for_all"),
+        Condition::ForAny { for_any } => quantifier_literals(for_any, path, "for_any"),
+        Condition::All { all } => {
+            for (index, child) in all.iter().enumerate() {
+                unobservable_condition_literals(child, &format!("{path}.all[{index}]"))?;
+            }
+            Ok(())
+        }
+        Condition::Any { any } => {
+            for (index, child) in any.iter().enumerate() {
+                unobservable_condition_literals(child, &format!("{path}.any[{index}]"))?;
+            }
+            Ok(())
+        }
+        Condition::Not { not } => unobservable_condition_literals(not, &format!("{path}.not")),
+        // Three operators read no number, and each already refuses what it cannot read where it is
+        // written: `exists` asks whether an address resolves and is two-valued, and `before`/`after`
+        // are `kernel/1` instant operators whose operands `validate_instant_operand` refuses unless
+        // they are a reference or a readable instant. Answering them here would move their refusal
+        // to another message without admitting or refusing anything new.
+        Condition::Exists { .. } | Condition::Before { .. } | Condition::After { .. } => Ok(()),
+        Condition::Eq { eq } => pair(eq, "eq"),
+        Condition::Ne { ne } => pair(ne, "ne"),
+        Condition::Gt { gt } => pair(gt, "gt"),
+        Condition::Gte { gte } => pair(gte, "gte"),
+        Condition::Lt { lt } => pair(lt, "lt"),
+        Condition::Lte { lte } => pair(lte, "lte"),
+        Condition::In { values } => pair(values, "in"),
+        Condition::Contains { contains } => pair(contains, "contains"),
+    }
+}
+
+/// A quantifier's body, which is where a literal written inside a fold would otherwise be reported
+/// as a scope defect. `in` is a reference and `QuantifierOverNotCollection` already answers
+/// whatever it is not.
+fn quantifier_literals(
+    quantifier: &crate::Quantifier,
+    path: &str,
+    operator: &str,
+) -> Result<(), DefinitionError> {
+    unobservable_condition_literals(&quantifier.body, &format!("{path}.{operator}.that"))
+}
+
+/// Every authored number inside one operand, at any depth a literal may be written at.
+fn unobservable_literals(value: &Value, path: &str) -> Result<(), DefinitionError> {
+    match value {
+        Value::Number(number) => unobservable_literal(number, path),
+        Value::Array(values) => {
+            for (index, value) in values.iter().enumerate() {
+                unobservable_literals(value, &format!("{path}[{index}]"))?;
+            }
+            Ok(())
+        }
+        Value::Object(values) => {
+            for (key, value) in values {
+                unobservable_literals(value, &format!("{path}.{key}"))?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 /// A numeric literal the source cannot observe would make its comparison unevaluable at every

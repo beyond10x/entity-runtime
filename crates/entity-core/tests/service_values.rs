@@ -1310,3 +1310,308 @@ fn payee_probe(tag: &str) -> ValidatedDefinition {
         .expect("the probe registers");
     registry.get("probe", 1).expect("registered").clone()
 }
+
+// --- § 10.2.1: each operand through its own door, and the literals admission refuses --------------
+
+/// `serde_json::from_str` retains the authored token, which is the whole subject of § 10.2.1;
+/// `json!` cannot carry an integer past the `i64`/`u64` span at all.
+fn document(value: &str) -> Value {
+    serde_json::from_str(value).expect("the fixture is a JSON document")
+}
+
+/// An integer past the `u64` span: the literal door keeps it at scale zero, and the wire door,
+/// having no exact carrier for it, reads the binary64's canonical decimal — which ends in `…000`.
+/// Everything below turns on that one disagreement, which is the only thing that makes the two
+/// doors observable from outside.
+const PAST_U64: &str = "100000000000000000000000001";
+
+fn origin_schema() -> Value {
+    let number = json!({ "type": "number", "required": true });
+    let pair = json!({
+        "type": "object",
+        "required": true,
+        "properties": { "a": { "type": "number", "required": true } }
+    });
+    let list = json!({ "type": "array", "required": true, "items": { "type": "number" } });
+    json!({ "fields": {
+        "big": number.clone(),
+        "same": number,
+        "list": list.clone(),
+        "list_same": list,
+        "pair": pair.clone(),
+        "pair_same": pair
+    }})
+}
+
+fn origin_fields() -> Value {
+    document(&format!(
+        r#"{{"big": {PAST_U64}, "same": {PAST_U64},
+            "list": [{PAST_U64}], "list_same": [{PAST_U64}],
+            "pair": {{"a": {PAST_U64}}}, "pair_same": {{"a": {PAST_U64}}}}}"#
+    ))
+}
+
+fn origin_answer(semantics: &str, condition: &str) -> Truth {
+    answer(
+        semantics,
+        origin_schema(),
+        json!({}),
+        document(condition),
+        origin_fields(),
+    )
+}
+
+#[test]
+fn service_equality_and_membership_read_each_operand_through_its_own_door() {
+    // The reference point: `compare` reads each operand through its own door, so a reference and an
+    // authored literal spelling the same digits are not one value.
+    assert_eq!(
+        origin_answer(
+            "service/1",
+            &format!(
+                r#"{{"compare": {{"left": "$fields.big", "op": "eq", "right": {PAST_U64}}}}}"#
+            )
+        ),
+        Truth::False
+    );
+
+    // Every combination of the two origins, in both operand positions, for all four operators.
+    // `false` is *one literal, one reference*; `true` is *both the same door*.
+    for (condition, expected) in [
+        // eq — a literal against a reference, written either way round.
+        (
+            format!(r#"{{"eq": ["$fields.big", {PAST_U64}]}}"#),
+            Truth::False,
+        ),
+        (
+            format!(r#"{{"eq": [{PAST_U64}, "$fields.big"]}}"#),
+            Truth::False,
+        ),
+        // and the same door on both sides, which is what says the divergence is the door.
+        (
+            r#"{"eq": ["$fields.big", "$fields.same"]}"#.to_owned(),
+            Truth::True,
+        ),
+        (
+            format!(r#"{{"eq": [{PAST_U64}, {PAST_U64}]}}"#),
+            Truth::True,
+        ),
+        // ne is the negation of the same answer, not a second rule.
+        (
+            format!(r#"{{"ne": ["$fields.big", {PAST_U64}]}}"#),
+            Truth::True,
+        ),
+        (
+            r#"{"ne": ["$fields.big", "$fields.same"]}"#.to_owned(),
+            Truth::False,
+        ),
+        // in — the collection's **elements** carry the origin, not the collection.
+        (
+            format!(r#"{{"in": ["$fields.big", [{PAST_U64}]]}}"#),
+            Truth::False,
+        ),
+        (
+            format!(r#"{{"in": [{PAST_U64}, "$fields.list"]}}"#),
+            Truth::False,
+        ),
+        (
+            r#"{"in": ["$fields.big", "$fields.list"]}"#.to_owned(),
+            Truth::True,
+        ),
+        (
+            format!(r#"{{"in": [{PAST_U64}, [{PAST_U64}]]}}"#),
+            Truth::True,
+        ),
+        // contains — the same four, with the operands the other way round.
+        (
+            format!(r#"{{"contains": [[{PAST_U64}], "$fields.big"]}}"#),
+            Truth::False,
+        ),
+        (
+            format!(r#"{{"contains": ["$fields.list", {PAST_U64}]}}"#),
+            Truth::False,
+        ),
+        (
+            r#"{"contains": ["$fields.list", "$fields.big"]}"#.to_owned(),
+            Truth::True,
+        ),
+        (
+            format!(r#"{{"contains": [[{PAST_U64}], {PAST_U64}]}}"#),
+            Truth::True,
+        ),
+        // and the origin travels to every depth, not only to a top-level operand — through a
+        // mapping's members and through a list's elements alike, which are two separate walks.
+        (
+            format!(r#"{{"eq": [{{"a": {PAST_U64}}}, "$fields.pair"]}}"#),
+            Truth::False,
+        ),
+        (
+            r#"{"eq": ["$fields.pair", "$fields.pair_same"]}"#.to_owned(),
+            Truth::True,
+        ),
+        (
+            format!(r#"{{"eq": [[{PAST_U64}], "$fields.list"]}}"#),
+            Truth::False,
+        ),
+        (
+            format!(r#"{{"eq": ["$fields.list", [{PAST_U64}]]}}"#),
+            Truth::False,
+        ),
+        (
+            r#"{"eq": ["$fields.list", "$fields.list_same"]}"#.to_owned(),
+            Truth::True,
+        ),
+        (
+            format!(r#"{{"eq": [[{PAST_U64}], [{PAST_U64}]]}}"#),
+            Truth::True,
+        ),
+    ] {
+        assert_eq!(
+            origin_answer("service/1", &condition),
+            expected,
+            "{condition}"
+        );
+    }
+
+    // `kernel/1` is untouched: its equality compares the tokens exactly, so the same pair that
+    // `service/1` calls two values is one value there, and it stays one.
+    for (condition, expected) in [
+        (
+            format!(r#"{{"eq": ["$fields.big", {PAST_U64}]}}"#),
+            Truth::True,
+        ),
+        (
+            format!(r#"{{"ne": ["$fields.big", {PAST_U64}]}}"#),
+            Truth::False,
+        ),
+        (
+            format!(r#"{{"in": ["$fields.big", [{PAST_U64}]]}}"#),
+            Truth::True,
+        ),
+        (
+            format!(r#"{{"contains": [[{PAST_U64}], "$fields.big"]}}"#),
+            Truth::True,
+        ),
+    ] {
+        assert_eq!(
+            origin_answer("kernel/1", &condition),
+            expected,
+            "{condition}"
+        );
+    }
+}
+
+#[test]
+fn an_unobservable_numeric_literal_is_refused_in_every_service_1_operator_and_at_every_depth() {
+    let schema = json!({ "fields": {
+        "x": { "type": "number", "required": true },
+        "list": { "type": "array", "required": true, "items": { "type": "number" } },
+        "pair": { "type": "object", "required": true, "properties": {
+            "a": { "type": "number", "required": true }
+        }}
+    }});
+    let names_the_domain = |defects: &DefinitionErrors| {
+        defects.iter().any(|defect| {
+            matches!(defect, DefinitionError::InvalidRule { message, .. }
+                if message.contains("source observation domain"))
+        })
+    };
+
+    for condition in [
+        r#"{"compare": {"left": "$fields.x", "op": "eq", "right": 1e400}}"#,
+        r#"{"compare": {"left": 1e400, "op": "eq", "right": "$fields.x"}}"#,
+        r#"{"eq": ["$fields.x", 1e400]}"#,
+        r#"{"eq": [1e400, "$fields.x"]}"#,
+        r#"{"ne": ["$fields.x", 1e400]}"#,
+        r#"{"gt": ["$fields.x", 1e400]}"#,
+        r#"{"gte": ["$fields.x", 1e400]}"#,
+        r#"{"lt": ["$fields.x", 1e400]}"#,
+        r#"{"lte": ["$fields.x", 1e400]}"#,
+        r#"{"truthy": 1e400}"#,
+        // nested one level below the operand, which is where a membership literal lives
+        r#"{"in": ["$fields.x", [1, 1e400]]}"#,
+        r#"{"in": [1e400, "$fields.list"]}"#,
+        r#"{"contains": [[1, 1e400], "$fields.x"]}"#,
+        r#"{"contains": ["$fields.list", 1e400]}"#,
+        r#"{"eq": [{"a": 1e400}, "$fields.pair"]}"#,
+        // and below a connective and inside a fold
+        r#"{"not": {"eq": ["$fields.x", 1e400]}}"#,
+        r#"{"all": [true, {"any": [{"eq": ["$fields.x", 1e400]}]}]}"#,
+        r#"{"for_all": {"in": "$fields.list", "as": "n", "that": {"eq": ["$n", 1e400]}}}"#,
+    ] {
+        let defects = refused(probe(
+            "service/1",
+            schema.clone(),
+            json!({}),
+            document(condition),
+        ));
+        assert!(names_the_domain(&defects), "{condition}: {defects}");
+    }
+
+    // `kernel/1` reads every token this runtime can hold through `number::compare`, so nothing it
+    // admits today stops being admitted. The four service-only operators cannot appear here at all.
+    let kernel = json!({ "fields": { "x": { "type": "number", "required": true } } });
+    for condition in [
+        r#"{"eq": ["$fields.x", 1e400]}"#,
+        r#"{"ne": ["$fields.x", 1e400]}"#,
+        r#"{"gt": ["$fields.x", 1e400]}"#,
+        r#"{"in": ["$fields.x", [1e400]]}"#,
+        r#"{"contains": [[1e400], "$fields.x"]}"#,
+    ] {
+        assert!(
+            ValidatedDefinition::new(definition(probe(
+                "kernel/1",
+                kernel.clone(),
+                json!({}),
+                document(condition)
+            )))
+            .is_ok(),
+            "{condition}"
+        );
+    }
+}
+
+#[test]
+fn a_quantifier_body_reads_the_fixed_roots_its_binder_does_not_name() {
+    // The other half of § 2.2's rule, and the half the shadowing case in `service_review_one.rs`
+    // does not measure: an address the binder does **not** match passes through to the enclosing
+    // scope untouched, which is what lets a body mix element facts with free ones.
+    let schema = json!({ "fields": {
+        "tags": { "type": "array", "required": true, "items": { "type": "string" } }
+    }});
+    let free = json!({ "for_all": { "in": "$fields.tags", "as": "line", "that": { "all": [
+        { "eq": ["$id", "p-1"] },
+        { "eq": ["$entity", "probe"] },
+        { "eq": ["$line", "x"] }
+    ]}}});
+    assert_eq!(
+        answer(
+            "service/1",
+            schema.clone(),
+            json!({}),
+            free,
+            json!({ "tags": ["x"] })
+        ),
+        Truth::True
+    );
+
+    // And a binder shadows only the name it declares: with `as: id` outside and `as: line` inside,
+    // `$id` is the outer element, `$line` is the inner one, and `$entity` is still the definition's.
+    let nested = json!({ "for_all": { "in": "$fields.tags", "as": "id", "that": {
+        "for_all": { "in": "$fields.tags", "as": "line", "that": { "all": [
+            { "eq": ["$id", "x"] },
+            { "eq": ["$line", "x"] },
+            { "eq": ["$entity", "probe"] }
+        ]}}
+    }}});
+    assert_eq!(
+        answer(
+            "service/1",
+            schema,
+            json!({}),
+            nested,
+            json!({ "tags": ["x"] })
+        ),
+        Truth::True
+    );
+}

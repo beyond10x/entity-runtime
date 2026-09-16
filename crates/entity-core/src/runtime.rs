@@ -404,6 +404,11 @@ pub fn create(
 /// reconstructs its original request as `arguments` and not as `fields` — reconstructing it as the
 /// fields the branch produced would hand a retry a request the caller never sent.
 ///
+/// A `service/1` creation that declares **no** branches is the case where the two coincide: with no
+/// branch to produce them, the input is read as the fields, and the same normalized values are
+/// recorded as the arguments. Both halves of the record then say what the caller sent, so the
+/// reconstruction, the anchored verifier, replay and a retry all read one answer.
+///
 /// # Errors
 ///
 /// * [`CoreError::Validation`] — `id` is empty, the input is not an object, or a value does not
@@ -428,7 +433,8 @@ pub fn decide_create(
         return service_create(definition, id, input);
     }
 
-    // Step 3. A `kernel/1` creation's input *is* its fields; there are no arguments to normalize.
+    // Step 3. This creation's input *is* its fields — a `kernel/1` one always, a `service/1` one
+    // that declares no branches because there is no branch `set` to produce them.
     let mut object = into_object(input, "fields")?;
     apply_defaults(&definition.schema, &mut object);
 
@@ -480,7 +486,17 @@ pub fn decide_create(
         definition: Some(definition_snapshot(definition)),
         command: DecisionCommand::Create {
             fields: instance.fields.clone(),
-            arguments: Map::new(),
+            // A `service/1` creation that declares no branches has no branch `set` to produce its
+            // fields, so its input **is** its fields — and those normalized values are exactly what
+            // the caller sent, which is what `er.request/2` reconstructs. Recording no arguments
+            // for it would reconstruct every such creation as the same empty request and hand a
+            // retry carrying different input a match it never earned. A `kernel/1` creation records
+            // none and keeps its bytes: `arguments` is skipped while it is empty.
+            arguments: if definition.semantics.is_service_1() {
+                instance.fields.clone()
+            } else {
+                Map::new()
+            },
         },
         entity: instance.entity.clone(),
         id: instance.id.clone(),
@@ -538,10 +554,13 @@ fn service_create(
         from_state: None,
         to_state: &initial,
     };
+    // The state test of step 4 applies here too, against the state step 10 will put the instance
+    // in: at creation that state is the lifecycle's `initial` and nothing else, so a branch guarded
+    // on any other state is skipped rather than selected in a state its own guard excludes.
     let outcome = select_outcome(
         CREATE_COMMAND,
         &definition.create.outcomes,
-        None,
+        Some(initial.as_str()),
         &selector_context,
     )?;
 
@@ -967,9 +986,11 @@ impl<'a> Branch<'a> {
 ///
 /// Two lines, and three shapes fall out of them. For each non-`wrong_state` branch:
 ///
-/// 1. **The state test.** A declared `in_state` that is not the instance's current state **skips
+/// 1. **The state test.** A declared `in_state` that is not the state the command acts in **skips
 ///    the branch**, and its `when` is not evaluated: a guard whose branch the held state has
-///    already excluded cannot make the command unobservable.
+///    already excluded cannot make the command unobservable. For an operation that state is the
+///    instance's current one; for a creation it is the lifecycle's `initial`, which is the state
+///    step 10 puts the new instance in.
 /// 2. **The selector test.** The branch's selector is its `when` if it declares one and `True` if
 ///    it does not — so a matching bare state guard is selected in exactly the states it names, for
 ///    every admitted input, which is the source's own reading rather than a convenience.
@@ -1318,18 +1339,12 @@ fn evaluate_condition(
                 left > right
             })
         }
-        Condition::Eq { eq } => {
-            let equal = equality(context);
-            compare_values(eq, context, bindings, unobserved, |left, right| {
-                equal(left, right)
-            })
-        }
-        Condition::Ne { ne } => {
-            let equal = equality(context);
-            compare_values(ne, context, bindings, unobserved, |left, right| {
-                !equal(left, right)
-            })
-        }
+        Condition::Eq { eq } => compare_values(eq, context, bindings, unobserved, |left, right| {
+            equal_under(context, left, Some(&eq[0]), right, Some(&eq[1]))
+        }),
+        Condition::Ne { ne } => compare_values(ne, context, bindings, unobserved, |left, right| {
+            !equal_under(context, left, Some(&ne[0]), right, Some(&ne[1]))
+        }),
         Condition::Gt { gt } => compare_numbers(gt, context, bindings, unobserved, Ordering::is_gt),
         Condition::Gte { gte } => compare_numbers(gte, context, bindings, unobserved, |order| {
             order.is_gt() || order.is_eq()
@@ -1339,11 +1354,20 @@ fn evaluate_condition(
             order.is_lt() || order.is_eq()
         }),
         Condition::In { values } => {
-            let equal = equality(context);
             let (needle, haystack) = resolve_pair(values, context, bindings, unobserved)?;
             match (needle, haystack) {
-                (Some(needle), Some(Value::Array(values))) => Ok(Truth::from_bool(
-                    values.iter().any(|value| equal(value, &needle)),
+                // Each element carries its own origin: written in the definition's own list it is a
+                // literal, reached through a reference it is a wire value.
+                (Some(needle), Some(Value::Array(elements))) => Ok(Truth::from_bool(
+                    elements.iter().enumerate().any(|(index, element)| {
+                        equal_under(
+                            context,
+                            element,
+                            written_element(Some(&values[1]), index),
+                            &needle,
+                            Some(&values[0]),
+                        )
+                    }),
                 )),
                 // Both resolved, and the haystack is not a list: observed, and it does not hold.
                 (Some(_), Some(_)) => Ok(Truth::False),
@@ -1351,11 +1375,18 @@ fn evaluate_condition(
             }
         }
         Condition::Contains { contains } => {
-            let equal = equality(context);
             let (container, needle) = resolve_pair(contains, context, bindings, unobserved)?;
             match (container, needle) {
-                (Some(Value::Array(values)), Some(needle)) => Ok(Truth::from_bool(
-                    values.iter().any(|value| equal(value, &needle)),
+                (Some(Value::Array(elements)), Some(needle)) => Ok(Truth::from_bool(
+                    elements.iter().enumerate().any(|(index, element)| {
+                        equal_under(
+                            context,
+                            element,
+                            written_element(Some(&contains[0]), index),
+                            &needle,
+                            Some(&contains[1]),
+                        )
+                    }),
                 )),
                 (Some(Value::String(value)), Some(Value::String(needle))) => {
                     Ok(Truth::from_bool(value.contains(&needle)))
@@ -1370,17 +1401,47 @@ fn evaluate_condition(
     }
 }
 
-/// Which equality `eq`, `ne`, `in` and `contains` use.
+/// Which equality `eq`, `ne`, `in` and `contains` use, with each operand's origin.
 ///
 /// Under `service/1` two numbers compare through the source observation rule, because these four
 /// are what a lowering emits for the source's own equality and membership tests and a membership
 /// test that disagreed with `compare` would be a second numeric semantics inside one document.
-/// Under `kernel/1` every answer is the one it is today.
-fn equality(context: &TemplateContext<'_>) -> fn(&Value, &Value) -> bool {
+/// That agreement is not only about *which* rule: `compare` reads each operand through **its own**
+/// door, so equality and membership have to as well. `written` is the operand's authored spelling
+/// — the value the definition holds before anything is resolved — and `None` means there is none,
+/// which is every element of a collection a reference resolved to.
+///
+/// Under `kernel/1` every answer is the one it is today and neither spelling is consulted.
+fn equal_under(
+    context: &TemplateContext<'_>,
+    left: &Value,
+    left_written: Option<&Value>,
+    right: &Value,
+    right_written: Option<&Value>,
+) -> bool {
     if context.definition.semantics.is_service_1() {
-        observed_values_equal
+        observed_values_equal(left, left_written, right, right_written)
     } else {
-        values_equal
+        values_equal(left, right)
+    }
+}
+
+/// The authored spelling of one element of an operand, where the operand was authored as a list.
+///
+/// A reference that resolved to a list has no authored spelling for its elements, so they are wire
+/// values — which is the half of § 10.2.1's membership rule that a resolved-only comparison loses.
+fn written_element(written: Option<&Value>, index: usize) -> Option<&Value> {
+    match written {
+        Some(Value::Array(values)) => values.get(index),
+        _ => None,
+    }
+}
+
+/// The same, for one member of an operand authored as a mapping.
+fn written_member<'a>(written: Option<&'a Value>, key: &str) -> Option<&'a Value> {
+    match written {
+        Some(Value::Object(values)) => values.get(key),
+        _ => None,
     }
 }
 
@@ -1482,8 +1543,8 @@ fn evaluate_compare(
             // Each operand through its own door: a number reached through a reference is a wire
             // number, an authored numeric literal is a literal. Reading both through the wire door
             // would erase the distinction the source draws.
-            let left = observe(left, &comparison.left);
-            let right = observe(right, &comparison.right);
+            let left = observe(left, Some(&comparison.left));
+            let right = observe(right, Some(&comparison.right));
             match (left, right) {
                 (Some(left), Some(right)) => Truth::from_bool(op.accepts(left.cmp(right))),
                 // A token the source cannot observe answers `Unknown`, and never panics.
@@ -1514,9 +1575,13 @@ fn evaluate_compare(
 
 /// Which door a numeric operand is read through: an authored literal is a literal, and anything
 /// reached through a reference is a wire number.
-fn observe(value: &serde_json::Number, written: &Value) -> Option<Observed> {
+///
+/// `written` is the authored spelling where the operand has one. `None` — and any spelling that is
+/// not itself a number — is the wire door, which is what every value a reference produced is read
+/// through.
+fn observe(value: &serde_json::Number, written: Option<&Value>) -> Option<Observed> {
     match written {
-        Value::Number(literal) => Observed::of_literal(&literal.to_string()),
+        Some(Value::Number(literal)) => Observed::of_literal(&literal.to_string()),
         _ => Observed::of_number(value),
     }
 }
@@ -1584,31 +1649,55 @@ fn values_equal(left: &Value, right: &Value) -> bool {
     }
 }
 
-/// The same equality with its numeric leaves read under the source observation rule.
+/// The same equality with its numeric leaves read under the source observation rule, **each through
+/// its own door**.
+///
+/// The doors part company on a value one of them cannot carry — an authored integer past the `u64`
+/// span keeps its scale-zero decimal through the literal door and collapses to a binary64's
+/// canonical decimal through the wire one — so reading both operands through the wire door would
+/// make `eq` answer what `compare` does not. The authored spelling travels with the operand at
+/// every depth: a literal list's third element is still a literal, and everything under a reference
+/// is a wire value.
 ///
 /// Two tokens the source cannot observe fall back to comparing the tokens exactly, because
 /// answering *equal* about a pair nothing can read would be an observation nobody made.
-fn observed_values_equal(left: &Value, right: &Value) -> bool {
+fn observed_values_equal(
+    left: &Value,
+    left_written: Option<&Value>,
+    right: &Value,
+    right_written: Option<&Value>,
+) -> bool {
     match (left, right) {
         (Value::Number(left), Value::Number(right)) => {
-            match (Observed::of_number(left), Observed::of_number(right)) {
+            match (observe(left, left_written), observe(right, right_written)) {
                 (Some(left), Some(right)) => left.cmp(right).is_eq(),
                 _ => left == right,
             }
         }
         (Value::Array(left), Value::Array(right)) => {
             left.len() == right.len()
-                && left
-                    .iter()
-                    .zip(right.iter())
-                    .all(|(left, right)| observed_values_equal(left, right))
+                && left.iter().zip(right.iter()).enumerate().all(
+                    |(index, (left_element, right_element))| {
+                        observed_values_equal(
+                            left_element,
+                            written_element(left_written, index),
+                            right_element,
+                            written_element(right_written, index),
+                        )
+                    },
+                )
         }
         (Value::Object(left), Value::Object(right)) => {
             left.len() == right.len()
-                && left.iter().all(|(key, left)| {
-                    right
-                        .get(key)
-                        .is_some_and(|right| observed_values_equal(left, right))
+                && left.iter().all(|(key, left_member)| {
+                    right.get(key).is_some_and(|right_member| {
+                        observed_values_equal(
+                            left_member,
+                            written_member(left_written, key),
+                            right_member,
+                            written_member(right_written, key),
+                        )
+                    })
                 })
         }
         _ => left == right,

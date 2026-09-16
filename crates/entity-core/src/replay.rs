@@ -131,14 +131,16 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
             .and_then(|definition| ValidatedDefinition::new(definition).map_err(CoreError::from))?;
         let decision =
             match &record.command {
-                // A `service/1` creation re-selects its branch from the **arguments** the caller
-                // sent; a `kernel/1` creation's input is its fields and it records no arguments.
-                // The two are redundant by construction, and the byte comparison below is what
-                // refuses a record whose fields are not what its arguments produce.
+                // A `service/1` creation is rerun from the **arguments** the caller sent, which is
+                // what re-selects its branch; a `kernel/1` creation's input is its fields and it
+                // records no arguments. The test is the definition's semantics alone — the same
+                // test the record framing and the anchored verifier use — because a `service/1`
+                // creation that declares no branches records its own input as its arguments, so
+                // there is no shape here for the three readers to disagree about. The two are
+                // redundant by construction, and the byte comparison below is what refuses a record
+                // whose fields are not what its arguments produce.
                 DecisionCommand::Create { fields, arguments } if instance.is_none() => {
-                    let input = if definition.semantics.is_service_1()
-                        && !definition.create.outcomes.is_empty()
-                    {
+                    let input = if definition.semantics.is_service_1() {
                         arguments.clone()
                     } else {
                         fields.clone()

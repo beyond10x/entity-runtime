@@ -746,3 +746,353 @@ fn a_reference_to_an_empty_logical_text_identity_preserves_the_declared_carrier(
     };
     assert_eq!(errors[0].message, "a reference is not empty or whitespace");
 }
+
+// --- § 8.1: every relation row compares its carrier against the related identity's kind ----------
+
+/// A registry holding `item`, whose logical identity has `identity`, and `basket`, whose
+/// `references` carrier `item_ids` is declared as `carrier`.
+///
+/// Both definitions register: the kind comparison is the registry's, because one definition does
+/// not hold the other's identity field.
+fn referring_pair(identity: Value, cardinality: &str, carrier: Value) -> Registry {
+    let mut registry = Registry::new();
+    registry
+        .register(definition(json!({
+            "entity": "item",
+            "version": 1,
+            "semantics": "service/1",
+            "identity": { "field": "sku" },
+            "schema": { "fields": { "sku": identity } },
+            "lifecycle": { "initial": "listed", "states": ["listed"] }
+        })))
+        .expect("the target registers");
+    registry
+        .register(definition(json!({
+            "entity": "basket",
+            "version": 1,
+            "semantics": "service/1",
+            "relations": { "items": {
+                "kind": "references", "target": "item", "cardinality": cardinality, "via": "item_ids"
+            }},
+            "schema": { "fields": { "item_ids": carrier } },
+            "lifecycle": { "initial": "open", "states": ["open"] }
+        })))
+        .expect("the declaring definition registers");
+    registry
+}
+
+fn carrier_is_wrong(registry: &Registry) -> bool {
+    match registry.validate_all() {
+        Ok(()) => false,
+        Err(defects) => defects.iter().any(|defect| {
+            matches!(defect, DefinitionError::RelationViaWrongShape { via, .. } if via == "item_ids")
+        }),
+    }
+}
+
+#[test]
+fn every_references_row_compares_its_carrier_against_the_targets_identity_kind() {
+    let integer = json!({ "type": "integer", "required": true });
+    let text = json!({ "type": "string", "required": true });
+    let choice = json!({ "type": "enum", "values": ["a", "b"], "required": true });
+    let composite = json!({
+        "type": "object",
+        "required": true,
+        "properties": { "left": { "type": "string", "required": true } }
+    });
+
+    // The `references`/`one` row: the carrier's kind **is** the target's identity kind, and this
+    // row is the only one the source offers an optional carrier for, so both optionalities are
+    // admitted and neither excuses a wrong kind.
+    for (identity, carrier, wrong) in [
+        (
+            integer.clone(),
+            json!({ "type": "integer", "required": true }),
+            false,
+        ),
+        (integer.clone(), json!({ "type": "integer" }), false),
+        (
+            integer.clone(),
+            json!({ "type": "boolean", "required": true }),
+            true,
+        ),
+        (
+            integer.clone(),
+            json!({ "type": "string", "required": true }),
+            true,
+        ),
+        (integer.clone(), json!({ "type": "boolean" }), true),
+        (
+            text.clone(),
+            json!({ "type": "string", "required": true }),
+            false,
+        ),
+        // A `ref` requires non-empty text and is not the `string` kind an arbitrary logical text
+        // identity is carried in, which is why § 8.1 says a lowering must not substitute it.
+        (
+            text.clone(),
+            json!({ "type": "ref", "entity": "item", "required": true }),
+            true,
+        ),
+        // A named identity and a composite one are compared by the same rule, not skipped.
+        (
+            choice.clone(),
+            json!({ "type": "enum", "values": ["a", "b"], "required": true }),
+            false,
+        ),
+        (choice, json!({ "type": "string", "required": true }), true),
+        (composite.clone(), composite.clone(), false),
+        (
+            composite,
+            json!({ "type": "string", "required": true }),
+            true,
+        ),
+    ] {
+        let registry = referring_pair(identity, "one", carrier.clone());
+        assert_eq!(carrier_is_wrong(&registry), wrong, "one: {carrier}");
+    }
+
+    // The `references`/`many` row: the comparison is against the array's **element** kind, which is
+    // what `{type: array, items: <the target's identity kind>}` says.
+    for (identity, items, wrong) in [
+        (integer.clone(), json!({ "type": "integer" }), false),
+        (integer.clone(), json!({ "type": "string" }), true),
+        (integer.clone(), json!({ "type": "boolean" }), true),
+        (text.clone(), json!({ "type": "string" }), false),
+        (text.clone(), json!({ "type": "integer" }), true),
+    ] {
+        let carrier = json!({ "type": "array", "required": true, "items": items.clone() });
+        let registry = referring_pair(identity, "many", carrier);
+        assert_eq!(carrier_is_wrong(&registry), wrong, "many: {items}");
+    }
+}
+
+#[test]
+fn a_references_target_that_declares_no_logical_identity_still_carries_whatever_it_declares() {
+    // The kind comparison needs a kind to compare against. A target with no `identity` has none, so
+    // nothing new is refused — which is the position the `owns` row is already in, and is what
+    // keeps every definition admitted today admitted.
+    let mut registry = Registry::new();
+    registry
+        .register(definition(json!({
+            "entity": "item",
+            "version": 1,
+            "semantics": "service/1",
+            "schema": { "fields": { "sku": { "type": "integer", "required": true } } },
+            "lifecycle": { "initial": "listed", "states": ["listed"] }
+        })))
+        .expect("the target registers");
+    registry
+        .register(definition(json!({
+            "entity": "basket",
+            "version": 1,
+            "semantics": "service/1",
+            "relations": { "items": {
+                "kind": "references", "target": "item", "cardinality": "one", "via": "item_ids"
+            }},
+            "schema": { "fields": { "item_ids": { "type": "boolean", "required": true } } },
+            "lifecycle": { "initial": "open", "states": ["open"] }
+        })))
+        .expect("the declaring definition registers");
+    registry.validate_all().expect("nothing new is refused");
+}
+
+#[test]
+fn the_declaring_definition_still_answers_the_half_it_can_see_about_a_references_carrier() {
+    // The registry answering the kind does not move the shape and optionality rules off the
+    // declaring definition: a `many` carrier that is not an array, and one that is optional, are
+    // still refused where they are written, before any registry holds the target.
+    let document = |carrier: Value| {
+        json!({
+            "entity": "basket",
+            "version": 1,
+            "semantics": "service/1",
+            "relations": { "items": {
+                "kind": "references", "target": "item", "cardinality": "many", "via": "item_ids"
+            }},
+            "schema": { "fields": { "item_ids": carrier } },
+            "lifecycle": { "initial": "open", "states": ["open"] }
+        })
+    };
+    let defects = refused(document(json!({ "type": "string", "required": true })));
+    assert!(carries(
+        &defects,
+        &DefinitionError::RelationViaWrongShape {
+            relation: "items".to_owned(),
+            via: "item_ids".to_owned(),
+            expected: "an array of the target's identity kind".to_owned(),
+            found: "a string field".to_owned(),
+        }
+    ));
+    let defects = refused(document(
+        json!({ "type": "array", "items": { "type": "string" } }),
+    ));
+    assert!(carries(
+        &defects,
+        &DefinitionError::RelationCarrierOptionality {
+            relation: "items".to_owned(),
+            via: "item_ids".to_owned(),
+        }
+    ));
+}
+
+// --- § 8.1: a list identity is carried by a list, on every row -----------------------------------
+
+/// ER's spelling of ESS `List<T>`: `{type: array, items: <element>}`.
+///
+/// `required` is the row's optionality, which only the `references`/`one` row may vary. The element
+/// is written without `required`, which is how every other array fixture in this file spells one.
+fn list_of(element: Value, required: bool) -> Value {
+    let mut field = json!({ "type": "array", "items": element });
+    if required {
+        field["required"] = json!(true);
+    }
+    field
+}
+
+fn element(kind: &str) -> Value {
+    json!({ "type": kind })
+}
+
+fn owns_carrier_is_wrong(registry: &Registry) -> bool {
+    match registry.validate_all() {
+        Ok(()) => false,
+        Err(defects) => defects.iter().any(|defect| {
+            matches!(defect, DefinitionError::RelationCarrierWrong { via, .. } if via == "account_id")
+        }),
+    }
+}
+
+/// § 8.1's worked table for a target identified by `List<String>`, row for row.
+///
+/// `carried_types` compares the carrier against the whole `TypeRef`, and `TypeRef::List` nests, so
+/// an identity that is itself a list is carried by a list — the case the single-document array
+/// refusal used to turn away on the `references`/`one` row.
+#[test]
+fn a_list_identity_is_carried_by_a_list_on_every_row() {
+    let list_identity = || list_of(element("string"), true);
+    let list_carrier = |required: bool| list_of(element("string"), required);
+
+    // `Owns`, both cardinalities: the owner's identity once, which here is one list.
+    for cardinality in ["one", "many"] {
+        let registry = owned_pair(list_identity(), list_carrier(true), cardinality);
+        registry
+            .validate_all()
+            .unwrap_or_else(|defects| panic!("owns/{cardinality}: {defects}"));
+    }
+
+    // `References`/`One`: the identity's own shape, and `Optional<it>` is the same shape declared
+    // `required: false`.
+    for required in [true, false] {
+        let registry = referring_pair(list_identity(), "one", list_carrier(required));
+        assert!(
+            !carrier_is_wrong(&registry),
+            "references/one, required {required}"
+        );
+    }
+
+    // `References`/`Many`: `List<List<String>>`, which is an array of arrays.
+    let nested = list_of(list_of(element("string"), false), true);
+    let registry = referring_pair(list_identity(), "many", nested);
+    assert!(!carrier_is_wrong(&registry));
+}
+
+/// The outer array of a `references`/`many` carrier is the **cardinality**, so it is one array
+/// deeper than the identity — and a carrier that is only as deep as the identity is the wrong type.
+#[test]
+fn a_references_many_carrier_of_a_list_identity_is_one_array_deeper_than_the_identity() {
+    let list_identity = || list_of(element("string"), true);
+
+    // One array of `string` is `List<String>`, which is the identity itself and not a list of it.
+    let flat = referring_pair(list_identity(), "many", list_of(element("string"), true));
+    assert!(carrier_is_wrong(&flat));
+
+    // Two arrays deep is `List<List<String>>`, which is the row.
+    let nested = referring_pair(
+        list_identity(),
+        "many",
+        list_of(list_of(element("string"), false), true),
+    );
+    assert!(!carrier_is_wrong(&nested));
+
+    // And the depth is not free in the other direction either: a scalar identity is carried by one
+    // array, never by two.
+    let too_deep = referring_pair(
+        json!({ "type": "string", "required": true }),
+        "many",
+        list_of(list_of(element("string"), false), true),
+    );
+    assert!(carrier_is_wrong(&too_deep));
+
+    // The element kind still has to match at the bottom of the nesting.
+    let wrong_element = referring_pair(
+        list_of(element("integer"), true),
+        "many",
+        list_of(list_of(element("string"), false), true),
+    );
+    assert!(carrier_is_wrong(&wrong_element));
+}
+
+/// `carried_types` has **one** arm for `(Owns, _)` — the owner's identity, once — so the carrier is
+/// the same on both cardinalities and `Many` wraps nothing.
+#[test]
+fn an_owns_carrier_is_the_owners_identity_once_on_both_cardinalities() {
+    for cardinality in ["one", "many"] {
+        // The refusal that survives: an array carrier where the owner's identity is a scalar is the
+        // cardinality mistake, and it keeps its own sentence.
+        let scalar_owner = owned_pair(
+            json!({ "type": "string", "required": true }),
+            list_of(element("string"), true),
+            cardinality,
+        );
+        let defects = scalar_owner
+            .validate_all()
+            .expect_err("an owner identified by one string is carried once");
+        assert!(
+            defects.iter().any(|defect| matches!(
+                defect,
+                DefinitionError::RelationCarrierWrong { detail, .. }
+                    if detail.contains("one value whether the owner has one of these or a thousand")
+            )),
+            "owns/{cardinality}: {defects}"
+        );
+
+        // A list owner identity carried by that same list is admitted, on both cardinalities.
+        let list_owner = owned_pair(
+            list_of(element("string"), true),
+            list_of(element("string"), true),
+            cardinality,
+        );
+        assert!(
+            !owns_carrier_is_wrong(&list_owner),
+            "owns/{cardinality}: a list identity is carried by that list"
+        );
+
+        // `Many` still wraps nothing: a list of the identity is not the identity.
+        let wrapped = owned_pair(
+            list_of(element("string"), true),
+            list_of(list_of(element("string"), false), true),
+            cardinality,
+        );
+        assert!(
+            owns_carrier_is_wrong(&wrapped),
+            "owns/{cardinality}: cardinality introduces no list here"
+        );
+
+        // And the element kind is compared, not just the array-ness.
+        let wrong_element = owned_pair(
+            list_of(element("integer"), true),
+            list_of(element("string"), true),
+            cardinality,
+        );
+        assert!(owns_carrier_is_wrong(&wrong_element), "owns/{cardinality}");
+
+        // A scalar carrier for a list identity is the mirror mistake.
+        let flattened = owned_pair(
+            list_of(element("string"), true),
+            json!({ "type": "string", "required": true }),
+            cardinality,
+        );
+        assert!(owns_carrier_is_wrong(&flattened), "owns/{cardinality}");
+    }
+}

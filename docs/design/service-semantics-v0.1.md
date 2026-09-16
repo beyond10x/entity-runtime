@@ -118,6 +118,18 @@ produced. Reconstructing it as `"fields"` would hand a retry a request the calle
 what `original_request_comparison_bytes` exists to prevent
 (`crates/entity-store/src/asynchronous/encoding.rs:85-141`).
 
+**A `service/1` creation that declares no branches is the case where the two coincide, and it is
+stated rather than left to be inferred.** Registration admits such a definition — `create.outcomes`
+is a list and an empty one is not a defect — and with no branch to produce them the creation reads
+its input **as** its fields, exactly as a `kernel/1` one does. Those same normalized values are what
+the caller sent, so they are what it records as its `arguments` and what `er.request/2`
+reconstructs. This is what keeps four readers on one test: the framing, the creation path, `replay`
+and the anchored verifier all switch on `semantics` alone. Reading the input as the fields while
+recording no arguments would reconstruct **every** branchless creation as the same empty request,
+which is precisely the collapse this section exists to prevent, and narrowing the framing to
+`er.request/1` instead would spell a `service/1` record in a domain whose shape it does not have.
+§ 11 pins it.
+
 ### 1.3 Old-reader rejection, before implementation
 
 Two mechanisms, both already present, and each pinned by a named test in § 11 before any of this is
@@ -225,7 +237,7 @@ New `DefinitionError` variants, accumulated like every other defect
 
 | Refusal | Condition | Mirrors |
 | --- | --- | --- |
-| `SemanticsKeyNotAvailable` | a `kernel/1` definition carries `identity`, `relations`, `scales`, `number_observation`, `create.arguments`, `create.response`, `create.outcomes`, `operations.*.response` or `operations.*.outcomes`, or any condition uses `for_all`, `for_any`, `truthy` or `compare` | — |
+| `SemanticsKeyNotAvailable` | a `kernel/1` definition carries `identity`, `relations`, `scales`, `create.arguments`, `create.response`, `create.outcomes`, `operations.*.response` or `operations.*.outcomes`, or any condition uses `for_all`, `for_any`, `truthy` or `compare` | — |
 | `EmptyOutcomeName` / `DuplicateOutcome` | a branch name is blank, or repeats within one creation or operation | — |
 | `AmbiguousDefaultOutcome` | more than one branch declares neither `when` nor `in_state` nor `wrong_state`, or the one that does is not the last non-`wrong_state` branch (§ 4.3) | ESS one-default rule, `ESS/crates/specify/ess-domain/src/command.rs:1615-1631` |
 | `DuplicateWrongStateOutcome` | more than one `wrong_state` branch in one operation | `ESS/crates/specify/ess-domain/src/command.rs:1728-1751` |
@@ -240,14 +252,28 @@ New `DefinitionError` variants, accumulated like every other defect
 | `ResponseFieldUnknown` | a `responds` key the operation's `response` schema does not declare | — |
 | `OutcomeResponseIncomplete` | an accepting branch does not determine every `required` field of the `response` schema | `ESS/crates/specify/ess-compiler/src/ir.rs:810-812` |
 | `IdentityFieldUnknown` / `IdentityFieldNotAddressable` | `identity.field` is not a declared **required** field, or its kind is one § 7.3's address function does not admit | `ESS/crates/verify/ess-conformance/src/input.rs:153-155` |
-| `RelationViaUnknown` / `RelationViaWrongShape` | for a `References` relation: `via` is not a declared field of **this** definition, or its kind is not the one § 8.1's row admits. **Optionality is not part of this test for a `References`/`One` carrier**: both `required: true` and `required: false` are admitted, because `carried_types` admits both the target's identity type and `Optional<it>` | `ESS/crates/specify/ess-domain/src/entity.rs:1392-1407` |
-| `RelationTargetMissing` / `RelationSecondOwner` / `RelationCarrierWrong` / `RelationFieldClaimedTwice` | at `Registry::validate_all`: an unregistered target; two definitions owning one entity; an `Owns` `via` that is not a correctly shaped **required** field of the **target**; one field carrying two relations | `ESS/crates/specify/ess-domain/src/entity.rs:1213-1274,1392-1407` |
+| `RelationViaUnknown` / `RelationViaWrongShape` | for a `References` relation: `via` is not a declared field of **this** definition, or it is not a list on the `Many` row, or **at `Registry::validate_all`** its kind is not the one § 8.1's row admits. The kind half is the registry's on both rows because it is a claim about the *target's* identity field (§ 8.2). **Optionality is not part of this test for a `References`/`One` carrier**: both `required: true` and `required: false` are admitted, because `carried_types` admits both the target's identity type and `Optional<it>` | `ESS/crates/specify/ess-domain/src/entity.rs:1392-1407` |
+| `RelationTargetMissing` / `RelationSecondOwner` / `RelationCarrierWrong` / `RelationFieldClaimedTwice` | at `Registry::validate_all`: an unregistered target; two definitions owning one entity; an `Owns` `via` that is not a correctly shaped **required** field of the **target** — its kind is the **source's** identity kind, once, on both cardinalities, so an array carrier is refused where that identity is not itself a list and admitted where it is; one field carrying two relations | `ESS/crates/specify/ess-domain/src/entity.rs:1213-1274,1392-1407` |
 | `RelationCarrierOptionality` | a `References`/`Many` carrier or an `Owns` carrier declared `required: false` — `carried_types` offers `Optional` for the `References`/`One` row and for no other | `ESS/crates/specify/ess-domain/src/entity.rs:1392-1407` |
 | `MapKeyNotText` / `MapValueMissing` / `UnionTagCollides` / `UnionVariantMissing` | the new field kinds of § 10.1 | `ESS/crates/generate/ess-gen/src/types.rs:527-548,696-733` |
 | `QuantifierBindInvalid` / `QuantifierOverNotCollection` / `QuantifierBodyScope` | the quantifier of § 10.4: `as` is not one non-empty path segment; `in` does not name an `array` or `map` field; the body reads an address neither the enclosing scope nor the binder admits | `ESS/crates/specify/ess-domain/src/expression.rs:687-701`; `ESS/crates/specify/ess-primitives/src/predicate.rs:383-391` |
 | `ConditionTooDeep` | a condition nests deeper than 32 | `ESS/crates/specify/ess-primitives/src/predicate.rs:292-298` |
 | `CompareOperandNotAddressable` | a `compare` operand is a literal object or array (§ 10.4: ESS compares scalars only) | `ESS/crates/verify/ess-conformance/src/decision.rs:171-181` |
 | `ScaleUnnamed` / `ScaleEmpty` | a `scales` key is blank, or its value list is empty | — |
+
+**`number_observation` is not on that list, and cannot be.** An earlier draft of this row named it
+beside the other four keys. `NumberObservation` (§ 2) has exactly one variant, which is its own
+`Default` and is skipped on serialization, so a definition document that spells
+`number_observation: source-number/1` deserializes to the same typed value as one that omits the key
+and no check downstream of `serde` can tell the two apart. The row was therefore unimplementable as
+written rather than unimplemented, and it is removed rather than left standing as a claim nothing
+enforces. What is **kept** is everything that does not depend on that distinction: `service/1`
+remains an opt-in, a variant name this build does not know is still refused at decoding, `kernel/1`
+definitions still omit the key from their bytes, and the snapshotted rule still decides what a
+recorded decision meant (§ 10.2.1). Adding a second variant or a presence flag to recover the
+refusal is **not** done here: it would change a format to enforce a rule nothing needs. If a later
+`source-number/2` lands (§ 12), the key becomes distinguishable on its own and the refusal can be
+stated then.
 
 Three refusals earlier drafts of this document declared are **removed**, each because it refused
 something the source admits:
@@ -278,9 +304,20 @@ payload is checked in.
 
 **A binder extends whichever of these scopes encloses it**, and only for the duration of the body:
 inside `for_all: {in: $fields.lines, as: line, that: …}` the body additionally reads `$line` and
-`$line.<path>`, checked against the element schema of `$fields.lines`. Nothing else changes, which is
-what lets a body mix element facts with free ones
-(`ESS/crates/specify/ess-primitives/src/predicate.rs:425-428`).
+`$line.<path>`, checked against the element schema of `$fields.lines`.
+
+**Every address that does not match the binder passes through to the enclosing scope untouched**,
+which is what lets a body mix element facts with free ones
+(`ESS/crates/specify/ess-primitives/src/predicate.rs:425-428`). An address that **does** match is the
+bound element, and that holds for a binder spelled like one of the fixed roots as well: `as: id`
+makes `$id` the element inside the body, not the storage address. This sentence read *"nothing else
+changes"* before, which was vague enough to be read as the fixed roots taking precedence; they do
+not. `Element::rebind` rewrites **any** matching first namespace and passes every other namespace
+through (`ESS/crates/specify/ess-primitives/src/predicate.rs`, around `:435`), and § 10.4 says the
+same in its own words — `$<bind>` is the element, every other address passes through, and a nested
+`as` equal to an enclosing one is admitted with the inner one winning. Giving a fixed root
+precedence over a binder, or refusing a binder named after one, would be narrower than the source,
+so neither is done. § 11 pins the shadowing and the pass-through separately.
 
 ### 2.3 Why the creation template scope carries the arguments
 
@@ -979,8 +1016,36 @@ The `Owns` row is the one an earlier draft of this document had wrong, and the e
 its own words: `via:` names the field on the target "because that is where an owner's identity lives on
 the thing it owns", and `cardinality:` "says how many invoices one account has, and says nothing about
 that field, which is one account whether the account has one invoice or a thousand"
-(`ESS/examples/billing/domains/invoice.yaml:79-88`). A `Many` `Owns` therefore carries a **scalar**,
-never an array.
+(`ESS/examples/billing/domains/invoice.yaml:79-88`). A `Many` `Owns` therefore carries the owner's
+identity **once**: `carried_types` answers `vec![source.identity.type_ref.clone()]` for
+`(RelationKind::Owns, _)` — one arm for both cardinalities, with no `List` wrapper on either
+(`ESS/crates/specify/ess-domain/src/entity.rs:1392,1398`).
+
+**That sentence is about the cardinality, not about the identity's own type, and the two must not be
+confused.** An earlier draft of this paragraph read *"a `Many` `Owns` carries a scalar, never an
+array"*, which is true of the cardinality and false as a claim about the carrier's kind: § 7.1's
+witness W1 admits a `List<String>` identity and § 7.3.3 gives it an address, and for such an owner
+`carried_types` returns that same `List<String>` — so the carrier **is** an array, once. Reading the
+phrase as *the carrier is never an array* would contradict this table's own identity-kind rule and
+refuse a specification the installed tool admits. What `Many` does not do is wrap it: an owner
+identified by `List<String>` is carried by one `List<String>` and never by a `List<List<String>>`.
+
+The same distinction runs through the other two rows, because `TypeRef::List(Box<TypeRef>)` nests
+(`ESS/crates/specify/ess-domain/src/types.rs:126-137`) and the carrier is compared against the whole
+`TypeRef` — `accepted.contains(&field.type_ref)`
+(`ESS/crates/specify/ess-domain/src/entity.rs:1267-1268`). Written out for a target identified by
+`List<String>`:
+
+| row | ESS carrier type | ER `via` field |
+| --- | --- | --- |
+| `Owns` / `One` or `Many` | `List<String>` | `{type: array, items: {type: string}}`, `required: true` |
+| `References` / `One` | `List<String>` or `Optional<List<String>>` | `{type: array, items: {type: string}}`, `required: true` or `false` |
+| `References` / `Many` | `List<List<String>>` | `{type: array, items: {type: array, items: {type: string}}}`, `required: true` |
+
+So a carrier's kind is compared **through an array's element kind at every level**, which is what
+makes the `References`/`Many` row's outer array the cardinality and its element the identity. It is
+not compared through an `object`'s properties, a `map`'s key and value or an `enum`'s values: this
+table says *kind*, and those would be a structural comparison it does not state.
 
 The **kind** column is the second correction. The previous draft wrote `{type: ref, entity: …}` in every
 row, which is right only when the related entity's identity is text (witness W1 shows twelve other
@@ -998,9 +1063,17 @@ carries the target and binding obligation without narrowing the carrier's logica
 
 | Claim | Enforced by | Scope |
 | --- | --- | --- |
-| a `References` `via` exists on this definition, has the table's kind, and carries the table's optionality | `EntityDefinition::validate` | one definition |
-| an `Owns` `via` exists on the **target**, has the table's kind and is `required: true`; the target is registered; no entity has two owners; no field carries two relations | `Registry::validate_all` | one registry |
+| a `References` `via` exists on this definition, is a list on the `Many` row, and carries the table's optionality | `EntityDefinition::validate` | one definition |
+| **every carrier has the table's kind** — the target's identity kind on both `References` rows, the source's on the `Owns` row, compared through an array's element kind at every level; an `Owns` `via` exists on the **target** and is `required: true`; the target is registered; no entity has two owners; no field carries two relations | `Registry::validate_all` | one registry |
 | the referenced instance exists; `Many` membership; owner-delete behaviour | **binding obligation** | outside the kernel |
+
+**Why the kind is the registry's on every row, including the two a definition declares itself.** The
+table types each carrier by the *related* entity's identity field, and one definition does not hold
+the other. A single-document check can see that a `References`/`Many` carrier is a list and that it
+is `required`, and nothing more; asked about the kind it can only guess, and the guess an earlier
+draft made — *refuse every array carrier on the `References`/`One` row* — refused precisely the
+source-admitted case where the target's identity is itself a `List<T>`. A check that cannot know
+must not answer, so it delegates and the registry compares.
 
 A carrier field holds the related entity's **logical identity value**, in its declared kind. The
 binding that resolves a relation derives that instance's storage address with
@@ -1615,6 +1688,11 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `a_kernel_1_definition_and_record_serialize_to_the_bytes_they_serialized_to_before_branches` | § 1.1, over the committed fixtures |
 | `a_kernel_1_decision_still_frames_as_er_record_1_and_er_request_1` | § 1.2, byte fixtures |
 | `a_service_1_decision_frames_as_er_record_2_and_its_request_carries_arguments_not_fields` | § 1.2 |
+| `a_service_1_creation_without_branches_reconstructs_the_request_the_caller_sent` | § 1.2, the branchless row: two creations differing in what the caller sent reconstruct to different bytes |
+| `a_branchless_service_1_creation_reconstructs_the_normalized_input_the_caller_sent` | § 1.2, the same row with repeated input and a defaulted field |
+| `the_framing_the_creation_path_replay_and_the_verifier_read_one_service_1_test` | § 1.2, the four readers, over a branchless and a branched creation alike |
+| `a_service_1_creation_record_whose_arguments_do_not_produce_its_fields_is_refused` | § 1.2, § 6: the two halves are redundant by construction, so a forged one is refused by both recomputations |
+| `a_branchless_service_1_retry_carrying_other_input_is_not_the_request_already_committed` | § 1.2, the retry the reconstruction exists to decide |
 | `an_er_record_1_reader_refuses_an_er_record_2_document_by_naming_the_framing` | § 1.2, § 1.3 |
 | `a_batch_of_kernel_1_records_keeps_its_er_batch_1_bytes_while_a_service_member_refuses_at_the_record_tag` | § 1.2 |
 | `a_pre_service_reader_refuses_a_service_1_definition_by_naming_its_unknown_field` | § 1.3, against a struct mirroring the `kernel/1` shape |
@@ -1671,6 +1749,10 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `an_optional_references_one_carrier_lowers_to_required_false_and_registers` | § 8.1, the source-admitted shape the previous draft refused |
 | `a_non_optional_references_one_carrier_lowers_to_required_true` | § 8.1 |
 | `an_optional_owns_or_references_many_carrier_is_refused` | § 2.1 `RelationCarrierOptionality` |
+| `every_references_row_compares_its_carrier_against_the_targets_identity_kind` | § 8.1, § 8.2: both `References` rows, scalar, named and composite identities, matching and mismatching |
+| `a_list_identity_is_carried_by_a_list_on_every_row` | § 8.1's worked `List<String>` table: `Owns` at both cardinalities, `References`/`One`, and `References`/`Many` as an array of arrays |
+| `a_references_many_carrier_of_a_list_identity_is_one_array_deeper_than_the_identity` | § 8.1: the outer array is the cardinality, so one array of `String` is the wrong type for a `List<String>` identity |
+| `an_owns_carrier_is_the_owners_identity_once_on_both_cardinalities` | § 8.1: `carried_types`' single `(Owns, _)` arm, and the array refusal that survives for a scalar owner identity |
 | `an_unset_optional_reference_answers_unknown_rather_than_false` | § 8.1, absence versus null |
 | `a_second_owner_of_one_entity_is_refused_by_validate_all` | § 8.2 |
 | `one_field_carrying_two_relations_is_refused_by_validate_all` | § 8.2 |
@@ -1703,6 +1785,8 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `for_all_over_an_empty_collection_is_true_and_for_any_is_false` | § 10.4 |
 | `for_all_over_an_unobserved_collection_is_unknown_rather_than_vacuously_true` | § 10.4, the distinction the source writes a paragraph about |
 | `a_nested_quantifier_body_reaches_the_outer_element_and_an_inner_binder_shadows_it` | § 10.4 |
+| `a_quantifier_binder_named_after_a_fixed_root_shadows_it_inside_the_body` | § 2.2, § 10.4: `as: id` makes `$id` the element, which is `Element::rebind`'s any-matching-namespace rule |
+| `a_quantifier_body_reads_the_fixed_roots_its_binder_does_not_name` | § 2.2, the other half: every address the binder does not match passes through to the enclosing scope |
 | `for_all_over_a_map_walks_its_values_in_canonical_key_order` | § 10.4 |
 | `a_quantifier_body_reading_an_address_outside_its_scope_is_refused_at_registration` | § 2.1 `QuantifierBodyScope` |
 | `a_condition_nested_past_thirty_two_is_refused_with_its_limit` | § 2.1 `ConditionTooDeep` |

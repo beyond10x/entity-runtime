@@ -90,11 +90,12 @@ pub(crate) fn validate_entry_against_state(
             let recomputed = match (&record.command, current) {
                 // A `service/1` creation is rerun from the **arguments** it was decided on, which
                 // is what re-selects its branch; a `kernel/1` creation's input is its fields and it
-                // records no arguments, so this is the call it has always made.
+                // records no arguments, so this is the call it has always made. The test is the
+                // definition's semantics alone, which is the same test `record_domain` and `replay`
+                // make: a `service/1` creation that declares no branches records its own input as
+                // its arguments, so all three read one answer.
                 (DecisionCommand::Create { fields, arguments }, None) => {
-                    let input = if definition.semantics.is_service_1()
-                        && !definition.create.outcomes.is_empty()
-                    {
+                    let input = if definition.semantics.is_service_1() {
                         arguments.clone()
                     } else {
                         fields.clone()

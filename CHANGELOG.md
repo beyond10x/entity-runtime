@@ -21,10 +21,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   admitted; numeric identities share one canonical spelling, so `1`, `1.0` and `1e0` are one
   address and `-0.0` and `0.0` are one instance; composites address as canonical JSON.
 - `service/1` definitions may declare **relations** (`owns`/`references`, `one`/`many`, and the
-  field that carries them). `EntityDefinition::validate` checks a `references` carrier;
-  `Registry::validate_all` checks an `owns` carrier on its target, an unregistered target, a second
-  owner of one entity and a second relation claiming one field. Whether the referenced instance
-  exists is still the shell's.
+  field that carries them). `EntityDefinition::validate` checks a `references` carrier's shape and
+  optionality; `Registry::validate_all` checks its kind against the target's identity field, an
+  `owns` carrier on its target, an unregistered target, a second owner of one entity and a second
+  relation claiming one field. Whether the referenced instance exists is still the shell's.
 - Three field kinds, `service/1` only: `map` (declared key spelling, declared value shape), `union`
   (adjacently tagged, with the content key derived from the tag) and `binary64` (a finite double
   held as its token, so the sign of a zero survives in the bytes).

@@ -1414,3 +1414,143 @@ fn state_guarded() -> Value {
         }}
     })
 }
+
+// --- § 4.3 and § 4.2 step 10: the state test at creation ------------------------------------------
+
+/// A creation whose branches are guarded on states, over a lifecycle whose initial state is `held`.
+///
+/// `hint` is an optional argument nobody supplies, so a guard that reads it is unanswerable — which
+/// is how a skipped branch's guard is shown not to have been evaluated.
+fn creation_state_guarded(outcomes: Value) -> Value {
+    json!({
+        "entity": "probe",
+        "version": 1,
+        "semantics": "service/1",
+        "schema": { "fields": { "title": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "held", "states": ["held", "closed"] },
+        "create": {
+            "arguments": { "fields": {
+                "title": { "type": "string", "required": true },
+                "hint": { "type": "string" }
+            }},
+            "outcomes": outcomes
+        }
+    })
+}
+
+fn created(outcomes: Value) -> Result<entity_core::Decision, CoreError> {
+    let validated = validated(creation_state_guarded(outcomes));
+    create(&validated, "p-1".to_owned(), json!({ "title": "t" }))
+}
+
+#[test]
+fn a_creation_state_guard_is_tested_against_the_lifecycles_initial_state() {
+    // A creation is made in the lifecycle's `initial` state and in no other, so a branch guarded on
+    // `closed` is a branch this creation cannot be in. It is skipped, and the branch guarded on the
+    // state the creation *is* in is the one that answers.
+    let decision = created(json!([
+        { "name": "guarded", "in_state": "closed", "effect": "creates", "set": { "title": "$args.title" } },
+        { "name": "matching", "in_state": "held", "effect": "creates", "set": { "title": "$args.title" } },
+        { "name": "default", "effect": "creates", "set": { "title": "$args.title" } }
+    ]))
+    .expect("creation succeeds");
+    assert_eq!(decision.record.outcome.as_deref(), Some("matching"));
+
+    // Declared order still decides between two branches that both apply, and the selector-free
+    // default is still reached when every guarded branch above it is skipped.
+    let decision = created(json!([
+        { "name": "guarded", "in_state": "closed", "effect": "creates", "set": { "title": "$args.title" } },
+        { "name": "default", "effect": "creates", "set": { "title": "$args.title" } }
+    ]))
+    .expect("creation succeeds");
+    assert_eq!(decision.record.outcome.as_deref(), Some("default"));
+
+    // And a skipped branch's own guard is not evaluated: an unanswerable `when` on a branch the
+    // state has already excluded cannot make the creation unobservable.
+    let decision = created(json!([
+        {
+            "name": "guarded",
+            "in_state": "closed",
+            "when": { "eq": ["$args.hint", "x"] },
+            "effect": "creates",
+            "set": { "title": "$args.title" }
+        },
+        { "name": "default", "effect": "creates", "set": { "title": "$args.title" } }
+    ]))
+    .expect("creation succeeds");
+    assert_eq!(decision.record.outcome.as_deref(), Some("default"));
+}
+
+#[test]
+fn a_creation_whose_only_branch_is_guarded_on_another_state_selects_nothing() {
+    let refusal = created(json!([
+        { "name": "guarded", "in_state": "closed", "effect": "creates", "set": { "title": "$args.title" } }
+    ]))
+    .expect_err("no branch applies");
+    assert!(
+        matches!(refusal, CoreError::NoOutcomeSelected { ref operation } if operation == "create"),
+        "{refusal}"
+    );
+}
+
+#[test]
+fn a_creation_branch_guarded_on_the_initial_state_still_evaluates_its_own_when() {
+    // The state test does not replace the selector test: a matching guard hands the branch on to
+    // its own `when`, and an unanswerable one there refuses the creation by name rather than
+    // falling through to the next branch.
+    let refusal = created(json!([
+        {
+            "name": "guarded",
+            "in_state": "held",
+            "when": { "eq": ["$args.hint", "x"] },
+            "effect": "creates",
+            "set": { "title": "$args.title" }
+        },
+        { "name": "default", "effect": "creates", "set": { "title": "$args.title" } }
+    ]))
+    .expect_err("an unanswerable guard on a matching branch refuses");
+    assert!(
+        matches!(
+            refusal,
+            CoreError::OutcomeUnobservable { ref outcome, .. } if outcome == "guarded"
+        ),
+        "{refusal}"
+    );
+
+    // A matching guard whose `when` is answerable and false skips the branch as usual.
+    let validated = validated(creation_state_guarded(json!([
+        {
+            "name": "guarded",
+            "in_state": "held",
+            "when": { "eq": ["$args.title", "other"] },
+            "effect": "creates",
+            "set": { "title": "$args.title" }
+        },
+        { "name": "default", "effect": "creates", "set": { "title": "$args.title" } }
+    ])));
+    let decision =
+        create(&validated, "p-1".to_owned(), json!({ "title": "t" })).expect("creation succeeds");
+    assert_eq!(decision.record.outcome.as_deref(), Some("default"));
+}
+
+#[test]
+fn a_creation_selector_free_default_that_is_not_last_is_still_refused_beside_a_state_guard() {
+    // The state test changes which branch runs; it changes no registration rule. A bare state guard
+    // is still not a second default and still does not have to be last, and the one default still
+    // does.
+    assert!(ValidatedDefinition::new(definition(creation_state_guarded(json!([
+        { "name": "guarded", "in_state": "closed", "effect": "creates", "set": { "title": "$args.title" } },
+        { "name": "default", "effect": "creates", "set": { "title": "$args.title" } }
+    ]))))
+    .is_ok());
+    let defects = refused(creation_state_guarded(json!([
+        { "name": "default", "effect": "creates", "set": { "title": "$args.title" } },
+        { "name": "guarded", "in_state": "closed", "effect": "creates", "set": { "title": "$args.title" } }
+    ])));
+    assert!(carries(
+        &defects,
+        &DefinitionError::AmbiguousDefaultOutcome {
+            command: "create".to_owned()
+        }
+    ));
+}
