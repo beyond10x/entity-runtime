@@ -64,7 +64,7 @@ fn draft(id: &str) -> EntityInstance {
     }
 }
 
-fn prepared<'a>(definition: &'a ValidatedDefinition) -> entity_core::PreparedOutcome<'a> {
+fn prepared(definition: &ValidatedDefinition) -> entity_core::PreparedOutcome<'_> {
     let PreloadDecision::Load(operation) =
         decide_before_load(definition, "s:inv-1", "Issue", json!({"accept": true}))
             .expect("input needs the subject")

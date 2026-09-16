@@ -536,6 +536,22 @@ impl<'a> Runtime<'a> {
         create(definition, id.into(), fields)
     }
 
+    /// Creates an instance whose storage identity is derived from the selected validated fields.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::EntityNotRegistered`] when no such definition is registered; otherwise
+    /// whatever [`create_derived`] returns.
+    pub fn create_derived(
+        &self,
+        entity: &str,
+        version: u32,
+        input: Value,
+    ) -> Result<Decision, CoreError> {
+        let definition = self.definition(entity, version)?;
+        create_derived(definition, input)
+    }
+
     /// Executes `operation` on `instance` with the given `arguments`.
     ///
     /// # Errors
@@ -567,6 +583,22 @@ impl<'a> Runtime<'a> {
     ) -> Result<Evaluation, CoreError> {
         let definition = self.definition(entity, version)?;
         decide_create(definition, id.into(), input)
+    }
+
+    /// Decides creation after deriving the address from the selected validated identity field.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::EntityNotRegistered`] when no such definition is registered; otherwise
+    /// whatever [`decide_create_derived`] returns.
+    pub fn decide_create_derived(
+        &self,
+        entity: &str,
+        version: u32,
+        input: Value,
+    ) -> Result<Evaluation, CoreError> {
+        let definition = self.definition(entity, version)?;
+        decide_create_derived(definition, input)
     }
 
     /// Executes an operation, answering a refusing branch as a value rather than as an error.
@@ -633,6 +665,19 @@ pub fn create(
     decide_create(definition, id, fields)?.into_decision()
 }
 
+/// Creates an instance after deriving its address from the selected validated identity field.
+///
+/// # Errors
+///
+/// The errors documented by [`decide_create_derived`], with a selected refusal returned as
+/// [`CoreError::Refused`].
+pub fn create_derived(
+    definition: &ValidatedDefinition,
+    input: Value,
+) -> Result<Decision, CoreError> {
+    decide_create_derived(definition, input)?.into_decision()
+}
+
 /// Creates an instance under `definition`, answering a refusing branch as a value.
 ///
 /// Under `kernel/1` the third argument is the creation **fields**, exactly as [`create`] has always
@@ -667,7 +712,7 @@ pub fn decide_create(
         )]));
     }
     if definition.semantics.has_service_semantics() && !definition.create.outcomes.is_empty() {
-        return service_create(definition, id, input);
+        return service_create(definition, Some(id), input);
     }
 
     // Step 3. This creation's input *is* its fields — a `kernel/1` one always, a `service/1` one
@@ -693,7 +738,7 @@ pub fn decide_create(
     let empty = Map::new();
     let context = TemplateContext {
         definition,
-        id: &instance.id,
+        id: Some(&instance.id),
         args: &empty,
         arguments_schema: None,
         old_fields: &empty,
@@ -756,13 +801,44 @@ pub fn decide_create(
     }))
 }
 
+/// Creates an instance after the selected, complete fields determine its storage address.
+///
+/// This is the branch-dependent identity entrypoint. Outcome selection and assignments run once;
+/// after the selected fields validate, the existing per-kind identity function derives the
+/// address. The pre-address selector and assignment scopes carry no `$id`, so a definition with a
+/// circular `$id` dependency receives a named template error rather than a placeholder identity.
+///
+/// # Errors
+///
+/// The errors documented by [`decide_create`], plus
+/// [`CoreError::CreationIdentityUnavailable`] when the validated definition or selected fields do
+/// not provide an addressable logical identity.
+pub fn decide_create_derived(
+    definition: &ValidatedDefinition,
+    input: Value,
+) -> Result<Evaluation, CoreError> {
+    if definition.semantics.has_service_semantics() && !definition.create.outcomes.is_empty() {
+        return service_create(definition, None, input);
+    }
+
+    let mut fields = into_object(input, "fields")?;
+    apply_defaults(&definition.schema, &mut fields);
+    let errors = validate_object_under(&definition.schema, &fields, "fields", definition.semantics);
+    if !errors.is_empty() {
+        return Err(CoreError::Validation(errors));
+    }
+    let fields = canonical_object(fields);
+    let id = derive_creation_identity(definition, &fields)?;
+    decide_create(definition, id, Value::Object(fields))
+}
+
 /// The `service/1` creation: steps 3, 4, 6, 8, 9, 10, 11, 12, 13, 14 and 15 of the numbered order.
 ///
 /// Steps 0, 1, 2 and 5 are omitted — there is no instance to match, no operation to find and no
 /// state to move from — and step 7 with them: a creation has no preconditions of its own.
 fn service_create(
     definition: &ValidatedDefinition,
-    id: String,
+    supplied_id: Option<String>,
     input: Value,
 ) -> Result<Evaluation, CoreError> {
     // Step 3. Defaults, then validation, against the creation command's declared arguments.
@@ -785,7 +861,7 @@ fn service_create(
     // subject. Registration refuses a creation selector that reads either.
     let selector_context = TemplateContext {
         definition,
-        id: &id,
+        id: supplied_id.as_deref(),
         args: &args,
         arguments_schema: Some(&definition.create.arguments),
         old_fields: &empty,
@@ -817,7 +893,7 @@ fn service_create(
     // admits no `$fields` and this context carries none.
     let set_context = TemplateContext {
         definition,
-        id: &id,
+        id: supplied_id.as_deref(),
         args: &args,
         arguments_schema: Some(&definition.create.arguments),
         old_fields: &empty,
@@ -843,6 +919,11 @@ fn service_create(
         return Err(CoreError::Validation(errors));
     }
 
+    let id = match supplied_id {
+        Some(id) => id,
+        None => derive_creation_identity(definition, &fields)?,
+    };
+
     // Step 10. The state is the lifecycle's initial and the revision is 1 rather than a successor.
     let instance = EntityInstance {
         entity: definition.entity.clone(),
@@ -862,7 +943,7 @@ fn service_create(
     // argument no field stores.
     let context = TemplateContext {
         definition,
-        id: &instance.id,
+        id: Some(&instance.id),
         args: &args,
         arguments_schema: Some(&definition.create.arguments),
         old_fields: &empty,
@@ -990,7 +1071,7 @@ pub fn decide_before_load<'definition>(
     let empty = Map::new();
     let context = TemplateContext {
         definition,
-        id: &expected_id,
+        id: Some(&expected_id),
         args: &arguments,
         arguments_schema: Some(&operation.arguments),
         old_fields: &empty,
@@ -1115,7 +1196,7 @@ fn decide_with_fulfillments(
         // one that does, which is why passing the held state here cannot be read.
         let selector_context = TemplateContext {
             definition,
-            id: &instance.id,
+            id: Some(&instance.id),
             args: &args,
             arguments_schema: Some(&operation.arguments),
             old_fields,
@@ -1168,7 +1249,7 @@ fn decide_with_fulfillments(
 
     let context = TemplateContext {
         definition,
-        id: &instance.id,
+        id: Some(&instance.id),
         args: &args,
         arguments_schema: Some(&operation.arguments),
         old_fields,
@@ -1289,7 +1370,7 @@ fn decide_with_fulfillments(
 
     let context = TemplateContext {
         definition,
-        id: &instance.id,
+        id: Some(&instance.id),
         args: &args,
         arguments_schema: Some(&operation.arguments),
         old_fields,
@@ -1567,6 +1648,47 @@ fn check_identity_mirror(
             value: detail,
         }),
     }
+}
+
+fn derive_creation_identity(
+    definition: &EntityDefinition,
+    fields: &Map<String, Value>,
+) -> Result<String, CoreError> {
+    let identity =
+        definition
+            .identity
+            .as_ref()
+            .ok_or_else(|| CoreError::CreationIdentityUnavailable {
+                entity: definition.entity.clone(),
+                detail: "the validated definition declares no logical identity field".to_owned(),
+            })?;
+    let field = definition
+        .schema
+        .fields
+        .get(&identity.field)
+        .ok_or_else(|| CoreError::CreationIdentityUnavailable {
+            entity: definition.entity.clone(),
+            detail: format!(
+                "the declared identity field '{}' is absent from the schema",
+                identity.field
+            ),
+        })?;
+    let value =
+        fields
+            .get(&identity.field)
+            .ok_or_else(|| CoreError::CreationIdentityUnavailable {
+                entity: definition.entity.clone(),
+                detail: format!(
+                    "the selected fields carry no value for '{}'",
+                    identity.field
+                ),
+            })?;
+    crate::identity::address(field.kind, value).map_err(|error| {
+        CoreError::CreationIdentityUnavailable {
+            entity: definition.entity.clone(),
+            detail: format!("identity field '{}': {error}", identity.field),
+        }
+    })
 }
 
 /// Step 14: the branch's declared response, resolved in the scope its command sits in.
@@ -2548,7 +2670,10 @@ fn materialize_event(
     Ok(DomainEvent {
         entity: context.definition.entity.clone(),
         version: context.definition.version,
-        id: context.id.to_owned(),
+        id: context
+            .id
+            .ok_or_else(pre_address_identity_error)?
+            .to_owned(),
         revision,
         event_type: definition.event_type.clone(),
         from_state: context.from_state.map(ToOwned::to_owned),
@@ -2576,7 +2701,7 @@ pub(crate) fn changed_fields(context: &TemplateContext<'_>) -> Map<String, Value
 
 pub(crate) struct TemplateContext<'a> {
     pub(crate) definition: &'a EntityDefinition,
-    pub(crate) id: &'a str,
+    pub(crate) id: Option<&'a str>,
     pub(crate) args: &'a Map<String, Value>,
     /// The schema the arguments were validated against, so a `service/1` address into an argument
     /// collection is resolved by the kind the schema declares. `None` where there are none.
@@ -2643,7 +2768,10 @@ fn resolve_expression_optional(
     }
 
     match expression {
-        "$id" => Ok(Some(Value::String(context.id.to_owned()))),
+        "$id" => context
+            .id
+            .map(|id| Some(Value::String(id.to_owned())))
+            .ok_or_else(pre_address_identity_error),
         "$entity" => Ok(Some(Value::String(context.definition.entity.clone()))),
         "$version" => Ok(Some(Value::from(context.definition.version))),
         "$from_state" => Ok(context
@@ -2808,6 +2936,13 @@ fn template_error(expression: &str, message: &str) -> CoreError {
         expression: expression.to_owned(),
         message: message.to_owned(),
     }
+}
+
+fn pre_address_identity_error() -> CoreError {
+    template_error(
+        "$id",
+        "the storage identity is unavailable until the selected creation fields validate; reading $id here would make address derivation circular",
+    )
 }
 
 fn into_object(value: Value, path: &str) -> Result<Map<String, Value>, CoreError> {

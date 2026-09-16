@@ -1873,6 +1873,9 @@ fn refusal(error: &CoreError) -> Value {
         CoreError::IdentityMismatch { field, id, value } => {
             json!({ "field": field, "id": id, "address": value })
         }
+        CoreError::CreationIdentityUnavailable { entity, detail } => {
+            json!({ "entity": entity, "reason": detail })
+        }
         CoreError::FulfillmentRequired {
             operation,
             outcome,

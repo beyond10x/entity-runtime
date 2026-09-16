@@ -1294,6 +1294,13 @@ pub enum CoreError {
         /// The address the identity field's value derives to, or why it has none.
         value: String,
     },
+    /// A creation requested address derivation but its selected validated fields cannot supply it.
+    CreationIdentityUnavailable {
+        /// The entity being created.
+        entity: String,
+        /// Why no address can be derived.
+        detail: String,
+    },
     /// The selected `service/3` branch needs host-supplied field actions.
     FulfillmentRequired {
         /// The operation.
@@ -1349,6 +1356,7 @@ impl CoreError {
             Self::OutcomeUnobservable { .. } => "outcome_unobservable",
             Self::UnspecifiedMoveSource { .. } => "unspecified_move_source",
             Self::IdentityMismatch { .. } => "identity_mismatch",
+            Self::CreationIdentityUnavailable { .. } => "creation_identity_unavailable",
             Self::FulfillmentRequired { .. } => "fulfillment_required",
             Self::FulfillmentKeysMismatch { .. } => "fulfillment_keys_mismatch",
             Self::RequiredFieldRemoval { .. } => "required_field_removal",
@@ -1493,7 +1501,11 @@ impl fmt::Display for CoreError {
             Self::IdentityMismatch { field, id, value } => write!(
                 f,
                 "identity field '{field}' addresses to {value}, but the instance is stored at \
-                 '{id}'"
+                '{id}'"
+            ),
+            Self::CreationIdentityUnavailable { entity, detail } => write!(
+                f,
+                "creation of '{entity}' cannot derive its storage identity: {detail}"
             ),
             Self::FulfillmentRequired {
                 operation,

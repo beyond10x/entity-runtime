@@ -580,10 +580,7 @@ impl AsyncRecordedReader for MemoryRecordedStore {
 }
 
 impl AsyncRecordedWriter for MemoryRecordedStore {
-    fn append<'a>(
-        &'a self,
-        request: AppendRequest,
-    ) -> BoxFuture<'a, Result<AppendOutcome, WriteFailure>> {
+    fn append(&self, request: AppendRequest) -> BoxFuture<'_, Result<AppendOutcome, WriteFailure>> {
         if let Err(error) = request.validate() {
             return Box::pin(async move { Err(WriteFailure::NotCommitted(error)) });
         }

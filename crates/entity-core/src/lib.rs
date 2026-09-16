@@ -145,10 +145,10 @@ pub use observed::Observed;
 pub use registry::{Registry, ValidatedDefinition};
 pub use replay::{rehydrate, replay};
 pub use runtime::{
-    create, decide, decide_before_load, decide_create, execute, normalize_arguments, scale_compare,
-    Decision, DecisionCommand, DecisionEffect, DecisionRecord, DomainEvent, EntityInstance,
-    Evaluation, LoadedDecision, PreloadDecision, PreparedOperation, PreparedOutcome,
-    PreparedSubject, Refusal, Runtime,
+    create, create_derived, decide, decide_before_load, decide_create, decide_create_derived,
+    execute, normalize_arguments, scale_compare, Decision, DecisionCommand, DecisionEffect,
+    DecisionRecord, DomainEvent, EntityInstance, Evaluation, LoadedDecision, PreloadDecision,
+    PreparedOperation, PreparedOutcome, PreparedSubject, Refusal, Runtime,
 };
 pub use truth::Truth;
 

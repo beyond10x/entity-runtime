@@ -6,6 +6,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- `create_derived` and `decide_create_derived` let Entity Runtime select a creation outcome and
+  derive the storage address from that outcome's validated logical identity. Existing
+  caller-supplied creation entry points retain their behavior and bytes; both paths produce the
+  same decision, record, replay and original request when their final address agrees. A derived
+  creation explicitly refuses a circular pre-address `$id` read.
 - `service/3` operations can request typed Set, Preserve and optional Remove actions after the
   runtime selects and validates the loaded outcome. Events, responses and replay use the same
   resulting values; exact retries retain the actions under `er.record/4` and `er.request/4`.

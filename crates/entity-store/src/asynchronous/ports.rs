@@ -58,10 +58,7 @@ pub trait AsyncRecordedWriter: Send + Sync {
     /// Implementors must invoke [`AppendRequest::validate`] at the public writer entry before
     /// consuming provider behavior or consulting or changing any authority. Public request fields
     /// may be directly constructed or mutated after a successful constructor call.
-    fn append<'a>(
-        &'a self,
-        request: AppendRequest,
-    ) -> BoxFuture<'a, Result<AppendOutcome, WriteFailure>>;
+    fn append(&self, request: AppendRequest) -> BoxFuture<'_, Result<AppendOutcome, WriteFailure>>;
 }
 
 /// The complete asynchronous recorded storage surface.

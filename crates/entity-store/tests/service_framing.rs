@@ -63,8 +63,8 @@ fn kernel_entry() -> RecordedEntry {
     RecordedEntry::Decision(RecordedCommit::new(decision, &recording("r-1")).expect("valid"))
 }
 
-fn service_entry() -> RecordedEntry {
-    let registry = registry_of(json!({
+fn service_registry() -> Registry {
+    registry_of(json!({
         "entity": "invoice",
         "version": 1,
         "semantics": "service/1",
@@ -88,7 +88,11 @@ fn service_entry() -> RecordedEntry {
                 }
             }]
         }
-    }));
+    }))
+}
+
+fn service_entry() -> RecordedEntry {
+    let registry = service_registry();
     let decision = Runtime::new(&registry)
         .create(
             "invoice",
@@ -97,6 +101,18 @@ fn service_entry() -> RecordedEntry {
             json!({ "input": { "invoice_id": "INV-1", "amount": 10 } }),
         )
         .expect("creation succeeds");
+    RecordedEntry::Decision(RecordedCommit::new(decision, &recording("r-2")).expect("valid"))
+}
+
+fn derived_service_entry() -> RecordedEntry {
+    let registry = service_registry();
+    let decision = Runtime::new(&registry)
+        .create_derived(
+            "invoice",
+            1,
+            json!({ "input": { "invoice_id": "INV-1", "amount": 10 } }),
+        )
+        .expect("creation derives its address");
     RecordedEntry::Decision(RecordedCommit::new(decision, &recording("r-2")).expect("valid"))
 }
 
@@ -136,6 +152,20 @@ fn a_service_1_decision_frames_as_er_record_2_and_its_request_carries_arguments_
     assert!(
         !text.contains("\"fields\""),
         "reconstructing it as the branch's fields would hand a retry a request nobody sent: {text}"
+    );
+}
+
+#[test]
+fn a_derived_identity_keeps_the_existing_record_and_original_request_bytes() {
+    let supplied = service_entry();
+    let derived = derived_service_entry();
+    assert_eq!(
+        record_comparison_bytes(&derived).expect("derived record encodes"),
+        record_comparison_bytes(&supplied).expect("supplied record encodes")
+    );
+    assert_eq!(
+        original_request_comparison_bytes(&derived).expect("derived request encodes"),
+        original_request_comparison_bytes(&supplied).expect("supplied request encodes")
     );
 }
 

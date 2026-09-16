@@ -331,7 +331,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         }
         // Still fires for every `kernel/1` operation, and for a `service/1` operation that declares
         // neither transitions nor outcomes.
-        if operation.transitions.is_empty() && !(service && !operation.outcomes.is_empty()) {
+        if operation.transitions.is_empty() && (!service || operation.outcomes.is_empty()) {
             defects.push(DefinitionError::NoTransitions {
                 operation: operation_name.clone(),
             });
