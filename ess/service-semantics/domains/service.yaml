@@ -1,0 +1,806 @@
+domain: entity.service
+summary: Typed coordinates of the pure service semantics the kernel is to admit.
+
+# Authored decisions: docs/design/service-semantics-v0.1.md.
+# Coordinates and relations only. The complete definition, decision, response and refusal payloads
+# remain the existing concrete Rust types; nothing here is claimed as their wire schema.
+types:
+  - name: entity.service.OperationId
+    kind: newtype
+    of: String
+  - name: entity.service.OutcomeId
+    kind: newtype
+    of: String
+  - name: entity.service.RefusalId
+    kind: newtype
+    of: String
+  - name: entity.service.ResponseFieldId
+    kind: newtype
+    of: String
+  - name: entity.service.ObligationId
+    kind: newtype
+    of: String
+  - name: entity.service.RelationBindingId
+    kind: newtype
+    of: String
+  - name: entity.service.LogicalIdentityId
+    kind: newtype
+    of: String
+  - name: entity.service.NumericDomainId
+    kind: newtype
+    of: String
+  - name: entity.service.OperatorId
+    kind: newtype
+    of: String
+  - name: entity.service.QuantifierId
+    kind: newtype
+    of: String
+  - name: entity.service.ScaleId
+    kind: newtype
+    of: String
+  - name: entity.service.MoveSourceCaseId
+    kind: newtype
+    of: String
+  - name: entity.service.ComparisonRowId
+    kind: newtype
+    of: String
+  - name: entity.service.CollectionAddressFormId
+    kind: newtype
+    of: String
+  - name: entity.service.EvaluationStepId
+    kind: newtype
+    of: String
+  - name: entity.service.SelectorRuleId
+    kind: newtype
+    of: String
+  - name: entity.service.NumberObservationRuleId
+    kind: newtype
+    of: String
+
+  # The document rules a definition is read under. Not its identity: that is the
+  # (entity, version) pair, which this key never changes.
+  - name: entity.service.DefinitionSemantics
+    kind: enum
+    variants: [Kernel1, Service1]
+
+  # The comparison framing a decision of this operation is stored under. A service/1 decision's
+  # record carries keys er.record/1 never carried, so it takes a new version domain.
+  - name: entity.service.RecordFraming
+    kind: enum
+    variants: [ErRecord1, ErRecord2]
+
+  - name: entity.service.OutcomeScope
+    kind: enum
+    variants: [Create, Operation]
+
+  # Otherwise is the selector-free branch and is declared last, because its ESS meaning is
+  # position-independent and declared order is what ER selects by. InState carries ESS
+  # SubjectState's state, whose optional input predicate is the separate has_input_guard fact.
+  - name: entity.service.SelectorKind
+    kind: enum
+    variants: [Otherwise, When, InState, WrongState]
+
+  - name: entity.service.EffectKind
+    kind: enum
+    variants: [None, Creates, Moves, Updates]
+
+  # Where a declared response field's value comes from. Branch means a template of the selected
+  # outcome; Bound means the host determined it and it arrives as named binding data.
+  - name: entity.service.ResponseSource
+    kind: enum
+    variants: [Branch, Bound]
+
+  - name: entity.service.ObligationKind
+    kind: enum
+    variants:
+      [
+        IdentitySupplied,
+        ResponseFieldSupplied,
+        GeneratedFieldSupplied,
+        ExternalEvidenceSupplied,
+        TimestampSpelling,
+        UuidSpelling,
+        BytesSpelling,
+        DecimalSpelling,
+        Binary64Spelling,
+        ScaleDeclaration,
+        RelationExistence,
+        RelationCardinality,
+        RelationOwnership,
+        ErrorPayload,
+        RevisionExpectation,
+      ]
+
+  - name: entity.service.RelationOwnershipKind
+    kind: enum
+    variants: [Owns, References]
+
+  - name: entity.service.RelationCardinality
+    kind: enum
+    variants: [One, Many]
+
+  # Which definition declares the field that carries a relation. Owns puts it on the target, so the
+  # single-definition check cannot see it and the paired check runs over the registry.
+  - name: entity.service.CarrierSide
+    kind: enum
+    variants: [Source, Target]
+
+  # The shape the carrying field has. A Many Owns carries one scalar, because cardinality counts
+  # targets per source and says nothing about the field. The carried kind is the related entity's
+  # identity kind, which is a ref only when that identity is text.
+  - name: entity.service.CarrierShape
+    kind: enum
+    variants: [Scalar, OptionalScalar, ArrayOfScalar]
+
+  # Which layer actually enforces a relation claim. Binding means the kernel is handed one instance
+  # and cannot see the graph, so the obligation is named rather than promised.
+  - name: entity.service.EnforcementSite
+    kind: enum
+    variants: [Definition, Registry, Binding]
+
+  # Quoted, because an unquoted True and False are YAML booleans and these are Kleene truth values.
+  - name: entity.service.TruthValue
+    kind: enum
+    variants: ["True", "False", "Unknown"]
+
+  # Which specification format admits a construct. Binary64 is ess/2 only, measured by running the
+  # installed validator over a model that declares one: witness W1.
+  - name: entity.service.SourceFormat
+    kind: enum
+    variants: [Ess1, Ess2]
+
+  # The declared kind of the schema field carrying an entity's logical identity. Every one of these
+  # is an identity type the ESS model admits; none is reduced to a string-shaped identity.
+  - name: entity.service.IdentityValueKind
+    kind: enum
+    variants:
+      [
+        Text,
+        EnumValue,
+        Ref,
+        Integer,
+        Number,
+        Binary64,
+        Boolean,
+        ArrayValue,
+        ObjectValue,
+        MapValue,
+        UnionValue,
+      ]
+
+  # How a logical identity value is spelled as the ER storage address. Each rule is injective on the
+  # value domain of the kind it serves, which is what keeps addresses collision free. Four rules cover
+  # every admitted kind: PrefixedText is `s:` followed by the logical text, which is total over the
+  # empty and whitespace values the source admits; CanonicalNumericText is one function for Integer,
+  # Number and Binary64 alike, so no numeric kind is left without a spelling.
+  - name: entity.service.AddressRule
+    kind: enum
+    variants: [PrefixedText, CanonicalNumericText, BooleanText, CanonicalJson]
+
+  # Which reference scope a template or rule is resolved in. CreateTemplate is the kernel/1 creation
+  # event payload scope and is unchanged; CreateOutcomeTemplate is the service/1 creation branch scope
+  # and is the only creation scope that reads the creation arguments.
+  - name: entity.service.TemplateScope
+    kind: enum
+    variants:
+      [
+        Invariant,
+        Precondition,
+        CreateTemplate,
+        OperationTemplate,
+        OutcomeSelector,
+        CreateSelector,
+        CreateSet,
+        CreateOutcomeTemplate,
+      ]
+
+  # Which versioned rule reads a stored number as the value a predicate is answered about. Frozen into
+  # the definition and so into every record's definition snapshot, so a later source read-door stage
+  # cannot change what an already recorded decision meant.
+  - name: entity.service.NumberObservationVersion
+    kind: enum
+    variants: [SourceNumber1]
+
+  # Which door a number arrives through. Wire is a JSON number in a field, an argument or a record;
+  # Literal is a number written inside a condition.
+  - name: entity.service.ObservationDoor
+    kind: enum
+    variants: [Wire, Literal]
+
+  # How an observed value is carried. ExactDecimal is units by ten to the minus scale beside the
+  # binary64 the source writes; Binary64Carried is a magnitude no such pair spells.
+  - name: entity.service.ObservedRepr
+    kind: enum
+    variants: [ExactDecimal, Binary64Carried]
+
+  - name: entity.service.NumericPrimitive
+    kind: enum
+    variants: [Integer, Decimal, Binary64]
+
+  # A closed operator of the condition language. Kernel1 operators keep their exact current answers;
+  # Service1 operators exist because the source answers Unknown where a Kernel1 operator answers
+  # false, or because the source has a construct the Kernel1 language has no key for.
+  - name: entity.service.OperatorName
+    kind: enum
+    variants:
+      [
+        All,
+        Any,
+        Not,
+        Exists,
+        Eq,
+        Ne,
+        Gt,
+        Gte,
+        Lt,
+        Lte,
+        In,
+        Contains,
+        Before,
+        After,
+        Compare,
+        Truthy,
+        ForAll,
+        ForAny,
+      ]
+
+  - name: entity.service.CompareOperator
+    kind: enum
+    variants: [Eq, Ne, Lt, Lte, Gt, Gte]
+
+  - name: entity.service.CollectionKind
+    kind: enum
+    variants: [ArrayField, MapField]
+
+  # The two collection address forms the source has and the kernel/1 language does not. Both resolve
+  # to nothing under kernel/1, so no existing definition changes meaning.
+  - name: entity.service.CollectionAddress
+    kind: enum
+    variants: [Count, Ordinal]
+
+  # What answers when a branch has been selected by the input and the instance is resting somewhere.
+  # UnspecifiedMoveSource is the one case the source admits and does not answer: the selected branch
+  # cannot move from here, and some other branch of the same operation can, so the wrong-state
+  # branch is by the source's own definition not taken.
+  - name: entity.service.MoveSourceAnswer
+    kind: enum
+    variants:
+      [SelectedBranch, WrongStateBranch, InvalidTransition, UnspecifiedMoveSource]
+
+entities:
+  # One creation or one named operation of one definition.
+  - name: entity.service.Operation
+    identity:
+      name: operation_id
+      type: entity.service.OperationId
+    fields:
+      - name: definition_entity
+        type: String
+      - name: definition_version
+        type: Integer
+      - name: semantics
+        type: entity.service.DefinitionSemantics
+      - name: framing
+        type: entity.service.RecordFraming
+      - name: scope
+        type: entity.service.OutcomeScope
+      - name: name
+        type: String
+      # The union of the from sets of every branch of this operation whose effect moves, and the
+      # declared states outside it. The second is the wrong-state set, and it is a complement rather
+      # than a written list because a written copy of an absence drifts.
+      - name: move_sources
+        type: List<String>
+      - name: wrong_states
+        type: List<String>
+    relations:
+      - name: outcomes
+        kind: owns
+        target: entity.service.Outcome
+        cardinality: many
+        via: operation_id
+      - name: response_fields
+        kind: owns
+        target: entity.service.ResponseField
+        cardinality: many
+        via: operation_id
+      - name: move_source_cases
+        kind: owns
+        target: entity.service.MoveSourceCase
+        cardinality: many
+        via: operation_id
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One named branch. ordinal is its declared position: input selection walks branches in that order
+  # and takes the first whose selector holds, then tests the selected branch's move against the
+  # instance's state and the operation's move sources.
+  - name: entity.service.Outcome
+    identity:
+      name: outcome_id
+      type: entity.service.OutcomeId
+    fields:
+      - name: operation_id
+        type: entity.service.OperationId
+      - name: name
+        type: String
+      - name: ordinal
+        type: Integer
+      - name: selector
+        type: entity.service.SelectorKind
+      - name: has_input_guard
+        type: Boolean
+      - name: in_state
+        type: Optional<String>
+      - name: effect
+        type: entity.service.EffectKind
+      - name: move_from
+        type: List<String>
+      - name: to_state
+        type: Optional<String>
+      - name: emitted_events
+        type: Integer
+      - name: determined_response_fields
+        type: Integer
+      - name: refuses
+        type: Boolean
+      # Where this branch's emits payloads and responds map are resolved. A creation branch uses
+      # CreateOutcomeTemplate, which is the scope that carries the creation arguments; an operation
+      # branch uses OperationTemplate. The legacy CreateTemplate is never one of these.
+      - name: event_template_scope
+        type: entity.service.TemplateScope
+      - name: response_template_scope
+        type: entity.service.TemplateScope
+    relations:
+      - name: refusal
+        kind: owns
+        target: entity.service.Refusal
+        cardinality: one
+        via: outcome_id
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # A refusing branch's result. It has no meaning without its outcome, advances no revision, emits
+  # no event, determines no response and produces no decision record. The error's field values are a
+  # binding obligation.
+  - name: entity.service.Refusal
+    identity:
+      name: refusal_id
+      type: entity.service.RefusalId
+    fields:
+      - name: outcome_id
+        type: entity.service.OutcomeId
+      - name: error
+        type: String
+      - name: message
+        type: Optional<String>
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One (selected branch, held state) situation and what answers it. The row whose answer is
+  # UnspecifiedMoveSource is the source's own open case, witnessed by a model the installed
+  # validator admits at exit 0.
+  - name: entity.service.MoveSourceCase
+    identity:
+      name: move_source_case_id
+      type: entity.service.MoveSourceCaseId
+    fields:
+      - name: operation_id
+        type: entity.service.OperationId
+      - name: selected_branch_moves
+        type: Boolean
+      - name: state_in_selected_from
+        type: Boolean
+      - name: state_in_move_sources
+        type: Boolean
+      - name: operation_declares_wrong_state
+        type: Boolean
+      - name: answer
+        type: entity.service.MoveSourceAnswer
+      - name: source_answers_it
+        type: Boolean
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One field of a command's closed declared response. Every accepting branch determines every
+  # required one, or the definition is refused at registration.
+  - name: entity.service.ResponseField
+    identity:
+      name: response_field_id
+      type: entity.service.ResponseFieldId
+    fields:
+      - name: operation_id
+        type: entity.service.OperationId
+      - name: name
+        type: String
+      - name: required
+        type: Boolean
+      - name: source
+        type: entity.service.ResponseSource
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # What the host must supply before a decision, named rather than invented by the kernel.
+  - name: entity.service.BindingObligation
+    identity:
+      name: obligation_id
+      type: entity.service.ObligationId
+    fields:
+      - name: operation_id
+        type: entity.service.OperationId
+      - name: kind
+        type: entity.service.ObligationKind
+      - name: subject
+        type: String
+    relations:
+      - name: operation
+        kind: references
+        target: entity.service.Operation
+        cardinality: one
+        via: operation_id
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One declared relation of one definition: which definition carries the field, what shape it has,
+  # and the layer that enforces each claim.
+  - name: entity.service.RelationBinding
+    identity:
+      name: relation_binding_id
+      type: entity.service.RelationBindingId
+    fields:
+      - name: definition_entity
+        type: String
+      - name: name
+        type: String
+      - name: ownership
+        type: entity.service.RelationOwnershipKind
+      - name: target_entity
+        type: String
+      - name: cardinality
+        type: entity.service.RelationCardinality
+      - name: via
+        type: String
+      - name: carrier_side
+        type: entity.service.CarrierSide
+      - name: carrier_shape
+        type: entity.service.CarrierShape
+      # The carried scalar's kind is the related entity's identity kind, not always a ref. The value
+      # is the related instance's logical identity; a binding derives its storage address from that
+      # value through the same pure function the mirror step uses.
+      - name: carried_kind
+        type: entity.service.IdentityValueKind
+      # Whether the source offers an Optional carrier for this row. It does for references/one and
+      # for no other row, so optionality is carried across rather than flattened to required.
+      - name: optional_carrier_admitted
+        type: Boolean
+      - name: carrier_required
+        type: Boolean
+      - name: shape_enforced_by
+        type: entity.service.EnforcementSite
+      - name: existence_enforced_by
+        type: entity.service.EnforcementSite
+      - name: cardinality_enforced_by
+        type: entity.service.EnforcementSite
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # The logical identity of one definition, and the address it is stored at. The two are separate
+  # facts: the logical value keeps the source's declared type and is what a guard, a view and a
+  # relation carrier read; the address is the opaque non-empty text an ER store keys by.
+  - name: entity.service.LogicalIdentity
+    identity:
+      name: logical_identity_id
+      type: entity.service.LogicalIdentityId
+    fields:
+      - name: definition_entity
+        type: String
+      - name: field
+        type: String
+      - name: value_kind
+        type: entity.service.IdentityValueKind
+      - name: address_rule
+        type: entity.service.AddressRule
+      - name: admitted_in
+        type: entity.service.SourceFormat
+      # Injective on the value domain of value_kind, which is what collision freedom means here.
+      - name: address_is_injective
+        type: Boolean
+      # The literal prefix the address rule prepends, when it prepends one. `s:` for the text-like
+      # kinds, absent everywhere else.
+      - name: address_prefix
+        type: Optional<String>
+      # Total over the declared value domain, and never empty or whitespace, which is why there is no
+      # empty-address refusal for the mirror step to raise.
+      - name: address_is_total
+        type: Boolean
+      - name: address_can_be_empty
+        type: Boolean
+      # What a public surface publishes: the declared logical value, never the storage address. $id
+      # stays the storage coordinate and a binding derives it with the same pure function.
+      - name: published_surface_carries
+        type: String
+      # The address is recomputed from the recorded fields and byte-compared against the recorded id.
+      - name: replayed_by_recomputation
+        type: Boolean
+      - name: supplied_by
+        type: entity.service.ObligationKind
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One source numeric primitive and the exact domain the kernel reproduces for it. Signed zero is
+  # two separate facts because the source keeps it in one place and not the other.
+  - name: entity.service.NumericDomain
+    identity:
+      name: numeric_domain_id
+      type: entity.service.NumericDomainId
+    fields:
+      - name: primitive
+        type: entity.service.NumericPrimitive
+      - name: er_field_kind
+        type: String
+      - name: admitted_in
+        type: entity.service.SourceFormat
+      - name: compared_exactly
+        type: Boolean
+      - name: signed_zero_in_bytes
+        type: Boolean
+      - name: signed_zero_in_comparison
+        type: Boolean
+      - name: truthy_is_zero_test
+        type: Boolean
+      # Which reading rule answers a predicate about a value of this primitive, and the separate fact
+      # that the authored token is stored unchanged. The two together are what parity in the answer
+      # and exactness in the bytes means.
+      - name: observed_under
+        type: entity.service.NumberObservationVersion
+      - name: stored_token_is_unrounded
+        type: Boolean
+      - name: divergence
+        type: Optional<String>
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One numbered step of the service/1 evaluation order. The numbers here are the ones every
+  # cross-reference in the contract cites; legacy_number maps a step onto the corrected twelve-step
+  # kernel/1 order, and is absent for the four insertions.
+  - name: entity.service.EvaluationStep
+    identity:
+      name: evaluation_step_id
+      type: entity.service.EvaluationStepId
+    fields:
+      - name: number
+        type: Integer
+      - name: name
+        type: String
+      - name: refusals
+        type: List<String>
+      - name: legacy_number
+        type: Optional<Integer>
+      - name: is_insertion
+        type: Boolean
+      - name: runs_on_create
+        type: Boolean
+      - name: runs_on_operation
+        type: Boolean
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One row of the input-selection rule. A branch whose in_state is declared and does not match is
+  # skipped before its guard is read; a matching in_state with no when is a True selector; a
+  # selector-free branch is the separate default.
+  - name: entity.service.SelectorRule
+    identity:
+      name: selector_rule_id
+      type: entity.service.SelectorRuleId
+    fields:
+      - name: selector
+        type: entity.service.SelectorKind
+      - name: has_input_guard
+        type: Boolean
+      # Absent where the branch declares no in_state.
+      - name: state_matches
+        type: Optional<Boolean>
+      - name: state_test_skips_branch
+        type: Boolean
+      - name: guard_is_evaluated
+        type: Boolean
+      - name: selector_truth
+        type: entity.service.TruthValue
+      - name: branch_is_taken
+        type: Boolean
+      # A bare state guard is not a second default, so no registration rule narrows the admitted set
+      # to make this row reachable.
+      - name: counts_as_default
+        type: Boolean
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One step of the versioned source-number observation. Together the rows are the whole algorithm:
+  # the wire door reads an integer token as the integer it is before any binary64 is involved, the
+  # literal door keeps an authored decimal only where the write gives it back, and everything else
+  # falls to the canonical decimal of the binary64 or to the binary64 itself. SourceNumber1 fixes
+  # the actual ESS CLI's integer-first, correctly rounded float_roundtrip profile independently of
+  # Cargo feature unification. A plain library build is a different decoder profile, not assumed
+  # equivalent. The literal door retains its separate source rule. Out-of-domain numbers refuse.
+  - name: entity.service.NumberObservationRule
+    identity:
+      name: number_observation_rule_id
+      type: entity.service.NumberObservationRuleId
+    fields:
+      - name: version
+        type: entity.service.NumberObservationVersion
+      - name: door
+        type: entity.service.ObservationDoor
+      - name: ordinal
+        type: Integer
+      - name: input_form
+        type: String
+      - name: result_repr
+        type: entity.service.ObservedRepr
+      - name: rule
+        type: String
+      - name: source_function
+        type: String
+      # The largest decimal scale an exact value is held at, and the magnitude below which an integral
+      # binary64 is carried as the integer it is.
+      - name: max_scale
+        type: Integer
+      - name: integer_carrier_is_two_to_the_sixty_three
+        type: Boolean
+      - name: shared_by_comparison_truthiness_and_membership
+        type: Boolean
+      - name: changes_stored_bytes
+        type: Boolean
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One operator of the closed condition language, and whether it can answer Unknown and where.
+  - name: entity.service.ConditionOperator
+    identity:
+      name: operator_id
+      type: entity.service.OperatorId
+    fields:
+      - name: name
+        type: entity.service.OperatorName
+      - name: admitted_in
+        type: entity.service.DefinitionSemantics
+      - name: source_predicate
+        type: Optional<String>
+      - name: unobserved_answer
+        type: entity.service.TruthValue
+      - name: non_scalar_answer
+        type: entity.service.TruthValue
+      - name: is_lowering_target
+        type: Boolean
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One row of the three-valued comparison table. The rows that answer Unknown are the reason the
+  # service/1 language has its own compare operator: the kernel/1 ordering operators answer false
+  # for two non-numbers, and false is not what the source says.
+  - name: entity.service.ComparisonRow
+    identity:
+      name: comparison_row_id
+      type: entity.service.ComparisonRowId
+    fields:
+      - name: operator
+        type: entity.service.CompareOperator
+      - name: left_value_kind
+        type: String
+      - name: right_value_kind
+        type: String
+      - name: answer_is_unknown
+        type: Boolean
+      - name: ordered_by
+        type: Optional<String>
+      - name: kernel_1_operator_would_answer
+        type: entity.service.TruthValue
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # The two collection address forms the source's path language has. Both resolve to nothing under
+  # kernel/1, so no existing definition changes meaning when they are added.
+  - name: entity.service.CollectionAddressForm
+    identity:
+      name: collection_address_form_id
+      type: entity.service.CollectionAddressFormId
+    fields:
+      - name: form
+        type: entity.service.CollectionAddress
+      - name: applies_to
+        type: entity.service.CollectionKind
+      - name: resolves_under
+        type: entity.service.DefinitionSemantics
+      - name: resolves_to
+        type: String
+      - name: selecting_past_it_is_refused
+        type: Boolean
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # A quantified claim: the collection, the binder, and the exact empty and unobserved answers. An
+  # unobserved collection is Unknown and never the vacuous truth an empty one gives.
+  - name: entity.service.QuantifiedClaim
+    identity:
+      name: quantifier_id
+      type: entity.service.QuantifierId
+    fields:
+      - name: operator
+        type: entity.service.OperatorName
+      - name: over_kind
+        type: entity.service.CollectionKind
+      - name: bind
+        type: String
+      - name: empty_answer
+        type: entity.service.TruthValue
+      - name: unobserved_answer
+        type: entity.service.TruthValue
+      - name: short_circuits_when_settled
+        type: Boolean
+      - name: inner_binder_shadows_outer
+        type: Boolean
+      - name: element_order
+        type: String
+      - name: max_depth
+        type: Integer
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]
+
+  # One ordered scale a text comparison is read against. The source's specification language declares
+  # none, so the empty set is a value of this context rather than a missing feature: with no scale
+  # containing both values the comparison is Unknown, never false.
+  - name: entity.service.Scale
+    identity:
+      name: scale_id
+      type: entity.service.ScaleId
+    fields:
+      - name: definition_entity
+        type: String
+      - name: name
+        type: String
+      - name: ranked_values
+        type: List<String>
+      - name: supplied_by
+        type: entity.service.ObligationKind
+      - name: snapshotted_into_record
+        type: Boolean
+      - name: no_scale_answer
+        type: entity.service.TruthValue
+      - name: disagreeing_scales_answer
+        type: entity.service.TruthValue
+    lifecycle:
+      initial: Declared
+      states: [Declared]
+      terminal: [Declared]

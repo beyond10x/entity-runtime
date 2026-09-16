@@ -108,13 +108,20 @@ somewhere. Do not write an enforcement here that you cannot point at.
    an argument.
    *Enforced by* the closed reference set in `resolve_expression_optional` and
    `an_unresolvable_template_reference_is_an_error_not_a_null`.
-8. **The eleven-step evaluation order is the contract.** `InvalidTransition` before
-   `PreconditionFailed`; invariants after `set`; events last.
+8. **The twelve-step evaluation order is the contract.** `EntityMismatch` before `UnknownState`;
+   `InvalidTransition` before `PreconditionFailed`; invariants after `set`; events last. Twelve,
+   numbered 0 to 11, and the first two are numbered in the order `ensure_instance_matches` checks
+   them — this line said *eleven* and the design page numbered the two identity checks the other way
+   round, and both were corrected against the code rather than the code against them. A `service/1`
+   definition inserts four steps into that list and moves nothing else (§ 4.2 of
+   `docs/design/service-semantics-v0.1.md`).
    *Enforced by* `execute`'s straight-line body and
    `an_operation_not_declared_from_the_current_state_is_refused_before_its_preconditions`,
    `fields_are_revalidated_after_set`,
-   `a_failed_invariant_after_an_operation_yields_no_decision_and_no_events`. There is no
-   workspace-wide check that a refactor keeps the order; the design (§ 6) is what a reviewer reads.
+   `a_failed_invariant_after_an_operation_yields_no_decision_and_no_events`,
+   `the_kernel_checks_entity_mismatch_before_unknown_state_and_both_documents_say_so` — which reads
+   this file and the design page, so neither can drift back — and
+   `a_service_1_operation_runs_the_sixteen_steps_in_the_numbered_order`.
 9. **Every public item is documented and there is no `unsafe`.**
    *Enforced by* `missing_docs = "warn"` and `unsafe_code = "forbid"` in `[workspace.lints]`,
    raised to errors by the gate's `-D warnings`; the `doc-check` step fails on a broken intra-doc

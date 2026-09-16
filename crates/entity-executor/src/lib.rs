@@ -13,9 +13,9 @@ use entity_core::{
 use entity_store::{
     asynchronous::{
         batch_comparison_bytes, canonical_domain_bytes, original_request_comparison_bytes,
-        verify_imported_record, verify_subject_prefix, AppendMember, AppendOutcome, AppendRequest,
-        AsyncRecordedStore, AsyncStoreError, BatchKey, CommitReceipt, RecordLookup, RecordedEntry,
-        StoredBatch, StoredRecord, Subject, SubjectAssurance, WriteFailure,
+        request_domain, verify_imported_record, verify_subject_prefix, AppendMember, AppendOutcome,
+        AppendRequest, AsyncRecordedStore, AsyncStoreError, BatchKey, CommitReceipt, RecordLookup,
+        RecordedEntry, StoredBatch, StoredRecord, Subject, SubjectAssurance, WriteFailure,
     },
     Expect, RecordedCommit, RecordedObservation, Recording,
 };
@@ -613,7 +613,7 @@ fn request_comparison_bytes(
                 request.fields.clone(),
             )
             .map_err(|error| AsyncStoreError::InvalidInput(error.to_string()))?;
-            let DecisionCommand::Create { fields } = decision.record.command else {
+            let DecisionCommand::Create { fields, arguments } = decision.record.command else {
                 return Err(AsyncStoreError::Backend(
                     "create normalization did not produce a create command".to_owned(),
                 ));
@@ -625,16 +625,32 @@ fn request_comparison_bytes(
                     record_id: request.recording.record_id.clone(),
                 });
             }
-            canonical_domain_bytes(
-                "er.request/1",
-                serde_json::json!({
-                    "kind": "create",
-                    "subject": [request.subject.entity, request.subject.id],
-                    "definition_version": request.definition_version,
-                    "fields": fields,
-                    "recording": recording_value(&request.recording),
-                }),
-            )
+            // A `service/1` creation reconstructs the caller's **arguments**; a `kernel/1` one
+            // reconstructs its fields, in the framing and the shape it has always used.
+            let domain = request_domain(original);
+            if domain == "er.request/2" {
+                canonical_domain_bytes(
+                    domain,
+                    serde_json::json!({
+                        "kind": "create",
+                        "subject": [request.subject.entity, request.subject.id],
+                        "definition_version": request.definition_version,
+                        "arguments": arguments,
+                        "recording": recording_value(&request.recording),
+                    }),
+                )
+            } else {
+                canonical_domain_bytes(
+                    domain,
+                    serde_json::json!({
+                        "kind": "create",
+                        "subject": [request.subject.entity, request.subject.id],
+                        "definition_version": request.definition_version,
+                        "fields": fields,
+                        "recording": recording_value(&request.recording),
+                    }),
+                )
+            }
         }
         (BatchAction::Execute(request), RecordedEntry::Decision(commit)) => {
             let definition = saved_definition(original)?;
@@ -649,7 +665,7 @@ fn request_comparison_bytes(
                 });
             }
             canonical_domain_bytes(
-                "er.request/1",
+                request_domain(original),
                 serde_json::json!({
                     "kind": "execute",
                     "subject": [request.subject.entity, request.subject.id],
@@ -667,7 +683,7 @@ fn request_comparison_bytes(
                 });
             }
             canonical_domain_bytes(
-                "er.request/1",
+                request_domain(&RecordedEntry::Observation(original.clone())),
                 serde_json::json!({"kind": "observation", "observation": observation}),
             )
         }

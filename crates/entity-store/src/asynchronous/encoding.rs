@@ -57,13 +57,83 @@ fn tagged_record(entry: &RecordedEntry) -> Result<Value, AsyncStoreError> {
     Ok(Value::Object(tagged))
 }
 
-/// Encodes one complete typed record in the normative `er.record/1` domain.
+/// The record framing one entry is spelled in.
+///
+/// A `service/1` decision's record carries keys `er.record/1` has never carried — `outcome`,
+/// `effect`, `response`, and a `create` command with an `arguments` key. The governing rule for
+/// these formats is that a change to their shape, framing or scalar spelling needs a new version
+/// domain, so that is what a `service/1` decision takes. A `kernel/1` decision and every
+/// observation keep the bytes they have.
+#[must_use]
+pub fn record_domain(entry: &RecordedEntry) -> &'static str {
+    match entry {
+        RecordedEntry::Decision(commit) => match &commit.envelope.record.definition {
+            Some(definition) if definition.semantics.is_service_1() => "er.record/2",
+            _ => "er.record/1",
+        },
+        RecordedEntry::Observation(_) => "er.record/1",
+    }
+}
+
+/// The original-request framing one entry is spelled in, by the same rule.
+#[must_use]
+pub fn request_domain(entry: &RecordedEntry) -> &'static str {
+    match record_domain(entry) {
+        "er.record/2" => "er.request/2",
+        _ => "er.request/1",
+    }
+}
+
+/// Encodes one complete typed record in its normative domain.
 ///
 /// # Errors
 ///
 /// Serialization failure without numeric coercion.
 pub fn record_comparison_bytes(entry: &RecordedEntry) -> Result<Vec<u8>, AsyncStoreError> {
-    canonical_domain_bytes("er.record/1", tagged_record(entry)?)
+    canonical_domain_bytes(record_domain(entry), tagged_record(entry)?)
+}
+
+/// The framing a comparison document is written in, read **without parsing its payload**.
+///
+/// The framing tag is the first element of the array, so a reader that does not know a framing
+/// refuses the document there rather than after reading a body it was not written for.
+///
+/// # Errors
+///
+/// [`AsyncStoreError::Encoding`] when the document does not begin with a quoted framing tag.
+pub fn record_framing(bytes: &[u8]) -> Result<&str, AsyncStoreError> {
+    let malformed = || {
+        AsyncStoreError::Encoding(
+            "a comparison document begins with its framing tag as a quoted string".to_owned(),
+        )
+    };
+    let text = std::str::from_utf8(bytes).map_err(|_| malformed())?;
+    let rest = text.strip_prefix("[\"").ok_or_else(malformed)?;
+    let end = rest.find('"').ok_or_else(malformed)?;
+    Ok(&rest[..end])
+}
+
+/// Refuses a comparison document whose framing this reader does not know, by the name of that
+/// framing, before its payload is parsed at all.
+///
+/// # Errors
+///
+/// [`AsyncStoreError::Encoding`] naming the framing that was found, or a malformed document.
+pub fn read_record_in_domain(domain: &str, bytes: &[u8]) -> Result<Value, AsyncStoreError> {
+    let found = record_framing(bytes)?;
+    if found != domain {
+        return Err(AsyncStoreError::Encoding(format!(
+            "this reader knows the framing {domain} and the document is framed {found}"
+        )));
+    }
+    let document: Value = serde_json::from_slice(bytes)
+        .map_err(|error| AsyncStoreError::Encoding(error.to_string()))?;
+    document
+        .as_array()
+        .and_then(|elements| elements.get(1).cloned())
+        .ok_or_else(|| {
+            AsyncStoreError::Encoding("a comparison document carries two elements".to_owned())
+        })
 }
 
 fn recording_value(recording: &Recording) -> Value {
@@ -95,9 +165,26 @@ pub fn original_request_comparison_bytes(
                 causation: commit.envelope.causation.clone(),
                 actor: commit.envelope.actor.clone(),
             };
+            let domain = request_domain(entry);
             match &record.command {
-                DecisionCommand::Create { fields } => canonical_domain_bytes(
-                    "er.request/1",
+                // A `service/1` creation's *original request* is the caller's **arguments**, not
+                // the fields the branch produced: reconstructing it as the fields would hand a
+                // retry a request the caller never sent, which is what these bytes exist to
+                // prevent. A `kernel/1` creation's input is its fields and its shape is unchanged.
+                DecisionCommand::Create { fields, arguments } if domain == "er.request/2" => {
+                    canonical_domain_bytes(
+                        domain,
+                        serde_json::json!({
+                            "kind": "create",
+                            "subject": [record.entity, record.id],
+                            "definition_version": record.result.version,
+                            "arguments": arguments,
+                            "recording": recording_value(&recording),
+                        }),
+                    )
+                }
+                DecisionCommand::Create { fields, .. } => canonical_domain_bytes(
+                    domain,
                     serde_json::json!({
                         "kind": "create",
                         "subject": [record.entity, record.id],
@@ -110,7 +197,7 @@ pub fn original_request_comparison_bytes(
                     operation,
                     arguments,
                 } => canonical_domain_bytes(
-                    "er.request/1",
+                    domain,
                     serde_json::json!({
                         "kind": "execute",
                         "subject": [record.entity, record.id],
@@ -134,7 +221,7 @@ pub fn original_request_comparison_bytes(
             }
         }
         RecordedEntry::Observation(observation) => canonical_domain_bytes(
-            "er.request/1",
+            request_domain(entry),
             serde_json::json!({"kind": "observation", "observation": observation}),
         ),
     }
@@ -165,9 +252,12 @@ pub fn batch_comparison_bytes(
                 serde_json::json!({"kind": "revision", "revision": revision})
             }
         };
+        // Each member carries its own record framing. The batch tag does **not** move: a reader
+        // that walks a batch meets the member's framing and refuses there, by the name of the
+        // framing it does not know, and a batch whose members are all `/1` keeps its bytes.
         encoded.push(serde_json::json!({
             "expect": expectation,
-            "record": ["er.record/1", tagged_record(&member.entry)?]
+            "record": [record_domain(&member.entry), tagged_record(&member.entry)?]
         }));
     }
     serde_json::to_vec(&canonicalize(serde_json::json!([

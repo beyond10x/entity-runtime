@@ -88,11 +88,19 @@ pub(crate) fn validate_entry_against_state(
                 corrupt(&subject, format!("saved definition is invalid: {error}"))
             })?;
             let recomputed = match (&record.command, current) {
-                (DecisionCommand::Create { fields }, None) => create(
-                    &definition,
-                    record.id.clone(),
-                    Value::Object(fields.clone()),
-                ),
+                // A `service/1` creation is rerun from the **arguments** it was decided on, which
+                // is what re-selects its branch; a `kernel/1` creation's input is its fields and it
+                // records no arguments, so this is the call it has always made.
+                (DecisionCommand::Create { fields, arguments }, None) => {
+                    let input = if definition.semantics.is_service_1()
+                        && !definition.create.outcomes.is_empty()
+                    {
+                        arguments.clone()
+                    } else {
+                        fields.clone()
+                    };
+                    create(&definition, record.id.clone(), Value::Object(input))
+                }
                 (
                     DecisionCommand::Execute {
                         operation,

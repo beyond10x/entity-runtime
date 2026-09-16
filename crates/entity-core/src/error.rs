@@ -144,6 +144,295 @@ pub enum DefinitionError {
         /// The version.
         version: u32,
     },
+
+    /// A `kernel/1` definition carries a key, field kind or condition operator only `service/1`
+    /// admits.
+    ///
+    /// The opt-in is `semantics: service/1`. Refused rather than ignored, for the reason every
+    /// closed key is: an author who writes one believes it is evaluated, and a `kernel/1` document
+    /// carrying a branch would be a document whose branches nothing selects.
+    SemanticsKeyNotAvailable {
+        /// Where, such as `create.outcomes` or `invariants[0].assert.compare`.
+        path: String,
+        /// The key, kind or operator that is not available.
+        key: String,
+    },
+    /// A branch's name is empty or whitespace.
+    EmptyOutcomeName {
+        /// The creation or operation it belongs to.
+        command: String,
+    },
+    /// Two branches of one creation or operation carry the same name.
+    DuplicateOutcome {
+        /// The creation or operation.
+        command: String,
+        /// The repeated name.
+        outcome: String,
+    },
+    /// More than one selector-free branch, or one that is not last among the non-`wrong_state`
+    /// branches.
+    ///
+    /// The source's default branch is *taken when no conditional outcome matched*, a
+    /// position-independent meaning; this runtime selects by declared order, so the only
+    /// declaration order that spells that meaning is last.
+    AmbiguousDefaultOutcome {
+        /// The creation or operation.
+        command: String,
+    },
+    /// More than one `wrong_state` branch in one operation.
+    DuplicateWrongStateOutcome {
+        /// The operation.
+        operation: String,
+    },
+    /// A creation branch declares `wrong_state`, which has no meaning where there is no subject.
+    WrongStateOnCreate {
+        /// The branch.
+        outcome: String,
+    },
+    /// A `wrong_state` branch also declares its own `when` or `in_state`.
+    WrongStateWithSelector {
+        /// The operation.
+        operation: String,
+        /// The branch.
+        outcome: String,
+    },
+    /// An operation declares both a `wrong_state` branch and an `in_state` branch.
+    ///
+    /// The source's own rule: a command using explicit state guards cannot also declare
+    /// `WrongState`, because overlapping precedence is not inferred. Keeping the two constructs
+    /// apart is what stops the state-admissibility step skipping a state-guarded branch.
+    WrongStateWithStateGuard {
+        /// The operation.
+        operation: String,
+    },
+    /// An operation declares a `wrong_state` branch while its moves already start from every state.
+    WrongStateUnreachable {
+        /// The operation.
+        operation: String,
+    },
+    /// An `in_state` branch whose effect is a move names a state that move does not start from.
+    GuardStateOutsideMove {
+        /// The operation.
+        operation: String,
+        /// The branch.
+        outcome: String,
+        /// The guarded state, which the branch's own `from` does not contain.
+        state: String,
+    },
+    /// An operation branch declares the creation effect.
+    CreatesEffectOnOperation {
+        /// The operation.
+        operation: String,
+        /// The branch.
+        outcome: String,
+    },
+    /// A creation branch's effect is neither `creates` nor `none`.
+    MissingCreatesEffect {
+        /// The branch.
+        outcome: String,
+        /// The effect it declared.
+        effect: &'static str,
+    },
+    /// A refusing branch also writes, emits, responds or changes state.
+    ///
+    /// A refusal produces nothing durable, so a refusing branch that claimed to is a branch whose
+    /// declaration nothing could honour.
+    RefusalMutatesState {
+        /// The creation or operation.
+        command: String,
+        /// The branch.
+        outcome: String,
+    },
+    /// A branch declares no event, no write, no response field, no refusal and no effect, so
+    /// nothing about taking it could be observed.
+    UnobservableOutcome {
+        /// The creation or operation.
+        command: String,
+        /// The branch.
+        outcome: String,
+    },
+    /// A branch's `in_state`, `effect.to` or `effect.from` names a state the lifecycle does not
+    /// declare.
+    UnknownOutcomeState {
+        /// The creation or operation.
+        command: String,
+        /// The branch.
+        outcome: String,
+        /// The undeclared state.
+        state: String,
+    },
+    /// A branch responds with a field the command's `response` schema does not declare.
+    ResponseFieldUnknown {
+        /// The creation or operation.
+        command: String,
+        /// The branch.
+        outcome: String,
+        /// The undeclared response field.
+        field: String,
+    },
+    /// An accepting branch leaves a required response field undetermined.
+    OutcomeResponseIncomplete {
+        /// The creation or operation.
+        command: String,
+        /// The branch.
+        outcome: String,
+        /// The required response field nothing determines.
+        field: String,
+    },
+    /// `identity.field` is not a declared **required** field of the schema.
+    IdentityFieldUnknown {
+        /// The field the identity names.
+        field: String,
+    },
+    /// `identity.field`'s kind has no address function. Only `json` is in this position.
+    IdentityFieldNotAddressable {
+        /// The field the identity names.
+        field: String,
+        /// Its declared kind.
+        kind: &'static str,
+    },
+    /// A `references` relation's `via` is not a declared field of this definition.
+    RelationViaUnknown {
+        /// The relation.
+        relation: String,
+        /// The field it names.
+        via: String,
+    },
+    /// A relation carrier's kind is not the one its row admits.
+    RelationViaWrongShape {
+        /// The relation.
+        relation: String,
+        /// The carrier field.
+        via: String,
+        /// What the row admits.
+        expected: String,
+        /// What was declared.
+        found: String,
+    },
+    /// A relation carrier's optionality is not the one its row admits.
+    ///
+    /// The source offers an optional carrier for the `references`/`one` row and for no other, so
+    /// `owns` and `references`/`many` keep `required: true` rather than all three being widened
+    /// together.
+    RelationCarrierOptionality {
+        /// The relation.
+        relation: String,
+        /// The carrier field.
+        via: String,
+    },
+    /// A relation names a target the registry does not hold.
+    ///
+    /// A **set**-level defect, like [`DefinitionError::UnknownRelationTarget`], and reported from
+    /// [`Registry::validate_all`](crate::Registry::validate_all) for the same reason.
+    RelationTargetMissing {
+        /// The declaring entity.
+        entity: String,
+        /// The relation.
+        relation: String,
+        /// The target nobody registered.
+        target: String,
+    },
+    /// Two definitions declare themselves the owner of one entity type.
+    RelationSecondOwner {
+        /// The owned entity.
+        target: String,
+        /// The first owner, in name order.
+        owner: String,
+        /// The second.
+        other: String,
+    },
+    /// An `owns` relation's `via` is not a correctly shaped required field of the **target**.
+    RelationCarrierWrong {
+        /// The declaring entity.
+        entity: String,
+        /// The relation.
+        relation: String,
+        /// The carrier field, which lives on the target.
+        via: String,
+        /// What is wrong with it.
+        detail: String,
+    },
+    /// One field carries two relations.
+    RelationFieldClaimedTwice {
+        /// The entity whose field it is.
+        entity: String,
+        /// The field.
+        field: String,
+        /// The first relation to claim it, in name order.
+        relation: String,
+        /// The second.
+        other: String,
+    },
+    /// A `map` field declares no key spelling, or one that is not a text primitive.
+    MapKeyNotText {
+        /// Where, such as `schema.metadata`.
+        path: String,
+    },
+    /// A `map` field declares no value definition.
+    MapValueMissing {
+        /// Where.
+        path: String,
+    },
+    /// A `union`'s tag key equals the content key a nested variant object would use.
+    UnionTagCollides {
+        /// Where.
+        path: String,
+        /// The tag that collides.
+        tag: String,
+    },
+    /// A `union` declares no variants, or no tag at all.
+    UnionVariantMissing {
+        /// Where.
+        path: String,
+    },
+    /// A quantifier's `as` is not one non-empty path segment.
+    QuantifierBindInvalid {
+        /// Where.
+        path: String,
+        /// The binder that was written.
+        bind: String,
+    },
+    /// A quantifier's `in` does not name an `array` or `map` field.
+    QuantifierOverNotCollection {
+        /// Where.
+        path: String,
+        /// What `in` named.
+        over: String,
+        /// Why it is not a collection.
+        detail: String,
+    },
+    /// A quantifier body reads an address neither the enclosing scope nor the binder admits.
+    QuantifierBodyScope {
+        /// Where.
+        path: String,
+        /// The address it reached for.
+        expression: String,
+        /// What is wrong with it.
+        detail: String,
+    },
+    /// A condition nests deeper than the limit, refused with its limit rather than by the reader.
+    ConditionTooDeep {
+        /// Where.
+        path: String,
+        /// How deep it nests.
+        depth: usize,
+        /// How deep it may nest.
+        limit: usize,
+    },
+    /// A `compare` operand is a literal list or mapping, which the source compares nothing about.
+    CompareOperandNotAddressable {
+        /// Where.
+        path: String,
+        /// Which side.
+        side: &'static str,
+    },
+    /// A declared scale's name is empty or whitespace.
+    ScaleUnnamed,
+    /// A declared scale lists no values.
+    ScaleEmpty {
+        /// The scale.
+        scale: String,
+    },
 }
 
 impl DefinitionError {
@@ -170,6 +459,43 @@ impl DefinitionError {
             Self::UnknownRelationTarget { .. } => "unknown_relation_target",
             Self::InvalidTemplate { .. } => "invalid_template",
             Self::DuplicateDefinition { .. } => "duplicate_definition",
+            Self::SemanticsKeyNotAvailable { .. } => "semantics_key_not_available",
+            Self::EmptyOutcomeName { .. } => "empty_outcome_name",
+            Self::DuplicateOutcome { .. } => "duplicate_outcome",
+            Self::AmbiguousDefaultOutcome { .. } => "ambiguous_default_outcome",
+            Self::DuplicateWrongStateOutcome { .. } => "duplicate_wrong_state_outcome",
+            Self::WrongStateOnCreate { .. } => "wrong_state_on_create",
+            Self::WrongStateWithSelector { .. } => "wrong_state_with_selector",
+            Self::WrongStateWithStateGuard { .. } => "wrong_state_with_state_guard",
+            Self::WrongStateUnreachable { .. } => "wrong_state_unreachable",
+            Self::GuardStateOutsideMove { .. } => "guard_state_outside_move",
+            Self::CreatesEffectOnOperation { .. } => "creates_effect_on_operation",
+            Self::MissingCreatesEffect { .. } => "missing_creates_effect",
+            Self::RefusalMutatesState { .. } => "refusal_mutates_state",
+            Self::UnobservableOutcome { .. } => "unobservable_outcome",
+            Self::UnknownOutcomeState { .. } => "unknown_outcome_state",
+            Self::ResponseFieldUnknown { .. } => "response_field_unknown",
+            Self::OutcomeResponseIncomplete { .. } => "outcome_response_incomplete",
+            Self::IdentityFieldUnknown { .. } => "identity_field_unknown",
+            Self::IdentityFieldNotAddressable { .. } => "identity_field_not_addressable",
+            Self::RelationViaUnknown { .. } => "relation_via_unknown",
+            Self::RelationViaWrongShape { .. } => "relation_via_wrong_shape",
+            Self::RelationCarrierOptionality { .. } => "relation_carrier_optionality",
+            Self::RelationTargetMissing { .. } => "relation_target_missing",
+            Self::RelationSecondOwner { .. } => "relation_second_owner",
+            Self::RelationCarrierWrong { .. } => "relation_carrier_wrong",
+            Self::RelationFieldClaimedTwice { .. } => "relation_field_claimed_twice",
+            Self::MapKeyNotText { .. } => "map_key_not_text",
+            Self::MapValueMissing { .. } => "map_value_missing",
+            Self::UnionTagCollides { .. } => "union_tag_collides",
+            Self::UnionVariantMissing { .. } => "union_variant_missing",
+            Self::QuantifierBindInvalid { .. } => "quantifier_bind_invalid",
+            Self::QuantifierOverNotCollection { .. } => "quantifier_over_not_collection",
+            Self::QuantifierBodyScope { .. } => "quantifier_body_scope",
+            Self::ConditionTooDeep { .. } => "condition_too_deep",
+            Self::CompareOperandNotAddressable { .. } => "compare_operand_not_addressable",
+            Self::ScaleUnnamed => "scale_unnamed",
+            Self::ScaleEmpty { .. } => "scale_empty",
         }
     }
 }
@@ -251,6 +577,218 @@ impl fmt::Display for DefinitionError {
                 "entity '{entity}' version {version} is already registered; use `replace` to \
                  change a registered definition"
             ),
+            Self::SemanticsKeyNotAvailable { path, key } => write!(
+                f,
+                "'{key}' at '{path}' is available only under `semantics: service/1`; a kernel/1 \
+                 definition carrying it would declare a rule nothing evaluates"
+            ),
+            Self::EmptyOutcomeName { command } => {
+                write!(f, "'{command}' declares an outcome with an empty name")
+            }
+            Self::DuplicateOutcome { command, outcome } => write!(
+                f,
+                "'{command}' declares outcome '{outcome}' more than once"
+            ),
+            Self::AmbiguousDefaultOutcome { command } => write!(
+                f,
+                "'{command}' must declare at most one outcome with no `when`, `in_state` or \
+                 `wrong_state`, and it is declared last among the branches that are not \
+                 `wrong_state`"
+            ),
+            Self::DuplicateWrongStateOutcome { operation } => write!(
+                f,
+                "operation '{operation}' declares more than one `wrong_state` outcome"
+            ),
+            Self::WrongStateOnCreate { outcome } => write!(
+                f,
+                "creation outcome '{outcome}' declares `wrong_state`, but a creation has no \
+                 subject resting in a state"
+            ),
+            Self::WrongStateWithSelector { operation, outcome } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' declares `wrong_state` beside its own \
+                 `when` or `in_state`"
+            ),
+            Self::WrongStateWithStateGuard { operation } => write!(
+                f,
+                "operation '{operation}' declares both a `wrong_state` outcome and an `in_state` \
+                 outcome; a command using explicit state guards cannot also declare a wrong-state \
+                 branch, because overlapping precedence is not inferred"
+            ),
+            Self::WrongStateUnreachable { operation } => write!(
+                f,
+                "operation '{operation}' declares a `wrong_state` outcome, but its moves already \
+                 start from every declared state, so no state is a wrong one"
+            ),
+            Self::GuardStateOutsideMove {
+                operation,
+                outcome,
+                state,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' is guarded on state '{state}', which \
+                 its own move does not start from"
+            ),
+            Self::CreatesEffectOnOperation { operation, outcome } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' declares the `creates` effect, which \
+                 only a creation branch may"
+            ),
+            Self::MissingCreatesEffect { outcome, effect } => write!(
+                f,
+                "creation outcome '{outcome}' declares effect '{effect}'; a creation branch's \
+                 effect is `creates` or `none`"
+            ),
+            Self::RefusalMutatesState { command, outcome } => write!(
+                f,
+                "'{command}' outcome '{outcome}' refuses and also writes, emits, responds or \
+                 changes state; a refusal produces nothing durable"
+            ),
+            Self::UnobservableOutcome { command, outcome } => write!(
+                f,
+                "'{command}' outcome '{outcome}' declares no `emits`, no `set`, no `responds`, no \
+                 `refuses` and no effect, so nothing about taking it could be observed"
+            ),
+            Self::UnknownOutcomeState {
+                command,
+                outcome,
+                state,
+            } => write!(
+                f,
+                "'{command}' outcome '{outcome}' names state '{state}', which the lifecycle does \
+                 not declare"
+            ),
+            Self::ResponseFieldUnknown {
+                command,
+                outcome,
+                field,
+            } => write!(
+                f,
+                "'{command}' outcome '{outcome}' responds with '{field}', which the declared \
+                 response does not carry"
+            ),
+            Self::OutcomeResponseIncomplete {
+                command,
+                outcome,
+                field,
+            } => write!(
+                f,
+                "'{command}' outcome '{outcome}' leaves required response field '{field}' \
+                 undetermined"
+            ),
+            Self::IdentityFieldUnknown { field } => write!(
+                f,
+                "identity names '{field}', which is not a declared required field of the schema"
+            ),
+            Self::IdentityFieldNotAddressable { field, kind } => write!(
+                f,
+                "identity field '{field}' is a {kind} field, which has no address function"
+            ),
+            Self::RelationViaUnknown { relation, via } => write!(
+                f,
+                "relation '{relation}' is carried by '{via}', which this definition does not declare"
+            ),
+            Self::RelationViaWrongShape {
+                relation,
+                via,
+                expected,
+                found,
+            } => write!(
+                f,
+                "relation '{relation}' is carried by '{via}', which is {found}; that row carries \
+                 {expected}"
+            ),
+            Self::RelationCarrierOptionality { relation, via } => write!(
+                f,
+                "relation '{relation}' is carried by optional field '{via}'; only a \
+                 references/one carrier may be optional"
+            ),
+            Self::RelationTargetMissing {
+                entity,
+                relation,
+                target,
+            } => write!(
+                f,
+                "{entity}'s relation '{relation}' points at entity '{target}', which is not \
+                 registered"
+            ),
+            Self::RelationSecondOwner {
+                target,
+                owner,
+                other,
+            } => write!(
+                f,
+                "entity '{target}' is owned by both '{owner}' and '{other}'; one entity has at \
+                 most one owner"
+            ),
+            Self::RelationCarrierWrong {
+                entity,
+                relation,
+                via,
+                detail,
+            } => write!(
+                f,
+                "{entity}'s relation '{relation}' is carried by '{via}' on its target: {detail}"
+            ),
+            Self::RelationFieldClaimedTwice {
+                entity,
+                field,
+                relation,
+                other,
+            } => write!(
+                f,
+                "{entity}'s field '{field}' carries both relation '{relation}' and '{other}'"
+            ),
+            Self::MapKeyNotText { path } => write!(
+                f,
+                "invalid field definition at '{path}': a map declares `key`, the spelling its keys \
+                 are checked as"
+            ),
+            Self::MapValueMissing { path } => write!(
+                f,
+                "invalid field definition at '{path}': a map declares `items`, the definition its \
+                 values satisfy"
+            ),
+            Self::UnionTagCollides { path, tag } => write!(
+                f,
+                "invalid field definition at '{path}': tag '{tag}' collides with the content key a \
+                 variant would be carried under"
+            ),
+            Self::UnionVariantMissing { path } => write!(
+                f,
+                "invalid field definition at '{path}': a union declares `tag` and at least one \
+                 entry in `variants`"
+            ),
+            Self::QuantifierBindInvalid { path, bind } => write!(
+                f,
+                "invalid rule at '{path}': `as` is one non-empty path segment; found '{bind}'"
+            ),
+            Self::QuantifierOverNotCollection { path, over, detail } => write!(
+                f,
+                "invalid rule at '{path}': `in` names '{over}', which is not a collection — {detail}"
+            ),
+            Self::QuantifierBodyScope {
+                path,
+                expression,
+                detail,
+            } => write!(
+                f,
+                "invalid rule at '{path}': the body reads '{expression}', which neither the \
+                 enclosing scope nor the binder admits — {detail}"
+            ),
+            Self::ConditionTooDeep { path, depth, limit } => write!(
+                f,
+                "invalid rule at '{path}': the condition nests {depth} deep, and the limit is {limit}"
+            ),
+            Self::CompareOperandNotAddressable { path, side } => write!(
+                f,
+                "invalid rule at '{path}': the {side} operand of `compare` is a literal list or \
+                 mapping, which has no scalar spelling to compare"
+            ),
+            Self::ScaleUnnamed => write!(f, "a declared scale's name cannot be empty"),
+            Self::ScaleEmpty { scale } => {
+                write!(f, "scale '{scale}' declares no values")
+            }
         }
     }
 }
@@ -518,6 +1056,73 @@ pub enum CoreError {
         /// What is wrong.
         message: String,
     },
+
+    /// The selected branch refuses, by the name of the error it declares.
+    ///
+    /// Not a defect: the model said this is what happens. A refusal produces no
+    /// [`DecisionRecord`](crate::DecisionRecord), no revision, no state, no events and no response,
+    /// so nothing about it reaches a store. This is how a refusing branch reaches a caller of
+    /// [`create`](crate::create) or [`execute`](crate::execute), which keep their
+    /// `Result<Decision, CoreError>` return; a caller that wants the branch as a value uses
+    /// [`decide`](crate::decide) or [`decide_create`](crate::decide_create) instead.
+    ///
+    /// The error's **name** only: the source determines no error field values, so a payload is a
+    /// binding obligation rather than a kernel invention.
+    Refused {
+        /// The branch that refused.
+        outcome: String,
+        /// The declared error's name.
+        error: String,
+        /// What to say to a person, if the branch declares it.
+        message: Option<String>,
+    },
+    /// No branch of the command applies to this input.
+    NoOutcomeSelected {
+        /// The operation, or `create`.
+        operation: String,
+    },
+    /// A branch's input guard could not be answered, so the command is refused rather than handed
+    /// to a branch its author wrote for a different fact.
+    ///
+    /// Selection stops here and no later branch is tried. Reading an unanswerable guard as *not
+    /// this branch* is the collapse the three-valued rules exist to prevent.
+    OutcomeUnobservable {
+        /// The operation, or `create`.
+        operation: String,
+        /// The branch whose guard could not be answered.
+        outcome: String,
+        /// Every reference the guard reads that resolved to nothing, sorted and without repeats.
+        unresolved: Vec<String>,
+    },
+    /// The selected branch's move does not start where the instance rests, and no `wrong_state`
+    /// branch answers for that state either.
+    ///
+    /// A statement about the **specification**, which is why it is not a branch result and not a
+    /// [`Refused`](Self::Refused): no branch of the model claimed this case. The source admits the
+    /// command and answers nothing for this one (state, input) pair, so this names the four facts a
+    /// reader needs to repair it, and produces nothing durable.
+    UnspecifiedMoveSource {
+        /// The operation.
+        operation: String,
+        /// The branch the input selected.
+        outcome: String,
+        /// Where the instance rests.
+        state: String,
+        /// The states the selected branch's move does start from.
+        from: Vec<String>,
+    },
+    /// The identity field no longer mirrors the storage address.
+    ///
+    /// Checked after every branch's `set`, so a rule judging the instance judges one whose address
+    /// and identity field already agree.
+    IdentityMismatch {
+        /// The declared identity field.
+        field: String,
+        /// The storage address the instance carries.
+        id: String,
+        /// The address the identity field's value derives to, or why it has none.
+        value: String,
+    },
 }
 
 impl CoreError {
@@ -538,6 +1143,11 @@ impl CoreError {
             Self::InvariantViolation { .. } => "invariant_violation",
             Self::InvariantUnobservable { .. } => "invariant_unobservable",
             Self::Template { .. } => "template",
+            Self::Refused { .. } => "refused",
+            Self::NoOutcomeSelected { .. } => "no_outcome_selected",
+            Self::OutcomeUnobservable { .. } => "outcome_unobservable",
+            Self::UnspecifiedMoveSource { .. } => "unspecified_move_source",
+            Self::IdentityMismatch { .. } => "identity_mismatch",
         }
     }
 }
@@ -631,6 +1241,48 @@ impl fmt::Display for CoreError {
             Self::Template { expression, message } => {
                 write!(f, "cannot resolve template '{expression}': {message}")
             }
+            Self::Refused {
+                outcome,
+                error,
+                message,
+            } => match message {
+                Some(message) => {
+                    write!(f, "outcome '{outcome}' refuses with '{error}': {message}")
+                }
+                None => write!(f, "outcome '{outcome}' refuses with '{error}'"),
+            },
+            Self::NoOutcomeSelected { operation } => write!(
+                f,
+                "no outcome of '{operation}' applies to this input; the command declares no branch \
+                 that answers for it"
+            ),
+            Self::OutcomeUnobservable {
+                operation,
+                outcome,
+                unresolved,
+            } => write!(
+                f,
+                "the guard of outcome '{outcome}' of '{operation}' cannot be evaluated; {}",
+                nothing_observed_at(unresolved)
+            ),
+            Self::UnspecifiedMoveSource {
+                operation,
+                outcome,
+                state,
+                from,
+            } => write!(
+                f,
+                "the input selected outcome '{outcome}' of '{operation}', whose move starts from \
+                 [{}] and not from '{state}' where the instance rests; '{state}' is a source of \
+                 some other move of this operation, so it is not a wrong state either, and the \
+                 specification says what happens for no such pair",
+                from.join(", ")
+            ),
+            Self::IdentityMismatch { field, id, value } => write!(
+                f,
+                "identity field '{field}' addresses to {value}, but the instance is stored at \
+                 '{id}'"
+            ),
         }
     }
 }

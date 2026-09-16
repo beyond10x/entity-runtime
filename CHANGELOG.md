@@ -4,9 +4,66 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- A definition may now opt in to a second set of document rules with `semantics: service/1`. Under
+  them a creation and an operation carry **named outcomes** — ordered branches, each with its own
+  guard, effect, `set`, `emits`, declared response and optional refusal — instead of, or beside,
+  the transitions they carry today. The kernel selects the branch; a caller never names one. New
+  entry points `decide` and `decide_create` answer a refusing branch as a value
+  (`Evaluation::Refused`); `create` and `execute` keep their signatures and reach the same branch as
+  the typed `CoreError::Refused`, so every existing caller compiles and behaves as it does now.
+- `service/1` definitions may declare a **logical identity** (`identity: { field: … }`): an ordinary
+  typed schema field, kept apart from the storage address the instance is keyed by. The address is
+  derived from it by one total function, `entity_core::identity::address`, and the kernel checks
+  that the two still agree after every branch — `IdentityMismatch` where they do not. Text-like
+  identities address as `s:` followed by their own contents, so an empty or whitespace identity is
+  admitted; numeric identities share one canonical spelling, so `1`, `1.0` and `1e0` are one
+  address and `-0.0` and `0.0` are one instance; composites address as canonical JSON.
+- `service/1` definitions may declare **relations** (`owns`/`references`, `one`/`many`, and the
+  field that carries them). `EntityDefinition::validate` checks a `references` carrier;
+  `Registry::validate_all` checks an `owns` carrier on its target, an unregistered target, a second
+  owner of one entity and a second relation claiming one field. Whether the referenced instance
+  exists is still the shell's.
+- Three field kinds, `service/1` only: `map` (declared key spelling, declared value shape), `union`
+  (adjacently tagged, with the content key derived from the tag) and `binary64` (a finite double
+  held as its token, so the sign of a zero survives in the bytes).
+- Four condition operators, `service/1` only: `compare` (an exact three-valued scalar comparison
+  that answers `unknown` where `gt`/`lt` answer `false` and where `eq` compares structures),
+  `truthy`, and the quantifiers `for_all` and `for_any` over an array's elements or a map's values.
+  Two new address forms come with them: `<collection>.count` and `<array>.<n>`.
+- `scales:` declares the ordered value scales text comparison is answered inside. With none
+  declared — which is every definition today — ordering two text values is `unknown`, never `false`.
 - Add runtime-neutral asynchronous complete-record storage ports, an atomic in-memory reference
   provider, bounded history verification and an executor for exact single and named-batch retries.
   Existing synchronous store APIs and bytes remain unchanged.
+
+### Changed
+
+- A `service/1` decision's record carries `outcome`, `effect` and `response`, and its `create`
+  command carries the caller's `arguments` beside the fields they produced. Because that is a shape
+  change, such a record is framed `er.record/2` and its original request `er.request/2`; the
+  `er.batch/1` tag does not move, and each batch member carries its own record framing. A reader
+  that knows only `er.record/1` refuses an `er.record/2` document at the framing tag, by name,
+  before reading its payload. **A store holding `service/1` records must not be opened by a build
+  that predates them.**
+- Under `service/1`, a numeric predicate answers on the value the specification source would have
+  observed while the authored token is stored unchanged. In practice: `1.0000000000000000001` is
+  equal to `1` and is still stored as written; `1e-400` is falsy and is still stored as written;
+  `9007199254740993` and `9007199254740992` remain two values; and an `integer` is narrowed to the
+  source's `i64` range, so a value in the `u64` tail is now refused with its path. Equality,
+  membership and `min`/`max` answer what `compare` answers. **Nothing about `kernel/1` numbers
+  moves** — every operator and bound answers exactly what it answers today.
+- `rehydrate` refuses a `service/1` definition by name, before it reads an event: an event-only fold
+  cannot see which branch ran. Replay a `service/1` history from its decision records instead.
+- `docs/design/kernel-v0.1.md` § 6 and `AGENTS.md` invariant 8 said the evaluation order was eleven
+  steps and numbered `UnknownState` before `EntityMismatch`. The code has always checked the type
+  first and the order has always been twelve steps; both documents are corrected against the code,
+  and a test now reads them so neither can drift back. No behaviour changed.
+
+A `kernel/1` definition is untouched by all of the above: it serialises to the bytes it serialised
+to before, gets the evaluation it got before refusal variant for refusal variant, and is refused at
+registration if it carries any key, field kind or operator only `service/1` admits.
 
 ## [0.18.1] — 2026-09-10
 

@@ -1842,6 +1842,28 @@ fn refusal(error: &CoreError) -> Value {
             expression,
             message,
         } => json!({ "expression": expression, "reason": message }),
+        CoreError::Refused {
+            outcome,
+            error,
+            message,
+        } => json!({ "outcome": outcome, "error": error, "reason": message }),
+        CoreError::NoOutcomeSelected { operation } => json!({ "operation": operation }),
+        CoreError::OutcomeUnobservable {
+            operation,
+            outcome,
+            unresolved,
+        } => json!({ "operation": operation, "outcome": outcome, "unresolved": unresolved }),
+        CoreError::UnspecifiedMoveSource {
+            operation,
+            outcome,
+            state,
+            from,
+        } => json!({
+            "operation": operation, "outcome": outcome, "state": state, "from": from
+        }),
+        CoreError::IdentityMismatch { field, id, value } => {
+            json!({ "field": field, "id": id, "address": value })
+        }
         // Every defect, not the first: a caller fixing a definition from this output should not
         // have to run the command once per fault.
         CoreError::Definition(errors) => json!({

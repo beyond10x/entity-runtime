@@ -8,7 +8,7 @@ mod verify;
 
 pub use encoding::{
     batch_comparison_bytes, canonical_domain_bytes, member_id, original_request_comparison_bytes,
-    record_comparison_bytes,
+    read_record_in_domain, record_comparison_bytes, record_domain, record_framing, request_domain,
 };
 pub use memory::{AppendScript, MemoryRecordedStore};
 pub use ports::{

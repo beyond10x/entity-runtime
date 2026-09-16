@@ -131,11 +131,24 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
             .and_then(|definition| ValidatedDefinition::new(definition).map_err(CoreError::from))?;
         let decision =
             match &record.command {
-                DecisionCommand::Create { fields } if instance.is_none() => create(
-                    &definition,
-                    record.id.clone(),
-                    serde_json::Value::Object(fields.clone()),
-                )?,
+                // A `service/1` creation re-selects its branch from the **arguments** the caller
+                // sent; a `kernel/1` creation's input is its fields and it records no arguments.
+                // The two are redundant by construction, and the byte comparison below is what
+                // refuses a record whose fields are not what its arguments produce.
+                DecisionCommand::Create { fields, arguments } if instance.is_none() => {
+                    let input = if definition.semantics.is_service_1()
+                        && !definition.create.outcomes.is_empty()
+                    {
+                        arguments.clone()
+                    } else {
+                        fields.clone()
+                    };
+                    create(
+                        &definition,
+                        record.id.clone(),
+                        serde_json::Value::Object(input),
+                    )?
+                }
                 DecisionCommand::Create { .. } => {
                     return Err(refuse(index, "creation may only be the first record"))
                 }
@@ -193,6 +206,19 @@ pub fn rehydrate(
             "events", detail,
         )]))
     };
+
+    // Refused by name, before any event is read. Event-only folding cannot see which branch ran —
+    // a `service/1` creation event's `args` are the caller's arguments and not the fields, so the
+    // `changed == args` check below was written for a shape this definition does not have — and a
+    // `service/1` definition has no legacy history to fold in the first place.
+    if definition.semantics.is_service_1() {
+        return refuse(format!(
+            "`{}` is read under `service/1`, whose decisions name the branch that produced them; \
+             an event-only fold cannot see which branch ran, so a `service/1` history is replayed \
+             from its decision records rather than rehydrated from its events",
+            definition.entity
+        ));
+    }
 
     let Some(first) = events.first() else {
         return refuse(
@@ -464,6 +490,7 @@ pub fn rehydrate(
             definition,
             id: &first.id,
             args: &empty,
+            arguments_schema: None,
             old_fields: &empty,
             new_fields: &instance.fields,
             from_state: first.from_state.as_deref(),
@@ -490,6 +517,7 @@ pub fn rehydrate(
             definition,
             id: &first.id,
             args: payload_args,
+            arguments_schema: None,
             old_fields: payload_old,
             new_fields: &instance.fields,
             from_state: first.from_state.as_deref(),
@@ -606,6 +634,7 @@ fn operations_that_would_have_produced<'a>(
             definition,
             id: &first.id,
             args: &first.args,
+            arguments_schema: Some(&operation.arguments),
             old_fields: &before.fields,
             new_fields: &before.fields,
             from_state: Some(from),
@@ -648,6 +677,7 @@ fn operations_that_would_have_produced<'a>(
             definition,
             id: &first.id,
             args: &first.args,
+            arguments_schema: Some(&operation.arguments),
             old_fields: &before.fields,
             new_fields: &written,
             from_state: Some(from),

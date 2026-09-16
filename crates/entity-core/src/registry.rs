@@ -132,11 +132,120 @@ impl Registry {
                 }
             }
         }
+        defects.extend(self.declared_relation_defects());
         if defects.is_empty() {
             Ok(())
         } else {
             Err(DefinitionErrors::new(defects))
         }
+    }
+
+    /// The half of a declared relation only the whole registry can answer.
+    ///
+    /// For an `owns` relation the carrying document is **not** the one the author is reading — the
+    /// carrier field lives on the target, "because that is where an owner's identity lives on the
+    /// thing it owns" — so the check belongs here rather than on the declaring definition. The
+    /// second claimant of a field and the second owner of an entity are reported in name order, so
+    /// one registry assembled from ten files reports the same pair every time.
+    fn declared_relation_defects(&self) -> Vec<DefinitionError> {
+        let mut defects = Vec::new();
+        // Which definition claims to own each entity, and which relation of it first did.
+        let mut owners: BTreeMap<&str, (&str, &str)> = BTreeMap::new();
+        // Which relation claims each (entity, field) carrier.
+        let mut carriers: BTreeMap<(&str, &str), (&str, &str)> = BTreeMap::new();
+
+        for definition in self.iter() {
+            for (name, relation) in &definition.relations {
+                let Some(target) = self.latest(&relation.target) else {
+                    defects.push(DefinitionError::RelationTargetMissing {
+                        entity: definition.entity.clone(),
+                        relation: name.clone(),
+                        target: relation.target.clone(),
+                    });
+                    continue;
+                };
+                if relation.kind == crate::RelationKind::References {
+                    // The declaring definition already checked the carrier's shape; here only its
+                    // exclusive claim on the field is in question.
+                    claim(
+                        &mut carriers,
+                        &mut defects,
+                        &definition.entity,
+                        &relation.via,
+                        name,
+                    );
+                    continue;
+                }
+
+                if let Some((owner, first)) = owners.get(target.entity.as_str()) {
+                    defects.push(DefinitionError::RelationSecondOwner {
+                        target: target.entity.clone(),
+                        owner: (*owner).to_owned(),
+                        other: definition.entity.clone(),
+                    });
+                    let _ = first;
+                } else {
+                    owners.insert(&target.entity, (&definition.entity, name));
+                }
+                claim(
+                    &mut carriers,
+                    &mut defects,
+                    &target.entity,
+                    &relation.via,
+                    name,
+                );
+
+                // The carrier lives on the target, is typed as the **source's** identity kind, and
+                // is required whatever the cardinality says: `cardinality` says how many of the
+                // target there are and says nothing about that field.
+                let Some(field) = target.schema.fields.get(&relation.via) else {
+                    defects.push(DefinitionError::RelationCarrierWrong {
+                        entity: definition.entity.clone(),
+                        relation: name.clone(),
+                        via: relation.via.clone(),
+                        detail: format!("'{}' declares no such field", target.entity),
+                    });
+                    continue;
+                };
+                if !field.required {
+                    defects.push(DefinitionError::RelationCarrierOptionality {
+                        relation: name.clone(),
+                        via: relation.via.clone(),
+                    });
+                }
+                if field.kind == crate::FieldKind::Array {
+                    defects.push(DefinitionError::RelationCarrierWrong {
+                        entity: definition.entity.clone(),
+                        relation: name.clone(),
+                        via: relation.via.clone(),
+                        detail: "it is an array field, and an owner's identity is one value \
+                                 whether the owner has one of these or a thousand"
+                            .to_owned(),
+                    });
+                }
+                if let Some(identity) = &definition.identity {
+                    if let Some(declared) = definition.schema.fields.get(identity.field.as_str()) {
+                        if declared.kind != field.kind {
+                            defects.push(DefinitionError::RelationCarrierWrong {
+                                entity: definition.entity.clone(),
+                                relation: name.clone(),
+                                via: relation.via.clone(),
+                                detail: format!(
+                                    "it is a {} field, and the owner's identity is a {} one",
+                                    field.kind, declared.kind
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        defects
+    }
+
+    /// The highest registered version of `entity`, which is the document a relation target names.
+    fn latest(&self, entity: &str) -> Option<&ValidatedDefinition> {
+        self.definitions.get(entity)?.values().next_back()
     }
 
     /// The definition registered under `(entity, version)`, if any.
@@ -165,5 +274,26 @@ impl Registry {
     /// Whether no definition is registered.
     pub fn is_empty(&self) -> bool {
         self.definitions.values().all(BTreeMap::is_empty)
+    }
+}
+
+/// Records one relation's claim on one field, reporting the second claimant by name.
+fn claim<'a>(
+    carriers: &mut BTreeMap<(&'a str, &'a str), (&'a str, &'a str)>,
+    defects: &mut Vec<DefinitionError>,
+    entity: &'a str,
+    field: &'a str,
+    relation: &'a str,
+) {
+    match carriers.get(&(entity, field)) {
+        Some((_, first)) => defects.push(DefinitionError::RelationFieldClaimedTwice {
+            entity: entity.to_owned(),
+            field: field.to_owned(),
+            relation: (*first).to_owned(),
+            other: relation.to_owned(),
+        }),
+        None => {
+            carriers.insert((entity, field), (entity, relation));
+        }
     }
 }

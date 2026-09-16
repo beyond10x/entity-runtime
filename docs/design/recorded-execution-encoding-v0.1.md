@@ -38,7 +38,10 @@ The global index treats imported and newly committed IDs as the same ID namespac
 
 ## Complete record and request values
 
-RecordValue is a two-element array ["er.record/1", TaggedRecord]. TaggedRecord is one of:
+RecordValue is a two-element array [RecordDomain, TaggedRecord]. RecordDomain is the framing the
+record is spelled in: "er.record/1" for a kernel/1 decision and for every observation, and
+"er.record/2" for a service/1 decision — a decision whose saved definition snapshot declares
+semantics: service/1. TaggedRecord is one of:
 
 - {"kind":"decision","commit": COMPLETE_RecordedCommit}
 - {"kind":"observation","observation": COMPLETE_RecordedObservation}
@@ -48,15 +51,40 @@ definition snapshot, commands/results/changes/events and null provenance. Record
 are C(RecordValue). Expectation is not added to those existing values.
 
 Recording is the object with exactly record_id, recorded_at, actor, correlation and causation.
-RequestValue is ["er.request/1", Request], with Request exactly one of these shapes:
+RequestValue is [RequestDomain, Request]. RequestDomain moves with RecordDomain and by the same
+rule: "er.request/2" where the record is er.record/2, and "er.request/1" otherwise. Request is
+exactly one of these shapes:
 
 - {"kind":"create","subject":[entity,id],"definition_version":version,"fields":normalized_fields,"recording":Recording}
+- {"kind":"create","subject":[entity,id],"definition_version":version,"arguments":normalized_arguments,"recording":Recording}
 - {"kind":"execute","subject":[entity,id],"expected_revision":predecessor,"operation":operation,"arguments":normalized_arguments,"recording":Recording}
 - {"kind":"observation","observation":COMPLETE_RecordedObservation}
+
+The first create shape is er.request/1's and is unchanged. The second is er.request/2's: a
+service/1 creation's original request is the caller's **arguments**, not the fields its selected
+branch produced. Reconstructing it as the fields would hand a retry a request the caller never
+sent, which is what these bytes exist to prevent. A service/1 execute is the same three keys the
+er.request/1 execute shape has, in the er.request/2 framing.
 
 Normalize fields/arguments only through the established kernel validation/default behavior under
 the original saved definition. Do not erase a numeric representation distinction just to make a
 retry compare equal. Request comparison bytes are C(RequestValue).
+
+## Why a new domain, and what a reader that does not know it does
+
+A service/1 decision's record carries keys er.record/1 has never carried — outcome, effect,
+response, and a create command with an arguments key — and RecordValue is defined as the existing
+Rust type's serialized fields in full. That is a shape change, so it takes a new version domain,
+which is this document's own governing rule.
+
+The framing tag is the first element of the array, so a reader that does not know a framing refuses
+the document **there**, by the name of the framing it found, without parsing the second element at
+all. `entity_store::asynchronous::record_framing` reads the tag on its own and
+`read_record_in_domain` is that refusal.
+
+A store holding service/1 records must not be opened by a build predating them. Nothing rewrites an
+existing stored envelope: a kernel/1 record, a kernel/1 request and every observation keep the exact
+bytes they had, and a kernel/1 definition cannot declare an identity at all, so no stored id moves.
 
 ## Batch value
 
@@ -68,6 +96,11 @@ An observation uses its exact observed revision. BatchValue is:
 The member array preserves submitted order. RecordValue is nested as a value, not JSON text or
 a digest. Batch comparison bytes are C(BatchValue). SingleRecord requires exactly one member
 whose record ID matches the key. The explicit empty-batch rule produces no stored comparison.
+
+**The batch tag does not move.** Each member carries its own RecordDomain, so a reader that walks a
+batch meets er.record/2 at the member and refuses there, by the name of the framing it does not
+know. Moving the batch tag as well would put two tags on one refusal and would rewrite the
+comparison bytes of a batch whose members are all /1.
 
 ## One complete observation vector
 
@@ -99,3 +132,10 @@ Also pin i64::MAX and u64::MAX JSON spellings while independently checking their
 domains: a revision above i64::MAX refuses, and physical allocation above u64::MAX refuses without
 publishing a prefix. Changing the framing/tag, derived ID/components, one array member, numeric
 spelling or recording field must trigger the corresponding conflict or integrity refusal.
+
+Pin the two framings separately, as four claims and not one: a kernel/1 decision still frames as
+er.record/1 and er.request/1; a service/1 decision frames as er.record/2 and its request carries
+arguments and no fields key; a reader that knows only er.record/1 refuses an er.record/2 document
+by naming both framings, including one whose payload is not readable JSON; and a batch of kernel/1
+members keeps its er.batch/1 bytes while a service/1 member carries er.record/2 inside the same
+er.batch/1 tag. `crates/entity-store/tests/service_framing.rs` is those four.

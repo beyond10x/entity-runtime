@@ -1,0 +1,5 @@
+format: ess/1
+system: entity
+version: v1
+domains:
+  - entity.service
