@@ -7,15 +7,16 @@ use entity_core::{Registry, Runtime};
 use entity_eventlog::{
     AsyncBindingProvisioner, AsyncImportedAnchorWriter, Authority, ErRecordedProjector,
     EventlogBackend, EventlogBindingProvisioner, EventlogOperationContext, EventlogRecordedStore,
+    projection_specs,
 };
 use entity_executor::{BatchAction, CreateRequest, ExecuteRequest, Executor};
 use entity_store::{
     RecordedObservation, Recording,
     asynchronous::{
-        AppendOutcome, AsyncRecordedReader, AsyncStateReader, BatchKey, CommitReceipt,
-        HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
-        LegacyEvidence, LegacyOrderDeclaration, RecordLookup, RecordedEntry, Subject,
-        SubjectHistory,
+        AppendOutcome, AsyncRecordedReader, AsyncStateReader, AsyncStoreError, BatchKey,
+        CommitReceipt, HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor,
+        LegacyCompleteness, LegacyEvidence, LegacyOrderDeclaration, RecordLookup, RecordedEntry,
+        Subject, SubjectHistory,
     },
 };
 use eventlog_core::{CaptureLimits, EventStore, InlineProjectionAdmin, TenantId};
@@ -27,8 +28,14 @@ use std::num::NonZeroU16;
 
 #[cfg(all(feature = "sync-bridge", feature = "sqlite"))]
 use entity_eventlog::sync::{
-    BridgeConfig, BridgeRejection, CallWait, EventlogRecordedStoreOwner, RecordedEventlogBridge,
-    ShutdownMode, ShutdownOutcome, SyncReadError,
+    BridgeConfig, BridgeRejection, BridgeStartError, CallWait, EventlogRecordedStoreOwner,
+    RecordedEventlogBridge, ShutdownMode, ShutdownOutcome, SyncReadError,
+};
+
+#[cfg(all(feature = "sync-bridge", feature = "sqlite"))]
+use eventlog_core::{
+    BoxFuture, ConsistentTenantCapture, EventLogError, ProjectionSpec, ProjectionStore, Projector,
+    RecordedEvent,
 };
 
 const LIMITS: CaptureLimits = CaptureLimits {
@@ -37,6 +44,33 @@ const LIMITS: CaptureLimits = CaptureLimits {
     max_projection_rows: 512,
     max_payload_bytes: 4 * 1024 * 1024,
 };
+
+#[cfg(all(feature = "sync-bridge", feature = "sqlite"))]
+struct DriftedErProjector;
+
+#[cfg(all(feature = "sync-bridge", feature = "sqlite"))]
+impl Projector for DriftedErProjector {
+    fn name(&self) -> &'static str {
+        "er_recorded_v1"
+    }
+
+    fn projections(&self) -> &'static [ProjectionSpec] {
+        static SPECS: std::sync::OnceLock<Vec<ProjectionSpec>> = std::sync::OnceLock::new();
+        SPECS.get_or_init(|| {
+            let mut specs = projection_specs().to_vec();
+            specs[0].indexed = &["drifted_field"];
+            specs
+        })
+    }
+
+    fn apply<'a>(
+        &'a self,
+        _: &'a RecordedEvent,
+        _: &'a mut dyn ProjectionStore,
+    ) -> BoxFuture<'a, Result<(), EventLogError>> {
+        Box::pin(async { Ok(()) })
+    }
+}
 
 fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
     tokio::runtime::Builder::new_current_thread()
@@ -159,6 +193,7 @@ where
         .expect("binding provisioned");
     assert!(!first.replayed);
     assert_eq!(first.authority, authority);
+    let binding_physical = first.physical.clone();
     let replay = provisioner
         .provision_binding(authority.clone(), context(label))
         .await
@@ -360,6 +395,21 @@ where
             .len(),
         4
     );
+    let recovered_binding = provisioner
+        .recover_binding(authority.clone())
+        .await
+        .expect("binding recovery validates every later record and imported anchor")
+        .expect("binding remains present");
+    assert_eq!(recovered_binding.physical, binding_physical);
+    let mut requested = authority.clone();
+    requested.logical_scope.push_str("-after-complete-history");
+    assert_eq!(
+        provisioner.recover_binding(requested.clone()).await,
+        Err(entity_eventlog::ProvisionBindingFailure::Conflict {
+            requested,
+            found: authority,
+        })
+    );
 }
 
 #[cfg(feature = "file")]
@@ -493,6 +543,153 @@ fn synchronous_bridge_owns_reopened_provider_and_reports_retirement() {
                 CallWait::Forever
             ),
             Ok(AppendOutcome::Empty)
+        ));
+    });
+}
+
+#[cfg(all(feature = "sync-bridge", feature = "sqlite"))]
+async fn sqlite_authority(
+    path: &str,
+    prefix: &str,
+    label: &str,
+) -> (Arc<eventlog_sqlite::SqliteEventStore>, Authority) {
+    let backend = Arc::new(
+        eventlog_sqlite::SqliteEventStore::open(path, prefix)
+            .await
+            .expect("SQLite provider"),
+    );
+    let tenant = TenantId::new(format!("adapter-bridge-admission-{label}")).expect("tenant");
+    let stream_identity = backend
+        .stream_identity(&tenant)
+        .await
+        .expect("stream identity");
+    (
+        backend,
+        Authority {
+            logical_scope: format!("bridge-admission-{label}"),
+            tenant: tenant.as_str().to_owned(),
+            stream_identity,
+        },
+    )
+}
+
+#[cfg(all(feature = "sync-bridge", feature = "sqlite"))]
+#[test]
+fn synchronous_bridge_startup_refuses_missing_drifted_and_dirty_projection_admission() {
+    block_on(async {
+        let directory = tempfile::tempdir().expect("temporary directory");
+
+        let missing_path = directory.path().join("bridge-missing.sqlite");
+        let missing_path = missing_path.to_str().expect("UTF-8 path").to_owned();
+        let missing_prefix = "adapter_bridge_missing";
+        let (missing, authority) = sqlite_authority(&missing_path, missing_prefix, "missing").await;
+        drop(missing);
+        assert!(matches!(
+            RecordedEventlogBridge::start(
+                Registry::new(),
+                EventlogRecordedStoreOwner::Sqlite {
+                    path: missing_path.clone(),
+                    prefix: missing_prefix.into(),
+                    authority,
+                    limits: LIMITS,
+                },
+                BridgeConfig {
+                    queue_capacity: NonZeroU16::new(1).expect("capacity"),
+                },
+            ),
+            Err(BridgeStartError::Open(AsyncStoreError::Backend(_)))
+        ));
+        let missing = eventlog_sqlite::SqliteEventStore::open(&missing_path, missing_prefix)
+            .await
+            .expect("reopen missing provider");
+        assert!(!missing.is_inline("er_recorded_v1").await);
+
+        let drifted_path = directory.path().join("bridge-drifted.sqlite");
+        let drifted_path = drifted_path.to_str().expect("UTF-8 path").to_owned();
+        let drifted_prefix = "adapter_bridge_drifted";
+        let (drifted, authority) = sqlite_authority(&drifted_path, drifted_prefix, "drifted").await;
+        drifted
+            .create_projections(Arc::new(DriftedErProjector))
+            .await
+            .expect("drifted projection setup");
+        drop(drifted);
+        assert!(matches!(
+            RecordedEventlogBridge::start(
+                Registry::new(),
+                EventlogRecordedStoreOwner::Sqlite {
+                    path: drifted_path.clone(),
+                    prefix: drifted_prefix.into(),
+                    authority,
+                    limits: LIMITS,
+                },
+                BridgeConfig {
+                    queue_capacity: NonZeroU16::new(1).expect("capacity"),
+                },
+            ),
+            Err(BridgeStartError::Open(AsyncStoreError::Backend(_)))
+        ));
+        let drifted = eventlog_sqlite::SqliteEventStore::open(&drifted_path, drifted_prefix)
+            .await
+            .expect("reopen drifted provider");
+        assert!(!drifted.is_inline("er_recorded_v1").await);
+
+        let dirty_path = directory.path().join("bridge-dirty.sqlite");
+        let dirty_path = dirty_path.to_str().expect("UTF-8 path").to_owned();
+        let dirty_prefix = "adapter_bridge_dirty";
+        let (dirty, authority) = sqlite_authority(&dirty_path, dirty_prefix, "dirty").await;
+        let projector = Arc::new(ErRecordedProjector::new());
+        dirty
+            .create_projections(projector.clone())
+            .await
+            .expect("projection setup");
+        dirty
+            .attach_inline_existing(projector)
+            .await
+            .expect("projection attachment");
+        let erased: Arc<dyn EventlogBackend> = dirty.clone();
+        EventlogBindingProvisioner::new(erased, LIMITS)
+            .provision_binding(authority.clone(), context("dirty-binding"))
+            .await
+            .expect("binding provisioned");
+        let tenant = TenantId::new(authority.tenant.clone()).expect("tenant");
+        let captured = dirty
+            .capture_tenant(&tenant, projection_specs(), LIMITS)
+            .await
+            .expect("capture before redaction");
+        let binding_event = captured.events.first().expect("binding event");
+        let stream = binding_event.stream().expect("binding stream");
+        dirty
+            .redact(
+                &stream,
+                binding_event.version,
+                "controlled projection dirtying",
+            )
+            .await
+            .expect("redaction dirtied attached projections");
+        assert!(
+            dirty
+                .capture_tenant(&tenant, projection_specs(), LIMITS)
+                .await
+                .is_err(),
+            "dirty/redacted authority is no longer capturable"
+        );
+        drop(dirty);
+        assert!(matches!(
+            RecordedEventlogBridge::start(
+                Registry::new(),
+                EventlogRecordedStoreOwner::Sqlite {
+                    path: dirty_path,
+                    prefix: dirty_prefix.into(),
+                    authority,
+                    limits: LIMITS,
+                },
+                BridgeConfig {
+                    queue_capacity: NonZeroU16::new(1).expect("capacity"),
+                },
+            ),
+            Err(BridgeStartError::Open(
+                AsyncStoreError::ProviderIntegrity { .. }
+            ))
         ));
     });
 }
@@ -650,5 +847,77 @@ fn postgres_provider_provisions_replays_opens_and_rebuilds_when_assigned() {
         );
         exercise_provider(backend.clone(), "postgres").await;
         backend.shutdown().await.expect("PostgreSQL shutdown");
+    });
+}
+
+#[cfg(all(feature = "sync-bridge", feature = "postgres"))]
+#[test]
+fn postgres_bridge_awaits_worker_owned_provider_retirement_when_assigned() {
+    block_on(async {
+        let Ok(url) = std::env::var("ENTITY_POSTGRES_URL") else {
+            eprintln!("PostgreSQL bridge test skipped: ENTITY_POSTGRES_URL is not assigned");
+            return;
+        };
+        let suffix: String = OffsetDateTime::now_utc()
+            .unix_timestamp_nanos()
+            .unsigned_abs()
+            .to_string()
+            .bytes()
+            .map(|digit| char::from(b'a' + digit - b'0'))
+            .collect();
+        let prefix = format!("eb_{suffix}");
+        let backend = Arc::new(
+            eventlog_postgres::PostgresEventStore::connect_local(
+                &url,
+                &prefix,
+                eventlog_postgres::PoolOptions::default(),
+            )
+            .await
+            .expect("PostgreSQL setup provider"),
+        );
+        let tenant =
+            TenantId::new(format!("adapter-bridge-postgres-{suffix}")).expect("valid tenant");
+        let stream_identity = backend
+            .stream_identity(&tenant)
+            .await
+            .expect("tenant identity");
+        let projector = Arc::new(ErRecordedProjector::new());
+        backend
+            .create_projections(projector.clone())
+            .await
+            .expect("projection admission");
+        backend
+            .attach_inline_existing(projector)
+            .await
+            .expect("projection attachment");
+        let authority = Authority {
+            logical_scope: format!("bridge-postgres-{suffix}"),
+            tenant: tenant.as_str().to_owned(),
+            stream_identity,
+        };
+        let erased: Arc<dyn EventlogBackend> = backend.clone();
+        EventlogBindingProvisioner::new(erased, LIMITS)
+            .provision_binding(authority.clone(), context("bridge-postgres"))
+            .await
+            .expect("binding provisioned");
+        backend.shutdown().await.expect("setup provider shutdown");
+
+        let mut bridge = RecordedEventlogBridge::start(
+            Registry::new(),
+            EventlogRecordedStoreOwner::PostgresLocal {
+                url,
+                prefix,
+                authority,
+                limits: LIMITS,
+            },
+            BridgeConfig {
+                queue_capacity: NonZeroU16::new(1).expect("capacity"),
+            },
+        )
+        .expect("PostgreSQL bridge started");
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
     });
 }

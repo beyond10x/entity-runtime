@@ -18,8 +18,8 @@ use entity_store::{
     RecordedObservation,
     asynchronous::{
         AppendOutcome, AppendRequest, AsyncRecordedReader, AsyncRecordedWriter, AsyncStateReader,
-        AsyncStoreError, BatchKey, CompleteStoreSnapshot, RecordLookup, StoredBatch, Subject,
-        SubjectHistory, WriteFailure,
+        AsyncStoreError, BatchKey, BoxFuture, CompleteStoreSnapshot, RecordLookup, StoredBatch,
+        Subject, SubjectHistory, WriteFailure,
     },
 };
 use eventlog_core::InlineProjectionAdmin;
@@ -224,6 +224,164 @@ impl OwnedBackend {
     }
 }
 
+trait WorkerDriver: Send {
+    fn load<'a>(
+        &'a self,
+        subject: &'a Subject,
+    ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>>;
+    fn lookup_record<'a>(
+        &'a self,
+        id: &'a str,
+    ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>>;
+    fn lookup_batch<'a>(
+        &'a self,
+        key: &'a BatchKey,
+    ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>>;
+    fn history<'a>(
+        &'a self,
+        subject: &'a Subject,
+    ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>>;
+    fn complete_snapshot<'a>(
+        &'a self,
+        scope: &'a str,
+    ) -> BoxFuture<'a, Result<CompleteStoreSnapshot, AsyncStoreError>>;
+    fn append<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        request: AppendRequest,
+    ) -> BoxFuture<'a, Result<AppendOutcome, WriteFailure>>;
+    fn create<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        request: CreateRequest,
+    ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>>;
+    fn execute<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        request: ExecuteRequest,
+    ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>>;
+    fn observe<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        request: RecordedObservation,
+    ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>>;
+    fn batch<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        key: BatchKey,
+        actions: Vec<BatchAction>,
+    ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>>;
+    fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>>;
+}
+
+struct ProductionDriver {
+    registry: Registry,
+    store: EventlogRecordedStore,
+    backend: OwnedBackend,
+}
+
+impl WorkerDriver for ProductionDriver {
+    fn load<'a>(
+        &'a self,
+        subject: &'a Subject,
+    ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>> {
+        self.store.load(subject)
+    }
+
+    fn lookup_record<'a>(
+        &'a self,
+        id: &'a str,
+    ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>> {
+        self.store.lookup_record(id)
+    }
+
+    fn lookup_batch<'a>(
+        &'a self,
+        key: &'a BatchKey,
+    ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>> {
+        self.store.lookup_batch(key)
+    }
+
+    fn history<'a>(
+        &'a self,
+        subject: &'a Subject,
+    ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>> {
+        self.store.history(subject)
+    }
+
+    fn complete_snapshot<'a>(
+        &'a self,
+        scope: &'a str,
+    ) -> BoxFuture<'a, Result<CompleteStoreSnapshot, AsyncStoreError>> {
+        self.store.complete_snapshot(scope)
+    }
+
+    fn append<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        request: AppendRequest,
+    ) -> BoxFuture<'a, Result<AppendOutcome, WriteFailure>> {
+        Box::pin(async move { self.store.operation(context).append(request).await })
+    }
+
+    fn create<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        request: CreateRequest,
+    ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
+        Box::pin(async move {
+            let operation = self.store.operation(context);
+            Executor::new(&self.registry, &operation)
+                .create(request)
+                .await
+        })
+    }
+
+    fn execute<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        request: ExecuteRequest,
+    ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
+        Box::pin(async move {
+            let operation = self.store.operation(context);
+            Executor::new(&self.registry, &operation)
+                .execute(request)
+                .await
+        })
+    }
+
+    fn observe<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        request: RecordedObservation,
+    ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
+        Box::pin(async move {
+            let operation = self.store.operation(context);
+            Executor::new(&self.registry, &operation)
+                .observe(request)
+                .await
+        })
+    }
+
+    fn batch<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        key: BatchKey,
+        actions: Vec<BatchAction>,
+    ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
+        Box::pin(async move {
+            let operation = self.store.operation(context);
+            Executor::new(&self.registry, &operation)
+                .batch(key, actions)
+                .await
+        })
+    }
+
+    fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>> {
+        Box::pin(async move { self.backend.retire().await })
+    }
+}
+
 /// Startup refusal before a usable owner is returned.
 #[derive(Debug)]
 pub enum BridgeStartError {
@@ -364,6 +522,10 @@ struct Shared {
     dispatched: Mutex<Option<BridgeOperationIdentity>>,
     finished: (Mutex<bool>, Condvar),
     provider: Mutex<Option<Result<(), AsyncStoreError>>>,
+    #[cfg(test)]
+    before_dispatch: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
+    #[cfg(test)]
+    after_dispatch: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
 }
 
 struct Cell<T> {
@@ -501,6 +663,60 @@ impl Request {
             Self::Wake => {}
         }
     }
+
+    fn cancel_stopped(self) {
+        let rejection = BridgeRejection::WorkerStoppedBeforeDispatch;
+        match self {
+            Self::Load(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
+            Self::LookupRecord(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
+            Self::LookupBatch(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
+            Self::History(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
+            Self::Snapshot(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
+            Self::Append(_, _, _, c) => c.complete(Err(SyncWriteError::Rejected(rejection))),
+            Self::Create(_, _, _, c) | Self::Execute(_, _, _, c) | Self::Observe(_, _, _, c) => {
+                c.complete(Err(SyncExecutionError::Rejected(rejection)))
+            }
+            Self::Batch(_, _, _, c) => c.complete(Err(SyncExecutionError::Rejected(rejection))),
+            Self::Wake => {}
+        }
+    }
+
+    #[cfg(test)]
+    fn cancel_after_dispatch_stopped(self) {
+        match self {
+            Self::Load(_, c) => c.complete(Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerStopped,
+            ))),
+            Self::LookupRecord(_, c) => c.complete(Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerStopped,
+            ))),
+            Self::LookupBatch(_, c) => c.complete(Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerStopped,
+            ))),
+            Self::History(_, c) => c.complete(Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerStopped,
+            ))),
+            Self::Snapshot(_, c) => c.complete(Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerStopped,
+            ))),
+            Self::Append(_, _, key, c) => {
+                c.complete(Err(SyncWriteError::Write(WriteFailure::Uncertain {
+                    key,
+                    cause: "sync bridge worker stopped after dispatch".into(),
+                })))
+            }
+            Self::Create(_, _, key, c)
+            | Self::Execute(_, _, key, c)
+            | Self::Observe(_, _, key, c)
+            | Self::Batch(_, key, _, c) => c.complete(Err(SyncExecutionError::Execution(
+                ExecutionError::Write(WriteFailure::Uncertain {
+                    key,
+                    cause: "sync bridge worker stopped after dispatch".into(),
+                }),
+            ))),
+            Self::Wake => {}
+        }
+    }
 }
 
 /// Non-clone bridge owner.
@@ -526,6 +742,52 @@ impl RecordedEventlogBridge {
         owner: EventlogRecordedStoreOwner,
         config: BridgeConfig,
     ) -> Result<Self, BridgeStartError> {
+        Self::start_with(config, move |runtime| {
+            let (store, backend) = runtime
+                .block_on(owner.open())
+                .map_err(BridgeStartError::Open)?;
+            Ok(Box::new(ProductionDriver {
+                registry,
+                store,
+                backend,
+            }))
+        })
+    }
+
+    fn start_with(
+        config: BridgeConfig,
+        startup: impl FnOnce(
+            &tokio::runtime::Runtime,
+        ) -> Result<Box<dyn WorkerDriver>, BridgeStartError>
+        + Send
+        + 'static,
+    ) -> Result<Self, BridgeStartError> {
+        Self::start_with_parts(
+            config,
+            startup,
+            || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+            },
+            |work| {
+                std::thread::Builder::new()
+                    .name("entity-eventlog".into())
+                    .spawn(work)
+            },
+        )
+    }
+
+    fn start_with_parts(
+        config: BridgeConfig,
+        startup: impl FnOnce(
+            &tokio::runtime::Runtime,
+        ) -> Result<Box<dyn WorkerDriver>, BridgeStartError>
+        + Send
+        + 'static,
+        runtime_builder: impl FnOnce() -> std::io::Result<tokio::runtime::Runtime> + Send + 'static,
+        spawn: impl FnOnce(Box<dyn FnOnce() + Send>) -> std::io::Result<std::thread::JoinHandle<()>>,
+    ) -> Result<Self, BridgeStartError> {
         let (sender, receiver) = sync_channel(usize::from(config.queue_capacity.get()));
         let shared = Arc::new(Shared {
             lifecycle: AtomicU8::new(RUNNING),
@@ -533,17 +795,19 @@ impl RecordedEventlogBridge {
             dispatched: Mutex::new(None),
             finished: (Mutex::new(false), Condvar::new()),
             provider: Mutex::new(None),
+            #[cfg(test)]
+            before_dispatch: Mutex::new(std::collections::VecDeque::new()),
+            #[cfg(test)]
+            after_dispatch: Mutex::new(std::collections::VecDeque::new()),
         });
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         let worker_shared = shared.clone();
-        let join = std::thread::Builder::new()
-            .name("entity-eventlog".into())
-            .spawn(move || {
-                contain_worker(worker_shared.clone(), || {
-                    worker_main(registry, owner, receiver, worker_shared, ready_tx);
-                });
-            })
-            .map_err(BridgeStartError::ThreadSpawn)?;
+        let work = Box::new(move || {
+            contain_worker(worker_shared.clone(), || {
+                worker_main(startup, runtime_builder, receiver, worker_shared, ready_tx);
+            });
+        });
+        let join = spawn(work).map_err(BridgeStartError::ThreadSpawn)?;
         match ready_rx.recv() {
             Ok(Ok(worker_id)) => Ok(Self {
                 sender,
@@ -652,29 +916,16 @@ impl RecordedEventlogBridge {
     where
         E: LocalFailure,
     {
-        if std::thread::current().id() == self.worker_id {
-            return Err(E::rejected(BridgeRejection::Reentrant));
-        }
-        if matches!(wait,CallWait::Until(deadline) if deadline<=Instant::now()) {
-            return Err(E::rejected(BridgeRejection::DeadlineBeforeAcceptance));
-        }
-        if self.shared.lifecycle.load(Ordering::Acquire) != RUNNING {
-            return Err(E::rejected(BridgeRejection::Closed));
-        }
-        self.shared.queued.fetch_add(1, Ordering::AcqRel);
-        match self.sender.try_send(request) {
-            Ok(()) => wait_cell(cell, wait, identity),
-            Err(TrySendError::Full(_)) => {
-                self.shared.queued.fetch_sub(1, Ordering::AcqRel);
-                Err(E::rejected(BridgeRejection::QueueFull {
-                    capacity: self.capacity,
-                }))
-            }
-            Err(TrySendError::Disconnected(_)) => {
-                self.shared.queued.fetch_sub(1, Ordering::AcqRel);
-                Err(E::rejected(BridgeRejection::Closed))
-            }
-        }
+        submit_request(
+            &self.sender,
+            self.worker_id,
+            &self.shared,
+            self.capacity,
+            request,
+            cell,
+            wait,
+            identity,
+        )
     }
 
     /// Closes admission and waits for actual provider retirement and thread join.
@@ -761,6 +1012,46 @@ impl RecordedEventlogBridge {
                 .lock()
                 .expect("dispatch state")
                 .clone(),
+        }
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the private seam mirrors one complete admission"
+)]
+fn submit_request<T, E>(
+    sender: &SyncSender<Request>,
+    worker_id: ThreadId,
+    shared: &Shared,
+    capacity: u16,
+    request: Request,
+    cell: &Arc<Cell<Result<T, E>>>,
+    wait: CallWait,
+    identity: BridgeOperationIdentity,
+) -> Result<T, E>
+where
+    E: LocalFailure,
+{
+    if std::thread::current().id() == worker_id {
+        return Err(E::rejected(BridgeRejection::Reentrant));
+    }
+    if matches!(wait,CallWait::Until(deadline) if deadline<=Instant::now()) {
+        return Err(E::rejected(BridgeRejection::DeadlineBeforeAcceptance));
+    }
+    if shared.lifecycle.load(Ordering::Acquire) != RUNNING {
+        return Err(E::rejected(BridgeRejection::Closed));
+    }
+    shared.queued.fetch_add(1, Ordering::AcqRel);
+    match sender.try_send(request) {
+        Ok(()) => wait_cell(cell, wait, identity),
+        Err(TrySendError::Full(_)) => {
+            shared.queued.fetch_sub(1, Ordering::AcqRel);
+            Err(E::rejected(BridgeRejection::QueueFull { capacity }))
+        }
+        Err(TrySendError::Disconnected(_)) => {
+            shared.queued.fetch_sub(1, Ordering::AcqRel);
+            Err(E::rejected(BridgeRejection::Closed))
         }
     }
 }
@@ -955,16 +1246,13 @@ where
 }
 
 fn worker_main(
-    registry: Registry,
-    owner: EventlogRecordedStoreOwner,
+    startup: impl FnOnce(&tokio::runtime::Runtime) -> Result<Box<dyn WorkerDriver>, BridgeStartError>,
+    runtime_builder: impl FnOnce() -> std::io::Result<tokio::runtime::Runtime>,
     receiver: Receiver<Request>,
     shared: Arc<Shared>,
     ready: std::sync::mpsc::Sender<Result<ThreadId, BridgeStartError>>,
 ) {
-    let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
+    let runtime = match runtime_builder() {
         Ok(v) => v,
         Err(e) => {
             let _ = ready.send(Err(BridgeStartError::RuntimeBuild(e)));
@@ -975,12 +1263,11 @@ fn worker_main(
             return;
         }
     };
-    let (store, backend) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        runtime.block_on(owner.open())
-    })) {
+    let driver = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| startup(&runtime)))
+    {
         Ok(Ok(v)) => v,
-        Ok(Err(e)) => {
-            let _ = ready.send(Err(BridgeStartError::Open(e)));
+        Ok(Err(error)) => {
+            let _ = ready.send(Err(error));
             finish(&shared, Ok(()));
             return;
         }
@@ -996,9 +1283,10 @@ fn worker_main(
         }
     };
     if ready.send(Ok(std::thread::current().id())).is_err() {
-        finish(&shared, runtime.block_on(backend.retire()));
+        finish(&shared, runtime.block_on(driver.retire()));
         return;
     }
+    let mut worker_panicked = false;
     while let Ok(request) = receiver.recv() {
         if matches!(request, Request::Wake) {
             if shared.lifecycle.load(Ordering::Acquire) != RUNNING
@@ -1007,6 +1295,20 @@ fn worker_main(
                 break;
             }
             continue;
+        }
+        #[cfg(test)]
+        if let Some(hook) = shared
+            .before_dispatch
+            .lock()
+            .expect("dispatch hook")
+            .pop_front()
+            && std::panic::catch_unwind(std::panic::AssertUnwindSafe(hook)).is_err()
+        {
+            shared.queued.fetch_sub(1, Ordering::AcqRel);
+            request.cancel_stopped();
+            shared.lifecycle.store(CLOSING_CANCEL, Ordering::Release);
+            worker_panicked = true;
+            break;
         }
         let phase = request.phase().expect("work has phase");
         if phase.load(Ordering::Acquire) == CANCELLED {
@@ -1027,10 +1329,25 @@ fn worker_main(
         }
         shared.queued.fetch_sub(1, Ordering::AcqRel);
         *shared.dispatched.lock().expect("dispatch state") = request.identity();
-        let panicked = drive_request(&runtime, &registry, &store, request);
+        #[cfg(test)]
+        if let Some(hook) = shared
+            .after_dispatch
+            .lock()
+            .expect("dispatch hook")
+            .pop_front()
+            && std::panic::catch_unwind(std::panic::AssertUnwindSafe(hook)).is_err()
+        {
+            request.cancel_after_dispatch_stopped();
+            *shared.dispatched.lock().expect("dispatch state") = None;
+            shared.lifecycle.store(CLOSING_CANCEL, Ordering::Release);
+            worker_panicked = true;
+            break;
+        }
+        let panicked = drive_request(&runtime, driver.as_ref(), request);
         *shared.dispatched.lock().expect("dispatch state") = None;
         if panicked {
             shared.lifecycle.store(CLOSING_CANCEL, Ordering::Release);
+            worker_panicked = true;
             break;
         }
         if shared.lifecycle.load(Ordering::Acquire) != RUNNING
@@ -1040,9 +1357,13 @@ fn worker_main(
         }
     }
     while let Ok(request) = receiver.try_recv() {
-        request.cancel_closed();
+        if worker_panicked {
+            request.cancel_stopped();
+        } else {
+            request.cancel_closed();
+        }
     }
-    let retired = runtime.block_on(backend.retire());
+    let retired = runtime.block_on(driver.retire());
     finish(&shared, retired);
 }
 
@@ -1063,19 +1384,18 @@ fn contain_worker(shared: Arc<Shared>, work: impl FnOnce()) {
 
 fn drive_request(
     runtime: &tokio::runtime::Runtime,
-    registry: &Registry,
-    store: &EventlogRecordedStore,
+    driver: &dyn WorkerDriver,
     request: Request,
 ) -> bool {
     match request {
-        Request::Load(v, c) => poll_read(c, || runtime.block_on(store.load(&v))),
-        Request::LookupRecord(v, c) => poll_read(c, || runtime.block_on(store.lookup_record(&v))),
-        Request::LookupBatch(v, c) => poll_read(c, || runtime.block_on(store.lookup_batch(&v))),
-        Request::History(v, c) => poll_read(c, || runtime.block_on(store.history(&v))),
-        Request::Snapshot(v, c) => poll_read(c, || runtime.block_on(store.complete_snapshot(&v))),
+        Request::Load(v, c) => poll_read(c, || runtime.block_on(driver.load(&v))),
+        Request::LookupRecord(v, c) => poll_read(c, || runtime.block_on(driver.lookup_record(&v))),
+        Request::LookupBatch(v, c) => poll_read(c, || runtime.block_on(driver.lookup_batch(&v))),
+        Request::History(v, c) => poll_read(c, || runtime.block_on(driver.history(&v))),
+        Request::Snapshot(v, c) => poll_read(c, || runtime.block_on(driver.complete_snapshot(&v))),
         Request::Append(context, v, key, c) => {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                runtime.block_on(store.operation(context).append(v))
+                runtime.block_on(driver.append(context, v))
             })) {
                 Ok(result) => {
                     c.complete(result.map_err(SyncWriteError::Write));
@@ -1090,23 +1410,19 @@ fn drive_request(
                 }
             }
         }
-        Request::Create(context, v, key, c) => poll_execution(c, key, || {
-            let operation = store.operation(context);
-            runtime.block_on(Executor::new(registry, &operation).create(v))
-        }),
-        Request::Execute(context, v, key, c) => poll_execution(c, key, || {
-            let operation = store.operation(context);
-            runtime.block_on(Executor::new(registry, &operation).execute(v))
-        }),
-        Request::Observe(context, v, key, c) => poll_execution(c, key, || {
-            let operation = store.operation(context);
-            runtime.block_on(Executor::new(registry, &operation).observe(v))
-        }),
+        Request::Create(context, v, key, c) => {
+            poll_execution(c, key, || runtime.block_on(driver.create(context, v)))
+        }
+        Request::Execute(context, v, key, c) => {
+            poll_execution(c, key, || runtime.block_on(driver.execute(context, v)))
+        }
+        Request::Observe(context, v, key, c) => {
+            poll_execution(c, key, || runtime.block_on(driver.observe(context, v)))
+        }
         Request::Batch(context, key, v, c) => {
             let panic_key = key.clone();
             poll_execution(c, panic_key, || {
-                let operation = store.operation(context);
-                runtime.block_on(Executor::new(registry, &operation).batch(key, v))
+                runtime.block_on(driver.batch(context, key, v))
             })
         }
         Request::Wake => false,
@@ -1165,6 +1481,483 @@ fn store_open(error: eventlog_core::EventLogError) -> AsyncStoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        future::poll_fn,
+        sync::atomic::AtomicBool,
+        task::{Poll, Waker},
+        time::Duration,
+    };
+
+    use entity_core::{CoreError, Runtime};
+    use entity_store::{
+        Expect, RecordedCommit, Recording,
+        asynchronous::{
+            AppendMember, BatchReceipt, CommitReceipt, HistoryOrigin, RecordPosition,
+            RecordReceipt, StoreCoverage, original_request_comparison_bytes,
+        },
+    };
+
+    #[derive(Default)]
+    struct Barrier {
+        entered: AtomicUsize,
+        released: AtomicBool,
+        state: Mutex<()>,
+        wake: Condvar,
+        task: Mutex<Option<Waker>>,
+    }
+
+    impl Barrier {
+        fn arrive(&self) {
+            self.entered.fetch_add(1, Ordering::AcqRel);
+            self.wake.notify_all();
+        }
+
+        async fn arrive_and_wait(&self) {
+            self.arrive();
+            poll_fn(|context| {
+                if self.released.load(Ordering::Acquire) {
+                    Poll::Ready(())
+                } else {
+                    *self.task.lock().expect("barrier task") = Some(context.waker().clone());
+                    if self.released.load(Ordering::Acquire) {
+                        Poll::Ready(())
+                    } else {
+                        Poll::Pending
+                    }
+                }
+            })
+            .await;
+        }
+
+        fn arrive_and_wait_blocking(&self) {
+            self.arrive();
+            let mut state = self.state.lock().expect("barrier state");
+            while !self.released.load(Ordering::Acquire) {
+                state = self.wake.wait(state).expect("barrier wait");
+            }
+        }
+
+        fn wait_until_entered(&self) {
+            let mut state = self.state.lock().expect("barrier state");
+            while self.entered.load(Ordering::Acquire) == 0 {
+                state = self.wake.wait(state).expect("barrier entered");
+            }
+        }
+
+        fn release(&self) {
+            self.released.store(true, Ordering::Release);
+            self.wake.notify_all();
+            if let Some(task) = self.task.lock().expect("barrier task").take() {
+                task.wake();
+            }
+        }
+    }
+
+    enum ExecutionFailure {
+        Core,
+        Store(AsyncStoreError),
+        Write(WriteFailure),
+    }
+
+    struct FakeState {
+        calls: Mutex<Vec<String>>,
+        contexts: Mutex<Vec<EventlogOperationContext>>,
+        next_gate: Mutex<Option<Arc<Barrier>>>,
+        next_read_error: Mutex<Option<AsyncStoreError>>,
+        next_write_error: Mutex<Option<WriteFailure>>,
+        next_execution_error: Mutex<Option<ExecutionFailure>>,
+        committed: Mutex<Option<(AppendRequest, CommitReceipt)>>,
+        panic_next: AtomicBool,
+        retire_gate: Mutex<Option<Arc<Barrier>>>,
+        retire_result: Mutex<Result<(), AsyncStoreError>>,
+        retire_calls: AtomicUsize,
+        constructed_on: Mutex<Option<ThreadId>>,
+        dropped_on: Mutex<Option<ThreadId>>,
+    }
+
+    impl Default for FakeState {
+        fn default() -> Self {
+            Self {
+                calls: Mutex::new(Vec::new()),
+                contexts: Mutex::new(Vec::new()),
+                next_gate: Mutex::new(None),
+                next_read_error: Mutex::new(None),
+                next_write_error: Mutex::new(None),
+                next_execution_error: Mutex::new(None),
+                committed: Mutex::new(None),
+                panic_next: AtomicBool::new(false),
+                retire_gate: Mutex::new(None),
+                retire_result: Mutex::new(Ok(())),
+                retire_calls: AtomicUsize::new(0),
+                constructed_on: Mutex::new(None),
+                dropped_on: Mutex::new(None),
+            }
+        }
+    }
+
+    impl FakeState {
+        fn arm_call(&self) -> Arc<Barrier> {
+            let gate = Arc::new(Barrier::default());
+            let replaced = self
+                .next_gate
+                .lock()
+                .expect("next gate")
+                .replace(gate.clone());
+            assert!(replaced.is_none(), "a call gate is already armed");
+            gate
+        }
+
+        async fn enter(&self, kind: &str) {
+            self.calls.lock().expect("calls").push(kind.to_owned());
+            if self.panic_next.swap(false, Ordering::AcqRel) {
+                panic!("controlled worker-driver panic");
+            }
+            let gate = self.next_gate.lock().expect("next gate").take();
+            if let Some(gate) = gate {
+                gate.arrive_and_wait().await;
+            }
+        }
+
+        fn call_count(&self) -> usize {
+            self.calls.lock().expect("calls").len()
+        }
+    }
+
+    struct FakeDriver {
+        state: Arc<FakeState>,
+    }
+
+    impl Drop for FakeDriver {
+        fn drop(&mut self) {
+            *self.state.dropped_on.lock().expect("dropped thread") =
+                Some(std::thread::current().id());
+        }
+    }
+
+    impl WorkerDriver for FakeDriver {
+        fn load<'a>(
+            &'a self,
+            subject: &'a Subject,
+        ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>> {
+            Box::pin(async move {
+                self.state.enter(&format!("load:{}", subject.id)).await;
+                if let Some(error) = self
+                    .state
+                    .next_read_error
+                    .lock()
+                    .expect("read error")
+                    .take()
+                {
+                    Err(error)
+                } else {
+                    Ok(None)
+                }
+            })
+        }
+
+        fn lookup_record<'a>(
+            &'a self,
+            _: &'a str,
+        ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>> {
+            Box::pin(async move {
+                self.state.enter("lookup-record").await;
+                Ok(None)
+            })
+        }
+
+        fn lookup_batch<'a>(
+            &'a self,
+            _: &'a BatchKey,
+        ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>> {
+            Box::pin(async move {
+                self.state.enter("lookup-batch").await;
+                Ok(None)
+            })
+        }
+
+        fn history<'a>(
+            &'a self,
+            subject: &'a Subject,
+        ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>> {
+            Box::pin(async move {
+                self.state.enter("history").await;
+                Ok(SubjectHistory {
+                    subject: subject.clone(),
+                    origin: HistoryOrigin::Genesis,
+                    records: Vec::new(),
+                })
+            })
+        }
+
+        fn complete_snapshot<'a>(
+            &'a self,
+            scope: &'a str,
+        ) -> BoxFuture<'a, Result<CompleteStoreSnapshot, AsyncStoreError>> {
+            Box::pin(async move {
+                self.state.enter("snapshot").await;
+                Ok(CompleteStoreSnapshot {
+                    scope: scope.to_owned(),
+                    coverage: StoreCoverage::CompleteSnapshot,
+                    histories: Vec::new(),
+                })
+            })
+        }
+
+        fn append<'a>(
+            &'a self,
+            context: EventlogOperationContext,
+            request: AppendRequest,
+        ) -> BoxFuture<'a, Result<AppendOutcome, WriteFailure>> {
+            Box::pin(async move {
+                self.state.contexts.lock().expect("contexts").push(context);
+                self.state.enter("append").await;
+                if let Some(error) = self
+                    .state
+                    .next_write_error
+                    .lock()
+                    .expect("write error")
+                    .take()
+                {
+                    return Err(error);
+                }
+                let mut committed = self.state.committed.lock().expect("committed request");
+                if let Some((original, receipt)) = committed.as_ref() {
+                    assert_eq!(original, &request, "retry bytes and key changed");
+                    return Ok(AppendOutcome::Committed {
+                        receipt: receipt.clone(),
+                        replayed: true,
+                    });
+                }
+                let receipt = receipt_for(&request);
+                *committed = Some((request, receipt.clone()));
+                Ok(AppendOutcome::Committed {
+                    receipt,
+                    replayed: false,
+                })
+            })
+        }
+
+        fn create<'a>(
+            &'a self,
+            context: EventlogOperationContext,
+            _: CreateRequest,
+        ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
+            self.execution("create", context)
+        }
+
+        fn execute<'a>(
+            &'a self,
+            context: EventlogOperationContext,
+            _: ExecuteRequest,
+        ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
+            self.execution("execute", context)
+        }
+
+        fn observe<'a>(
+            &'a self,
+            context: EventlogOperationContext,
+            _: RecordedObservation,
+        ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
+            self.execution("observe", context)
+        }
+
+        fn batch<'a>(
+            &'a self,
+            context: EventlogOperationContext,
+            _: BatchKey,
+            _: Vec<BatchAction>,
+        ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
+            self.execution("batch", context)
+        }
+
+        fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>> {
+            Box::pin(async move {
+                self.state.retire_calls.fetch_add(1, Ordering::AcqRel);
+                let gate = self.state.retire_gate.lock().expect("retire gate").take();
+                if let Some(gate) = gate {
+                    gate.arrive_and_wait().await;
+                }
+                self.state
+                    .retire_result
+                    .lock()
+                    .expect("retire result")
+                    .clone()
+            })
+        }
+    }
+
+    impl FakeDriver {
+        fn execution<'a>(
+            &'a self,
+            kind: &'static str,
+            context: EventlogOperationContext,
+        ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
+            Box::pin(async move {
+                self.state.contexts.lock().expect("contexts").push(context);
+                self.state.enter(kind).await;
+                match self
+                    .state
+                    .next_execution_error
+                    .lock()
+                    .expect("execution error")
+                    .take()
+                {
+                    Some(ExecutionFailure::Core) => {
+                        Err(ExecutionError::Core(CoreError::EntityNotRegistered {
+                            entity: "test".into(),
+                            version: 1,
+                        }))
+                    }
+                    Some(ExecutionFailure::Store(error)) => Err(ExecutionError::Store(error)),
+                    Some(ExecutionFailure::Write(error)) => Err(ExecutionError::Write(error)),
+                    None => Ok(AppendOutcome::Empty),
+                }
+            })
+        }
+    }
+
+    fn fake_bridge(state: Arc<FakeState>, capacity: u16) -> RecordedEventlogBridge {
+        RecordedEventlogBridge::start_with(
+            BridgeConfig {
+                queue_capacity: NonZeroU16::new(capacity).expect("nonzero capacity"),
+            },
+            move |_| {
+                *state.constructed_on.lock().expect("constructed thread") =
+                    Some(std::thread::current().id());
+                Ok(Box::new(FakeDriver { state }))
+            },
+        )
+        .expect("fake worker started")
+    }
+
+    fn context(label: &str) -> EventlogOperationContext {
+        EventlogOperationContext {
+            subject: "bridge-test".into(),
+            actor: "entity-eventlog-test".into(),
+            request_id: format!("request-{label}"),
+            trace_id: format!("trace-{label}"),
+            causation_id: None,
+            causation_depth: 0,
+            occurred_at: time::OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    fn registry() -> Registry {
+        let definition = serde_json::from_value(serde_json::json!({
+            "entity": "ticket",
+            "version": 1,
+            "schema": { "fields": { "title": { "type": "string", "required": true } } },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "operations": {}
+        }))
+        .expect("definition");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("valid definition");
+        registry
+    }
+
+    fn append_request(label: &str) -> AppendRequest {
+        let decision = Runtime::new(&registry())
+            .create("ticket", 1, label, serde_json::json!({"title": label}))
+            .expect("decision");
+        let commit = RecordedCommit::new(
+            decision,
+            &Recording {
+                record_id: format!("record-{label}"),
+                recorded_at: "2026-09-16T00:00:00Z".into(),
+                correlation: None,
+                causation: None,
+                actor: None,
+            },
+        )
+        .expect("commit");
+        let entry = entity_store::asynchronous::RecordedEntry::Decision(commit);
+        let bytes = original_request_comparison_bytes(&entry).expect("request bytes");
+        AppendRequest::new(
+            BatchKey::SingleRecord(entry.record_id().to_owned()),
+            vec![AppendMember::new(Expect::Absent, entry, bytes)],
+        )
+        .expect("append request")
+    }
+
+    fn receipt_for(request: &AppendRequest) -> CommitReceipt {
+        let key = request.key.clone().expect("nonempty key");
+        let members: Vec<_> = request
+            .members
+            .iter()
+            .enumerate()
+            .map(|(index, member)| RecordReceipt {
+                record_id: member.entry.record_id().to_owned(),
+                subject: member.entry.subject(),
+                kind: member.entry.kind(),
+                revision: member.entry.revision(),
+                position: RecordPosition {
+                    subject: u64::try_from(index + 1).expect("position"),
+                    store: u64::try_from(index + 1).expect("position"),
+                },
+                batch_key: key.clone(),
+                member_index: u64::try_from(index).expect("member index"),
+            })
+            .collect();
+        match key {
+            BatchKey::SingleRecord(_) => CommitReceipt::Single(members[0].clone()),
+            BatchKey::Named(_) => CommitReceipt::Batch(BatchReceipt { key, members }),
+        }
+    }
+
+    fn wait_until(predicate: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !predicate() {
+            assert!(Instant::now() < deadline, "condition did not become true");
+            std::thread::yield_now();
+        }
+    }
+
+    fn execution_deadline_case(
+        bridge: &RecordedEventlogBridge,
+        state: &Arc<FakeState>,
+        key: BatchKey,
+        call: impl FnOnce(CallWait) -> Result<AppendOutcome, SyncExecutionError> + Send,
+    ) {
+        let gate = state.arm_call();
+        std::thread::scope(|scope| {
+            let caller = scope
+                .spawn(move || call(CallWait::Until(Instant::now() + Duration::from_millis(100))));
+            gate.wait_until_entered();
+            let result = caller.join().expect("execution caller");
+            assert!(matches!(
+                result,
+                Err(SyncExecutionError::Execution(ExecutionError::Write(
+                    WriteFailure::Uncertain { key: found, .. }
+                ))) if found == key
+            ));
+            gate.release();
+        });
+        wait_until(|| {
+            bridge
+                .shared
+                .dispatched
+                .lock()
+                .expect("dispatch state")
+                .is_none()
+        });
+    }
+
+    fn enqueue_load(
+        bridge: &RecordedEventlogBridge,
+        label: &str,
+    ) -> Arc<Cell<Result<Option<EntityInstance>, SyncReadError>>> {
+        let cell = Cell::new();
+        bridge.shared.queued.fetch_add(1, Ordering::AcqRel);
+        bridge
+            .sender
+            .try_send(Request::Load(
+                Subject::new("ticket", label).expect("subject"),
+                cell.clone(),
+            ))
+            .expect("queue load");
+        cell
+    }
 
     fn shared(lifecycle: u8) -> Arc<Shared> {
         Arc::new(Shared {
@@ -1173,6 +1966,8 @@ mod tests {
             dispatched: Mutex::new(None),
             finished: (Mutex::new(false), Condvar::new()),
             provider: Mutex::new(None),
+            before_dispatch: Mutex::new(std::collections::VecDeque::new()),
+            after_dispatch: Mutex::new(std::collections::VecDeque::new()),
         })
     }
 
@@ -1195,6 +1990,1008 @@ mod tests {
             },
             receiver,
         )
+    }
+
+    #[test]
+    fn production_worker_startup_owns_and_drops_the_driver_on_its_thread() {
+        let config = || BridgeConfig {
+            queue_capacity: NonZeroU16::new(1).expect("capacity"),
+        };
+        let thread_spawn = RecordedEventlogBridge::start_with_parts(
+            config(),
+            |_| unreachable!("a failed spawn never runs startup"),
+            || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+            },
+            |_work| Err(std::io::Error::other("controlled thread spawn failure")),
+        );
+        assert!(matches!(
+            thread_spawn,
+            Err(BridgeStartError::ThreadSpawn(error))
+                if error.to_string() == "controlled thread spawn failure"
+        ));
+
+        let runtime_build = RecordedEventlogBridge::start_with_parts(
+            config(),
+            |_| unreachable!("a failed runtime build never runs startup"),
+            || Err(std::io::Error::other("controlled runtime build failure")),
+            |work| std::thread::Builder::new().spawn(work),
+        );
+        assert!(matches!(
+            runtime_build,
+            Err(BridgeStartError::RuntimeBuild(error))
+                if error.to_string() == "controlled runtime build failure"
+        ));
+
+        let open = RecordedEventlogBridge::start_with(config(), |_| {
+            Err(BridgeStartError::Open(AsyncStoreError::Backend(
+                "controlled open refusal".into(),
+            )))
+        });
+        assert!(matches!(
+            open,
+            Err(BridgeStartError::Open(AsyncStoreError::Backend(detail)))
+                if detail == "controlled open refusal"
+        ));
+
+        let panicked = RecordedEventlogBridge::start_with(
+            config(),
+            |_| -> Result<Box<dyn WorkerDriver>, BridgeStartError> {
+                panic!("controlled startup panic")
+            },
+        );
+        assert!(matches!(panicked, Err(BridgeStartError::WorkerPanicked)));
+
+        let state = Arc::new(FakeState::default());
+        let mut bridge = fake_bridge(state.clone(), 1);
+        let worker = bridge.worker_id;
+        assert_ne!(worker, std::thread::current().id());
+        assert_eq!(
+            *state.constructed_on.lock().expect("constructed thread"),
+            Some(worker)
+        );
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+        assert_eq!(state.retire_calls.load(Ordering::Acquire), 1);
+        assert_eq!(
+            *state.dropped_on.lock().expect("dropped thread"),
+            Some(worker)
+        );
+    }
+
+    #[test]
+    fn production_worker_calls_are_runtime_independent_and_reentrant_safe() {
+        let state = Arc::new(FakeState::default());
+        let mut bridge = fake_bridge(state.clone(), 2);
+        let subject = Subject::new("ticket", "runtime-independent").expect("subject");
+        assert!(
+            bridge
+                .load(&subject, CallWait::Forever)
+                .expect("outside")
+                .is_none()
+        );
+
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("current-thread runtime")
+            .block_on(async {
+                assert!(
+                    bridge
+                        .load(&subject, CallWait::Forever)
+                        .expect("current")
+                        .is_none()
+                );
+            });
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("multi-thread runtime")
+            .block_on(async {
+                assert!(
+                    bridge
+                        .load(&subject, CallWait::Forever)
+                        .expect("multi")
+                        .is_none()
+                );
+            });
+        assert!(
+            bridge
+                .lookup_record("missing", CallWait::Forever)
+                .expect("record lookup")
+                .is_none()
+        );
+        assert!(
+            bridge
+                .lookup_batch(&BatchKey::Named("missing".into()), CallWait::Forever)
+                .expect("batch lookup")
+                .is_none()
+        );
+        assert_eq!(
+            bridge
+                .history(&subject, CallWait::Forever)
+                .expect("history")
+                .subject,
+            subject
+        );
+        assert_eq!(
+            bridge
+                .complete_snapshot("scope", CallWait::Forever)
+                .expect("snapshot")
+                .scope,
+            "scope"
+        );
+
+        let sender = bridge.sender.clone();
+        let worker_id = bridge.worker_id;
+        let shared = bridge.shared.clone();
+        let hook_shared = shared.clone();
+        let capacity = bridge.capacity;
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        shared
+            .before_dispatch
+            .lock()
+            .expect("dispatch hook")
+            .push_back(Box::new(move || {
+                let cell = Cell::new();
+                let before = hook_shared.queued.load(Ordering::Acquire);
+                let result = submit_request(
+                    &sender,
+                    worker_id,
+                    &hook_shared,
+                    capacity,
+                    Request::Load(
+                        Subject::new("ticket", "reentrant").expect("subject"),
+                        cell.clone(),
+                    ),
+                    &cell,
+                    CallWait::Forever,
+                    BridgeOperationIdentity::Read(BridgeReadKind::Load),
+                );
+                result_tx
+                    .send((before, hook_shared.queued.load(Ordering::Acquire), result))
+                    .expect("reentrant result");
+            }));
+        assert!(
+            bridge
+                .load(
+                    &Subject::new("ticket", "hook-trigger").expect("subject"),
+                    CallWait::Forever,
+                )
+                .expect("outer load")
+                .is_none()
+        );
+        let (before, after, result) = result_rx.recv().expect("hook result");
+        assert_eq!(before, after);
+        assert!(matches!(
+            result,
+            Err(SyncReadError::Rejected(BridgeRejection::Reentrant))
+        ));
+        assert_eq!(
+            state.call_count(),
+            8,
+            "the rejected inner call did not dispatch"
+        );
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+    }
+
+    #[test]
+    fn production_worker_enforces_capacity_and_discards_cancelled_queue_cells() {
+        let state = Arc::new(FakeState::default());
+        let first_gate = state.arm_call();
+        let mut bridge = fake_bridge(state.clone(), 1);
+        assert!(matches!(
+            bridge.load(
+                &Subject::new("ticket", "expired-before-send").expect("subject"),
+                CallWait::Until(Instant::now()),
+            ),
+            Err(SyncReadError::Rejected(
+                BridgeRejection::DeadlineBeforeAcceptance
+            ))
+        ));
+        assert_eq!(state.call_count(), 0, "expired calls never enter the queue");
+        std::thread::scope(|scope| {
+            let first = scope.spawn(|| {
+                bridge.load(
+                    &Subject::new("ticket", "active").expect("subject"),
+                    CallWait::Forever,
+                )
+            });
+            first_gate.wait_until_entered();
+            let second = scope.spawn(|| {
+                bridge.load(
+                    &Subject::new("ticket", "queued").expect("subject"),
+                    CallWait::Forever,
+                )
+            });
+            wait_until(|| bridge.shared.queued.load(Ordering::Acquire) == 1);
+            assert!(matches!(
+                bridge
+                    .operation(context("inert-append"))
+                    .append(AppendRequest::empty(), CallWait::Forever),
+                Ok(AppendOutcome::Empty)
+            ));
+            assert!(matches!(
+                bridge.operation(context("invalid-empty")).append(
+                    AppendRequest {
+                        key: Some(BatchKey::Named("invalid-empty".into())),
+                        members: Vec::new(),
+                    },
+                    CallWait::Forever,
+                ),
+                Err(SyncWriteError::Write(WriteFailure::NotCommitted(
+                    AsyncStoreError::InvalidInput(_)
+                )))
+            ));
+            assert!(matches!(
+                bridge.operation(context("inert-batch")).batch(
+                    BatchKey::Named(String::new()),
+                    Vec::new(),
+                    CallWait::Forever,
+                ),
+                Ok(AppendOutcome::Empty)
+            ));
+            assert!(matches!(
+                bridge.load(
+                    &Subject::new("ticket", "full").expect("subject"),
+                    CallWait::Forever,
+                ),
+                Err(SyncReadError::Rejected(BridgeRejection::QueueFull {
+                    capacity: 1
+                }))
+            ));
+            first_gate.release();
+            assert!(
+                first
+                    .join()
+                    .expect("first caller")
+                    .expect("first load")
+                    .is_none()
+            );
+            assert!(
+                second
+                    .join()
+                    .expect("second caller")
+                    .expect("second load")
+                    .is_none()
+            );
+        });
+        assert_eq!(state.call_count(), 2, "QueueFull never reached the driver");
+
+        let active_gate = state.arm_call();
+        std::thread::scope(|scope| {
+            let active = scope.spawn(|| {
+                bridge.load(
+                    &Subject::new("ticket", "cancel-active").expect("subject"),
+                    CallWait::Forever,
+                )
+            });
+            active_gate.wait_until_entered();
+            let cancelled = Cell::new();
+            bridge.shared.queued.fetch_add(1, Ordering::AcqRel);
+            bridge
+                .sender
+                .try_send(Request::Load(
+                    Subject::new("ticket", "cancelled").expect("subject"),
+                    cancelled.clone(),
+                ))
+                .expect("queue cancelled request");
+            assert!(matches!(
+                wait_cell(
+                    &cancelled,
+                    CallWait::Until(Instant::now()),
+                    BridgeOperationIdentity::Read(BridgeReadKind::Load)
+                ),
+                Err(SyncReadError::Rejected(
+                    BridgeRejection::DeadlineBeforeDispatch
+                ))
+            ));
+            active_gate.release();
+            assert!(
+                active
+                    .join()
+                    .expect("active caller")
+                    .expect("active load")
+                    .is_none()
+            );
+        });
+        wait_until(|| bridge.shared.queued.load(Ordering::Acquire) == 0);
+        assert_eq!(
+            state.call_count(),
+            3,
+            "cancelled queued cell never dispatched"
+        );
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+    }
+
+    #[test]
+    fn dispatch_deadline_cas_has_one_winner_and_cancelled_work_never_calls_the_driver() {
+        let state = Arc::new(FakeState::default());
+        let mut bridge = fake_bridge(state.clone(), 1);
+        let hook_gate = Arc::new(Barrier::default());
+        let worker_gate = hook_gate.clone();
+        bridge
+            .shared
+            .before_dispatch
+            .lock()
+            .expect("dispatch hook")
+            .push_back(Box::new(move || worker_gate.arrive_and_wait_blocking()));
+        let cell = Cell::new();
+        bridge.shared.queued.fetch_add(1, Ordering::AcqRel);
+        bridge
+            .sender
+            .try_send(Request::Load(
+                Subject::new("ticket", "dispatch-race-cancelled").expect("subject"),
+                cell.clone(),
+            ))
+            .expect("queue race request");
+        hook_gate.wait_until_entered();
+        assert!(matches!(
+            wait_cell(
+                &cell,
+                CallWait::Until(Instant::now()),
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::Rejected(
+                BridgeRejection::DeadlineBeforeDispatch
+            ))
+        ));
+        hook_gate.release();
+        wait_until(|| bridge.shared.queued.load(Ordering::Acquire) == 0);
+        assert_eq!(state.call_count(), 0, "cancel won before driver dispatch");
+
+        let dispatch_gate = state.arm_call();
+        let dispatched = Cell::new();
+        bridge.shared.queued.fetch_add(1, Ordering::AcqRel);
+        bridge
+            .sender
+            .try_send(Request::Load(
+                Subject::new("ticket", "dispatch-race-dispatched").expect("subject"),
+                dispatched.clone(),
+            ))
+            .expect("queue dispatched request");
+        dispatch_gate.wait_until_entered();
+        assert!(matches!(
+            wait_cell(
+                &dispatched,
+                CallWait::Until(Instant::now()),
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::AfterDispatch(BridgeAfterDispatch::Deadline))
+        ));
+        dispatch_gate.release();
+        wait_until(|| dispatched.phase.load(Ordering::Acquire) == COMPLETED);
+        assert_eq!(state.call_count(), 1, "dispatch won exactly once");
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+    }
+
+    #[test]
+    fn timed_out_caller_does_not_cancel_commit_and_same_key_retry_recovers_it() {
+        let state = Arc::new(FakeState::default());
+        let commit_gate = state.arm_call();
+        let mut bridge = fake_bridge(state.clone(), 1);
+        let request = append_request("lost-reply");
+        let key = request.key.clone().expect("request key");
+        let first_context = context("first-attempt");
+        std::thread::scope(|scope| {
+            let caller = scope.spawn(|| {
+                bridge.operation(first_context).append(
+                    request.clone(),
+                    CallWait::Until(Instant::now() + Duration::from_millis(100)),
+                )
+            });
+            commit_gate.wait_until_entered();
+            let first = caller.join().expect("first caller");
+            assert!(matches!(
+                first,
+                Err(SyncWriteError::Write(WriteFailure::Uncertain {
+                    key: found,
+                    ..
+                })) if found == key
+            ));
+            assert_eq!(
+                state.call_count(),
+                1,
+                "the bridge did not retry automatically"
+            );
+            commit_gate.release();
+        });
+        wait_until(|| {
+            bridge
+                .shared
+                .dispatched
+                .lock()
+                .expect("dispatch state")
+                .is_none()
+        });
+        assert_eq!(
+            state.call_count(),
+            1,
+            "completion after caller return stayed one call"
+        );
+        let retry = bridge
+            .operation(context("fresh-retry"))
+            .append(request, CallWait::Forever)
+            .expect("same-key semantic retry");
+        assert!(retry.replayed());
+        assert_eq!(state.call_count(), 2);
+        let contexts = state.contexts.lock().expect("contexts");
+        assert_eq!(contexts[0].request_id, "request-first-attempt");
+        assert_eq!(contexts[1].request_id, "request-fresh-retry");
+        drop(contexts);
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+    }
+
+    #[test]
+    fn every_executor_write_keeps_its_original_key_after_dispatch_deadline() {
+        let state = Arc::new(FakeState::default());
+        let mut bridge = fake_bridge(state.clone(), 1);
+        let recording = |label: &str| Recording {
+            record_id: format!("record-{label}"),
+            recorded_at: "2026-09-16T00:00:00Z".into(),
+            correlation: None,
+            causation: None,
+            actor: None,
+        };
+        let subject = Subject::new("ticket", "executor-deadline").expect("subject");
+
+        let create = CreateRequest {
+            subject: subject.clone(),
+            definition_version: 1,
+            fields: serde_json::json!({"title": "create"}),
+            recording: recording("create"),
+        };
+        execution_deadline_case(
+            &bridge,
+            &state,
+            BatchKey::SingleRecord("record-create".into()),
+            |wait| bridge.operation(context("create")).create(create, wait),
+        );
+
+        let execute = ExecuteRequest {
+            subject: subject.clone(),
+            expected_revision: 1,
+            operation: "close".into(),
+            arguments: serde_json::json!({}),
+            recording: recording("execute"),
+        };
+        execution_deadline_case(
+            &bridge,
+            &state,
+            BatchKey::SingleRecord("record-execute".into()),
+            |wait| bridge.operation(context("execute")).execute(execute, wait),
+        );
+
+        let observation = RecordedObservation {
+            entity: "ticket".into(),
+            id: "executor-deadline".into(),
+            revision: 1,
+            envelope: entity_store::Envelope::new(
+                serde_json::json!({"observed": true}),
+                "record-observe",
+                "2026-09-16T00:00:00Z",
+                None,
+                None,
+                None,
+            )
+            .expect("observation envelope"),
+        };
+        execution_deadline_case(
+            &bridge,
+            &state,
+            BatchKey::SingleRecord("record-observe".into()),
+            |wait| {
+                bridge
+                    .operation(context("observe"))
+                    .observe(observation, wait)
+            },
+        );
+
+        let batch_key = BatchKey::Named("executor-batch".into());
+        let batch_create = CreateRequest {
+            subject,
+            definition_version: 1,
+            fields: serde_json::json!({"title": "batch"}),
+            recording: recording("batch"),
+        };
+        execution_deadline_case(&bridge, &state, batch_key.clone(), |wait| {
+            bridge.operation(context("batch")).batch(
+                batch_key,
+                vec![BatchAction::Create(batch_create)],
+                wait,
+            )
+        });
+
+        assert!(
+            bridge
+                .load(
+                    &Subject::new("ticket", "worker-continued").expect("subject"),
+                    CallWait::Forever,
+                )
+                .expect("worker continued")
+                .is_none()
+        );
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+    }
+
+    #[test]
+    fn drain_finishes_in_order_and_escalation_cancels_only_queued_work() {
+        let state = Arc::new(FakeState::default());
+        let active_gate = state.arm_call();
+        let mut bridge = fake_bridge(state.clone(), 2);
+        let active = enqueue_load(&bridge, "drain-active");
+        active_gate.wait_until_entered();
+        let queued = enqueue_load(&bridge, "drain-queued");
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Until(Instant::now())),
+            ShutdownOutcome::TimedOut {
+                queued: 1,
+                dispatched: Some(BridgeOperationIdentity::Read(BridgeReadKind::Load)),
+            }
+        );
+        assert!(matches!(
+            bridge.load(
+                &Subject::new("ticket", "no-revival").expect("subject"),
+                CallWait::Forever,
+            ),
+            Err(SyncReadError::Rejected(BridgeRejection::Closed))
+        ));
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::CancelQueued, CallWait::Until(Instant::now())),
+            ShutdownOutcome::TimedOut {
+                queued: 1,
+                dispatched: Some(BridgeOperationIdentity::Read(BridgeReadKind::Load)),
+            }
+        );
+        active_gate.release();
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::CancelQueued, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+        assert!(matches!(
+            wait_cell(
+                &active,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Ok(None)
+        ));
+        assert!(matches!(
+            wait_cell(
+                &queued,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::Rejected(BridgeRejection::Closed))
+        ));
+        assert_eq!(
+            state.call_count(),
+            1,
+            "queued work did not dispatch after escalation"
+        );
+        assert_eq!(state.retire_calls.load(Ordering::Acquire), 1);
+
+        let drain_state = Arc::new(FakeState::default());
+        let drain_gate = drain_state.arm_call();
+        let mut drain = fake_bridge(drain_state.clone(), 2);
+        let first = enqueue_load(&drain, "ordered-first");
+        drain_gate.wait_until_entered();
+        let second = enqueue_load(&drain, "ordered-second");
+        assert!(matches!(
+            drain.shutdown(ShutdownMode::Drain, CallWait::Until(Instant::now())),
+            ShutdownOutcome::TimedOut { queued: 1, .. }
+        ));
+        drain_gate.release();
+        assert_eq!(
+            drain.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+        assert!(matches!(
+            wait_cell(
+                &first,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Ok(None)
+        ));
+        assert!(matches!(
+            wait_cell(
+                &second,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Ok(None)
+        ));
+        assert_eq!(
+            *drain_state.calls.lock().expect("calls"),
+            vec!["load:ordered-first", "load:ordered-second"]
+        );
+    }
+
+    #[test]
+    fn retirement_timeout_later_joins_once_and_preserves_provider_failure() {
+        let state = Arc::new(FakeState::default());
+        let retirement = Arc::new(Barrier::default());
+        *state.retire_gate.lock().expect("retire gate") = Some(retirement.clone());
+        *state.retire_result.lock().expect("retire result") = Err(AsyncStoreError::Backend(
+            "controlled retirement failure".into(),
+        ));
+        let mut bridge = fake_bridge(state.clone(), 1);
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Until(Instant::now())),
+            ShutdownOutcome::TimedOut {
+                queued: 0,
+                dispatched: None,
+            }
+        );
+        retirement.wait_until_entered();
+        retirement.release();
+        let expected = ShutdownOutcome::Joined {
+            provider: Err(AsyncStoreError::Backend(
+                "controlled retirement failure".into(),
+            )),
+        };
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            expected
+        );
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::CancelQueued, CallWait::Forever),
+            expected,
+            "later shutdown returns the cached retirement result"
+        );
+        assert_eq!(state.retire_calls.load(Ordering::Acquire), 1);
+        assert!(bridge.join.is_none());
+    }
+
+    #[test]
+    fn worker_panics_cancel_real_queued_cells_without_stranding_waiters() {
+        let before_state = Arc::new(FakeState::default());
+        let mut before = fake_bridge(before_state.clone(), 2);
+        let hook_gate = Arc::new(Barrier::default());
+        let worker_gate = hook_gate.clone();
+        before
+            .shared
+            .before_dispatch
+            .lock()
+            .expect("dispatch hook")
+            .push_back(Box::new(move || {
+                worker_gate.arrive_and_wait_blocking();
+                panic!("controlled panic before dispatch");
+            }));
+        let current = enqueue_load(&before, "panic-before-current");
+        hook_gate.wait_until_entered();
+        let queued = enqueue_load(&before, "panic-before-queued");
+        hook_gate.release();
+        assert!(matches!(
+            wait_cell(
+                &current,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::Rejected(
+                BridgeRejection::WorkerStoppedBeforeDispatch
+            ))
+        ));
+        assert!(matches!(
+            wait_cell(
+                &queued,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::Rejected(
+                BridgeRejection::WorkerStoppedBeforeDispatch
+            ))
+        ));
+        assert_eq!(before_state.call_count(), 0);
+        assert_eq!(
+            before.shutdown(ShutdownMode::CancelQueued, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+
+        let after_state = Arc::new(FakeState::default());
+        after_state.panic_next.store(true, Ordering::Release);
+        let mut after = fake_bridge(after_state.clone(), 2);
+        let after_hook = Arc::new(Barrier::default());
+        let worker_hook = after_hook.clone();
+        after
+            .shared
+            .before_dispatch
+            .lock()
+            .expect("dispatch hook")
+            .push_back(Box::new(move || worker_hook.arrive_and_wait_blocking()));
+        let active = enqueue_load(&after, "panic-after-active");
+        after_hook.wait_until_entered();
+        let queued = enqueue_load(&after, "panic-after-queued");
+        after_hook.release();
+        assert!(matches!(
+            wait_cell(
+                &active,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerPanicked
+            ))
+        ));
+        assert!(matches!(
+            wait_cell(
+                &queued,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::Rejected(
+                BridgeRejection::WorkerStoppedBeforeDispatch
+            ))
+        ));
+        assert_eq!(after_state.call_count(), 1);
+        assert_eq!(
+            after.shutdown(ShutdownMode::CancelQueued, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+
+        let stopped_state = Arc::new(FakeState::default());
+        let mut stopped = fake_bridge(stopped_state.clone(), 2);
+        let stopped_hook = Arc::new(Barrier::default());
+        let worker_hook = stopped_hook.clone();
+        stopped
+            .shared
+            .after_dispatch
+            .lock()
+            .expect("dispatch hook")
+            .push_back(Box::new(move || {
+                worker_hook.arrive_and_wait_blocking();
+                panic!("controlled disappearance after dispatch");
+            }));
+        let active = enqueue_load(&stopped, "stopped-after-active");
+        stopped_hook.wait_until_entered();
+        let queued = enqueue_load(&stopped, "stopped-after-queued");
+        stopped_hook.release();
+        assert!(matches!(
+            wait_cell(
+                &active,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerStopped
+            ))
+        ));
+        assert!(matches!(
+            wait_cell(
+                &queued,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::Rejected(
+                BridgeRejection::WorkerStoppedBeforeDispatch
+            ))
+        ));
+        assert_eq!(stopped_state.call_count(), 0);
+        assert_eq!(
+            stopped.shutdown(ShutdownMode::CancelQueued, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+    }
+
+    #[test]
+    fn drop_requests_closure_without_waiting_for_an_active_future() {
+        let state = Arc::new(FakeState::default());
+        let active_gate = state.arm_call();
+        let bridge = fake_bridge(state.clone(), 1);
+        let active = enqueue_load(&bridge, "drop-active");
+        active_gate.wait_until_entered();
+        let shared = bridge.shared.clone();
+        drop(bridge);
+        assert_eq!(shared.lifecycle.load(Ordering::Acquire), CLOSING_CANCEL);
+        assert!(state.dropped_on.lock().expect("dropped thread").is_none());
+        active_gate.release();
+        wait_until(|| state.dropped_on.lock().expect("dropped thread").is_some());
+        assert!(matches!(
+            wait_cell(
+                &active,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Ok(None)
+        ));
+        assert_eq!(state.retire_calls.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn panicked_or_stopped_worker_keeps_dispatched_write_uncertainty() {
+        let panic_state = Arc::new(FakeState::default());
+        panic_state.panic_next.store(true, Ordering::Release);
+        let mut panicked = fake_bridge(panic_state, 1);
+        let panic_request = append_request("panic-write-loop");
+        let panic_key = panic_request.key.clone().expect("key");
+        assert!(matches!(
+            panicked
+                .operation(context("panic-write-loop"))
+                .append(panic_request, CallWait::Forever),
+            Err(SyncWriteError::Write(WriteFailure::Uncertain {
+                key: found,
+                ..
+            })) if found == panic_key
+        ));
+        assert_eq!(
+            panicked.shutdown(ShutdownMode::CancelQueued, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+
+        let stopped_state = Arc::new(FakeState::default());
+        let mut stopped = fake_bridge(stopped_state, 1);
+        stopped
+            .shared
+            .after_dispatch
+            .lock()
+            .expect("dispatch hook")
+            .push_back(Box::new(|| panic!("controlled stopped write")));
+        let stopped_request = append_request("stopped-write-loop");
+        let stopped_key = stopped_request.key.clone().expect("key");
+        assert!(matches!(
+            stopped
+                .operation(context("stopped-write-loop"))
+                .append(stopped_request, CallWait::Forever),
+            Err(SyncWriteError::Write(WriteFailure::Uncertain {
+                key: found,
+                ..
+            })) if found == stopped_key
+        ));
+        assert_eq!(
+            stopped.shutdown(ShutdownMode::CancelQueued, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+    }
+
+    #[test]
+    fn production_worker_preserves_every_driver_error_classification() {
+        let state = Arc::new(FakeState::default());
+        let mut bridge = fake_bridge(state.clone(), 1);
+        let subject = Subject::new("ticket", "errors").expect("subject");
+        let errors = vec![
+            AsyncStoreError::InvalidInput("invalid".into()),
+            AsyncStoreError::Encoding("encoding".into()),
+            AsyncStoreError::RevisionConflict {
+                subject: subject.clone(),
+                expected: Expect::Absent,
+                found: Some(1),
+            },
+            AsyncStoreError::RecordConflict {
+                record_id: "record".into(),
+            },
+            AsyncStoreError::DuplicateRecordId {
+                record_id: "record".into(),
+            },
+            AsyncStoreError::BatchConflict {
+                key: BatchKey::Named("batch".into()),
+            },
+            AsyncStoreError::PreviouslyRecordedBatchEntries { indices: vec![0] },
+            AsyncStoreError::CorruptHistory {
+                subject: subject.clone(),
+                detail: "corrupt".into(),
+            },
+            AsyncStoreError::ProviderIntegrity {
+                provider: "fake".into(),
+                detail: "integrity".into(),
+            },
+            AsyncStoreError::HistoricalRetryUnverifiable {
+                record_id: "legacy".into(),
+                detail: "missing".into(),
+            },
+            AsyncStoreError::PositionExhausted {
+                domain: "position".into(),
+            },
+            AsyncStoreError::Unreachable {
+                provider: "fake".into(),
+                detail: "offline".into(),
+            },
+            AsyncStoreError::Backend("backend".into()),
+        ];
+        for error in errors {
+            *state.next_read_error.lock().expect("read error") = Some(error.clone());
+            assert!(matches!(
+                bridge.load(&subject, CallWait::Forever),
+                Err(SyncReadError::Store(found)) if found == error
+            ));
+        }
+
+        let not_committed = AsyncStoreError::Backend("write refused".into());
+        *state.next_write_error.lock().expect("write error") =
+            Some(WriteFailure::NotCommitted(not_committed.clone()));
+        assert!(matches!(
+            bridge
+                .operation(context("not-committed"))
+                .append(append_request("not-committed"), CallWait::Forever),
+            Err(SyncWriteError::Write(WriteFailure::NotCommitted(found)))
+                if found == not_committed
+        ));
+        let uncertain_request = append_request("provider-uncertain");
+        let uncertain_key = uncertain_request.key.clone().expect("key");
+        *state.next_write_error.lock().expect("write error") = Some(WriteFailure::Uncertain {
+            key: uncertain_key.clone(),
+            cause: "provider uncertainty".into(),
+        });
+        assert!(matches!(
+            bridge
+                .operation(context("provider-uncertain"))
+                .append(uncertain_request, CallWait::Forever),
+            Err(SyncWriteError::Write(WriteFailure::Uncertain {
+                key: found,
+                cause,
+            })) if found == uncertain_key && cause == "provider uncertainty"
+        ));
+
+        let create = |label: &str| CreateRequest {
+            subject: Subject::new("ticket", label).expect("subject"),
+            definition_version: 1,
+            fields: serde_json::json!({"title": label}),
+            recording: Recording {
+                record_id: format!("record-{label}"),
+                recorded_at: "2026-09-16T00:00:00Z".into(),
+                correlation: None,
+                causation: None,
+                actor: None,
+            },
+        };
+        *state.next_execution_error.lock().expect("execution error") = Some(ExecutionFailure::Core);
+        assert!(matches!(
+            bridge
+                .operation(context("core"))
+                .create(create("core"), CallWait::Forever),
+            Err(SyncExecutionError::Execution(ExecutionError::Core(
+                CoreError::EntityNotRegistered { .. }
+            )))
+        ));
+        let store_error = AsyncStoreError::Backend("execution store".into());
+        *state.next_execution_error.lock().expect("execution error") =
+            Some(ExecutionFailure::Store(store_error.clone()));
+        assert!(matches!(
+            bridge
+                .operation(context("store"))
+                .create(create("store"), CallWait::Forever),
+            Err(SyncExecutionError::Execution(ExecutionError::Store(found)))
+                if found == store_error
+        ));
+        let execution_key = BatchKey::SingleRecord("record-execution-write".into());
+        *state.next_execution_error.lock().expect("execution error") =
+            Some(ExecutionFailure::Write(WriteFailure::Uncertain {
+                key: execution_key.clone(),
+                cause: "execution provider".into(),
+            }));
+        assert!(matches!(
+            bridge
+                .operation(context("execution-write"))
+                .create(create("execution-write"), CallWait::Forever),
+            Err(SyncExecutionError::Execution(ExecutionError::Write(
+                WriteFailure::Uncertain { key: found, cause }
+            ))) if found == execution_key && cause == "execution provider"
+        ));
+
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
     }
 
     #[test]

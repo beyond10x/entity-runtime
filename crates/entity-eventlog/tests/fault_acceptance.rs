@@ -47,6 +47,7 @@ enum AppendFault {
     Return(EventLogError),
     ReturnAndFailRecovery(EventLogError, CaptureError),
     CommitThen(EventLogError),
+    CommitThenCorruptRecovery(EventLogError, CaptureFault),
     CommitThenMalformedResult,
 }
 
@@ -62,6 +63,10 @@ enum CaptureFault {
     RedactedEvent,
     MissingProjection,
     DuplicateBindingRow,
+    DuplicateBindingEvent,
+    TrailingUnknownEvent,
+    WrongBindingBlob,
+    WrongBindingPhysical,
     MissingRecordRow,
     TamperedBatchRow,
     DuplicateSubjectRow,
@@ -461,6 +466,11 @@ impl<B: EventlogBackend> AtomicEventStore for FaultBackend<B> {
                     self.inner.append_group_guarded(group, admission).await?;
                     Err(error)
                 }
+                Some(AppendFault::CommitThenCorruptRecovery(error, capture)) => {
+                    self.inner.append_group_guarded(group, admission).await?;
+                    self.capture_fault(capture);
+                    Err(error)
+                }
                 Some(AppendFault::CommitThenMalformedResult) => {
                     let mut result = self.inner.append_group_guarded(group, admission).await?;
                     result.appends.clear();
@@ -516,6 +526,23 @@ impl<B: EventlogBackend> ConsistentTenantCapture for FaultBackend<B> {
                 Some(CaptureFault::DuplicateBindingRow) => {
                     let row = capture.projections[0].rows[0].clone();
                     capture.projections[0].rows.push(row);
+                }
+                Some(CaptureFault::DuplicateBindingEvent) => {
+                    let event = capture.events[0].clone();
+                    capture.events.push(event);
+                }
+                Some(CaptureFault::TrailingUnknownEvent) => {
+                    let mut event = capture.events.last().expect("captured event").clone();
+                    event.name = "foreign.event".into();
+                    capture.events.push(event);
+                }
+                Some(CaptureFault::WrongBindingBlob) => {
+                    capture.projections[0].rows[0].1[1]["binding_blob"] =
+                        serde_json::json!(format!("sha256:{}", "0".repeat(64)));
+                }
+                Some(CaptureFault::WrongBindingPhysical) => {
+                    capture.projections[0].rows[0].1[1]["physical"]["global_seq"] =
+                        serde_json::json!(u64::MAX);
                 }
                 Some(CaptureFault::MissingRecordRow) => {
                     capture.projections[1].rows.clear();
@@ -976,6 +1003,108 @@ fn binding_recovery_rejects_missing_malformed_and_substituted_capture_authority(
                 "{label}: {result:?}"
             );
         }
+    });
+}
+
+#[test]
+fn binding_recovery_validates_the_complete_foreign_model_before_conflict() {
+    block_on(async {
+        let fixture = fixture("foreign-complete-model").await;
+        provision(&fixture, "foreign-complete-model").await;
+        let backend: Arc<dyn EventlogBackend> = fixture.backend.clone();
+        let store = EventlogRecordedStore::open(backend.clone(), fixture.authority.clone(), LIMITS)
+            .await
+            .expect("foreign winner opens");
+        store
+            .operation(context("foreign-record"))
+            .append(request("foreign-record"))
+            .await
+            .expect("foreign winner records a complete subject");
+
+        let provisioner = EventlogBindingProvisioner::new(backend, LIMITS);
+        let matching = provisioner
+            .recover_binding(fixture.authority.clone())
+            .await
+            .expect("complete matching authority validates")
+            .expect("binding exists after later records");
+        assert!(matching.replayed);
+
+        let mut requested = fixture.authority.clone();
+        requested.logical_scope.push_str("-requested");
+        assert_eq!(
+            provisioner.recover_binding(requested.clone()).await,
+            Err(ProvisionBindingFailure::Conflict {
+                requested: requested.clone(),
+                found: fixture.authority.clone(),
+            })
+        );
+
+        for (label, fault) in [
+            ("missing-binding-row", CaptureFault::MissingBindingRow),
+            ("malformed-binding-row", CaptureFault::MalformedBindingRow),
+            ("wrong-generation", CaptureFault::SubstituteGeneration),
+            ("wrong-tenant", CaptureFault::SubstituteTenant),
+            ("missing-blob", CaptureFault::MissingBlob),
+            ("unknown-binding-event", CaptureFault::UnknownEvent),
+            ("redacted-binding-event", CaptureFault::RedactedEvent),
+            ("missing-projection", CaptureFault::MissingProjection),
+            ("duplicate-binding-row", CaptureFault::DuplicateBindingRow),
+            (
+                "duplicate-binding-event",
+                CaptureFault::DuplicateBindingEvent,
+            ),
+            ("trailing-unknown-event", CaptureFault::TrailingUnknownEvent),
+            ("wrong-binding-blob", CaptureFault::WrongBindingBlob),
+            ("wrong-binding-physical", CaptureFault::WrongBindingPhysical),
+            ("missing-record-row", CaptureFault::MissingRecordRow),
+            ("tampered-batch-row", CaptureFault::TamperedBatchRow),
+            ("duplicate-subject-row", CaptureFault::DuplicateSubjectRow),
+        ] {
+            fixture.backend.capture_fault(fault);
+            let result = provisioner.recover_binding(requested.clone()).await;
+            assert!(
+                matches!(
+                    result,
+                    Err(ProvisionBindingFailure::NotCommitted(
+                        entity_store::asynchronous::AsyncStoreError::ProviderIntegrity { .. }
+                    ))
+                ),
+                "{label}: incomplete foreign authority must not become Conflict: {result:?}"
+            );
+        }
+    });
+}
+
+#[test]
+fn unknown_commit_with_corrupt_recovery_keeps_the_original_uncertainty() {
+    block_on(async {
+        let fixture = fixture("provision-corrupt-recovery").await;
+        fixture
+            .backend
+            .append_fault(AppendFault::CommitThenCorruptRecovery(
+                EventLogError::UnknownCommit,
+                CaptureFault::MissingBindingRow,
+            ));
+        let backend: Arc<dyn EventlogBackend> = fixture.backend.clone();
+        let provisioner = EventlogBindingProvisioner::new(backend, LIMITS);
+        let result = provisioner
+            .provision_binding(fixture.authority.clone(), context("corrupt-recovery"))
+            .await;
+        assert!(matches!(
+            result,
+            Err(ProvisionBindingFailure::Uncertain {
+                authority,
+                cause: ProvisionBindingUncertainty::UnknownCommit,
+            }) if authority == fixture.authority
+        ));
+        assert!(
+            provisioner
+                .recover_binding(fixture.authority.clone())
+                .await
+                .expect("the one-shot corrupt capture is gone")
+                .is_some(),
+            "the ambiguous append really committed; corruption did not prove rollback"
+        );
     });
 }
 

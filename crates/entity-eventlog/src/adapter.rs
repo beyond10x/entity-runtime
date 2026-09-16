@@ -1050,7 +1050,8 @@ impl AsyncBindingProvisioner for EventlogBindingProvisioner {
                             outcome.replayed = true;
                             Ok(outcome)
                         }
-                        _ => Err(ProvisionBindingFailure::Uncertain {
+                        Err(conflict @ ProvisionBindingFailure::Conflict { .. }) => Err(conflict),
+                        Ok(None) | Err(_) => Err(ProvisionBindingFailure::Uncertain {
                             authority,
                             cause: ProvisionBindingUncertainty::UnknownCommit,
                         }),
@@ -1110,57 +1111,74 @@ impl EventlogBindingProvisioner {
                 "native capture substituted tenant or generation",
             )));
         }
-        let blobs: BTreeMap<String, Vec<u8>> = capture
-            .blobs
-            .into_iter()
-            .map(|b| (b.digest, b.bytes))
-            .collect();
-        let mut found = None;
-        for event in capture.events {
-            if event.is_redacted() || event.schema_version != 1 {
-                return Err(ProvisionBindingFailure::NotCommitted(integrity(
-                    "binding recovery found redacted or unknown-version authority",
-                )));
-            }
-            if event.name != "er.binding" {
-                return Err(ProvisionBindingFailure::NotCommitted(integrity(
-                    "unbound tenant contains foreign authority",
-                )));
-            }
-            let digest = reference_digest(&event).map_err(ProvisionBindingFailure::NotCommitted)?;
-            let bytes = get_bound_blob(&blobs, digest, BINDING_BLOB_DOMAIN)
-                .map_err(ProvisionBindingFailure::NotCommitted)?;
-            let observed = decode_binding(bytes).map_err(ProvisionBindingFailure::NotCommitted)?;
-            if event.stream_type != "er.binding"
-                || event.stream_id != "singleton"
-                || event.version != 1
-            {
-                return Err(ProvisionBindingFailure::NotCommitted(integrity(
-                    "binding event has inconsistent physical identity",
-                )));
-            }
-            if observed != authority {
-                return Err(ProvisionBindingFailure::Conflict {
-                    requested: authority,
-                    found: observed,
-                });
-            }
-            if found.replace(physical(&event)).is_some() {
-                return Err(ProvisionBindingFailure::NotCommitted(integrity(
-                    "more than one binding event exists",
-                )));
-            }
+        let observed =
+            captured_binding_authority(&capture).map_err(ProvisionBindingFailure::NotCommitted)?;
+        let Some(observed) = observed else {
+            let model =
+                build_model(&authority, capture).map_err(ProvisionBindingFailure::NotCommitted)?;
+            debug_assert!(model.binding.is_none());
+            return Ok(None);
+        };
+        if observed.tenant != authority.tenant
+            || observed.stream_identity != authority.stream_identity
+        {
+            return Err(ProvisionBindingFailure::NotCommitted(integrity(
+                "binding authority differs from the captured tenant or generation",
+            )));
         }
-        let mut model = CapturedModel::default();
-        model.binding.clone_from(&found);
-        validate_projection_sets(&authority, &capture.projections, &model)
-            .map_err(ProvisionBindingFailure::NotCommitted)?;
-        Ok(found.map(|physical| ProvisionBindingOutcome {
+        let model =
+            build_model(&observed, capture).map_err(ProvisionBindingFailure::NotCommitted)?;
+        let physical = model.binding.ok_or_else(|| {
+            ProvisionBindingFailure::NotCommitted(integrity(
+                "binding authority has no physical event",
+            ))
+        })?;
+        if observed != authority {
+            return Err(ProvisionBindingFailure::Conflict {
+                requested: authority,
+                found: observed,
+            });
+        }
+        Ok(Some(ProvisionBindingOutcome {
             authority,
             physical,
             replayed: true,
         }))
     }
+}
+
+fn captured_binding_authority(
+    capture: &TenantCapture,
+) -> Result<Option<Authority>, AsyncStoreError> {
+    let blobs: BTreeMap<String, Vec<u8>> = capture
+        .blobs
+        .iter()
+        .map(|blob| (blob.digest.clone(), blob.bytes.clone()))
+        .collect();
+    let mut found = None;
+    for event in &capture.events {
+        if event.name != "er.binding" {
+            continue;
+        }
+        if event.is_redacted() || event.schema_version != 1 {
+            return Err(integrity(
+                "binding recovery found redacted or unknown-version authority",
+            ));
+        }
+        if event.stream_type != "er.binding" || event.stream_id != "singleton" || event.version != 1
+        {
+            return Err(integrity(
+                "binding event has inconsistent physical identity",
+            ));
+        }
+        let digest = reference_digest(event)?;
+        let bytes = get_bound_blob(&blobs, digest, BINDING_BLOB_DOMAIN)?;
+        let authority = decode_binding(bytes)?;
+        if found.replace(authority).is_some() {
+            return Err(integrity("more than one binding event exists"));
+        }
+    }
+    Ok(found)
 }
 
 struct BindingGuard {
