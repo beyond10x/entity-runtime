@@ -8,7 +8,8 @@ use std::{collections::BTreeMap, fmt};
 
 use entity_core::{
     create as decide_create, normalize_arguments, CoreError, DecisionCommand, EntityInstance,
-    Registry, Runtime, ValidatedDefinition,
+    Evaluation, LoadedDecision, OperationFieldAction, PreloadDecision, Registry, Runtime,
+    ValidatedDefinition,
 };
 use entity_store::{
     asynchronous::{
@@ -45,6 +46,8 @@ pub struct ExecuteRequest {
     pub operation: String,
     /// Operation arguments before kernel defaults and validation.
     pub arguments: Value,
+    /// Exact post-load actions for a selected `service/3` branch.
+    pub fulfillments: BTreeMap<String, OperationFieldAction>,
     /// Complete caller-supplied recording metadata.
     pub recording: Recording,
 }
@@ -330,11 +333,48 @@ impl<'a> Executor<'a> {
                         found: Some(current.revision),
                     }));
                 }
-                let decision = Runtime::new(self.registry).execute(
-                    current,
+                let runtime = Runtime::new(self.registry);
+                let prepared = match runtime.decide_before_load(
+                    &request.subject.entity,
+                    current.version,
+                    request.subject.id.clone(),
                     &request.operation,
                     request.arguments.clone(),
-                )?;
+                )? {
+                    PreloadDecision::Load(prepared) => prepared,
+                    PreloadDecision::Refused(refusal) => {
+                        return Err(CoreError::Refused {
+                            outcome: refusal.outcome,
+                            error: refusal.error,
+                            message: refusal.message,
+                        }
+                        .into())
+                    }
+                };
+                let evaluation = match prepared.select_with(current)? {
+                    LoadedDecision::Complete(evaluation) => {
+                        if !request.fulfillments.is_empty() {
+                            let outcome = match &evaluation {
+                                Evaluation::Accepted(decision) => {
+                                    decision.record.outcome.clone().unwrap_or_default()
+                                }
+                                Evaluation::Refused(_) => String::new(),
+                            };
+                            return Err(CoreError::FulfillmentKeysMismatch {
+                                operation: request.operation.clone(),
+                                outcome,
+                                missing: Vec::new(),
+                                extra: request.fulfillments.keys().cloned().collect(),
+                            }
+                            .into());
+                        }
+                        evaluation
+                    }
+                    LoadedDecision::NeedsFulfillment(prepared) => {
+                        prepared.complete(request.fulfillments.clone())?
+                    }
+                };
+                let decision = evaluation.into_decision()?;
                 let commit =
                     RecordedCommit::new(decision, &request.recording).map_err(|error| {
                         ExecutionError::Store(AsyncStoreError::InvalidInput(error.to_string()))
@@ -628,7 +668,7 @@ fn request_comparison_bytes(
             // A `service/1` creation reconstructs the caller's **arguments**; a `kernel/1` one
             // reconstructs its fields, in the framing and the shape it has always used.
             let domain = request_domain(original);
-            if matches!(domain, "er.request/2" | "er.request/3") {
+            if matches!(domain, "er.request/2" | "er.request/3" | "er.request/4") {
                 canonical_domain_bytes(
                     domain,
                     serde_json::json!({
@@ -664,17 +704,33 @@ fn request_comparison_bytes(
                     record_id: request.recording.record_id.clone(),
                 });
             }
-            canonical_domain_bytes(
-                request_domain(original),
-                serde_json::json!({
+            let domain = request_domain(original);
+            if domain == "er.request/4" {
+                canonical_domain_bytes(
+                    domain,
+                    serde_json::json!({
+                        "kind": "execute",
+                        "subject": [request.subject.entity, request.subject.id],
+                        "expected_revision": request.expected_revision,
+                        "operation": request.operation,
+                        "arguments": arguments,
+                        "fulfillments": request.fulfillments,
+                        "recording": recording_value(&request.recording),
+                    }),
+                )
+            } else {
+                canonical_domain_bytes(
+                    domain,
+                    serde_json::json!({
                     "kind": "execute",
                     "subject": [request.subject.entity, request.subject.id],
                     "expected_revision": request.expected_revision,
                     "operation": request.operation,
                     "arguments": arguments,
                     "recording": recording_value(&request.recording),
-                }),
-            )
+                    }),
+                )
+            }
         }
         (BatchAction::Observe(observation), RecordedEntry::Observation(original)) => {
             if observation.entity != original.entity || observation.id != original.id {

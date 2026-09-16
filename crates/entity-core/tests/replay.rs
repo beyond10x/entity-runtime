@@ -265,6 +265,7 @@ fn a_history_cannot_begin_for_a_definition_that_emits_nothing_on_creation() {
         from_state: None,
         to_state: "draft".to_owned(),
         changed: serde_json::from_value(json!({ "text": "invented" })).expect("an object"),
+        removed: Default::default(),
         args: serde_json::from_value(json!({ "text": "invented" })).expect("an object"),
         payload: json!({}),
     }];
@@ -359,6 +360,7 @@ fn a_creation_event_into_a_state_that_is_not_the_initial_one_is_refused() {
         from_state: None,
         to_state: "closed".to_owned(),
         changed: serde_json::from_value(json!({ "title": "A ticket" })).expect("an object"),
+        removed: Default::default(),
         args: serde_json::Map::new(),
         payload: json!({}),
     }];
@@ -386,6 +388,7 @@ fn an_event_carrying_a_field_the_schema_does_not_declare_is_refused() {
         to_state: "open".to_owned(),
         changed: serde_json::from_value(json!({ "title": "A ticket", "invented": "nope" }))
             .expect("an object"),
+        removed: Default::default(),
         // The same fields as `changed`: a creation records one set of fields as both, and a
         // disagreement between them is refused before the schema is ever consulted.
         args: serde_json::from_value(json!({ "title": "A ticket", "invented": "nope" }))
@@ -417,6 +420,7 @@ fn an_event_carrying_a_field_of_the_wrong_type_is_refused() {
         from_state: None,
         to_state: "open".to_owned(),
         changed: serde_json::from_value(json!({ "title": 12345 })).expect("an object"),
+        removed: Default::default(),
         args: serde_json::from_value(json!({ "title": 12345 })).expect("an object"),
         payload: json!({}),
     }];
@@ -888,6 +892,7 @@ fn a_forged_field_of_the_wrong_type_is_refused_by_the_schema_not_the_invariant_t
         from_state: None,
         to_state: "counting".to_owned(),
         changed: serde_json::from_value(json!({ "count": "many" })).expect("an object"),
+        removed: Default::default(),
         args: serde_json::from_value(json!({ "count": "many" })).expect("an object"),
         payload: json!({}),
     }];

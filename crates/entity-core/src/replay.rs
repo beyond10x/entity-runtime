@@ -94,8 +94,8 @@ use crate::definition::OperationDefinition;
 use crate::error::CoreError;
 use crate::runtime::{
     canonical_object, canonicalize, changed_fields, check_invariants, check_preconditions, create,
-    execute, resolve_template, DecisionCommand, DecisionRecord, DomainEvent, EntityInstance,
-    TemplateContext,
+    decide_before_load, resolve_template, DecisionCommand, DecisionRecord, DomainEvent,
+    EntityInstance, LoadedDecision, PreloadDecision, TemplateContext,
 };
 use crate::validation::validate_object;
 use crate::ValidatedDefinition;
@@ -157,16 +157,32 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
                 DecisionCommand::Execute {
                     operation,
                     arguments,
+                    fulfillments,
                 } => {
                     let before = instance.as_ref().ok_or_else(|| {
                         refuse(index, "history begins with an operation, not creation")
                     })?;
-                    execute(
+                    let prepared = match decide_before_load(
                         &definition,
-                        before,
+                        record.id.clone(),
                         operation,
                         serde_json::Value::Object(arguments.clone()),
-                    )?
+                    )? {
+                        PreloadDecision::Load(prepared) => prepared,
+                        PreloadDecision::Refused(refusal) => {
+                            return Err(CoreError::Refused {
+                                outcome: refusal.outcome,
+                                error: refusal.error,
+                                message: refusal.message,
+                            })
+                        }
+                    };
+                    match prepared.select_with(before)? {
+                        LoadedDecision::Complete(evaluation) => evaluation.into_decision()?,
+                        LoadedDecision::NeedsFulfillment(prepared) => {
+                            prepared.complete(fulfillments.clone())?.into_decision()?
+                        }
+                    }
                 }
                 DecisionCommand::LegacyImport => return Err(refuse(
                     index,
@@ -318,6 +334,7 @@ pub fn rehydrate(
                 || event.to_state != first.to_state
                 || event.args != first.args
                 || event.changed != first.changed
+                || event.removed != first.removed
             {
                 return refuse(format!(
                     "events {index} (`{}`) and {} (`{}`) share revision {revision} but describe \
@@ -454,9 +471,17 @@ pub fn rehydrate(
         let before_fields = instance.fields.clone();
         instance.lifecycle_state = first.to_state.clone();
         instance.revision = revision;
-        for (name, value) in &first.changed {
-            instance.fields.insert(name.clone(), value.clone());
+        if first
+            .removed
+            .iter()
+            .any(|name| first.changed.contains_key(name))
+        {
+            return refuse(format!(
+                "event {index} (`{}`) carries a field in both `removed` and `changed`",
+                first.event_type
+            ));
         }
+        apply_event_changes(&mut instance.fields, &first.removed, &first.changed);
 
         // Fields before rules, per revision, in the order `execute` uses (design § 6: the fields
         // are validated at step 7 and the invariants evaluated at step 9). A field of the wrong
@@ -557,6 +582,19 @@ pub fn rehydrate(
     }
 
     Ok(instance)
+}
+
+fn apply_event_changes(
+    fields: &mut Map<String, Value>,
+    removed: &std::collections::BTreeSet<String>,
+    changed: &Map<String, Value>,
+) {
+    for name in removed {
+        fields.remove(name);
+    }
+    for (name, value) in changed {
+        fields.insert(name.clone(), value.clone());
+    }
 }
 
 /// Every operation that could have produced this revision's events, or why none could have.
@@ -774,4 +812,30 @@ fn declares(operation: &OperationDefinition, from: &str, to: &str) -> bool {
     operation.transitions.iter().any(|transition| {
         transition.from.as_slice().iter().any(|state| state == from) && transition.to == to
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use serde_json::{json, Map};
+
+    use super::apply_event_changes;
+
+    #[test]
+    fn event_changes_delete_before_they_insert() {
+        let mut fields = Map::from_iter([
+            ("kept".to_owned(), json!("before")),
+            ("removed".to_owned(), json!("gone")),
+        ]);
+        let removed = BTreeSet::from(["removed".to_owned()]);
+        let changed = Map::from_iter([("kept".to_owned(), json!("after"))]);
+
+        apply_event_changes(&mut fields, &removed, &changed);
+
+        assert_eq!(
+            fields,
+            Map::from_iter([("kept".to_owned(), json!("after"))])
+        );
+    }
 }

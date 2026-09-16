@@ -1873,6 +1873,24 @@ fn refusal(error: &CoreError) -> Value {
         CoreError::IdentityMismatch { field, id, value } => {
             json!({ "field": field, "id": id, "address": value })
         }
+        CoreError::FulfillmentRequired {
+            operation,
+            outcome,
+            fields,
+        } => json!({ "operation": operation, "outcome": outcome, "fields": fields }),
+        CoreError::FulfillmentKeysMismatch {
+            operation,
+            outcome,
+            missing,
+            extra,
+        } => json!({
+            "operation": operation, "outcome": outcome, "missing": missing, "extra": extra
+        }),
+        CoreError::RequiredFieldRemoval {
+            operation,
+            outcome,
+            field,
+        } => json!({ "operation": operation, "outcome": outcome, "field": field }),
         // Every defect, not the first: a caller fixing a definition from this output should not
         // have to run the command once per fault.
         CoreError::Definition(errors) => json!({

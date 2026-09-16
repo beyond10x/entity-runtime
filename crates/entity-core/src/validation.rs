@@ -9,8 +9,8 @@
 use crate::{
     observed::Observed, Cardinality, Condition, DeclaredDefault, DefinitionError, DefinitionErrors,
     EntityDefinition, EventDefinition, FieldDefinition, FieldKind, MapKey, ObjectSchema,
-    OutcomeDefinition, OutcomeEffect, PresentArgument, RelationKind, RuleDefinition, Semantics,
-    ValidationError, MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
+    OperationFieldActions, OutcomeDefinition, OutcomeEffect, PresentArgument, RelationKind,
+    RuleDefinition, Semantics, ValidationError, MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -251,6 +251,12 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
         };
         for outcome in &definition.create.outcomes {
             let path = format!("create.outcomes.{}", outcome.name);
+            for field in outcome.fulfills.keys() {
+                defects.push(DefinitionError::FulfillmentOnCreate {
+                    outcome: outcome.name.clone(),
+                    field: field.clone(),
+                });
+            }
             if let Some(when) = &outcome.when {
                 defects.check(validate_condition_definition(
                     when,
@@ -462,10 +468,81 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 &operation.response,
                 Some(operation_name),
             ));
+            defects.extend(validate_fulfillment_outcome(
+                definition,
+                operation_name,
+                outcome,
+                &path,
+            ));
         }
     }
 
     defects.into_result()
+}
+
+/// The closed `service/3` fulfillment map and its exact target-field relation.
+fn validate_fulfillment_outcome(
+    definition: &EntityDefinition,
+    operation: &str,
+    outcome: &OutcomeDefinition,
+    path: &str,
+) -> Vec<DefinitionError> {
+    if outcome.fulfills.is_empty() {
+        return Vec::new();
+    }
+    let mut defects = Vec::new();
+    if !definition.semantics.has_operation_fulfillment() {
+        defects.push(DefinitionError::SemanticsKeyNotAvailable {
+            path: format!("{path}.fulfills"),
+            key: "fulfills".to_owned(),
+        });
+    }
+
+    let identity = definition
+        .identity
+        .as_ref()
+        .map(|identity| identity.field.as_str());
+    for (field, requirement) in &outcome.fulfills {
+        let Some(target) = definition.schema.fields.get(field) else {
+            defects.push(DefinitionError::FulfillmentFieldUnknown {
+                operation: operation.to_owned(),
+                outcome: outcome.name.clone(),
+                field: field.clone(),
+            });
+            continue;
+        };
+        if identity == Some(field.as_str()) {
+            defects.push(DefinitionError::FulfillmentIdentityField {
+                operation: operation.to_owned(),
+                outcome: outcome.name.clone(),
+                field: field.clone(),
+            });
+        }
+        if outcome.set.contains_key(field) {
+            defects.push(DefinitionError::FulfillmentSetConflict {
+                operation: operation.to_owned(),
+                outcome: outcome.name.clone(),
+                field: field.clone(),
+            });
+        }
+        let matches_presence = matches!(
+            (target.required, requirement.actions),
+            (true, OperationFieldActions::Required) | (false, OperationFieldActions::Optional)
+        );
+        if !matches_presence {
+            defects.push(DefinitionError::FulfillmentPresenceMismatch {
+                operation: operation.to_owned(),
+                outcome: outcome.name.clone(),
+                field: field.clone(),
+                expected: if target.required {
+                    "required"
+                } else {
+                    "optional"
+                },
+            });
+        }
+    }
+    defects
 }
 
 /// Every reference a branch carries, each in the scope its own step resolves it in.
@@ -909,6 +986,7 @@ fn validate_outcomes(
         if outcome.refuses.is_some()
             && (!outcome.effect.is_none()
                 || !outcome.set.is_empty()
+                || !outcome.fulfills.is_empty()
                 || !outcome.set_if_present.is_empty()
                 || !outcome.emits.is_empty()
                 || !outcome.responds.is_empty()
@@ -2480,6 +2558,17 @@ fn validate_value(
             None => wrong_type(path, "ref", errors),
         },
     }
+}
+
+pub(crate) fn validate_field_value(
+    definition: &FieldDefinition,
+    value: &Value,
+    path: &str,
+    semantics: Semantics,
+) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+    validate_value(definition, value, path, semantics, &mut errors);
+    errors
 }
 
 fn validate_string(

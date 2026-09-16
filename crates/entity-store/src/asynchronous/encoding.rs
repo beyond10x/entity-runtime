@@ -68,6 +68,7 @@ fn tagged_record(entry: &RecordedEntry) -> Result<Value, AsyncStoreError> {
 pub fn record_domain(entry: &RecordedEntry) -> &'static str {
     match entry {
         RecordedEntry::Decision(commit) => match &commit.envelope.record.definition {
+            Some(definition) if definition.semantics.has_operation_fulfillment() => "er.record/4",
             Some(definition) if definition.semantics.has_conditional_presence() => "er.record/3",
             Some(definition) if definition.semantics.is_service_1() => "er.record/2",
             _ => "er.record/1",
@@ -82,6 +83,7 @@ pub fn request_domain(entry: &RecordedEntry) -> &'static str {
     match record_domain(entry) {
         "er.record/2" => "er.request/2",
         "er.record/3" => "er.request/3",
+        "er.record/4" => "er.request/4",
         _ => "er.request/1",
     }
 }
@@ -176,16 +178,18 @@ pub fn original_request_comparison_bytes(
                 DecisionCommand::Create {
                     fields: _,
                     arguments,
-                } if matches!(domain, "er.request/2" | "er.request/3") => canonical_domain_bytes(
-                    domain,
-                    serde_json::json!({
-                        "kind": "create",
-                        "subject": [record.entity, record.id],
-                        "definition_version": record.result.version,
-                        "arguments": arguments,
-                        "recording": recording_value(&recording),
-                    }),
-                ),
+                } if matches!(domain, "er.request/2" | "er.request/3" | "er.request/4") => {
+                    canonical_domain_bytes(
+                        domain,
+                        serde_json::json!({
+                            "kind": "create",
+                            "subject": [record.entity, record.id],
+                            "definition_version": record.result.version,
+                            "arguments": arguments,
+                            "recording": recording_value(&recording),
+                        }),
+                    )
+                }
                 DecisionCommand::Create { fields, .. } => canonical_domain_bytes(
                     domain,
                     serde_json::json!({
@@ -199,6 +203,28 @@ pub fn original_request_comparison_bytes(
                 DecisionCommand::Execute {
                     operation,
                     arguments,
+                    fulfillments,
+                } if domain == "er.request/4" => canonical_domain_bytes(
+                    domain,
+                    serde_json::json!({
+                        "kind": "execute",
+                        "subject": [record.entity, record.id],
+                        "expected_revision": record.revision.checked_sub(1).ok_or_else(|| {
+                            AsyncStoreError::HistoricalRetryUnverifiable {
+                                record_id: entry.record_id().to_owned(),
+                                detail: "execute record has no positive predecessor".to_owned(),
+                            }
+                        })?,
+                        "operation": operation,
+                        "arguments": arguments,
+                        "fulfillments": fulfillments,
+                        "recording": recording_value(&recording),
+                    }),
+                ),
+                DecisionCommand::Execute {
+                    operation,
+                    arguments,
+                    fulfillments: _,
                 } => canonical_domain_bytes(
                     domain,
                     serde_json::json!({

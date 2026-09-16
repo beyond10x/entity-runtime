@@ -191,6 +191,51 @@ pub enum DefinitionError {
         /// The field it tried to insert.
         field: String,
     },
+    /// Operation-field fulfillment was declared on a creation branch.
+    FulfillmentOnCreate {
+        /// The creation outcome.
+        outcome: String,
+        /// The field it named.
+        field: String,
+    },
+    /// Operation-field fulfillment names no closed schema field.
+    FulfillmentFieldUnknown {
+        /// The operation.
+        operation: String,
+        /// The outcome.
+        outcome: String,
+        /// The undeclared field.
+        field: String,
+    },
+    /// Operation-field fulfillment targets the entity identity mirror.
+    FulfillmentIdentityField {
+        /// The operation.
+        operation: String,
+        /// The outcome.
+        outcome: String,
+        /// The identity field.
+        field: String,
+    },
+    /// One field is present in both `set` and `fulfills`.
+    FulfillmentSetConflict {
+        /// The operation.
+        operation: String,
+        /// The outcome.
+        outcome: String,
+        /// The conflicting field.
+        field: String,
+    },
+    /// A fulfillment requirement disagrees with the target field's outer presence.
+    FulfillmentPresenceMismatch {
+        /// The operation.
+        operation: String,
+        /// The outcome.
+        outcome: String,
+        /// The target field.
+        field: String,
+        /// The action class required by the schema.
+        expected: &'static str,
+    },
     /// A branch's name is empty or whitespace.
     EmptyOutcomeName {
         /// The creation or operation it belongs to.
@@ -498,6 +543,11 @@ impl DefinitionError {
             Self::ConditionalTargetInvalid { .. } => "conditional_target_invalid",
             Self::ConditionalTargetConflict { .. } => "conditional_target_conflict",
             Self::ConditionalSetOnOperation { .. } => "conditional_set_on_operation",
+            Self::FulfillmentOnCreate { .. } => "fulfillment_on_create",
+            Self::FulfillmentFieldUnknown { .. } => "fulfillment_field_unknown",
+            Self::FulfillmentIdentityField { .. } => "fulfillment_identity_field",
+            Self::FulfillmentSetConflict { .. } => "fulfillment_set_conflict",
+            Self::FulfillmentPresenceMismatch { .. } => "fulfillment_presence_mismatch",
             Self::EmptyOutcomeName { .. } => "empty_outcome_name",
             Self::DuplicateOutcome { .. } => "duplicate_outcome",
             Self::AmbiguousDefaultOutcome { .. } => "ambiguous_default_outcome",
@@ -617,6 +667,7 @@ impl fmt::Display for DefinitionError {
             ),
             Self::SemanticsKeyNotAvailable { path, key } => {
                 let required = match key.as_str() {
+                    "fulfills" => "service/3",
                     "set_if_present" | "payload_if_present" | "responds_if_present" => {
                         "service/2"
                     }
@@ -655,6 +706,43 @@ impl fmt::Display for DefinitionError {
             } => write!(
                 f,
                 "operation '{operation}' outcome '{outcome}' conditionally writes field '{field}'; conditional state insertion is creation-only"
+            ),
+            Self::FulfillmentOnCreate { outcome, field } => write!(
+                f,
+                "creation outcome '{outcome}' requests fulfillment for field '{field}'; fulfillment is operation-only"
+            ),
+            Self::FulfillmentFieldUnknown {
+                operation,
+                outcome,
+                field,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' requests fulfillment for unknown field '{field}'"
+            ),
+            Self::FulfillmentIdentityField {
+                operation,
+                outcome,
+                field,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' requests fulfillment for identity field '{field}'"
+            ),
+            Self::FulfillmentSetConflict {
+                operation,
+                outcome,
+                field,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' names field '{field}' in both `set` and `fulfills`"
+            ),
+            Self::FulfillmentPresenceMismatch {
+                operation,
+                outcome,
+                field,
+                expected,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' declares the wrong fulfillment action class for field '{field}'; its schema requires '{expected}'"
             ),
             Self::EmptyOutcomeName { command } => {
                 write!(f, "'{command}' declares an outcome with an empty name")
@@ -1206,6 +1294,35 @@ pub enum CoreError {
         /// The address the identity field's value derives to, or why it has none.
         value: String,
     },
+    /// The selected `service/3` branch needs host-supplied field actions.
+    FulfillmentRequired {
+        /// The operation.
+        operation: String,
+        /// The selected outcome.
+        outcome: String,
+        /// The exact required field names, in canonical order.
+        fields: Vec<String>,
+    },
+    /// Supplied fulfillment coordinates differ from the selected branch's closed map.
+    FulfillmentKeysMismatch {
+        /// The operation.
+        operation: String,
+        /// The selected outcome.
+        outcome: String,
+        /// Advertised keys that were not supplied.
+        missing: Vec<String>,
+        /// Supplied keys that were not advertised.
+        extra: Vec<String>,
+    },
+    /// A required field was asked to be removed.
+    RequiredFieldRemoval {
+        /// The operation.
+        operation: String,
+        /// The selected outcome.
+        outcome: String,
+        /// The required field.
+        field: String,
+    },
 }
 
 impl CoreError {
@@ -1232,6 +1349,9 @@ impl CoreError {
             Self::OutcomeUnobservable { .. } => "outcome_unobservable",
             Self::UnspecifiedMoveSource { .. } => "unspecified_move_source",
             Self::IdentityMismatch { .. } => "identity_mismatch",
+            Self::FulfillmentRequired { .. } => "fulfillment_required",
+            Self::FulfillmentKeysMismatch { .. } => "fulfillment_keys_mismatch",
+            Self::RequiredFieldRemoval { .. } => "required_field_removal",
         }
     }
 }
@@ -1374,6 +1494,34 @@ impl fmt::Display for CoreError {
                 f,
                 "identity field '{field}' addresses to {value}, but the instance is stored at \
                  '{id}'"
+            ),
+            Self::FulfillmentRequired {
+                operation,
+                outcome,
+                fields,
+            } => write!(
+                f,
+                "operation '{operation}' selected outcome '{outcome}', which requires fulfillment actions for [{}]",
+                fields.join(", ")
+            ),
+            Self::FulfillmentKeysMismatch {
+                operation,
+                outcome,
+                missing,
+                extra,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' received the wrong fulfillment coordinates (missing [{}], extra [{}])",
+                missing.join(", "),
+                extra.join(", ")
+            ),
+            Self::RequiredFieldRemoval {
+                operation,
+                outcome,
+                field,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' cannot remove required field '{field}'"
             ),
         }
     }
