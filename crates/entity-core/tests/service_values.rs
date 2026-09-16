@@ -1615,3 +1615,432 @@ fn a_quantifier_body_reads_the_fixed_roots_its_binder_does_not_name() {
         Truth::True
     );
 }
+
+// --- § 10.2.1: a schema bound is an authored literal, read at admission through the literal door --
+
+/// Whether any defect names the source observation domain, in either variant a definition-admission
+/// refusal of an unreadable number can carry.
+fn admission_names_the_domain(defects: &DefinitionErrors) -> bool {
+    defects.iter().any(|defect| {
+        matches!(
+            defect,
+            DefinitionError::InvalidField { message, .. }
+                | DefinitionError::InvalidRule { message, .. }
+                if message.contains("source observation domain")
+        )
+    })
+}
+
+/// A `service/1` field of the given shape, named `x`, in the entity schema.
+fn bounded_schema(field: Value) -> Value {
+    json!({ "fields": { "x": field } })
+}
+
+/// § 10.2.1: *"Under `service/1`, numeric schema admission refuses a value outside this
+/// source-observation domain with a path-bearing `ValidationError`; **definition admission rejects
+/// unobservable numeric literals and bounds**"*, and *"schema bounds use the literal door"*.
+///
+/// A `default` was already read where it is written. A `min`/`max` was read only when a value
+/// arrived, so the definition registered: on a **required** field that adds a second, redundant
+/// error to every value, and on an **optional** field with no value ever supplied the bound answers
+/// nothing at any evaluation and is never reported at all — which is the case the sentence exists
+/// to refuse.
+#[test]
+fn an_unobservable_schema_bound_is_refused_at_definition_admission_on_both_limits() {
+    // Both limits, both signs. The one the reviewer's case measured is the first row.
+    for bound in [
+        r#"{"type": "number", "required": true, "min": 1e400}"#,
+        r#"{"type": "number", "required": true, "max": 1e400}"#,
+        r#"{"type": "number", "required": true, "min": -1e400}"#,
+        r#"{"type": "number", "required": true, "max": -1e400}"#,
+        r#"{"type": "number", "required": true, "min": -1e400, "max": 1e400}"#,
+        // and on an optional field, which is the row that answered nothing at every evaluation.
+        r#"{"type": "number", "min": 1e400}"#,
+        // the other two numeric kinds carry the same door.
+        r#"{"type": "integer", "required": true, "min": 1e400}"#,
+        r#"{"type": "binary64", "required": true, "max": -1e400}"#,
+    ] {
+        let defects = refused(probe(
+            "service/1",
+            bounded_schema(document(bound)),
+            json!({}),
+            true.into(),
+        ));
+        assert!(admission_names_the_domain(&defects), "{bound}: {defects}");
+    }
+
+    // The control the reviewer's case paired it with: the same unreadable number written as a
+    // `default` is refused where it is written, and has been.
+    let defects = refused(probe(
+        "service/1",
+        bounded_schema(document(
+            r#"{"type": "number", "required": true, "default": 1e400}"#,
+        )),
+        json!({}),
+        true.into(),
+    ));
+    assert!(admission_names_the_domain(&defects), "{defects}");
+}
+
+/// The same refusal at every depth a schema reaches, and on every surface a schema occurs on:
+/// the entity schema, the creation's arguments and response, and an operation's.
+#[test]
+fn an_unobservable_bound_is_refused_at_every_depth_and_on_every_admitted_schema_surface() {
+    let bound = || document(r#"{"type": "number", "required": true, "min": 1e400}"#);
+    for nested in [
+        json!({ "type": "object", "required": true, "properties": { "a": bound() } }),
+        json!({ "type": "array", "required": true, "items": bound() }),
+        json!({ "type": "map", "required": true, "key": "string", "items": bound() }),
+        json!({ "type": "union", "required": true, "tag": "kind", "variants": { "n": bound() } }),
+        json!({ "type": "object", "required": true, "properties": {
+            "rows": { "type": "array", "required": true, "items": {
+                "type": "object", "required": true, "properties": { "a": bound() }
+            }}
+        }}),
+    ] {
+        let defects = refused(probe(
+            "service/1",
+            bounded_schema(nested.clone()),
+            json!({}),
+            true.into(),
+        ));
+        assert!(admission_names_the_domain(&defects), "{nested}: {defects}");
+    }
+
+    // The argument, response and operation surfaces, each of which `validate_schema_definition`
+    // already walks. Other defects may accompany the bound — an undetermined response field is one
+    // — and the assertion is that the bound is among them, not that it is alone.
+    let surfaces = [
+        json!({ "create": { "arguments": { "fields": { "x": bound() } } } }),
+        json!({ "create": { "response": { "fields": { "x": bound() } } } }),
+        json!({ "operations": { "touch": {
+            "arguments": { "fields": { "x": bound() } },
+            "transitions": [{ "from": "held", "to": "held" }]
+        }}}),
+        json!({ "operations": { "touch": {
+            "response": { "fields": { "x": bound() } },
+            "transitions": [{ "from": "held", "to": "held" }]
+        }}}),
+    ];
+    for surface in surfaces {
+        let mut fixture = probe("service/1", json!({ "fields": {} }), json!({}), true.into());
+        for (key, value) in surface.as_object().expect("an object") {
+            fixture[key] = value.clone();
+        }
+        let defects = refused(fixture);
+        assert!(admission_names_the_domain(&defects), "{surface}: {defects}");
+    }
+}
+
+/// What the new refusal must **not** take with it: a readable bound, the underflow class the
+/// reading rule deliberately admits, the bound-order check, the run-time bound itself, and every
+/// `kernel/1` answer.
+#[test]
+fn a_readable_bound_the_order_check_and_every_kernel_1_bound_are_untouched() {
+    for bound in [
+        r#"{"type": "number", "required": true, "min": 0, "max": 100}"#,
+        r#"{"type": "integer", "required": true, "min": -9223372036854775808}"#,
+        // `1e-400` underflows to a finite binary64, so the source observes it and the bound is
+        // readable. § 10.2.1's underflow row is about the value it observes, not a refusal.
+        r#"{"type": "number", "required": true, "min": 1e-400}"#,
+        r#"{"type": "binary64", "required": true, "min": -1.5, "max": 1.5}"#,
+    ] {
+        assert!(
+            ValidatedDefinition::new(definition(probe(
+                "service/1",
+                bounded_schema(document(bound)),
+                json!({}),
+                true.into()
+            )))
+            .is_ok(),
+            "{bound}"
+        );
+    }
+
+    // The order check still answers, and it answers on its own terms rather than through the door.
+    let defects = refused(probe(
+        "service/1",
+        bounded_schema(json!({ "type": "number", "required": true, "min": 2, "max": 1 })),
+        json!({}),
+        true.into(),
+    ));
+    assert!(
+        defects.iter().any(|defect| matches!(
+            defect,
+            DefinitionError::InvalidField { message, .. } if message == "min cannot exceed max"
+        )),
+        "{defects}"
+    );
+
+    // And the bound is still enforced where a value arrives, through the literal door.
+    let validated = ValidatedDefinition::new(definition(probe(
+        "service/1",
+        bounded_schema(json!({ "type": "number", "required": true, "min": 10 })),
+        json!({}),
+        true.into(),
+    )))
+    .expect("registers");
+    let Err(CoreError::Validation(errors)) =
+        create(&validated, "p-1".to_owned(), json!({ "x": 9 }))
+    else {
+        panic!("a value below the minimum is refused where it arrives");
+    };
+    assert_eq!(errors[0].path, "fields.x");
+    assert!(errors[0].message.contains("is below minimum"));
+    assert!(create(&validated, "p-1".to_owned(), json!({ "x": 10 })).is_ok());
+
+    // `kernel/1` reads a bound through `number::compare`, which holds any token this runtime holds,
+    // so no `kernel/1` definition stops registering.
+    for bound in [
+        r#"{"type": "number", "required": true, "min": 1e400}"#,
+        r#"{"type": "number", "max": -1e400}"#,
+        r#"{"type": "integer", "required": true, "min": 1e400}"#,
+    ] {
+        assert!(
+            ValidatedDefinition::new(definition(probe(
+                "kernel/1",
+                bounded_schema(document(bound)),
+                json!({}),
+                true.into()
+            )))
+            .is_ok(),
+            "{bound}"
+        );
+    }
+}
+
+// --- § 10.5 and § 10.6: a union's selected variant keeps its declared kind --------------------------
+
+/// A `service/1` probe over one union field named `payee`, with the given tag and variants.
+fn variant_schema(tag: &str, variants: Value) -> Value {
+    json!({ "fields": { "payee": {
+        "type": "union",
+        "required": true,
+        "tag": tag,
+        "variants": variants
+    }}})
+}
+
+fn variant_answer(tag: &str, variants: Value, condition: Value, value: Value) -> Truth {
+    answer(
+        "service/1",
+        variant_schema(tag, variants),
+        json!({}),
+        condition,
+        json!({ "payee": value }),
+    )
+}
+
+/// § 10.6: *"a `map`'s keys stay unaddressable (§ 10.4), so `{metadata: {count: "7"}}` cannot be
+/// read as its own `count` key: the only `count` a `map` has is its size"* — **whichever field
+/// declares the map**, § 10.1 typing a union's `variants` with a full `FieldDefinition` and § 10.5
+/// reaching a variant at `$fields.payee.value` under the tag test.
+///
+/// The walk continued under the union's content key with `variants.get(<wire key>)`, which looks a
+/// variant **label** up by the **wire key**. No variant is called `value`, so a declared `map` was
+/// lost and the payload was walked as an untyped object: `count` read the map's own `count` member
+/// and answered a wrong value rather than a refusal.
+#[test]
+fn a_declared_map_is_addressed_by_its_size_whichever_field_declares_it() {
+    let variants = json!({ "meta": {
+        "type": "map", "required": true, "key": "string", "items": { "type": "string" }
+    }});
+    let count =
+        json!({ "compare": { "left": "$fields.payee.value.count", "op": "eq", "right": 1 } });
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants.clone(),
+            count.clone(),
+            json!({ "kind": "meta", "value": { "count": "7" } })
+        ),
+        Truth::True,
+        "a declared map's only `count` is its size"
+    );
+    // Two members, so the size and the shadowing key cannot be confused by coincidence.
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants.clone(),
+            json!({ "compare": { "left": "$fields.payee.value.count", "op": "eq", "right": 2 } }),
+            json!({ "kind": "meta", "value": { "count": "7", "source": "portal" } })
+        ),
+        Truth::True
+    );
+    // And the map's keys stay unaddressable inside a variant exactly as they are outside one.
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants,
+            json!({ "eq": ["$fields.payee.value.source", "portal"] }),
+            json!({ "kind": "meta", "value": { "source": "portal" } })
+        ),
+        Truth::Unknown
+    );
+
+    // The derived content key moves with the tag, and the size is read under it either way.
+    assert_eq!(
+        variant_answer(
+            "value",
+            json!({ "meta": {
+                "type": "map", "required": true, "key": "string", "items": { "type": "string" }
+            }}),
+            json!({ "compare": { "left": "$fields.payee.content.count", "op": "eq", "right": 1 } }),
+            json!({ "value": "meta", "content": { "count": "7" } })
+        ),
+        Truth::True
+    );
+}
+
+/// The general form behind the map case: the walk continues under the kind the **tag** names, so
+/// one declared path answers by the variant the value selected — never by the spelling of the
+/// content key.
+#[test]
+fn the_variant_the_tag_names_is_the_kind_the_walk_continues_under() {
+    let variants = json!({
+        "meta": { "type": "map", "required": true, "key": "string", "items": { "type": "string" } },
+        "lines": { "type": "array", "required": true, "items": { "type": "string" } },
+        "company": { "type": "object", "required": true, "properties": {
+            "name": { "type": "string", "required": true }
+        }}
+    });
+    let count =
+        json!({ "compare": { "left": "$fields.payee.value.count", "op": "eq", "right": 2 } });
+
+    // One address, three variants, three declared kinds: a map's size, an array's length, and an
+    // object that has no `count` at all.
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants.clone(),
+            count.clone(),
+            json!({ "kind": "meta", "value": { "a": "1", "b": "2" } })
+        ),
+        Truth::True
+    );
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants.clone(),
+            count.clone(),
+            json!({ "kind": "lines", "value": ["a", "b"] })
+        ),
+        Truth::True
+    );
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants.clone(),
+            count,
+            json!({ "kind": "company", "value": { "name": "Acme" } })
+        ),
+        Truth::Unknown,
+        "an object declares no `count`, so the address resolves to nothing"
+    );
+
+    // An array variant's ordinal address, and an object variant's property, both still resolve.
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants.clone(),
+            json!({ "eq": ["$fields.payee.value.0", "a"] }),
+            json!({ "kind": "lines", "value": ["a", "b"] })
+        ),
+        Truth::True
+    );
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants.clone(),
+            json!({ "eq": ["$fields.payee.value.name", "Acme"] }),
+            json!({ "kind": "company", "value": { "name": "Acme" } })
+        ),
+        Truth::True
+    );
+
+    // The tag segment is a label, not a variant: it resolves to its own text and continues under no
+    // declared field.
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants.clone(),
+            json!({ "eq": ["$fields.payee.kind", "company"] }),
+            json!({ "kind": "company", "value": { "name": "Acme" } })
+        ),
+        Truth::True
+    );
+
+    // A variant named after the content key is selected by the tag like any other, rather than by
+    // sharing that key's spelling.
+    assert_eq!(
+        variant_answer(
+            "kind",
+            json!({
+                "value": { "type": "array", "required": true, "items": { "type": "string" } },
+                "other": { "type": "object", "required": true, "properties": {
+                    "count": { "type": "string", "required": true }
+                }}
+            }),
+            json!({ "compare": { "left": "$fields.payee.value.count", "op": "eq", "right": 2 } }),
+            json!({ "kind": "value", "value": ["a", "b"] })
+        ),
+        Truth::True
+    );
+}
+
+/// The same resolution inside the two contexts a lowered invariant actually puts it in: a nested
+/// union, and a quantifier body.
+#[test]
+fn a_variants_declared_kind_survives_nesting_and_a_quantifier_body() {
+    // A union whose variant is a union: the inner tag selects the inner variant's kind.
+    let nested = json!({ "inner": {
+        "type": "union", "required": true, "tag": "shape", "variants": {
+            "meta": {
+                "type": "map", "required": true, "key": "string", "items": { "type": "string" }
+            }
+        }
+    }});
+    assert_eq!(
+        variant_answer(
+            "kind",
+            nested,
+            json!({ "compare": {
+                "left": "$fields.payee.value.value.count", "op": "eq", "right": 1
+            }}),
+            json!({ "kind": "inner", "value": { "shape": "meta", "value": { "count": "7" } } })
+        ),
+        Truth::True
+    );
+
+    // A quantifier over a variant walks a JSON object's values whether or not the walk typed the
+    // variant, so this row measures preservation rather than the defect: the quantifier context
+    // keeps the answer it had.
+    assert_eq!(
+        variant_answer(
+            "kind",
+            json!({ "meta": {
+                "type": "map", "required": true, "key": "string", "items": { "type": "string" }
+            }}),
+            json!({ "for_all": {
+                "in": "$fields.payee.value", "as": "v", "that": { "eq": ["$v", "x"] }
+            }}),
+            json!({ "kind": "meta", "value": { "a": "x", "b": "x" } })
+        ),
+        Truth::True
+    );
+
+    // And registration still admits the tag-guarded path it admitted before, rather than refusing
+    // a variant address it cannot type until run time.
+    assert!(ValidatedDefinition::new(definition(probe(
+        "service/1",
+        variant_schema(
+            "kind",
+            json!({ "meta": {
+                "type": "map", "required": true, "key": "string", "items": { "type": "string" }
+            }})
+        ),
+        json!({}),
+        json!({ "compare": { "left": "$fields.payee.value.count", "op": "eq", "right": 1 } })
+    )))
+    .is_ok());
+}

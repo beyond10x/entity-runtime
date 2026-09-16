@@ -701,13 +701,39 @@ fn validate_identity(definition: &EntityDefinition) -> Vec<DefinitionError> {
         Some(field) if !field.required => vec![DefinitionError::IdentityFieldUnknown {
             field: identity.field.clone(),
         }],
-        Some(field) if field.kind == FieldKind::Json => {
+        Some(field) if carries_json(field) => {
             vec![DefinitionError::IdentityFieldNotAddressable {
                 field: identity.field.clone(),
-                kind: field.kind.as_str(),
+                // The kind named is the one with no address function, which is `json` at whatever
+                // depth it was declared; the field named is the one `identity` declares.
+                kind: FieldKind::Json.as_str(),
             }]
         }
         Some(_) => Vec::new(),
+    }
+}
+
+/// Whether a `json` leaf occurs anywhere in an identity's declared shape.
+///
+/// § 7.3.3 refuses `json` **at every depth**, not only at the root, and § 7.3 calls `address`
+/// *total*: a `json` member is validated by nothing, so a composite identity carrying one may hold
+/// a `null` or a number outside the source observation domain, and `address` would then answer an
+/// error where an address belongs — which step 11 reports as an `IdentityMismatch` carrying that
+/// sentence in place of the address.
+///
+/// The recursion is the address function's own: an `object`'s properties, an `array`'s and a
+/// `map`'s element definition, and a `union`'s variants. Every one of those composite kinds stays
+/// admitted, and an optional member is walked like a required one — a `json` leaf under a member
+/// nothing supplies is still a leaf the address function has no row for.
+fn carries_json(field: &FieldDefinition) -> bool {
+    match field.kind {
+        FieldKind::Json => true,
+        FieldKind::Object => {
+            field.additional_properties || field.properties.values().any(carries_json)
+        }
+        FieldKind::Array | FieldKind::Map => field.items.as_deref().is_some_and(carries_json),
+        FieldKind::Union => field.variants.values().any(carries_json),
+        _ => false,
     }
 }
 
@@ -1012,7 +1038,10 @@ fn validate_reference_path(
 
 /// The key a `union`'s payload is carried under, derived rather than declared so two readers cannot
 /// disagree about it.
-fn content_key(field: &FieldDefinition) -> &'static str {
+///
+/// Shared with the run-time walk rather than spelled twice: registration admits a path through this
+/// key and the walk resolves it, and a second copy of the derivation is how the two would drift.
+pub(crate) fn content_key(field: &FieldDefinition) -> &'static str {
     if field.tag.as_deref() == Some("value") {
         "content"
     } else {
@@ -1782,6 +1811,30 @@ fn validate_field_definition(
                 path: path.to_owned(),
                 message: "min cannot exceed max".into(),
             });
+        }
+    }
+    // § 10.2.1: an authored bound is a literal and the source reads a literal through its own
+    // door, so a bound outside the observation domain is refused where it is written — the other
+    // half of the sentence that already refuses an unobservable `default`. On a required field
+    // such a bound would add a second, redundant error to every value; on an optional field with
+    // no value ever supplied it answers nothing at any evaluation and is never reported at all.
+    if semantics.is_service_1()
+        && matches!(
+            field.kind,
+            FieldKind::Integer | FieldKind::Number | FieldKind::Binary64
+        )
+    {
+        for (name, bound) in [("min", &field.min), ("max", &field.max)] {
+            let Some(bound) = bound else { continue };
+            if Observed::of_literal(&bound.to_string()).is_none() {
+                defects.push(DefinitionError::InvalidField {
+                    path: path.to_owned(),
+                    message: format!(
+                        "{name} {bound} is outside the source observation domain, so the bound \
+                         would be unevaluable at every evaluation"
+                    ),
+                });
+            }
         }
     }
 

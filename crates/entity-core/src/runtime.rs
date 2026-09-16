@@ -2074,15 +2074,39 @@ fn walk(
     let next = value.as_object()?.get(segment)?;
     let next_field = field.and_then(|field| match field.kind {
         FieldKind::Object => field.properties.get(segment),
-        // A union's payload sits under the derived content key and its type depends on the tag, so
-        // the walk continues without a declared field rather than claiming one variant's.
-        FieldKind::Union => field.variants.get(segment),
+        // A union's payload sits under the derived content key and its type is the variant the
+        // **tag** names, which the value carries at run time.
+        FieldKind::Union => selected_variant(field, value, segment),
         _ => None,
     });
     match rest {
         None => Some(next.clone()),
         Some(rest) => walk(next, rest, next_field, service),
     }
+}
+
+/// The variant a union value's tag selects, where `segment` is the derived content key.
+///
+/// **The tag, not the key the payload sits under.** Looking a variant label up by the wire key
+/// loses the declaration on every union whose variants are not named after that key — no variant is
+/// called `value` — and the walk then continues untyped: a declared `map` becomes an ordinary
+/// object, so `$fields.<union>.value.count` reads the map's own `count` member instead of its size,
+/// against § 10.6's *"the only `count` a `map` has is its size"*.
+///
+/// The tag segment itself resolves to the label text and continues under no declared field, because
+/// a label is not a variant. A value whose tag is absent, is not text, or names no declared variant
+/// also continues untyped — per-kind validation refuses each of those where the value arrives.
+fn selected_variant<'a>(
+    field: &'a crate::FieldDefinition,
+    value: &Value,
+    segment: &str,
+) -> Option<&'a crate::FieldDefinition> {
+    if segment != crate::validation::content_key(field) {
+        return None;
+    }
+    let tag = field.tag.as_deref().unwrap_or("kind");
+    let label = value.as_object()?.get(tag)?.as_str()?;
+    field.variants.get(label)
 }
 
 /// The two `service/1` collection address forms, with the field the walk continues under, or

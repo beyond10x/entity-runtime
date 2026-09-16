@@ -105,13 +105,17 @@ new framing, and not a claim that any `er.record/1` byte changed. Nothing rewrit
 envelope and no `kernel/1` `id` moves, because a `kernel/1` definition cannot declare `identity`
 (§ 2.1). § 11 pins the two claims separately.
 
-`er.request/2` is the same three shapes as `er.request/1` with the create shape replaced:
+`er.request/2` carries the two command shapes, with the create shape replaced:
 
 ```text
 {"kind":"create","subject":[entity,id],"definition_version":v,"arguments":normalized_arguments,"recording":R}
 {"kind":"execute","subject":[entity,id],"expected_revision":p,"operation":op,"arguments":normalized_arguments,"recording":R}
-{"kind":"observation","observation":COMPLETE_RecordedObservation}
 ```
+
+Observations retain `er.request/1`. They carry no definition snapshot from which to select
+`semantics`; `record_domain` and `request_domain` therefore select `/1` for observations under
+both modes (`crates/entity-store/src/asynchronous/encoding.rs:68-85`). The earlier third `/2`
+observation row was a documentation error; this correction changes no recorded bytes.
 
 A `service/1` creation's *original request* is the caller's **arguments**, not the fields the branch
 produced. Reconstructing it as `"fields"` would hand a retry a request the caller never sent, which is
@@ -358,6 +362,17 @@ Three consequences, all positive rather than by subtraction:
 * `emits` on an **operation** branch stays `OperationTemplate`; `emits` on a `service/1` **creation**
   branch is `CreateOutcomeTemplate`. `CreateDefinition.emit` — the `kernel/1` spelling — stays
   `CreateTemplate`, unchanged and untouched.
+
+Creation selects its input and event keys according to whether `create.outcomes` is empty:
+
+| `create.outcomes` | Input schema | Emitted events |
+| --- | --- | --- |
+| Non-empty | `create.arguments` | The selected branch's `emits` |
+| Empty (branchless) | `definition.schema` | `create.emit` |
+
+Consequently, `create.emit` is unused beside outcomes, and `create.arguments` and its defaults
+are unused on the branchless path. These combinations remain admitted. Branchless creation
+records its normalized input as arguments, preserving the request reconstruction in § 1.2.
 
 ## 3. What stays outside
 
@@ -906,6 +921,10 @@ decimal with no exponent, at most 255 places and digits an `i128` holds, which i
 * every **boolean** leaf as `false` or `true`;
 * a `json` leaf cannot occur, because `json` is refused as an identity kind at every depth by
   `IdentityFieldNotAddressable`.
+
+An object identity with `additional_properties: true` admits undeclared JSON leaves, so the same
+refusal applies at any depth. Closed objects and typed maps remain admitted; nonidentity fields
+and `kernel/1` keep their existing open-object behavior.
 
 **Collision freedom.** Within one entity type the identity field has one declared kind, so exactly one
 row applies, and each row is injective on its own value domain: `s:` prepended to an injection is an

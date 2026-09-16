@@ -329,6 +329,170 @@ fn an_identity_field_that_is_unknown_or_optional_or_untyped_is_refused_at_regist
     ));
 }
 
+/// § 7.3.3: *"a `json` leaf cannot occur, because `json` is refused as an identity kind **at every
+/// depth** by `IdentityFieldNotAddressable`"*, beside § 7.3's *"total"* address function.
+///
+/// Reading the declared field's own kind and nothing below it left the refusal true only of the
+/// root row. A `json` member is validated by nothing, so a composite carrying one may hold a
+/// `null` or a number outside the observation domain — both of which `address` answers with an
+/// error rather than an address, and step 11 then reports as an `IdentityMismatch` carrying that
+/// sentence where an address belongs.
+#[test]
+fn a_json_leaf_is_refused_as_an_identity_at_every_depth_of_every_composite() {
+    let not_addressable = DefinitionError::IdentityFieldNotAddressable {
+        field: "key".to_owned(),
+        kind: "json",
+    };
+    let json_leaf = json!({ "type": "json", "required": true });
+    // One row per composite kind the address function recurses through, and one nesting that
+    // reaches through three of them, so the recursion is pinned rather than the four arms.
+    let shapes = [
+        json!({ "type": "object", "required": true, "properties": { "blob": json_leaf } }),
+        // An **optional** member is walked like a required one: a leaf the address function has no
+        // row for is a leaf whether or not a value is supplied for it.
+        json!({ "type": "object", "required": true, "properties": {
+            "blob": { "type": "json" }
+        }}),
+        json!({ "type": "array", "required": true, "items": json_leaf }),
+        json!({ "type": "map", "required": true, "key": "string", "items": json_leaf }),
+        json!({ "type": "union", "required": true, "tag": "kind", "variants": {
+            "raw": json_leaf
+        }}),
+        json!({ "type": "object", "required": true, "properties": {
+            "rows": { "type": "array", "required": true, "items": {
+                "type": "map", "required": true, "key": "string", "items": json_leaf
+            }}
+        }}),
+    ];
+    for shape in shapes {
+        assert!(
+            carries(&refused(keyed(shape.clone())), &not_addressable),
+            "a json leaf inside {shape} is the same defect one level down"
+        );
+    }
+}
+
+/// The other half of the same rule: **no otherwise admitted composite kind is banned**, and the
+/// empty `String` identity § 7.4 admits stays admitted. A refusal that swept up every composite
+/// would close twelve of the thirteen identity rows § 7.1 measured the source admitting.
+#[test]
+fn a_composite_identity_without_a_json_leaf_still_registers_and_addresses() {
+    for shape in [
+        json!({ "type": "object", "required": true, "properties": {
+            "seq": { "type": "integer", "required": true },
+            "note": { "type": "string" }
+        }}),
+        json!({ "type": "array", "required": true, "items": { "type": "string" } }),
+        json!({ "type": "map", "required": true, "key": "string", "items": { "type": "string" } }),
+        json!({ "type": "union", "required": true, "tag": "kind", "variants": {
+            "person": { "type": "string", "required": true },
+            "company": { "type": "object", "required": true, "properties": {
+                "name": { "type": "string", "required": true }
+            }}
+        }}),
+    ] {
+        assert!(
+            ValidatedDefinition::new(definition(keyed(shape.clone()))).is_ok(),
+            "{shape} is an admitted identity shape"
+        );
+    }
+
+    // The composite recursion and the empty-string row, measured through the address rather than
+    // asserted: `s:` is what makes the text rule total, and it does not appear on a composite's
+    // text leaves, where the JSON quoting supplies the injectivity instead.
+    let pair = json!({ "type": "object", "required": true, "properties": {
+        "seq": { "type": "integer", "required": true },
+        "note": { "type": "string", "required": true }
+    }});
+    let decision = keyed_at(
+        pair,
+        r#"{"note":"","seq":1}"#,
+        json!({ "seq": 1, "note": "" }),
+    )
+    .expect("a composite identity addresses as canonical JSON");
+    assert_eq!(decision.instance.id, r#"{"note":"","seq":1}"#);
+    assert_eq!(
+        keyed_at(
+            json!({ "type": "string", "required": true }),
+            "s:",
+            json!("")
+        )
+        .expect("an empty string identity addresses as `s:`")
+        .instance
+        .id,
+        "s:"
+    );
+}
+
+/// A `json` field is refused as an **identity**, and nowhere else. A `kernel/1` definition cannot
+/// declare `identity` at all (§ 2.1), so no `kernel/1` document changes meaning; a `service/1`
+/// `json` field that the identity does not name keeps being an ordinary declared field.
+#[test]
+fn a_json_field_the_identity_does_not_name_is_untouched_by_the_recursion() {
+    let mut document = keyed(json!({ "type": "string", "required": true }));
+    document["schema"]["fields"]["blob"] = json!({ "type": "json" });
+    document["schema"]["fields"]["wrapper"] = json!({
+        "type": "object", "properties": { "inner": { "type": "json" } }
+    });
+    assert!(ValidatedDefinition::new(definition(document)).is_ok());
+
+    let mut kernel = keyed(json!({ "type": "string", "required": true }));
+    kernel["semantics"] = json!("kernel/1");
+    kernel
+        .as_object_mut()
+        .expect("an object")
+        .remove("identity");
+    kernel["schema"]["fields"]["blob"] = json!({
+        "type": "object", "properties": { "inner": { "type": "json" } }
+    });
+    assert!(ValidatedDefinition::new(definition(kernel)).is_ok());
+}
+
+#[test]
+fn open_object_identity_members_are_untyped_json_at_every_depth() {
+    let open = json!({ "type": "object", "additional_properties": true });
+    let shapes = [
+        open.clone(),
+        json!({ "type": "object", "properties": { "nested": open } }),
+        json!({ "type": "array", "items": open }),
+        json!({ "type": "map", "key": "string", "items": open }),
+        json!({ "type": "union", "tag": "kind", "variants": { "open": open } }),
+    ];
+    for mut shape in shapes {
+        shape["required"] = json!(true);
+        assert!(carries(
+            &refused(keyed(shape)),
+            &DefinitionError::IdentityFieldNotAddressable {
+                field: "key".to_owned(),
+                kind: "json",
+            }
+        ));
+    }
+
+    // Open objects outside the identity keep their existing value domain, including null.
+    let mut document = keyed(json!({ "type": "string", "required": true }));
+    document["schema"]["fields"]["extra"] = open.clone();
+    let validated = ValidatedDefinition::new(definition(document)).expect("nonidentity stays open");
+    create(
+        &validated,
+        "s:key".to_owned(),
+        json!({ "key": "key", "extra": { "x": null } }),
+    )
+    .expect("untyped nonidentity member remains admitted");
+
+    let mut kernel =
+        keyed(json!({ "type": "object", "required": true, "additional_properties": true }));
+    kernel["semantics"] = json!("kernel/1");
+    kernel.as_object_mut().expect("object").remove("identity");
+    let validated = ValidatedDefinition::new(definition(kernel)).expect("kernel stays open");
+    create(
+        &validated,
+        "key".to_owned(),
+        json!({ "key": { "x": null } }),
+    )
+    .expect("legacy object values are unchanged");
+}
+
 // --- § 8: relations -------------------------------------------------------------------------------
 
 /// The owner and the thing it owns, where the carrier lives on the target and is typed as the
