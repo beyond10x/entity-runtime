@@ -211,7 +211,8 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
 /// refused, a `changed` that is not what that operation's `set:` would have written from those
 /// arguments — on a creation event, a type the definition does not emit on creation, any creation
 /// event at all when it emits none, or a `changed` that is not its own recorded fields — fields the
-/// schema refuses, or a step the entity's invariants refuse.
+/// schema refuses, any nonempty removal evidence that legacy kernel operations cannot produce, or
+/// a step the entity's invariants refuse.
 ///
 /// [`CoreError::EntityMismatch`] when an event belongs to another definition, and
 /// [`CoreError::UnknownState`] when it names a state the definition does not have.
@@ -303,6 +304,16 @@ pub fn rehydrate(
                     entity: definition.entity.clone(),
                     state: event.to_state.clone(),
                 });
+            }
+            // Service histories were refused before the first event was read. Every event that
+            // reaches this loop is therefore legacy kernel evidence, whose operations can write
+            // fields through `set:` but have no removal action to account for this new carrier.
+            if !event.removed.is_empty() {
+                return refuse(format!(
+                    "event {at} (`{}`) carries removal evidence, but legacy kernel operations \
+                     have no action that can produce it",
+                    event.event_type
+                ));
             }
         }
 
