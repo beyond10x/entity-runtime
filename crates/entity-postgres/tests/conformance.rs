@@ -13,7 +13,9 @@ use entity_core::{Registry, Runtime};
 use entity_postgres::PostgresStore;
 use entity_query::{DocumentQuery, DocumentQueryProvider};
 use entity_store::{
-    conformance, AtomicBatchStore, AtomicCommit, Expect, StateProvider, Store, StoreError,
+    asynchronous::{HistoryOrigin, KnownLegacyOrder, LegacyEvidence, LegacyOrderDeclaration},
+    conformance, AtomicBatchStore, AtomicCommit, Expect, LegacyStoreSource, RecordedCommit,
+    RecordedObservation, Recording, StateProvider, Store, StoreError,
 };
 use serde_json::json;
 
@@ -61,6 +63,73 @@ fn registry() -> Registry {
     let mut registry = Registry::new();
     registry.register(definition).expect("validates");
     registry
+}
+
+fn legacy_recording(record_id: &str) -> Recording {
+    Recording {
+        record_id: record_id.to_owned(),
+        recorded_at: "2026-09-16T00:00:00Z".to_owned(),
+        correlation: Some("postgres-legacy-acquisition".to_owned()),
+        causation: None,
+        actor: None,
+    }
+}
+
+#[test]
+fn legacy_acquisition_retains_exact_available_postgres_evidence() {
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "legacy_acquisition");
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("ticket", 1, "legacy", json!({"title":"legacy"}))
+        .expect("creation");
+    store
+        .commit(&created, Expect::Absent)
+        .expect("bare legacy creation");
+    let closed = runtime
+        .execute(&created.instance, "close", json!({}))
+        .expect("recorded transition");
+    let recorded = RecordedCommit::new(closed, &legacy_recording("legacy-close"))
+        .expect("complete recorded decision");
+    store
+        .commit_recorded(&recorded, Expect::Revision(1))
+        .expect("recorded decision");
+    let observation = RecordedObservation {
+        entity: "ticket".to_owned(),
+        id: "legacy".to_owned(),
+        revision: 2,
+        envelope: legacy_recording("legacy-observation")
+            .seal(json!({"seen":true}))
+            .expect("observation envelope"),
+    };
+    store.observe(&observation).expect("observation");
+
+    let snapshot = store
+        .acquire_legacy("postgres/source-a")
+        .expect("repeatable-read acquisition");
+    let [history] = snapshot.histories.as_slice() else {
+        panic!("one complete subject expected")
+    };
+    let HistoryOrigin::Imported(anchor) = &history.origin else {
+        panic!("imported boundary expected")
+    };
+    assert_eq!(anchor.instance, recorded.instance);
+    assert_eq!(anchor.order, LegacyOrderDeclaration::PerKindOnly);
+    assert_eq!(anchor.evidence.len(), 3);
+    let LegacyEvidence::Envelope(decision) = &anchor.evidence[0] else {
+        panic!("decision envelope expected")
+    };
+    assert_eq!(decision.entry.record_id(), "legacy-close");
+    assert_eq!(decision.source_id, "postgres/source-a");
+    assert_eq!(decision.known_order, KnownLegacyOrder::PerKind(0));
+    let LegacyEvidence::Envelope(saved_observation) = &anchor.evidence[1] else {
+        panic!("observation envelope expected")
+    };
+    assert_eq!(saved_observation.entry.record_id(), "legacy-observation");
+    assert_eq!(saved_observation.known_order, KnownLegacyOrder::PerKind(0));
+    assert!(matches!(anchor.evidence[2], LegacyEvidence::Event(_)));
+    store.drop_schema(&schema).expect("dropped");
 }
 
 #[test]

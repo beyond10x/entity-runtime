@@ -9,7 +9,7 @@ repository.workspace = true
 
 [features]
 default = []
-sync-bridge = ["dep:entity-executor", "dep:tokio"]
+sync-bridge = ["dep:entity-executor", "dep:entity-query", "dep:tokio"]
 file = ["dep:eventlog-file"]
 sqlite = ["dep:eventlog-sqlite"]
 postgres = ["dep:eventlog-postgres"]
@@ -18,10 +18,11 @@ postgres = ["dep:eventlog-postgres"]
 entity-core = { path = "../entity-core", version = "0.18.1" }
 entity-store = { path = "../entity-store", version = "0.18.1" }
 entity-executor = { path = "../entity-executor", version = "0.18.1", optional = true }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "43ceaa09ceec610e25891815e33e03e8df92ee28" }
-eventlog-file = { git = "https://github.com/beyond10x/eventlog", rev = "43ceaa09ceec610e25891815e33e03e8df92ee28", optional = true }
-eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", rev = "43ceaa09ceec610e25891815e33e03e8df92ee28", optional = true }
-eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "43ceaa09ceec610e25891815e33e03e8df92ee28", optional = true }
+entity-query = { path = "../entity-query", version = "0.18.1", optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "088c27b5df9745c68d8a2240dbb2038998b03efe" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", rev = "088c27b5df9745c68d8a2240dbb2038998b03efe", optional = true }
+eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", rev = "088c27b5df9745c68d8a2240dbb2038998b03efe", optional = true }
+eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "088c27b5df9745c68d8a2240dbb2038998b03efe", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"

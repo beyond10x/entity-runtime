@@ -110,6 +110,12 @@ impl std::fmt::Debug for EventlogRecordedStore {
 }
 
 impl EventlogRecordedStore {
+    /// Exact immutable logical/physical authority verified by this handle.
+    #[must_use]
+    pub const fn authority(&self) -> &Authority {
+        &self.authority
+    }
+
     /// Opens an already provisioned, already attached store without mutating provider state.
     ///
     /// # Errors

@@ -1,8 +1,9 @@
 //! Explicit synchronous facade over the asynchronous recorded adapter and executor.
 
+#[cfg(feature = "file")]
+use std::path::PathBuf;
 use std::{
     num::NonZeroU16,
-    path::PathBuf,
     sync::{
         Arc, Condvar, Mutex,
         atomic::{AtomicU8, AtomicUsize, Ordering},
@@ -25,8 +26,9 @@ use entity_store::{
 use eventlog_core::InlineProjectionAdmin;
 
 use crate::{
-    Authority, ErRecordedProjector, EventlogBackend, EventlogOperationContext,
-    EventlogRecordedStore,
+    AsyncBindingProvisioner, AsyncImportedAnchorWriter, Authority, ErRecordedProjector,
+    EventlogBackend, EventlogBindingProvisioner, EventlogOperationContext, EventlogRecordedStore,
+    ImportAnchorFailure, ImportAnchorOutcome, ImportAnchorUncertainty, ProvisionBindingFailure,
 };
 
 /// Finite bridge queue configuration.
@@ -43,6 +45,17 @@ pub enum CallWait {
     Forever,
     /// Stop waiting at this monotonic deadline.
     Until(Instant),
+}
+
+/// Caller-selected logical authority for explicit provisioning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvisionAuthority {
+    /// Entity Runtime logical scope, preserved byte for byte.
+    pub logical_scope: String,
+    /// Eventlog tenant identity.
+    pub tenant: String,
+    /// Optional exact existing provider generation; `None` accepts the generation minted now.
+    pub expected_stream_identity: Option<String>,
 }
 
 /// Provider construction owned by the worker thread.
@@ -91,11 +104,103 @@ pub enum EventlogRecordedStoreOwner {
         /// Bounds for every authoritative capture.
         limits: eventlog_core::CaptureLimits,
     },
+    #[cfg(feature = "postgres")]
+    /// Hosted PostgreSQL provider using the caller's exact transport authority and pool bounds.
+    Postgres {
+        /// Caller-selected Eventlog connection authority.
+        config: eventlog_postgres::PostgresConfig,
+        /// Finite process-local pool bounds.
+        options: eventlog_postgres::PoolOptions,
+        /// Observed database-wide connection capacity.
+        database_connections: usize,
+        /// Admitted application replica count.
+        replicas: usize,
+        /// Connections retained for administration and recovery.
+        reserved_connections: usize,
+        /// Exact immutable ER/Eventlog binding.
+        authority: Authority,
+        /// Bounds for every authoritative capture.
+        limits: eventlog_core::CaptureLimits,
+    },
+}
+
+/// Explicit native preparation plus immutable binding establishment before ordinary open.
+pub enum EventlogRecordedStoreProvisioner {
+    #[cfg(feature = "file")]
+    /// Prepare one durable File authority.
+    File {
+        /// Destination provider root.
+        path: PathBuf,
+        /// Exact immutable ER/Eventlog binding.
+        authority: ProvisionAuthority,
+        /// Bounds for every authoritative capture.
+        limits: eventlog_core::CaptureLimits,
+    },
+    #[cfg(feature = "sqlite")]
+    /// Prepare one file-backed SQLite authority.
+    Sqlite {
+        /// Destination SQLite path.
+        path: String,
+        /// Admitted Eventlog owner prefix.
+        prefix: String,
+        /// Exact immutable ER/Eventlog binding.
+        authority: ProvisionAuthority,
+        /// Bounds for every authoritative capture.
+        limits: eventlog_core::CaptureLimits,
+    },
+    #[cfg(feature = "sqlite")]
+    /// Prepare one process-local SQLite authority.
+    SqliteMemory {
+        /// Admitted Eventlog owner prefix.
+        prefix: String,
+        /// Exact immutable ER/Eventlog binding.
+        authority: ProvisionAuthority,
+        /// Bounds for every authoritative capture.
+        limits: eventlog_core::CaptureLimits,
+    },
+    #[cfg(feature = "postgres")]
+    /// Prepare an isolated loopback PostgreSQL fixture.
+    PostgresLocal {
+        /// Explicit loopback fixture URL.
+        url: String,
+        /// Isolated Eventlog owner prefix.
+        prefix: String,
+        /// Exact immutable ER/Eventlog binding.
+        authority: ProvisionAuthority,
+        /// Bounds for every authoritative capture.
+        limits: eventlog_core::CaptureLimits,
+    },
+    #[cfg(feature = "postgres")]
+    /// Migrate with an administrative authority, then open with a separate application authority.
+    Postgres {
+        /// Caller-owned migration-role transport authority.
+        migration: eventlog_postgres::PostgresConfig,
+        /// Caller-owned DML-only application transport authority.
+        application: eventlog_postgres::PostgresConfig,
+        /// Finite process-local pool bounds used by both phases.
+        options: Box<eventlog_postgres::PoolOptions>,
+        /// Observed database-wide connection capacity.
+        database_connections: usize,
+        /// Admitted application replica count.
+        replicas: usize,
+        /// Connections retained for administration and recovery.
+        reserved_connections: usize,
+        /// Exact immutable ER/Eventlog binding.
+        authority: ProvisionAuthority,
+        /// Bounds for every authoritative capture.
+        limits: eventlog_core::CaptureLimits,
+    },
 }
 
 impl std::fmt::Debug for EventlogRecordedStoreOwner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("EventlogRecordedStoreOwner(..)")
+    }
+}
+
+impl std::fmt::Debug for EventlogRecordedStoreProvisioner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("EventlogRecordedStoreProvisioner(..)")
     }
 }
 
@@ -109,6 +214,19 @@ enum OwnedBackend {
 }
 
 impl EventlogRecordedStoreOwner {
+    /// Exact logical and physical authority this worker owner will open.
+    #[must_use]
+    pub fn authority(&self) -> &Authority {
+        match self {
+            #[cfg(feature = "file")]
+            Self::File { authority, .. } => authority,
+            #[cfg(feature = "sqlite")]
+            Self::Sqlite { authority, .. } | Self::SqliteMemory { authority, .. } => authority,
+            #[cfg(feature = "postgres")]
+            Self::PostgresLocal { authority, .. } | Self::Postgres { authority, .. } => authority,
+        }
+    }
+
     async fn open(self) -> Result<(EventlogRecordedStore, OwnedBackend), AsyncStoreError> {
         match self {
             #[cfg(feature = "file")]
@@ -201,8 +319,222 @@ impl EventlogRecordedStoreOwner {
                     OwnedBackend::Postgres(concrete),
                 ))
             }
+            #[cfg(feature = "postgres")]
+            Self::Postgres {
+                config,
+                options,
+                database_connections,
+                replicas,
+                reserved_connections,
+                authority,
+                limits,
+            } => {
+                let concrete = Arc::new(
+                    eventlog_postgres::PostgresEventStore::open(
+                        config,
+                        options,
+                        database_connections,
+                        replicas,
+                        reserved_connections,
+                    )
+                    .await
+                    .map_err(store_open)?,
+                );
+                concrete
+                    .attach_inline_existing(Arc::new(ErRecordedProjector::new()))
+                    .await
+                    .map_err(store_open)?;
+                let backend: Arc<dyn EventlogBackend> = concrete.clone();
+                Ok((
+                    EventlogRecordedStore::open(backend, authority, limits).await?,
+                    OwnedBackend::Postgres(concrete),
+                ))
+            }
         }
     }
+}
+
+impl EventlogRecordedStoreProvisioner {
+    /// Exact logical scope this preparation will establish.
+    #[must_use]
+    pub fn logical_scope(&self) -> &str {
+        match self {
+            #[cfg(feature = "file")]
+            Self::File { authority, .. } => &authority.logical_scope,
+            #[cfg(feature = "sqlite")]
+            Self::Sqlite { authority, .. } | Self::SqliteMemory { authority, .. } => {
+                &authority.logical_scope
+            }
+            #[cfg(feature = "postgres")]
+            Self::PostgresLocal { authority, .. } | Self::Postgres { authority, .. } => {
+                &authority.logical_scope
+            }
+        }
+    }
+
+    async fn provision(
+        self,
+        context: EventlogOperationContext,
+    ) -> Result<(EventlogRecordedStore, OwnedBackend), BridgeStartError> {
+        match self {
+            #[cfg(feature = "file")]
+            Self::File {
+                path,
+                authority,
+                limits,
+            } => {
+                let concrete = Arc::new(
+                    eventlog_file::FileEventStore::open(path)
+                        .await
+                        .map_err(|error| BridgeStartError::Open(store_open(error)))?,
+                );
+                let store = provision_backend(concrete.clone(), authority, limits, context).await?;
+                Ok((store, OwnedBackend::File(concrete)))
+            }
+            #[cfg(feature = "sqlite")]
+            Self::Sqlite {
+                path,
+                prefix,
+                authority,
+                limits,
+            } => {
+                let concrete = Arc::new(
+                    eventlog_sqlite::SqliteEventStore::open(&path, &prefix)
+                        .await
+                        .map_err(|error| BridgeStartError::Open(store_open(error)))?,
+                );
+                let store = provision_backend(concrete.clone(), authority, limits, context).await?;
+                Ok((store, OwnedBackend::Sqlite(concrete)))
+            }
+            #[cfg(feature = "sqlite")]
+            Self::SqliteMemory {
+                prefix,
+                authority,
+                limits,
+            } => {
+                let concrete = Arc::new(
+                    eventlog_sqlite::SqliteEventStore::in_memory(&prefix)
+                        .await
+                        .map_err(|error| BridgeStartError::Open(store_open(error)))?,
+                );
+                let store = provision_backend(concrete.clone(), authority, limits, context).await?;
+                Ok((store, OwnedBackend::Sqlite(concrete)))
+            }
+            #[cfg(feature = "postgres")]
+            Self::PostgresLocal {
+                url,
+                prefix,
+                authority,
+                limits,
+            } => {
+                let concrete = Arc::new(
+                    eventlog_postgres::PostgresEventStore::connect_local(
+                        &url,
+                        &prefix,
+                        eventlog_postgres::PoolOptions::default(),
+                    )
+                    .await
+                    .map_err(|error| BridgeStartError::Open(store_open(error)))?,
+                );
+                let store = provision_backend(concrete.clone(), authority, limits, context).await?;
+                Ok((store, OwnedBackend::Postgres(concrete)))
+            }
+            #[cfg(feature = "postgres")]
+            Self::Postgres {
+                migration,
+                application,
+                options,
+                database_connections,
+                replicas,
+                reserved_connections,
+                authority,
+                limits,
+            } => {
+                let options = *options;
+                eventlog_postgres::PostgresEventStore::migrate(
+                    migration,
+                    options.clone(),
+                    crate::projection_specs(),
+                )
+                .await
+                .map_err(|error| BridgeStartError::Open(store_open(error)))?;
+                let concrete = Arc::new(
+                    eventlog_postgres::PostgresEventStore::open(
+                        application,
+                        options,
+                        database_connections,
+                        replicas,
+                        reserved_connections,
+                    )
+                    .await
+                    .map_err(|error| BridgeStartError::Open(store_open(error)))?,
+                );
+                concrete
+                    .attach_inline_existing(Arc::new(ErRecordedProjector::new()))
+                    .await
+                    .map_err(|error| BridgeStartError::Open(store_open(error)))?;
+                let backend: Arc<dyn EventlogBackend> = concrete.clone();
+                let store = provision_binding(backend, authority, limits, context).await?;
+                Ok((store, OwnedBackend::Postgres(concrete)))
+            }
+        }
+    }
+}
+
+async fn provision_backend<B: EventlogBackend>(
+    concrete: Arc<B>,
+    authority: ProvisionAuthority,
+    limits: eventlog_core::CaptureLimits,
+    context: EventlogOperationContext,
+) -> Result<EventlogRecordedStore, BridgeStartError> {
+    let projector = Arc::new(ErRecordedProjector::new());
+    concrete
+        .create_projections(projector.clone())
+        .await
+        .map_err(|error| BridgeStartError::Open(store_open(error)))?;
+    concrete
+        .attach_inline_existing(projector)
+        .await
+        .map_err(|error| BridgeStartError::Open(store_open(error)))?;
+    let backend: Arc<dyn EventlogBackend> = concrete;
+    provision_binding(backend, authority, limits, context).await
+}
+
+async fn provision_binding(
+    backend: Arc<dyn EventlogBackend>,
+    selection: ProvisionAuthority,
+    limits: eventlog_core::CaptureLimits,
+    context: EventlogOperationContext,
+) -> Result<EventlogRecordedStore, BridgeStartError> {
+    let tenant = eventlog_core::TenantId::new(selection.tenant.clone())
+        .map_err(|error| BridgeStartError::Open(store_open(error)))?;
+    let stream_identity = backend
+        .stream_identity(&tenant)
+        .await
+        .map_err(|error| BridgeStartError::Open(store_open(error)))?;
+    if selection
+        .expected_stream_identity
+        .as_ref()
+        .is_some_and(|expected| expected != &stream_identity)
+    {
+        return Err(BridgeStartError::Open(AsyncStoreError::ProviderIntegrity {
+            provider: "eventlog".to_owned(),
+            detail: "provisioned provider generation differs from the caller's expected generation"
+                .to_owned(),
+        }));
+    }
+    let authority = Authority {
+        logical_scope: selection.logical_scope,
+        tenant: selection.tenant,
+        stream_identity,
+    };
+    EventlogBindingProvisioner::new(backend.clone(), limits)
+        .provision_binding(authority.clone(), context)
+        .await
+        .map_err(|error| BridgeStartError::Provision(Box::new(error)))?;
+    EventlogRecordedStore::open(backend, authority, limits)
+        .await
+        .map_err(BridgeStartError::Open)
 }
 
 impl OwnedBackend {
@@ -271,6 +603,11 @@ trait WorkerDriver: Send {
         key: BatchKey,
         actions: Vec<BatchAction>,
     ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>>;
+    fn import_anchor<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        history: SubjectHistory,
+    ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>>;
     fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>>;
 }
 
@@ -377,6 +714,14 @@ impl WorkerDriver for ProductionDriver {
         })
     }
 
+    fn import_anchor<'a>(
+        &'a self,
+        context: EventlogOperationContext,
+        history: SubjectHistory,
+    ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
+        Box::pin(async move { self.store.operation(context).import_anchor(history).await })
+    }
+
     fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>> {
         Box::pin(async move { self.backend.retire().await })
     }
@@ -391,6 +736,8 @@ pub enum BridgeStartError {
     RuntimeBuild(std::io::Error),
     /// The worker could not open and verify its provider.
     Open(AsyncStoreError),
+    /// Explicit provisioning failed before a usable owner existed.
+    Provision(Box<ProvisionBindingFailure>),
     /// The worker panicked before completing the ownership handshake.
     WorkerPanicked,
 }
@@ -455,6 +802,15 @@ pub enum SyncExecutionError {
     Execution(ExecutionError),
 }
 
+/// Synchronous explicit-import failure.
+#[derive(Debug)]
+pub enum SyncImportError {
+    /// The bridge rejected import before provider dispatch.
+    Rejected(BridgeRejection),
+    /// The imported-anchor writer produced the settled or uncertain result.
+    Import(ImportAnchorFailure),
+}
+
 /// Queue handling on shutdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShutdownMode {
@@ -471,6 +827,8 @@ pub enum BridgeOperationIdentity {
     Read(BridgeReadKind),
     /// One dispatched write's semantic batch key.
     Write(BatchKey),
+    /// One imported subject boundary.
+    Import(Subject),
 }
 
 /// Closed read operation names.
@@ -605,6 +963,12 @@ enum Request {
         Vec<BatchAction>,
         Arc<Cell<Result<AppendOutcome, SyncExecutionError>>>,
     ),
+    Import(
+        EventlogOperationContext,
+        SubjectHistory,
+        Subject,
+        Arc<Cell<Result<ImportAnchorOutcome, SyncImportError>>>,
+    ),
     Wake,
 }
 
@@ -621,6 +985,7 @@ impl Request {
             Self::Execute(_, _, _, c) => Some(&c.phase),
             Self::Observe(_, _, _, c) => Some(&c.phase),
             Self::Batch(_, _, _, c) => Some(&c.phase),
+            Self::Import(_, _, _, c) => Some(&c.phase),
             Self::Wake => None,
         }
     }
@@ -642,6 +1007,9 @@ impl Request {
             | Self::Execute(_, _, k, _)
             | Self::Observe(_, _, k, _)
             | Self::Batch(_, k, _, _) => Some(BridgeOperationIdentity::Write(k.clone())),
+            Self::Import(_, _, subject, _) => {
+                Some(BridgeOperationIdentity::Import(subject.clone()))
+            }
             Self::Wake => None,
         }
     }
@@ -669,6 +1037,9 @@ impl Request {
             Self::Batch(_, _, _, c) => {
                 c.complete(Err(SyncExecutionError::Rejected(BridgeRejection::Closed)))
             }
+            Self::Import(_, _, _, c) => {
+                c.complete(Err(SyncImportError::Rejected(BridgeRejection::Closed)))
+            }
             Self::Wake => {}
         }
     }
@@ -686,6 +1057,7 @@ impl Request {
                 c.complete(Err(SyncExecutionError::Rejected(rejection)))
             }
             Self::Batch(_, _, _, c) => c.complete(Err(SyncExecutionError::Rejected(rejection))),
+            Self::Import(_, _, _, c) => c.complete(Err(SyncImportError::Rejected(rejection))),
             Self::Wake => {}
         }
     }
@@ -722,6 +1094,12 @@ impl Request {
                     key,
                     cause: "sync bridge worker stopped after dispatch".into(),
                 }),
+            ))),
+            Self::Import(_, _, subject, c) => c.complete(Err(SyncImportError::Import(
+                ImportAnchorFailure::Uncertain {
+                    subject,
+                    cause: ImportAnchorUncertainty::RecoveryUnavailable,
+                },
             ))),
             Self::Wake => {}
         }
@@ -761,6 +1139,36 @@ impl RecordedEventlogBridge {
                 backend,
             }))
         })
+    }
+
+    /// Explicitly provisions projections/binding, then opens the worker-owned provider.
+    ///
+    /// # Errors
+    ///
+    /// Worker/runtime construction, native preparation, binding conflict/uncertainty, or open
+    /// verification failure. Runtime [`Self::start`] never performs these mutations.
+    pub fn provision_and_start(
+        registry: Registry,
+        owner: EventlogRecordedStoreProvisioner,
+        context: EventlogOperationContext,
+        config: BridgeConfig,
+    ) -> Result<(Self, Authority), BridgeStartError> {
+        let (authority_tx, authority_rx) = std::sync::mpsc::channel();
+        let bridge = Self::start_with(config, move |runtime| {
+            let (store, backend) = runtime.block_on(owner.provision(context))?;
+            authority_tx
+                .send(store.authority().clone())
+                .map_err(|_| BridgeStartError::WorkerPanicked)?;
+            Ok(Box::new(ProductionDriver {
+                registry,
+                store,
+                backend,
+            }))
+        })?;
+        let authority = authority_rx
+            .recv()
+            .map_err(|_| BridgeStartError::WorkerPanicked)?;
+        Ok((bridge, authority))
     }
 
     fn start_with(
@@ -1199,6 +1607,22 @@ impl SyncEventlogOperation<'_> {
             BridgeOperationIdentity::Write(key),
         )
     }
+
+    /// Establishes one explicit legacy boundary through the existing adapter import path.
+    pub fn import_anchor(
+        &self,
+        history: SubjectHistory,
+        wait: CallWait,
+    ) -> Result<ImportAnchorOutcome, SyncImportError> {
+        let subject = history.subject.clone();
+        let cell = Cell::new();
+        self.bridge.submit(
+            Request::Import(self.context.clone(), history, subject.clone(), cell.clone()),
+            &cell,
+            wait,
+            BridgeOperationIdentity::Import(subject),
+        )
+    }
 }
 
 trait LocalFailure: Sized {
@@ -1239,6 +1663,20 @@ impl LocalFailure for SyncExecutionError {
             key: key.clone(),
             cause: "sync bridge deadline after dispatch".into(),
         }))
+    }
+}
+impl LocalFailure for SyncImportError {
+    fn rejected(value: BridgeRejection) -> Self {
+        Self::Rejected(value)
+    }
+    fn deadline(identity: &BridgeOperationIdentity) -> Self {
+        let BridgeOperationIdentity::Import(subject) = identity else {
+            return Self::Rejected(BridgeRejection::WorkerStoppedBeforeDispatch);
+        };
+        Self::Import(ImportAnchorFailure::Uncertain {
+            subject: subject.clone(),
+            cause: ImportAnchorUncertainty::RecoveryUnavailable,
+        })
     }
 }
 
@@ -1496,6 +1934,9 @@ fn drive_request(
                 runtime.block_on(driver.batch(context, key, v))
             })
         }
+        Request::Import(context, history, subject, c) => poll_import(c, subject, || {
+            runtime.block_on(driver.import_anchor(context, history))
+        }),
         Request::Wake => false,
     }
 }
@@ -1534,6 +1975,28 @@ fn poll_execution(
                     cause: "sync bridge worker panicked after dispatch".into(),
                 },
             ))));
+            true
+        }
+    }
+}
+
+fn poll_import(
+    cell: Arc<Cell<Result<ImportAnchorOutcome, SyncImportError>>>,
+    subject: Subject,
+    work: impl FnOnce() -> Result<ImportAnchorOutcome, ImportAnchorFailure>,
+) -> bool {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)) {
+        Ok(result) => {
+            cell.complete(result.map_err(SyncImportError::Import));
+            false
+        }
+        Err(_) => {
+            cell.complete(Err(SyncImportError::Import(
+                ImportAnchorFailure::Uncertain {
+                    subject,
+                    cause: ImportAnchorUncertainty::RecoveryUnavailable,
+                },
+            )));
             true
         }
     }
@@ -1863,6 +2326,32 @@ mod tests {
             _: Vec<BatchAction>,
         ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
             self.execution("batch", context)
+        }
+
+        fn import_anchor<'a>(
+            &'a self,
+            context: EventlogOperationContext,
+            history: SubjectHistory,
+        ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
+            Box::pin(async move {
+                self.state.contexts.lock().expect("contexts").push(context);
+                self.state.enter("import").await;
+                let HistoryOrigin::Imported(anchor) = history.origin else {
+                    return Err(ImportAnchorFailure::NotCommitted(
+                        AsyncStoreError::InvalidInput(
+                            "fake import requires an explicit imported boundary".to_owned(),
+                        ),
+                    ));
+                };
+                Ok(ImportAnchorOutcome {
+                    assurance:
+                        entity_store::asynchronous::SubjectAssurance::VerifiedAfterBoundary {
+                            subject: history.subject,
+                            anchor_revision: anchor.instance.revision,
+                        },
+                    replayed: false,
+                })
+            })
         }
 
         fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>> {

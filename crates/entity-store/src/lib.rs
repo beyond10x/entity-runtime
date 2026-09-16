@@ -53,11 +53,13 @@ pub mod asynchronous;
 pub mod conformance;
 pub mod envelope;
 pub mod file;
+pub mod legacy;
 pub mod memory;
 pub mod projection;
 
 pub use envelope::{Envelope, EnvelopeError, Recording};
 pub use file::{migrate_file_store_v1, FileMigrationReport, FileStore};
+pub use legacy::{LegacyStoreSnapshot, LegacyStoreSource};
 pub use memory::MemoryStore;
 pub use projection::{project, Grouping, Projections};
 

@@ -5,6 +5,8 @@
 
 mod adapter;
 mod encoding;
+#[cfg(feature = "sync-bridge")]
+mod facade;
 mod projection;
 
 #[cfg(feature = "sync-bridge")]
@@ -17,4 +19,8 @@ pub use adapter::{
     ProvisionBindingFailure, ProvisionBindingOutcome, ProvisionBindingUncertainty,
 };
 pub use encoding::{Authority, PhysicalRef};
+#[cfg(all(feature = "sync-bridge", feature = "file"))]
+pub use facade::EventlogFileStore;
+#[cfg(feature = "sync-bridge")]
+pub use facade::{LegacyImportError, LegacyImportReport, RecordedProviderFacade};
 pub use projection::{ErRecordedProjector, projection_specs};

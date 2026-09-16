@@ -211,6 +211,11 @@ pub(crate) fn validate_imported_boundary(history: &SubjectHistory) -> Result<(),
                         &commit.envelope.record,
                         anchor.instance.revision,
                     )?;
+                    validate_anchor_result(
+                        &history.subject,
+                        &anchor.instance,
+                        &commit.envelope.record,
+                    )?;
                 }
                 if envelope.source_id.trim().is_empty() || envelope.source_locator.trim().is_empty()
                 {
@@ -243,11 +248,26 @@ pub(crate) fn validate_imported_boundary(history: &SubjectHistory) -> Result<(),
             }
             LegacyEvidence::Decision(decision) => {
                 validate_bare_decision(&history.subject, decision, anchor.instance.revision)?;
+                validate_anchor_result(&history.subject, &anchor.instance, decision)?;
             }
             LegacyEvidence::Event(event) => {
                 validate_legacy_event(&history.subject, event, anchor.instance.revision)?;
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_anchor_result(
+    subject: &Subject,
+    anchor: &EntityInstance,
+    decision: &entity_core::DecisionRecord,
+) -> Result<(), AsyncStoreError> {
+    if decision.revision == anchor.revision && decision.result != *anchor {
+        return Err(corrupt(
+            subject,
+            "the latest available imported decision differs from the terminal anchor",
+        ));
     }
     Ok(())
 }

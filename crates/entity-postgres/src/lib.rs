@@ -51,12 +51,25 @@
 use std::sync::Mutex;
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
+#[cfg(feature = "eventlog-facade")]
+use entity_eventlog::{
+    sync::{
+        BridgeConfig, BridgeStartError, CallWait, EventlogRecordedStoreOwner,
+        EventlogRecordedStoreProvisioner, ProvisionAuthority, ShutdownMode, ShutdownOutcome,
+    },
+    Authority, EventlogOperationContext, RecordedProviderFacade,
+};
 use entity_query::{DocumentPage, DocumentQuery, DocumentQueryProvider, QueryError};
 use entity_store::{
+    asynchronous::{
+        HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
+        LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
+    },
     check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
-    RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
+    LegacyStoreSnapshot, LegacyStoreSource, RecordedCommit, RecordedObservation, StateProvider,
+    Store, StoreError,
 };
-use postgres::{Client, GenericClient, NoTls};
+use postgres::{Client, GenericClient, IsolationLevel, NoTls};
 
 /// A [`Store`] over one PostgreSQL connection.
 ///
@@ -65,6 +78,142 @@ use postgres::{Client, GenericClient, NoTls};
 /// connection is anyway. A caller that wants parallel readers opens more stores.
 pub struct PostgresStore {
     client: Mutex<Client>,
+}
+
+/// Eventlog-backed PostgreSQL facade with complete recorded receipts and atomic groups.
+///
+/// The caller supplies Eventlog's typed connection authority and finite pool/admission facts;
+/// this type never selects credentials, TLS roots, a schema, or a connection string.
+#[cfg(feature = "eventlog-facade")]
+#[derive(Debug)]
+pub struct EventlogPostgresStore {
+    facade: RecordedProviderFacade,
+}
+
+/// Caller-supplied pool, database-budget and capture bounds for one PostgreSQL facade.
+#[cfg(feature = "eventlog-facade")]
+#[derive(Debug, Clone)]
+pub struct PostgresFacadeAdmission {
+    /// Finite process-local pool configuration.
+    pub options: eventlog_postgres::PoolOptions,
+    /// Observed database-wide connection capacity.
+    pub database_connections: usize,
+    /// Admitted number of application replicas sharing that capacity.
+    pub replicas: usize,
+    /// Connections retained outside ordinary application work.
+    pub reserved_connections: usize,
+    /// Bounds for every authoritative provider capture.
+    pub capture_limits: eventlog_core::CaptureLimits,
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl EventlogPostgresStore {
+    /// Opens an already provisioned PostgreSQL Eventlog authority without DDL.
+    ///
+    /// # Errors
+    ///
+    /// Worker/runtime construction, provider admission, or exact binding verification failure.
+    pub fn open(
+        registry: entity_core::Registry,
+        config: eventlog_postgres::PostgresConfig,
+        admission: PostgresFacadeAdmission,
+        authority: Authority,
+        bridge: BridgeConfig,
+    ) -> Result<Self, BridgeStartError> {
+        let facade = RecordedProviderFacade::start(
+            registry,
+            EventlogRecordedStoreOwner::Postgres {
+                config,
+                options: admission.options,
+                database_connections: admission.database_connections,
+                replicas: admission.replicas,
+                reserved_connections: admission.reserved_connections,
+                authority,
+                limits: admission.capture_limits,
+            },
+            bridge,
+        )?;
+        Ok(Self { facade })
+    }
+
+    /// Creates projections with one caller authority, then opens and binds with another.
+    ///
+    /// # Errors
+    ///
+    /// Migration, application admission, binding conflict/uncertainty, or open failure.
+    pub fn provision(
+        registry: entity_core::Registry,
+        migration: eventlog_postgres::PostgresConfig,
+        application: eventlog_postgres::PostgresConfig,
+        admission: PostgresFacadeAdmission,
+        authority: ProvisionAuthority,
+        context: EventlogOperationContext,
+        bridge: BridgeConfig,
+    ) -> Result<Self, BridgeStartError> {
+        let facade = RecordedProviderFacade::provision(
+            registry,
+            EventlogRecordedStoreProvisioner::Postgres {
+                migration,
+                application,
+                options: Box::new(admission.options),
+                database_connections: admission.database_connections,
+                replicas: admission.replicas,
+                reserved_connections: admission.reserved_connections,
+                authority,
+                limits: admission.capture_limits,
+            },
+            context,
+            bridge,
+        )?;
+        Ok(Self { facade })
+    }
+
+    /// The complete receipt-preserving facade.
+    #[must_use]
+    pub const fn recorded(&self) -> &RecordedProviderFacade {
+        &self.facade
+    }
+
+    /// Closes admission and reports actual pool/driver retirement.
+    pub fn shutdown(&mut self, mode: ShutdownMode, wait: CallWait) -> ShutdownOutcome {
+        self.facade.shutdown(mode, wait)
+    }
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl StateProvider for EventlogPostgresStore {
+    fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
+        self.facade.load(entity, id)
+    }
+
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        self.facade.ids(entity)
+    }
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl EventProvider for EventlogPostgresStore {
+    fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
+        self.facade.events(entity, id)
+    }
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl HistoryProvider for EventlogPostgresStore {
+    fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
+        self.facade.records(entity, id)
+    }
+
+    fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
+        self.facade.observations(entity, id)
+    }
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl DocumentQueryProvider for EventlogPostgresStore {
+    fn query_documents(&self, query: &DocumentQuery) -> Result<DocumentPage, QueryError> {
+        self.facade.query_documents(query)
+    }
 }
 
 impl std::fmt::Debug for PostgresStore {
@@ -738,6 +887,184 @@ impl AtomicBatchStore for PostgresStore {
         transaction
             .commit()
             .map_err(|error| database("committing", &error))
+    }
+}
+
+impl LegacyStoreSource for PostgresStore {
+    fn acquire_legacy(&mut self, source_id: &str) -> Result<LegacyStoreSnapshot, StoreError> {
+        let mut client = self.client()?;
+        let mut transaction = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .map_err(|error| database("beginning legacy acquisition", &error))?;
+        let coordinates = transaction
+            .query(
+                "SELECT coordinates.entity, coordinates.id, instances.revision, instances.document
+                 FROM (
+                     SELECT entity, id FROM instances
+                     UNION SELECT entity, id FROM events
+                     UNION SELECT entity, id FROM history
+                     UNION SELECT entity, id FROM legacy_origins
+                 ) AS coordinates
+                 LEFT JOIN instances USING (entity, id)
+                 ORDER BY coordinates.entity COLLATE \"C\", coordinates.id COLLATE \"C\"",
+                &[],
+            )
+            .map_err(|error| database("acquiring legacy instances", &error))?;
+        let mut histories = Vec::with_capacity(coordinates.len());
+        for row in coordinates {
+            let entity: String = row.get(0);
+            let id: String = row.get(1);
+            let stored_revision: Option<i64> = row.get(2);
+            let document: Option<String> = row.get(3);
+            let (Some(stored_revision), Some(document)) = (stored_revision, document) else {
+                return Err(StoreError::Backend(format!(
+                    "legacy PostgreSQL evidence at {entity:?}/{id:?} has no terminal instance"
+                )));
+            };
+            let instance: EntityInstance = serde_json::from_str(&document)
+                .map_err(|error| backend("parsing a legacy instance", &error))?;
+            if instance.entity != entity
+                || instance.id != id
+                || revision_of(stored_revision)? != instance.revision
+            {
+                return Err(StoreError::Backend(format!(
+                    "legacy PostgreSQL instance row {entity:?}/{id:?} substitutes its identity or revision"
+                )));
+            }
+            let legacy_origin = transaction
+                .query_opt(
+                    "SELECT revision FROM legacy_origins WHERE entity = $1 AND id = $2",
+                    &[&entity, &id],
+                )
+                .map_err(|error| database("acquiring a legacy origin", &error))?
+                .map(|row| revision_of(row.get::<_, i64>(0)))
+                .transpose()?;
+            if legacy_origin.is_some_and(|revision| revision > instance.revision) {
+                return Err(StoreError::Backend(format!(
+                    "legacy PostgreSQL origin for {entity:?}/{id:?} is later than terminal revision {}",
+                    instance.revision
+                )));
+            }
+            let has_bare_events: bool = transaction
+                .query_one(
+                    "SELECT EXISTS(SELECT 1 FROM events WHERE entity = $1 AND id = $2)",
+                    &[&entity, &id],
+                )
+                .map_err(|error| database("checking legacy event evidence", &error))?
+                .get(0);
+            let history_rows = transaction
+                .query(
+                    "SELECT position, kind, record_id, document FROM history \
+                     WHERE entity = $1 AND id = $2 ORDER BY position",
+                    &[&entity, &id],
+                )
+                .map_err(|error| database("acquiring legacy history", &error))?;
+            let mut evidence = Vec::new();
+            let mut decision_position = 0_u64;
+            let mut observation_position = 0_u64;
+            for row in history_rows {
+                let position = revision_of(row.get::<_, i64>(0))?;
+                let kind: String = row.get(1);
+                let record_id: String = row.get(2);
+                let document: String = row.get(3);
+                let (entry, per_kind_position) = match kind.as_str() {
+                    "decision" => {
+                        let envelope: Envelope<DecisionRecord> = serde_json::from_str(&document)
+                            .map_err(|error| backend("parsing a legacy decision", &error))?;
+                        if envelope.record_id != record_id {
+                            return Err(StoreError::Backend(format!(
+                                "legacy PostgreSQL decision at {entity:?}/{id:?}/{position} substitutes record identity"
+                            )));
+                        }
+                        let position = decision_position;
+                        decision_position = decision_position.checked_add(1).ok_or_else(|| {
+                            StoreError::Backend(
+                                "legacy PostgreSQL decision position exhausted".to_owned(),
+                            )
+                        })?;
+                        (
+                            RecordedEntry::Decision(RecordedCommit {
+                                instance: envelope.record.result.clone(),
+                                envelope,
+                            }),
+                            position,
+                        )
+                    }
+                    "observation" => {
+                        let observation: RecordedObservation = serde_json::from_str(&document)
+                            .map_err(|error| backend("parsing a legacy observation", &error))?;
+                        if observation.envelope.record_id != record_id {
+                            return Err(StoreError::Backend(format!(
+                                "legacy PostgreSQL observation at {entity:?}/{id:?}/{position} substitutes record identity"
+                            )));
+                        }
+                        let position = observation_position;
+                        observation_position =
+                            observation_position.checked_add(1).ok_or_else(|| {
+                                StoreError::Backend(
+                                    "legacy PostgreSQL observation position exhausted".to_owned(),
+                                )
+                            })?;
+                        (RecordedEntry::Observation(observation), position)
+                    }
+                    other => {
+                        return Err(StoreError::Backend(format!(
+                            "legacy PostgreSQL history has unknown kind {other:?}"
+                        )));
+                    }
+                };
+                evidence.push(LegacyEvidence::Envelope(
+                    ImportedRecordEvidence::new(
+                        entry,
+                        source_id,
+                        format!("history/{entity}/{id}/{position}"),
+                        if has_bare_events {
+                            KnownLegacyOrder::PerKind(per_kind_position)
+                        } else {
+                            KnownLegacyOrder::Subject(position)
+                        },
+                    )
+                    .map_err(|error| StoreError::Backend(error.to_string()))?,
+                ));
+            }
+            for row in transaction
+                .query(
+                    "SELECT document FROM events WHERE entity = $1 AND id = $2 \
+                     ORDER BY revision, position",
+                    &[&entity, &id],
+                )
+                .map_err(|error| database("acquiring legacy events", &error))?
+            {
+                let document: String = row.get(0);
+                evidence.push(LegacyEvidence::Event(
+                    serde_json::from_str(&document)
+                        .map_err(|error| backend("parsing a legacy event", &error))?,
+                ));
+            }
+            histories.push(SubjectHistory {
+                subject: Subject::new(entity, id)
+                    .map_err(|error| StoreError::Backend(error.to_string()))?,
+                origin: HistoryOrigin::Imported(LegacyAnchor {
+                    instance,
+                    completeness: LegacyCompleteness::CompleteSubject,
+                    order: if has_bare_events {
+                        LegacyOrderDeclaration::PerKindOnly
+                    } else {
+                        LegacyOrderDeclaration::Subject
+                    },
+                    evidence,
+                }),
+                records: Vec::new(),
+            });
+        }
+        transaction
+            .commit()
+            .map_err(|error| database("ending legacy acquisition", &error))?;
+        drop(client);
+        LegacyStoreSnapshot::new(source_id, histories)
     }
 }
 

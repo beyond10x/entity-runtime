@@ -6,6 +6,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Eventlog-backed File, SQLite and PostgreSQL facades preserve complete recorded receipts,
+  retries, observations, queries and atomic groups behind explicit open/provision authority. The
+  retained legacy stores gain read-only typed acquisition for explicit out-of-place import; the
+  opt-in CLI Eventlog feature selects its File facade with a closed authority-and-bounds document.
 - `create_derived` and `decide_create_derived` let Entity Runtime select a creation outcome and
   derive the storage address from that outcome's validated logical identity. Existing
   caller-supplied creation entry points retain their behavior and bytes; both paths produce the

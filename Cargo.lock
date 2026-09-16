@@ -402,15 +402,19 @@ version = "0.18.1"
 dependencies = [
  "clap",
  "entity-core",
+ "entity-eventlog",
+ "entity-executor",
  "entity-graph",
  "entity-mcp",
  "entity-shell",
  "entity-store",
  "entity-surface",
  "entity-yaml",
+ "eventlog-core",
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "time",
 ]
 
 [[package]]
@@ -428,6 +432,7 @@ version = "0.18.1"
 dependencies = [
  "entity-core",
  "entity-executor",
+ "entity-query",
  "entity-store",
  "eventlog-core",
  "eventlog-file",
@@ -476,11 +481,20 @@ name = "entity-postgres"
 version = "0.18.1"
 dependencies = [
  "entity-core",
+ "entity-eventlog",
+ "entity-executor",
  "entity-query",
  "entity-store",
+ "eventlog-core",
+ "eventlog-postgres",
  "postgres",
+ "rustls",
  "serde",
  "serde_json",
+ "time",
+ "tokio",
+ "tokio-postgres",
+ "tokio-postgres-rustls",
 ]
 
 [[package]]
@@ -517,10 +531,14 @@ name = "entity-sqlite"
 version = "0.18.1"
 dependencies = [
  "entity-core",
+ "entity-eventlog",
+ "entity-query",
  "entity-store",
+ "eventlog-core",
  "rusqlite",
  "serde",
  "serde_json",
+ "time",
 ]
 
 [[package]]
@@ -580,7 +598,7 @@ dependencies = [
 [[package]]
 name = "eventlog-core"
 version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=43ceaa09ceec610e25891815e33e03e8df92ee28#43ceaa09ceec610e25891815e33e03e8df92ee28"
+source = "git+https://github.com/beyond10x/eventlog?rev=088c27b5df9745c68d8a2240dbb2038998b03efe#088c27b5df9745c68d8a2240dbb2038998b03efe"
 dependencies = [
  "serde",
  "serde_json",
@@ -593,7 +611,7 @@ dependencies = [
 [[package]]
 name = "eventlog-file"
 version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=43ceaa09ceec610e25891815e33e03e8df92ee28#43ceaa09ceec610e25891815e33e03e8df92ee28"
+source = "git+https://github.com/beyond10x/eventlog?rev=088c27b5df9745c68d8a2240dbb2038998b03efe#088c27b5df9745c68d8a2240dbb2038998b03efe"
 dependencies = [
  "eventlog-core",
  "serde",
@@ -606,7 +624,7 @@ dependencies = [
 [[package]]
 name = "eventlog-postgres"
 version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=43ceaa09ceec610e25891815e33e03e8df92ee28#43ceaa09ceec610e25891815e33e03e8df92ee28"
+source = "git+https://github.com/beyond10x/eventlog?rev=088c27b5df9745c68d8a2240dbb2038998b03efe#088c27b5df9745c68d8a2240dbb2038998b03efe"
 dependencies = [
  "eventlog-core",
  "rustls",
@@ -623,7 +641,7 @@ dependencies = [
 [[package]]
 name = "eventlog-sqlite"
 version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=43ceaa09ceec610e25891815e33e03e8df92ee28#43ceaa09ceec610e25891815e33e03e8df92ee28"
+source = "git+https://github.com/beyond10x/eventlog?rev=088c27b5df9745c68d8a2240dbb2038998b03efe#088c27b5df9745c68d8a2240dbb2038998b03efe"
 dependencies = [
  "eventlog-core",
  "rusqlite",
@@ -1843,7 +1861,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

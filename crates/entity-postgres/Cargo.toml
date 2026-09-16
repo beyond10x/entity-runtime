@@ -7,10 +7,28 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+eventlog-facade = [
+    "dep:entity-eventlog",
+    "dep:entity-executor",
+    "dep:eventlog-core",
+    "dep:eventlog-postgres",
+    "dep:rustls",
+    "dep:time",
+    "dep:tokio",
+    "dep:tokio-postgres",
+    "dep:tokio-postgres-rustls",
+]
+
 [dependencies]
 entity-core = { path = "../entity-core", version = "0.18.1" }
+entity-eventlog = { path = "../entity-eventlog", version = "0.18.1", features = ["sync-bridge", "postgres"], optional = true }
+entity-executor = { path = "../entity-executor", version = "0.18.1", optional = true }
 entity-store = { path = "../entity-store", version = "0.18.1" }
 entity-query = { path = "../entity-query", version = "0.18.1" }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "088c27b5df9745c68d8a2240dbb2038998b03efe", optional = true }
+eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "088c27b5df9745c68d8a2240dbb2038998b03efe", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 # The fifth direct third-party crate in this workspace, and the first that talks to a server. The
@@ -22,6 +40,11 @@ serde_json.workspace = true
 # parses itself. Nothing in the gate reaches a network to test this: the tests run when
 # `ENTITY_POSTGRES_URL` names a server and say so when they did not.
 postgres = { version = "0.19", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"], optional = true }
+time = { version = "0.3", optional = true }
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"], optional = true }
+tokio-postgres = { version = "0.7", optional = true }
+tokio-postgres-rustls = { version = "0.14", features = ["ring"], optional = true }
 
 [lints]
 workspace = true

@@ -190,30 +190,62 @@ pub trait DocumentQueryProvider {
 
 impl DocumentQueryProvider for MemoryStore {
     fn query_documents(&self, query: &DocumentQuery) -> Result<DocumentPage, QueryError> {
-        let after = query.after_id()?;
-        let wanted = query.effective_limit()? + 1;
-        let mut items = Vec::with_capacity(wanted);
-        for id in self.ids(&query.entity)? {
-            if id <= after {
-                continue;
-            }
-            let Some(instance) = self.load(&query.entity, &id)? else {
-                continue;
-            };
-            if query.matching.iter().all(|(field, expected)| {
-                instance
-                    .fields
-                    .get(field)
-                    .is_some_and(|actual| contains(actual, expected))
-            }) {
-                items.push(instance);
-                if items.len() == wanted {
-                    break;
-                }
+        query_ordered_instances(
+            query,
+            self.ids(&query.entity)?
+                .into_iter()
+                .map(|id| self.load(&query.entity, &id))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten(),
+        )
+    }
+}
+
+/// Applies the provider-neutral query semantics to instances already ordered by identity.
+///
+/// This is the shared fallback for providers whose authoritative complete snapshot supplies state
+/// but no native query index. Callers must provide only the requested entity, ordered by `id`.
+///
+/// # Errors
+///
+/// Invalid page size/cursor, an out-of-order input, or an instance of another entity.
+pub fn query_ordered_instances(
+    query: &DocumentQuery,
+    instances: impl IntoIterator<Item = EntityInstance>,
+) -> Result<DocumentPage, QueryError> {
+    let after = query.after_id()?;
+    let wanted = query.effective_limit()? + 1;
+    let mut previous: Option<String> = None;
+    let mut items = Vec::with_capacity(wanted);
+    for instance in instances {
+        if instance.entity != query.entity {
+            return Err(QueryError::Invalid(
+                "query input contains an instance of another entity".to_owned(),
+            ));
+        }
+        if previous.as_ref().is_some_and(|id| id >= &instance.id) {
+            return Err(QueryError::Invalid(
+                "query input is not strictly ordered by identity".to_owned(),
+            ));
+        }
+        previous = Some(instance.id.clone());
+        if instance.id <= after {
+            continue;
+        }
+        if query.matching.iter().all(|(field, expected)| {
+            instance
+                .fields
+                .get(field)
+                .is_some_and(|actual| contains(actual, expected))
+        }) {
+            items.push(instance);
+            if items.len() == wanted {
+                break;
             }
         }
-        DocumentPage::from_matches(query, items)
     }
+    DocumentPage::from_matches(query, items)
 }
 
 /// The provider-neutral meaning of PostgreSQL JSONB containment.

@@ -11,6 +11,10 @@ rust-version.workspace = true
 name = "entity"
 path = "src/main.rs"
 
+[features]
+default = []
+eventlog-providers = ["dep:entity-eventlog", "dep:entity-executor", "dep:eventlog-core", "dep:time"]
+
 [dependencies]
 entity-core = { path = "../entity-core", version = "0.18.1" }
 entity-graph = { path = "../entity-graph", version = "0.18.1" }
@@ -22,6 +26,10 @@ entity-surface = { path = "../entity-surface", version = "0.18.1" }
 # The shell's half of R-80: the CLI is a shell, so this is where a store belongs.
 entity-store = { path = "../entity-store", version = "0.18.1" }
 entity-yaml = { path = "../entity-yaml", version = "0.18.1" }
+entity-eventlog = { path = "../entity-eventlog", version = "0.18.1", features = ["sync-bridge", "file"], optional = true }
+entity-executor = { path = "../entity-executor", version = "0.18.1", optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "088c27b5df9745c68d8a2240dbb2038998b03efe", optional = true }
+time = { version = "0.3", features = ["parsing"], optional = true }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
