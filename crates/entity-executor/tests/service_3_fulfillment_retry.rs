@@ -3,11 +3,13 @@
 use std::collections::BTreeMap;
 
 use entity_core::{OperationFieldAction, Registry};
-use entity_executor::{test_support::block_on, CreateRequest, ExecuteRequest, Executor};
+use entity_executor::{
+    test_support::block_on, BatchAction, CreateRequest, ExecuteRequest, Executor,
+};
 use entity_store::{
     asynchronous::{
-        verify_subject_history, AsyncRecordedReader, AsyncStateReader, AsyncStoreError,
-        MemoryRecordedStore, Subject,
+        request_domain, verify_subject_history, AsyncRecordedReader, AsyncStateReader,
+        AsyncStoreError, BatchKey, CommitReceipt, MemoryRecordedStore, Subject,
     },
     Recording,
 };
@@ -68,6 +70,48 @@ fn execute(actions: BTreeMap<String, OperationFieldAction>) -> ExecuteRequest {
     }
 }
 
+fn legacy_registry() -> Registry {
+    let mut registry = Registry::new();
+    for (entity, semantics) in [
+        ("kernel_ticket", None),
+        ("service_1_ticket", Some("service/1")),
+        ("service_2_ticket", Some("service/2")),
+    ] {
+        let mut definition = json!({
+            "entity": entity, "version": 1,
+            "schema": { "fields": {
+                "title": { "type": "string", "required": true }
+            }},
+            "lifecycle": { "initial": "Open", "states": ["Open"] },
+            "operations": { "Rename": {
+                "arguments": { "fields": {
+                    "title": { "type": "string", "required": true }
+                }},
+                "transitions": [{ "from": "Open", "to": "Open" }],
+                "set": { "title": "$args.title" }
+            }}
+        });
+        if let Some(semantics) = semantics {
+            definition["semantics"] = json!(semantics);
+        }
+        registry
+            .register(serde_json::from_value(definition).expect("definition parses"))
+            .expect("definition validates");
+    }
+    registry
+}
+
+fn legacy_execute(entity: &str, record_id: &str) -> ExecuteRequest {
+    ExecuteRequest {
+        subject: Subject::new(entity, "t-1").expect("subject"),
+        expected_revision: 1,
+        operation: "Rename".to_owned(),
+        arguments: json!({"title": "new"}),
+        fulfillments: BTreeMap::new(),
+        recording: recording(record_id),
+    }
+}
+
 #[test]
 fn retry_restart_and_verified_history_preserve_set_and_removal_actions() {
     let registry = registry();
@@ -101,4 +145,84 @@ fn retry_restart_and_verified_history_preserve_set_and_removal_actions() {
         conflict.store_error(),
         Some(AsyncStoreError::RecordConflict { record_id }) if record_id == "r-2"
     ));
+}
+
+#[test]
+fn legacy_request_domains_compare_new_actions_in_single_and_batch_recovery() {
+    let registry = legacy_registry();
+    let store = MemoryRecordedStore::new();
+    let executor = Executor::new(&registry, &store);
+    let cases = [
+        ("kernel_ticket", "kernel-execute"),
+        ("service_1_ticket", "service-1-execute"),
+        ("service_2_ticket", "service-2-execute"),
+    ];
+    for (entity, _) in cases {
+        block_on(executor.create(CreateRequest {
+            subject: Subject::new(entity, "t-1").expect("subject"),
+            definition_version: 1,
+            fields: json!({"title": "old"}),
+            recording: recording(&format!("{entity}-create")),
+        }))
+        .expect("creation commits");
+    }
+
+    let actions: Vec<_> = cases
+        .iter()
+        .map(|(entity, record_id)| BatchAction::Execute(legacy_execute(entity, record_id)))
+        .collect();
+    let batch_key = BatchKey::Named("legacy-domains".to_owned());
+    let original = block_on(executor.batch(batch_key.clone(), actions.clone()))
+        .expect("legacy requests commit as one named batch");
+    let original_receipt = original.receipt().expect("batch receipt").clone();
+    for ((entity, _), domain) in cases
+        .iter()
+        .zip(["er.request/1", "er.request/2", "er.request/3"])
+    {
+        let history = block_on(store.history(&Subject::new(*entity, "t-1").expect("subject")))
+            .expect("history");
+        assert_eq!(request_domain(&history.records[1].entry), domain);
+    }
+
+    let exact_batch = block_on(executor.batch(batch_key.clone(), actions.clone()))
+        .expect("exact empty-map batch retry replays");
+    assert!(exact_batch.replayed());
+    assert_eq!(exact_batch.receipt(), Some(&original_receipt));
+
+    let CommitReceipt::Batch(batch_receipt) = &original_receipt else {
+        panic!("the original named batch has a batch receipt")
+    };
+    for (index, ((_, record_id), action)) in cases.iter().zip(&actions).enumerate() {
+        let BatchAction::Execute(request) = action else {
+            unreachable!("every legacy action is an execute")
+        };
+        let exact_single = block_on(executor.execute(request.clone()))
+            .expect("exact empty-map single retry replays");
+        assert!(exact_single.replayed());
+        let member_receipt = CommitReceipt::Single(batch_receipt.members[index].clone());
+        assert_eq!(exact_single.receipt(), Some(&member_receipt));
+
+        let mut changed_request = request.clone();
+        changed_request.fulfillments.insert(
+            "undeclared".to_owned(),
+            OperationFieldAction::Set {
+                value: json!("must-not-disappear"),
+            },
+        );
+        let single_error = block_on(executor.execute(changed_request.clone()))
+            .expect_err("a legacy single retry cannot ignore new fulfillment actions");
+        assert!(matches!(
+            single_error.store_error(),
+            Some(AsyncStoreError::RecordConflict { record_id: actual }) if actual == record_id
+        ));
+
+        let mut changed_batch = actions.clone();
+        changed_batch[index] = BatchAction::Execute(changed_request);
+        let batch_error = block_on(executor.batch(batch_key.clone(), changed_batch))
+            .expect_err("a legacy batch retry cannot ignore new fulfillment actions");
+        assert!(matches!(
+            batch_error.store_error(),
+            Some(AsyncStoreError::RecordConflict { record_id: actual }) if actual == record_id
+        ));
+    }
 }

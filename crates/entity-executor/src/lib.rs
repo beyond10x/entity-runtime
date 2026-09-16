@@ -719,6 +719,11 @@ fn request_comparison_bytes(
                     }),
                 )
             } else {
+                if !request.fulfillments.is_empty() {
+                    return Err(AsyncStoreError::RecordConflict {
+                        record_id: request.recording.record_id.clone(),
+                    });
+                }
                 canonical_domain_bytes(
                     domain,
                     serde_json::json!({
