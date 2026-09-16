@@ -41,6 +41,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - Add runtime-neutral asynchronous complete-record storage ports, an atomic in-memory reference
   provider, bounded history verification and an executor for exact single and named-batch retries.
   Existing synchronous store APIs and bytes remain unchanged.
+- Add the `entity-eventlog` IO edge: complete canonical records, requests, batches and imported
+  boundaries use immutable Eventlog references with native complete-capture checks, transactional
+  indexes, explicit binding administration and a bounded dedicated-thread synchronous bridge. The
+  new crate requires Rust 1.91; the pure runtime crates remain on 1.85.
 
 ### Changed
 

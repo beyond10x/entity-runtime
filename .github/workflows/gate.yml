@@ -94,4 +94,42 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Build on the declared MSRV
-        run: cargo build --workspace --locked
+        run: cargo build --workspace --exclude entity-eventlog --locked
+
+  eventlog-runtime:
+    name: Eventlog runtime (Rust 1.91)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: entity
+          POSTGRES_PASSWORD: entity
+          POSTGRES_DB: entity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U entity"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ENTITY_POSTGRES_URL: postgres://entity:entity@127.0.0.1:5432/entity
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315 # 1.91.0
+        with:
+          toolchain: 1.91.0
+          components: clippy
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      - name: Test every Eventlog provider and bridge
+        run: cargo test -p entity-eventlog --all-features --locked
+
+      - name: Lint every Eventlog provider and bridge
+        run: cargo clippy -p entity-eventlog --all-targets --all-features --no-deps --locked -- -D warnings

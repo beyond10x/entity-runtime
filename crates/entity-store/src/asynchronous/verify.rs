@@ -48,7 +48,15 @@ fn check_expect(
     }
 }
 
-pub(crate) fn validate_entry_against_state(
+/// Validates one complete entry against its transaction-local predecessor.
+///
+/// This is the pure admission seam used by recorded providers. It applies the same expectation,
+/// saved-command replay, observation, and revision checks as history verification without doing IO.
+///
+/// # Errors
+///
+/// A typed input, revision, or history-integrity refusal.
+pub fn validate_entry_against_state(
     entry: &RecordedEntry,
     expect: Expect,
     current: Option<&EntityInstance>,

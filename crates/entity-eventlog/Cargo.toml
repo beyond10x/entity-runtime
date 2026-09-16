@@ -1,0 +1,36 @@
+[package]
+name = "entity-eventlog"
+description = "Complete recorded Entity Runtime storage over Eventlog providers."
+version.workspace = true
+edition = "2024"
+rust-version = "1.91"
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+sync-bridge = ["dep:entity-executor", "dep:tokio"]
+file = ["dep:eventlog-file"]
+sqlite = ["dep:eventlog-sqlite"]
+postgres = ["dep:eventlog-postgres"]
+
+[dependencies]
+entity-core = { path = "../entity-core", version = "0.18.1" }
+entity-store = { path = "../entity-store", version = "0.18.1" }
+entity-executor = { path = "../entity-executor", version = "0.18.1", optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "43ceaa09ceec610e25891815e33e03e8df92ee28" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", rev = "43ceaa09ceec610e25891815e33e03e8df92ee28", optional = true }
+eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", rev = "43ceaa09ceec610e25891815e33e03e8df92ee28", optional = true }
+eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "43ceaa09ceec610e25891815e33e03e8df92ee28", optional = true }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+time = { version = "0.3", features = ["serde"] }
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "sync", "time", "macros"], optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }
+
+[lints]
+workspace = true

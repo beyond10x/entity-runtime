@@ -15,7 +15,8 @@ pub use ports::{
     AsyncRecordedReader, AsyncRecordedStore, AsyncRecordedWriter, AsyncStateReader, BoxFuture,
 };
 pub use types::*;
-pub(crate) use verify::{validate_entry_against_state, validate_imported_boundary};
+pub use verify::validate_entry_against_state;
+pub(crate) use verify::validate_imported_boundary;
 pub use verify::{
     verify_complete_store, verify_imported_record, verify_store_histories, verify_subject_history,
     verify_subject_prefix,

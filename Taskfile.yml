@@ -13,7 +13,14 @@ tasks:
       - task: req-check
       - task: pin-check
       - task: postgres-check
+      - task: eventlog-runtime-check
       - task: notes-check
+
+  eventlog-runtime-check:
+    desc: the Rust 1.91 Eventlog adapter closure with every native provider and synchronous bridge
+    cmds:
+      - cargo +1.91.0 test -p entity-eventlog --all-features --locked
+      - cargo +1.91.0 clippy -p entity-eventlog --all-targets --all-features --no-deps --locked -- -D warnings
 
   postgres-check:
     desc: the Postgres provider's tests, against the server ENTITY_POSTGRES_URL names — or one line saying they did not run

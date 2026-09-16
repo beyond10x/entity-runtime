@@ -1,0 +1,533 @@
+use entity_store::{
+    Expect,
+    asynchronous::{
+        AppendMember, AsyncStoreError, BatchKey, HistoryOrigin, ImportedRecordEvidence,
+        KnownLegacyOrder, LegacyAnchor, LegacyCompleteness, LegacyEvidence, LegacyOrderDeclaration,
+        RecordedEntry, Subject, SubjectHistory, batch_comparison_bytes, canonical_domain_bytes,
+        original_request_comparison_bytes, record_comparison_bytes,
+    },
+};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest as _, Sha256};
+
+pub(crate) const BINDING_BLOB_DOMAIN: &str = "er.eventlog.binding-blob-key/1";
+pub(crate) const RECORD_BLOB_DOMAIN: &str = "er.eventlog.record-blob-key/1";
+pub(crate) const REQUEST_BLOB_DOMAIN: &str = "er.eventlog.request-blob-key/1";
+pub(crate) const BATCH_BLOB_DOMAIN: &str = "er.eventlog.batch-blob-key/1";
+pub(crate) const ENTRY_BLOB_DOMAIN: &str = "er.eventlog.recorded-entry-blob-key/1";
+pub(crate) const ANCHOR_BLOB_DOMAIN: &str = "er.eventlog.import-anchor-blob-key/1";
+
+/// Exact logical and physical authority selected for one adapter.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Authority {
+    /// Entity Runtime logical scope, preserved byte for byte.
+    pub logical_scope: String,
+    /// Eventlog tenant identity.
+    pub tenant: String,
+    /// Exact provider generation expected by the caller.
+    pub stream_identity: String,
+}
+
+impl Authority {
+    pub(crate) fn validate(&self) -> Result<(), AsyncStoreError> {
+        if self.logical_scope.trim().is_empty() {
+            return Err(AsyncStoreError::InvalidInput(
+                "Eventlog authority requires a nonblank logical scope".into(),
+            ));
+        }
+        if self.tenant.trim().is_empty() || self.stream_identity.is_empty() {
+            return Err(AsyncStoreError::InvalidInput(
+                "Eventlog authority requires tenant and stream identity".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Actual immutable coordinates of one Eventlog reference event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PhysicalRef {
+    /// Provider-minted event identity.
+    pub event_id: String,
+    /// Tenant-global commit position.
+    pub global_seq: u64,
+    /// Physical stream identity.
+    pub stream_id: String,
+    /// Physical stream version.
+    pub stream_version: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RecordedEntryWrapper {
+    pub authority: Authority,
+    pub batch_blob: String,
+    pub batch_key: BatchKeyWire,
+    pub member_index: u64,
+    pub record_blob: String,
+    pub request_blob: String,
+    pub subject: SubjectWire,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum BatchKeyWire {
+    Single((SingleTag, String)),
+    Named((NamedTag, String)),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SingleTag {
+    SingleRecord,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum NamedTag {
+    Named,
+}
+
+impl From<&BatchKey> for BatchKeyWire {
+    fn from(value: &BatchKey) -> Self {
+        match value {
+            BatchKey::SingleRecord(value) => Self::Single((SingleTag::SingleRecord, value.clone())),
+            BatchKey::Named(value) => Self::Named((NamedTag::Named, value.clone())),
+        }
+    }
+}
+
+impl From<BatchKeyWire> for BatchKey {
+    fn from(value: BatchKeyWire) -> Self {
+        match value {
+            BatchKeyWire::Single((_, value)) => Self::SingleRecord(value),
+            BatchKeyWire::Named((_, value)) => Self::Named(value),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SubjectWire(pub String, pub String);
+
+impl From<&Subject> for SubjectWire {
+    fn from(value: &Subject) -> Self {
+        Self(value.entity.clone(), value.id.clone())
+    }
+}
+
+impl From<SubjectWire> for Subject {
+    fn from(value: SubjectWire) -> Self {
+        Self {
+            entity: value.0,
+            id: value.1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ImportAnchorWrapper {
+    pub authority: Authority,
+    pub completeness: CompletenessWire,
+    pub evidence: Vec<EvidenceWire>,
+    pub instance: entity_core::EntityInstance,
+    pub order: OrderWire,
+    pub subject: SubjectWire,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CompletenessWire {
+    AvailableEvidenceOnly,
+    CompleteSubject,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum OrderWire {
+    PerKindOnly,
+    Subject,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub(crate) enum EvidenceWire {
+    Envelope {
+        known_order: KnownOrderWire,
+        record_blob: String,
+        source_id: String,
+        source_locator: String,
+    },
+    Decision {
+        decision: Box<entity_core::DecisionRecord>,
+    },
+    Event {
+        event: Box<entity_core::DomainEvent>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum KnownOrderWire {
+    PerKind((PerKindTag, u64)),
+    Subject((SubjectOrderTag, u64)),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PerKindTag {
+    PerKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SubjectOrderTag {
+    Subject,
+}
+
+pub(crate) fn framed_key(domain: &str, bytes: &[u8]) -> Result<String, AsyncStoreError> {
+    let length = u64::try_from(bytes.len()).map_err(|_| AsyncStoreError::PositionExhausted {
+        domain: "Eventlog digest byte length".into(),
+    })?;
+    let mut hasher = Sha256::new();
+    hasher.update(domain.as_bytes());
+    hasher.update([0]);
+    hasher.update(length.to_be_bytes());
+    hasher.update(bytes);
+    Ok(format!("sha256:{:x}", hasher.finalize()))
+}
+
+pub(crate) fn encode_binding(authority: &Authority) -> Result<Vec<u8>, AsyncStoreError> {
+    canonical_domain_bytes(
+        "er.eventlog.binding/1",
+        serde_json::to_value(authority).map_err(enc)?,
+    )
+}
+
+pub(crate) fn decode_binding(bytes: &[u8]) -> Result<Authority, AsyncStoreError> {
+    decode_tagged("er.eventlog.binding/1", bytes, |value| {
+        serde_json::from_value(value).map_err(enc)
+    })
+}
+
+pub(crate) fn encode_entry(value: &RecordedEntryWrapper) -> Result<Vec<u8>, AsyncStoreError> {
+    canonical_domain_bytes(
+        "er.eventlog.recorded-entry/1",
+        serde_json::to_value(value).map_err(enc)?,
+    )
+}
+
+pub(crate) fn decode_entry(bytes: &[u8]) -> Result<RecordedEntryWrapper, AsyncStoreError> {
+    decode_tagged("er.eventlog.recorded-entry/1", bytes, |value| {
+        serde_json::from_value(value).map_err(enc)
+    })
+}
+
+pub(crate) fn encode_anchor(value: &ImportAnchorWrapper) -> Result<Vec<u8>, AsyncStoreError> {
+    canonical_domain_bytes(
+        "er.eventlog.import-anchor/1",
+        serde_json::to_value(value).map_err(enc)?,
+    )
+}
+
+pub(crate) fn decode_anchor(bytes: &[u8]) -> Result<ImportAnchorWrapper, AsyncStoreError> {
+    decode_tagged("er.eventlog.import-anchor/1", bytes, |value| {
+        serde_json::from_value(value).map_err(enc)
+    })
+}
+
+fn decode_tagged<T>(
+    domain: &str,
+    bytes: &[u8],
+    parse: impl FnOnce(Value) -> Result<T, AsyncStoreError>,
+) -> Result<T, AsyncStoreError> {
+    let value: Value = serde_json::from_slice(bytes).map_err(enc)?;
+    let array = value
+        .as_array()
+        .ok_or_else(|| invalid("a canonical document is a two-element array"))?;
+    if array.len() != 2 || array[0].as_str() != Some(domain) {
+        return Err(invalid(format!("expected {domain} framing")));
+    }
+    let parsed = parse(array[1].clone())?;
+    let canonical = canonical_domain_bytes(domain, array[1].clone())?;
+    if canonical != bytes {
+        return Err(invalid("stored bytes are not canonical"));
+    }
+    Ok(parsed)
+}
+
+pub(crate) fn decode_record(bytes: &[u8]) -> Result<RecordedEntry, AsyncStoreError> {
+    let value: Value = serde_json::from_slice(bytes).map_err(enc)?;
+    let array = value
+        .as_array()
+        .ok_or_else(|| invalid("record is not a tagged array"))?;
+    if array.len() != 2
+        || array[0]
+            .as_str()
+            .is_none_or(|tag| !tag.starts_with("er.record/"))
+    {
+        return Err(invalid("record framing is unknown"));
+    }
+    #[derive(Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum Tagged {
+        Decision {
+            commit: Box<entity_store::RecordedCommit>,
+        },
+        Observation {
+            observation: Box<entity_store::RecordedObservation>,
+        },
+    }
+    let entry = match serde_json::from_value(array[1].clone()).map_err(enc)? {
+        Tagged::Decision { commit } => RecordedEntry::Decision(*commit),
+        Tagged::Observation { observation } => RecordedEntry::Observation(*observation),
+    };
+    if record_comparison_bytes(&entry)? != bytes {
+        return Err(invalid("record bytes do not reproduce the complete record"));
+    }
+    Ok(entry)
+}
+
+pub(crate) fn decode_batch(bytes: &[u8]) -> Result<(BatchKey, Vec<AppendMember>), AsyncStoreError> {
+    let value: Value = serde_json::from_slice(bytes).map_err(enc)?;
+    let array = value
+        .as_array()
+        .ok_or_else(|| invalid("batch is not a tagged array"))?;
+    if array.len() != 3 || array[0].as_str() != Some("er.batch/1") {
+        return Err(invalid("batch framing is unknown"));
+    }
+    let key: BatchKeyWire = serde_json::from_value(array[1].clone()).map_err(enc)?;
+    let key: BatchKey = key.into();
+    let members = array[2]
+        .as_array()
+        .ok_or_else(|| invalid("batch members are not an array"))?;
+    let mut decoded = Vec::with_capacity(members.len());
+    for value in members {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Member {
+            expect: ExpectWire,
+            record: Value,
+        }
+        #[derive(Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+        enum ExpectWire {
+            Absent,
+            Revision { revision: u64 },
+        }
+        let member: Member = serde_json::from_value(value.clone()).map_err(enc)?;
+        let record_bytes = serde_json::to_vec(&member.record).map_err(enc)?;
+        let entry = decode_record(&record_bytes)?;
+        let expect = match member.expect {
+            ExpectWire::Absent => Expect::Absent,
+            ExpectWire::Revision { revision } => Expect::Revision(revision),
+        };
+        decoded.push(AppendMember::new(
+            expect,
+            entry.clone(),
+            original_request_comparison_bytes(&entry)?,
+        ));
+    }
+    if batch_comparison_bytes(&key, &decoded)? != bytes {
+        return Err(invalid("batch bytes are not canonical"));
+    }
+    Ok((key, decoded))
+}
+
+pub(crate) fn anchor_from_history(
+    authority: Authority,
+    history: &SubjectHistory,
+    record_digests: &[String],
+) -> Result<ImportAnchorWrapper, AsyncStoreError> {
+    let HistoryOrigin::Imported(anchor) = &history.origin else {
+        return Err(AsyncStoreError::InvalidInput(
+            "an imported anchor requires imported history".into(),
+        ));
+    };
+    let mut digest_index = 0usize;
+    let mut evidence = Vec::with_capacity(anchor.evidence.len());
+    for item in &anchor.evidence {
+        evidence.push(match item {
+            LegacyEvidence::Envelope(saved) => {
+                let digest = record_digests
+                    .get(digest_index)
+                    .ok_or_else(|| invalid("missing envelope record digest"))?
+                    .clone();
+                digest_index += 1;
+                let known_order = match saved.known_order {
+                    KnownLegacyOrder::PerKind(v) => {
+                        KnownOrderWire::PerKind((PerKindTag::PerKind, v))
+                    }
+                    KnownLegacyOrder::Subject(v) => {
+                        KnownOrderWire::Subject((SubjectOrderTag::Subject, v))
+                    }
+                };
+                EvidenceWire::Envelope {
+                    known_order,
+                    record_blob: digest,
+                    source_id: saved.source_id.clone(),
+                    source_locator: saved.source_locator.clone(),
+                }
+            }
+            LegacyEvidence::Decision(decision) => EvidenceWire::Decision {
+                decision: Box::new(decision.clone()),
+            },
+            LegacyEvidence::Event(event) => EvidenceWire::Event {
+                event: Box::new(event.clone()),
+            },
+        });
+    }
+    Ok(ImportAnchorWrapper {
+        authority,
+        completeness: match anchor.completeness {
+            LegacyCompleteness::AvailableEvidenceOnly => CompletenessWire::AvailableEvidenceOnly,
+            LegacyCompleteness::CompleteSubject => CompletenessWire::CompleteSubject,
+        },
+        evidence,
+        instance: anchor.instance.clone(),
+        order: match anchor.order {
+            LegacyOrderDeclaration::PerKindOnly => OrderWire::PerKindOnly,
+            LegacyOrderDeclaration::Subject => OrderWire::Subject,
+        },
+        subject: SubjectWire::from(&history.subject),
+    })
+}
+
+pub(crate) fn history_from_anchor(
+    wrapper: &ImportAnchorWrapper,
+    records: &[Vec<u8>],
+) -> Result<SubjectHistory, AsyncStoreError> {
+    let subject: Subject = wrapper.subject.clone().into();
+    let mut record_index = 0usize;
+    let mut evidence = Vec::with_capacity(wrapper.evidence.len());
+    for item in &wrapper.evidence {
+        evidence.push(match item {
+            EvidenceWire::Envelope {
+                known_order,
+                source_id,
+                source_locator,
+                ..
+            } => {
+                let bytes = records
+                    .get(record_index)
+                    .ok_or_else(|| invalid("missing imported record bytes"))?;
+                record_index += 1;
+                LegacyEvidence::Envelope(ImportedRecordEvidence::new(
+                    decode_record(bytes)?,
+                    source_id.clone(),
+                    source_locator.clone(),
+                    match known_order {
+                        KnownOrderWire::PerKind((_, v)) => KnownLegacyOrder::PerKind(*v),
+                        KnownOrderWire::Subject((_, v)) => KnownLegacyOrder::Subject(*v),
+                    },
+                )?)
+            }
+            EvidenceWire::Decision { decision } => LegacyEvidence::Decision((**decision).clone()),
+            EvidenceWire::Event { event } => LegacyEvidence::Event((**event).clone()),
+        });
+    }
+    Ok(SubjectHistory {
+        subject,
+        origin: HistoryOrigin::Imported(LegacyAnchor {
+            instance: wrapper.instance.clone(),
+            completeness: match wrapper.completeness {
+                CompletenessWire::AvailableEvidenceOnly => {
+                    LegacyCompleteness::AvailableEvidenceOnly
+                }
+                CompletenessWire::CompleteSubject => LegacyCompleteness::CompleteSubject,
+            },
+            order: match wrapper.order {
+                OrderWire::PerKindOnly => LegacyOrderDeclaration::PerKindOnly,
+                OrderWire::Subject => LegacyOrderDeclaration::Subject,
+            },
+            evidence,
+        }),
+        records: Vec::new(),
+    })
+}
+
+pub(crate) fn authority_subject_value(authority: &Authority, subject: &Subject) -> Value {
+    serde_json::json!({"authority":authority,"subject":SubjectWire::from(subject)})
+}
+
+pub(crate) fn key_for_value(domain: &str, value: Value) -> Result<String, AsyncStoreError> {
+    let bytes = canonical_value_bytes(value)?;
+    framed_key(domain, &bytes)
+}
+
+pub(crate) fn canonical_value_bytes(value: Value) -> Result<Vec<u8>, AsyncStoreError> {
+    let tagged = canonical_domain_bytes("_", value)?;
+    Ok(tagged[5..tagged.len() - 1].to_vec())
+}
+
+fn enc(error: impl std::fmt::Display) -> AsyncStoreError {
+    AsyncStoreError::Encoding(error.to_string())
+}
+fn invalid(detail: impl Into<String>) -> AsyncStoreError {
+    AsyncStoreError::ProviderIntegrity {
+        provider: "eventlog".into(),
+        detail: detail.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const AUTHORITY: &str =
+        r#"{"logical_scope":" scope\nΩ ","stream_identity":"gen-A","tenant":"tenant-1"}"#;
+
+    #[test]
+    fn literal_reference_vectors_pin_framing_domains_lengths_and_escaping() {
+        let binding = format!(r#"["er.eventlog.binding/1",{AUTHORITY}]"#);
+        assert_eq!(binding.len(), 103);
+        assert_eq!(
+            framed_key(BINDING_BLOB_DOMAIN, binding.as_bytes()).unwrap(),
+            "sha256:e60356735f17a02973d2dd10b411bbf7b0cd0b2c41a9a0f7dc163a54619e2307"
+        );
+        let subject = format!(r#"{{"authority":{AUTHORITY},"subject":["E","x"]}}"#);
+        assert_eq!(subject.len(), 111);
+        assert_eq!(
+            framed_key("er.eventlog.subject-stream-key/1", subject.as_bytes()).unwrap(),
+            "sha256:e44ba1084300377bf6c0e701352887ce840dcd0b7c8184093818eacc2fc71ce6"
+        );
+        let entry = format!(
+            r#"["er.eventlog.recorded-entry/1",{{"authority":{AUTHORITY},"batch_blob":"sha256:04f3a904e0b2cf4d80f78cc7dc7153953ea08e4fcbdd3f0cc1bab9939a4242a1","batch_key":["named","b"],"member_index":0,"record_blob":"sha256:042c6cac5e47030b8ba26e5401ba28bbaadd29a4c34bd6969d003654c5cb5380","request_blob":"sha256:f147bb14b0c06bac672d2a3ecb12841d4edd2c1032664ce9fba10d160e9d5ebc","subject":["E","x"]}}]"#
+        );
+        assert_eq!(entry.len(), 451);
+        assert_eq!(
+            framed_key(ENTRY_BLOB_DOMAIN, entry.as_bytes()).unwrap(),
+            "sha256:06171db59b58a192aa94380e439b29a8e2e3fa5d3c91af16d937ba54ced51636"
+        );
+    }
+
+    #[test]
+    fn closed_binding_decode_refuses_unknown_fields_and_noncanonical_order() {
+        let canonical = format!(r#"["er.eventlog.binding/1",{AUTHORITY}]"#);
+        assert_eq!(
+            decode_binding(canonical.as_bytes()).unwrap().logical_scope,
+            " scope\nΩ "
+        );
+        let unknown = canonical.replace("\"tenant\":", "\"unknown\":1,\"tenant\":");
+        assert!(matches!(
+            decode_binding(unknown.as_bytes()),
+            Err(AsyncStoreError::Encoding(_))
+        ));
+        let reordered = r#"["er.eventlog.binding/1",{"tenant":"tenant-1","stream_identity":"gen-A","logical_scope":" scope\nΩ "}]"#;
+        assert!(matches!(
+            decode_binding(reordered.as_bytes()),
+            Err(AsyncStoreError::ProviderIntegrity { .. })
+        ));
+    }
+
+    #[test]
+    fn a_digest_is_bound_to_its_exact_domain() {
+        assert_ne!(
+            framed_key(RECORD_BLOB_DOMAIN, b"same bytes").unwrap(),
+            framed_key(REQUEST_BLOB_DOMAIN, b"same bytes").unwrap()
+        );
+    }
+}

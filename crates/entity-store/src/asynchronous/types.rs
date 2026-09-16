@@ -691,6 +691,13 @@ pub enum AsyncStoreError {
         /// Concrete mismatch.
         detail: String,
     },
+    /// Provider authority is internally inconsistent before an exact subject can be recovered.
+    ProviderIntegrity {
+        /// Stable provider identity.
+        provider: String,
+        /// Concrete contradiction.
+        detail: String,
+    },
     /// Imported evidence lacks facts needed to prove the request is identical.
     HistoricalRetryUnverifiable {
         /// Global imported record identity.
@@ -760,6 +767,9 @@ impl fmt::Display for AsyncStoreError {
                 "history for {} {} is corrupt: {detail}",
                 subject.entity, subject.id
             ),
+            Self::ProviderIntegrity { provider, detail } => {
+                write!(formatter, "{provider} authority is inconsistent: {detail}")
+            }
             Self::HistoricalRetryUnverifiable { record_id, detail } => write!(
                 formatter,
                 "historical retry {record_id:?} cannot be verified: {detail}"

@@ -325,6 +325,9 @@ Rust1.91 with explicit sync-bridge/provider features, while pure dependencies re
 
 ## Contract completion before implementation
 
+This accepted adapter, encoding, index, error/import and synchronous-bridge contract establishes
+R-151; its companion documents supply the detailed acceptance cases referenced below.
+
 The encoding, index and sync-bridge companions select exact wire shapes, digest framing,
 admission/rebuild and runtime ownership. docs/design/eventlog-recorded-errors-import-v0.1.md
 selects exhaustive provider error mapping, one-shot typed guard refusal transport, the concrete

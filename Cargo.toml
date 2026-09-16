@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/entity-core",
   "crates/entity-executor",
+  "crates/entity-eventlog",
   "crates/entity-store",
   "crates/entity-query",
   "crates/entity-shell",
