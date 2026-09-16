@@ -139,3 +139,35 @@ arguments and no fields key; a reader that knows only er.record/1 refuses an er.
 by naming both framings, including one whose payload is not readable JSON; and a batch of kernel/1
 members keeps its er.batch/1 bytes while a service/1 member carries er.record/2 inside the same
 er.batch/1 tag. `crates/entity-store/tests/service_framing.rs` is those four.
+
+## Service/2 conditional-presence framing
+
+The opaque pre-load continuation in R-149 is an in-memory Rust capability and adds no framing.
+R-150 owns the persisted conditional-presence change described here.
+
+The service binding boundary adds one persisted semantics version without changing the existing
+record shapes or the batch domain:
+
+| definition semantics | record domain | request domain | batch domain |
+|---|---|---|---|
+| `kernel/1` | `er.record/1` | `er.request/1` | `er.batch/1` |
+| `service/1` | `er.record/2` | `er.request/2` | `er.batch/1` |
+| `service/2` | `er.record/3` | `er.request/3` | `er.batch/1` |
+
+An `er.record/3` value retains the complete decision shape and snapshots its `service/2`
+definition, including any nonempty `set_if_present`, `payload_if_present`, and
+`responds_if_present` maps. An `er.request/3` creation reconstructs the normalized caller
+`arguments`, just as `/2` does; the distinct domain binds retry comparison to conditional-presence
+meaning. Execute requests keep their existing value shape inside the `/3` domain. Every batch
+member keeps its own record domain inside unchanged `er.batch/1` framing.
+
+The literal framing controls are:
+
+```json
+["er.record/3",{"kind":"decision","commit":{}}]
+["er.request/3",{"arguments":{"bound":{"note":"present"},"fixed":"fixed"},"definition_version":1,"kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"r-3","recorded_at":"2026-09-16T00:00:00Z"},"subject":["probe-service/2","p-3"]}]
+```
+
+The first line pins the tag independently of a payload an older reader cannot parse. The second is
+the complete request vector. A reader capped at `/2` refuses either `/3` tag before parsing the
+payload. No fallback rewrites or interprets `/3` as `/2`.

@@ -7,10 +7,10 @@
 //! `json` field or an open schema happens to resolve.
 
 use crate::{
-    observed::Observed, Cardinality, Condition, DefinitionError, DefinitionErrors,
+    observed::Observed, Cardinality, Condition, DeclaredDefault, DefinitionError, DefinitionErrors,
     EntityDefinition, EventDefinition, FieldDefinition, FieldKind, MapKey, ObjectSchema,
-    OutcomeDefinition, OutcomeEffect, RelationKind, RuleDefinition, Semantics, ValidationError,
-    MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
+    OutcomeDefinition, OutcomeEffect, PresentArgument, RelationKind, RuleDefinition, Semantics,
+    ValidationError, MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -53,7 +53,7 @@ impl Defects {
 pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), DefinitionErrors> {
     let mut defects = Defects::default();
     let semantics = definition.semantics;
-    let service = semantics.is_service_1();
+    let service = semantics.has_service_semantics();
 
     if definition.entity.trim().is_empty() {
         defects.push(DefinitionError::EmptyEntityName);
@@ -210,6 +210,12 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 semantics,
             },
         ));
+        defects.extend(validate_conditional_event(
+            event,
+            "create.emit",
+            None,
+            semantics,
+        ));
     }
 
     if service {
@@ -302,6 +308,14 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                     }
                 }
             }
+            defects.extend(validate_conditional_outcome(
+                definition,
+                outcome,
+                &path,
+                &definition.create.arguments,
+                &definition.create.response,
+                None,
+            ));
         }
     }
 
@@ -412,6 +426,12 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 Some(operation_name),
                 template_scope,
             ));
+            defects.extend(validate_conditional_event(
+                event,
+                &format!("operations.{operation_name}.emits[{index}]"),
+                Some(&operation.arguments),
+                semantics,
+            ));
         }
 
         // A `service/1` operation branch: its selector in `OutcomeSelector`, its `set`, `emits` and
@@ -433,6 +453,14 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 selector_scope,
                 template_scope,
                 &operation.response,
+            ));
+            defects.extend(validate_conditional_outcome(
+                definition,
+                outcome,
+                &path,
+                &operation.arguments,
+                &operation.response,
+                Some(operation_name),
             ));
         }
     }
@@ -504,6 +532,255 @@ fn validate_outcome_expressions(
         }
     }
     defects
+}
+
+/// The closed `service/2` conditional-presence maps and their typed source/target relation.
+fn validate_conditional_outcome(
+    definition: &EntityDefinition,
+    outcome: &OutcomeDefinition,
+    path: &str,
+    arguments: &ObjectSchema,
+    response: &ObjectSchema,
+    operation: Option<&String>,
+) -> Vec<DefinitionError> {
+    let mut defects = Vec::new();
+    if !definition.semantics.has_conditional_presence() {
+        for (key, present) in [
+            ("set_if_present", !outcome.set_if_present.is_empty()),
+            (
+                "responds_if_present",
+                !outcome.responds_if_present.is_empty(),
+            ),
+        ] {
+            if present {
+                defects.push(DefinitionError::SemanticsKeyNotAvailable {
+                    path: format!("{path}.{key}"),
+                    key: key.to_owned(),
+                });
+            }
+        }
+        for (index, event) in outcome.emits.iter().enumerate() {
+            if !event.payload_if_present.is_empty() {
+                defects.push(DefinitionError::SemanticsKeyNotAvailable {
+                    path: format!("{path}.emits[{index}].payload_if_present"),
+                    key: "payload_if_present".to_owned(),
+                });
+            }
+        }
+        return defects;
+    }
+
+    for (field, source) in &outcome.set_if_present {
+        let member_path = format!("{path}.set_if_present.{field}");
+        let leaf = validate_present_argument(arguments, &member_path, source, &mut defects);
+        if outcome.set.contains_key(field) {
+            defects.push(DefinitionError::ConditionalTargetConflict {
+                path: format!("{path}.set_if_present"),
+                field: field.clone(),
+            });
+        }
+        if let Some(operation) = operation {
+            defects.push(DefinitionError::ConditionalSetOnOperation {
+                operation: operation.clone(),
+                outcome: outcome.name.clone(),
+                field: field.clone(),
+            });
+            continue;
+        }
+        validate_conditional_target(
+            definition.schema.fields.get(field),
+            leaf,
+            &format!("{path}.set_if_present"),
+            field,
+            "entity field",
+            &mut defects,
+        );
+    }
+
+    for (field, source) in &outcome.responds_if_present {
+        let member_path = format!("{path}.responds_if_present.{field}");
+        let leaf = validate_present_argument(arguments, &member_path, source, &mut defects);
+        if outcome.responds.contains_key(field) {
+            defects.push(DefinitionError::ConditionalTargetConflict {
+                path: format!("{path}.responds_if_present"),
+                field: field.clone(),
+            });
+        }
+        validate_conditional_target(
+            response.fields.get(field),
+            leaf,
+            &format!("{path}.responds_if_present"),
+            field,
+            "response field",
+            &mut defects,
+        );
+    }
+
+    for (index, event) in outcome.emits.iter().enumerate() {
+        defects.extend(validate_conditional_event(
+            event,
+            &format!("{path}.emits[{index}]"),
+            Some(arguments),
+            definition.semantics,
+        ));
+    }
+    defects
+}
+
+fn validate_conditional_event(
+    event: &EventDefinition,
+    path: &str,
+    arguments: Option<&ObjectSchema>,
+    semantics: Semantics,
+) -> Vec<DefinitionError> {
+    if event.payload_if_present.is_empty() {
+        return Vec::new();
+    }
+    let event_path = format!("{path}.payload_if_present");
+    if !semantics.has_conditional_presence() {
+        return vec![DefinitionError::SemanticsKeyNotAvailable {
+            path: event_path,
+            key: "payload_if_present".to_owned(),
+        }];
+    }
+    let empty = ObjectSchema::default();
+    let arguments = arguments.unwrap_or(&empty);
+    let payload = event.payload.as_object();
+    let mut defects = Vec::new();
+    for (field, source) in &event.payload_if_present {
+        validate_present_argument(
+            arguments,
+            &format!("{event_path}.{field}"),
+            source,
+            &mut defects,
+        );
+        if field.trim().is_empty() {
+            defects.push(DefinitionError::ConditionalTargetInvalid {
+                path: event_path.clone(),
+                field: field.clone(),
+                message: "an event payload member cannot be blank".to_owned(),
+            });
+        }
+        match payload {
+            None => defects.push(DefinitionError::ConditionalTargetInvalid {
+                path: event_path.clone(),
+                field: field.clone(),
+                message: "the ordinary event payload must be an object".to_owned(),
+            }),
+            Some(payload) if payload.contains_key(field) => {
+                defects.push(DefinitionError::ConditionalTargetConflict {
+                    path: event_path.clone(),
+                    field: field.clone(),
+                });
+            }
+            Some(_) => {}
+        }
+    }
+    defects
+}
+
+fn validate_present_argument<'a>(
+    schema: &'a ObjectSchema,
+    path: &str,
+    source: &PresentArgument,
+    defects: &mut Vec<DefinitionError>,
+) -> Option<&'a FieldDefinition> {
+    match present_argument_leaf(schema, &source.argument) {
+        Ok(leaf) => Some(leaf),
+        Err(message) => {
+            defects.push(DefinitionError::ConditionalArgumentInvalid {
+                path: path.to_owned(),
+                argument: source.argument.clone(),
+                message,
+            });
+            None
+        }
+    }
+}
+
+fn present_argument_leaf<'a>(
+    schema: &'a ObjectSchema,
+    argument: &str,
+) -> Result<&'a FieldDefinition, String> {
+    if argument.is_empty() || argument.contains('$') {
+        return Err("the path is nonempty and is written below `$args`, without `$`".to_owned());
+    }
+    let segments: Vec<&str> = argument.split('.').collect();
+    if segments.iter().any(|segment| segment.is_empty()) {
+        return Err("the path contains an empty segment".to_owned());
+    }
+    if schema.additional_fields {
+        return Err(
+            "the argument schema is open, so the path is not a declared closed field path"
+                .to_owned(),
+        );
+    }
+    let mut fields = &schema.fields;
+    for (index, segment) in segments.iter().enumerate() {
+        let field = fields
+            .get(*segment)
+            .ok_or_else(|| format!("unknown argument segment '{segment}'"))?;
+        if index + 1 == segments.len() {
+            if field.required {
+                return Err(
+                    "the leaf is required; ordinary templates carry required values".to_owned(),
+                );
+            }
+            if !matches!(field.default, DeclaredDefault::Absent) {
+                return Err(
+                    "the leaf has a default and is always materialized during normalization"
+                        .to_owned(),
+                );
+            }
+            return Ok(field);
+        }
+        if !field.required {
+            return Err(format!(
+                "parent '{segment}' is optional; exactly the leaf controls presence"
+            ));
+        }
+        if field.kind != FieldKind::Object || field.additional_properties {
+            return Err(format!(
+                "parent '{segment}' is not a declared closed object"
+            ));
+        }
+        fields = &field.properties;
+    }
+    unreachable!("a nonempty path has a leaf")
+}
+
+fn validate_conditional_target(
+    target: Option<&FieldDefinition>,
+    source: Option<&FieldDefinition>,
+    path: &str,
+    field: &str,
+    noun: &str,
+    defects: &mut Vec<DefinitionError>,
+) {
+    let Some(target) = target else {
+        defects.push(DefinitionError::ConditionalTargetInvalid {
+            path: path.to_owned(),
+            field: field.to_owned(),
+            message: format!("the destination is not a declared {noun}"),
+        });
+        return;
+    };
+    if target.required || !matches!(target.default, DeclaredDefault::Absent) {
+        defects.push(DefinitionError::ConditionalTargetInvalid {
+            path: path.to_owned(),
+            field: field.to_owned(),
+            message: format!("the destination {noun} must be optional and have no default"),
+        });
+    }
+    if source.is_some_and(|source| source != target) {
+        defects.push(DefinitionError::ConditionalTargetInvalid {
+            path: path.to_owned(),
+            field: field.to_owned(),
+            message: format!(
+                "the destination {noun} must have the complete source leaf definition"
+            ),
+        });
+    }
 }
 
 /// The shape of one command's branches: names, defaults, wrong-state constructs, effects and the
@@ -632,8 +909,10 @@ fn validate_outcomes(
         if outcome.refuses.is_some()
             && (!outcome.effect.is_none()
                 || !outcome.set.is_empty()
+                || !outcome.set_if_present.is_empty()
                 || !outcome.emits.is_empty()
-                || !outcome.responds.is_empty())
+                || !outcome.responds.is_empty()
+                || !outcome.responds_if_present.is_empty())
         {
             defects.push(DefinitionError::RefusalMutatesState {
                 command: command.to_owned(),
@@ -951,7 +1230,7 @@ impl Scope<'_> {
     }
 
     fn service(&self) -> bool {
-        self.semantics.is_service_1()
+        self.semantics.has_service_semantics()
     }
 }
 
@@ -1790,7 +2069,7 @@ fn validate_field_definition(
 
     // The three new kinds are `service/1`'s, and a `kernel/1` definition carrying one would type a
     // value nothing validates the way its author expects.
-    if field.kind.is_service_only() && !semantics.is_service_1() {
+    if field.kind.is_service_only() && !semantics.has_service_semantics() {
         defects.push(DefinitionError::SemanticsKeyNotAvailable {
             path: path.to_owned(),
             key: field.kind.as_str().to_owned(),
@@ -1818,7 +2097,7 @@ fn validate_field_definition(
     // half of the sentence that already refuses an unobservable `default`. On a required field
     // such a bound would add a second, redundant error to every value; on an optional field with
     // no value ever supplied it answers nothing at any evaluation and is never reported at all.
-    if semantics.is_service_1()
+    if semantics.has_service_semantics()
         && matches!(
             field.kind,
             FieldKind::Integer | FieldKind::Number | FieldKind::Binary64
@@ -2066,7 +2345,7 @@ fn validate_value(
     semantics: Semantics,
     errors: &mut Vec<ValidationError>,
 ) {
-    let service = semantics.is_service_1();
+    let service = semantics.has_service_semantics();
     match definition.kind {
         FieldKind::String => match value.as_str() {
             Some(string) => validate_string(definition, string, path, errors),
@@ -2235,7 +2514,7 @@ fn validate_number(
     semantics: Semantics,
     errors: &mut Vec<ValidationError>,
 ) {
-    if semantics.is_service_1() {
+    if semantics.has_service_semantics() {
         // A stored value a `service/1` predicate could not read is refused where it arrives, with
         // its path, rather than answered `Unknown` by everything that later reads it. Nothing
         // panics, saturates or invents a value.

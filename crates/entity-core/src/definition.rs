@@ -111,6 +111,9 @@ pub enum Semantics {
     /// the source number domain.
     #[serde(rename = "service/1")]
     Service1,
+    /// Service rules with typed conditional presence in produced values.
+    #[serde(rename = "service/2")]
+    Service2,
 }
 
 impl Semantics {
@@ -126,12 +129,25 @@ impl Semantics {
         matches!(self, Self::Service1)
     }
 
+    /// Whether either version of the service document rules applies.
+    #[must_use]
+    pub fn has_service_semantics(self) -> bool {
+        matches!(self, Self::Service1 | Self::Service2)
+    }
+
+    /// Whether typed conditional presence is available.
+    #[must_use]
+    pub fn has_conditional_presence(self) -> bool {
+        matches!(self, Self::Service2)
+    }
+
     /// The spelling used in a document, for messages.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Kernel1 => "kernel/1",
             Self::Service1 => "service/1",
+            Self::Service2 => "service/2",
         }
     }
 }
@@ -723,6 +739,10 @@ pub struct OutcomeDefinition {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub set: BTreeMap<String, Value>,
 
+    /// Creation fields copied from optional argument leaves when those leaves are present.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub set_if_present: BTreeMap<String, PresentArgument>,
+
     /// Domain events, in declaration order. Duplicates are preserved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub emits: Vec<EventDefinition>,
@@ -730,6 +750,10 @@ pub struct OutcomeDefinition {
     /// The declared response this branch determines, as templates.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub responds: BTreeMap<String, Value>,
+
+    /// Optional response members copied from optional argument leaves when present.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub responds_if_present: BTreeMap<String, PresentArgument>,
 
     /// The named error this branch refuses with. A refusing branch produces no record, no
     /// revision, no state, no events and no response.
@@ -751,7 +775,9 @@ impl OutcomeDefinition {
     pub fn is_observable(&self) -> bool {
         !self.emits.is_empty()
             || !self.set.is_empty()
+            || !self.set_if_present.is_empty()
             || !self.responds.is_empty()
+            || !self.responds_if_present.is_empty()
             || self.refuses.is_some()
             || !self.effect.is_none()
     }
@@ -847,6 +873,18 @@ pub struct EventDefinition {
     /// against the emitting scope when the definition is registered.
     #[serde(default = "empty_object")]
     pub payload: Value,
+
+    /// Optional object members copied from optional argument leaves when present.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub payload_if_present: BTreeMap<String, PresentArgument>,
+}
+
+/// A closed path below `$args` whose optional leaf controls one produced member's presence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PresentArgument {
+    /// Dot-separated path below `$args`; the serialized form never includes `$args.`.
+    pub argument: String,
 }
 
 /// A named rule: a condition that must evaluate to `true`, and what to say when it does not.

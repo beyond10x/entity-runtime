@@ -1838,6 +1838,15 @@ fn refusal(error: &CoreError) -> Value {
             "expected": { "entity": expected_entity, "version": expected_version },
             "actual": { "entity": actual_entity, "version": actual_version }
         }),
+        CoreError::SubjectMismatch {
+            entity,
+            expected_id,
+            actual_id,
+        } => json!({
+            "entity": entity,
+            "expected_id": expected_id,
+            "actual_id": actual_id
+        }),
         CoreError::Template {
             expression,
             message,

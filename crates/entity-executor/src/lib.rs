@@ -628,7 +628,7 @@ fn request_comparison_bytes(
             // A `service/1` creation reconstructs the caller's **arguments**; a `kernel/1` one
             // reconstructs its fields, in the framing and the shape it has always used.
             let domain = request_domain(original);
-            if domain == "er.request/2" {
+            if matches!(domain, "er.request/2" | "er.request/3") {
                 canonical_domain_bytes(
                     domain,
                     serde_json::json!({

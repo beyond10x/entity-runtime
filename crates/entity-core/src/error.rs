@@ -157,6 +157,40 @@ pub enum DefinitionError {
         /// The key, kind or operator that is not available.
         key: String,
     },
+    /// A conditional source path does not name one optional, no-default argument leaf.
+    ConditionalArgumentInvalid {
+        /// The conditional map member carrying the path.
+        path: String,
+        /// The authored argument path.
+        argument: String,
+        /// What makes it invalid.
+        message: String,
+    },
+    /// A conditional destination is undeclared, required, defaulted or differently typed.
+    ConditionalTargetInvalid {
+        /// The conditional map carrying the destination.
+        path: String,
+        /// The destination field.
+        field: String,
+        /// What makes it invalid.
+        message: String,
+    },
+    /// One destination appears in both an ordinary and a conditional output map.
+    ConditionalTargetConflict {
+        /// The conditional map carrying the duplicate destination.
+        path: String,
+        /// The duplicated field.
+        field: String,
+    },
+    /// Conditional state insertion was declared on an operation rather than creation.
+    ConditionalSetOnOperation {
+        /// The operation.
+        operation: String,
+        /// The outcome.
+        outcome: String,
+        /// The field it tried to insert.
+        field: String,
+    },
     /// A branch's name is empty or whitespace.
     EmptyOutcomeName {
         /// The creation or operation it belongs to.
@@ -460,6 +494,10 @@ impl DefinitionError {
             Self::InvalidTemplate { .. } => "invalid_template",
             Self::DuplicateDefinition { .. } => "duplicate_definition",
             Self::SemanticsKeyNotAvailable { .. } => "semantics_key_not_available",
+            Self::ConditionalArgumentInvalid { .. } => "conditional_argument_invalid",
+            Self::ConditionalTargetInvalid { .. } => "conditional_target_invalid",
+            Self::ConditionalTargetConflict { .. } => "conditional_target_conflict",
+            Self::ConditionalSetOnOperation { .. } => "conditional_set_on_operation",
             Self::EmptyOutcomeName { .. } => "empty_outcome_name",
             Self::DuplicateOutcome { .. } => "duplicate_outcome",
             Self::AmbiguousDefaultOutcome { .. } => "ambiguous_default_outcome",
@@ -577,10 +615,46 @@ impl fmt::Display for DefinitionError {
                 "entity '{entity}' version {version} is already registered; use `replace` to \
                  change a registered definition"
             ),
-            Self::SemanticsKeyNotAvailable { path, key } => write!(
+            Self::SemanticsKeyNotAvailable { path, key } => {
+                let required = match key.as_str() {
+                    "set_if_present" | "payload_if_present" | "responds_if_present" => {
+                        "service/2"
+                    }
+                    _ => "service/1",
+                };
+                write!(
+                    f,
+                    "'{key}' at '{path}' is available only under `semantics: {required}`; a \
+                     definition with older semantics would declare a rule nothing evaluates"
+                )
+            }
+            Self::ConditionalArgumentInvalid {
+                path,
+                argument,
+                message,
+            } => write!(
                 f,
-                "'{key}' at '{path}' is available only under `semantics: service/1`; a kernel/1 \
-                 definition carrying it would declare a rule nothing evaluates"
+                "conditional argument '{argument}' at '{path}' is invalid: {message}"
+            ),
+            Self::ConditionalTargetInvalid {
+                path,
+                field,
+                message,
+            } => write!(
+                f,
+                "conditional target '{field}' at '{path}' is invalid: {message}"
+            ),
+            Self::ConditionalTargetConflict { path, field } => write!(
+                f,
+                "conditional target '{field}' at '{path}' is also produced by the ordinary map"
+            ),
+            Self::ConditionalSetOnOperation {
+                operation,
+                outcome,
+                field,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' conditionally writes field '{field}'; conditional state insertion is creation-only"
             ),
             Self::EmptyOutcomeName { command } => {
                 write!(f, "'{command}' declares an outcome with an empty name")
@@ -970,6 +1044,15 @@ pub enum CoreError {
         /// The instance's version.
         actual_version: u32,
     },
+    /// A prepared operation was continued with a different subject identity.
+    SubjectMismatch {
+        /// The prepared definition's entity.
+        entity: String,
+        /// The identity supplied during preparation.
+        expected_id: String,
+        /// The loaded instance's identity.
+        actual_id: String,
+    },
     /// The instance claims a lifecycle state the definition does not declare.
     ///
     /// The kernel cannot tell whether an instance it is handed is one it produced — that is the
@@ -1134,6 +1217,7 @@ impl CoreError {
             Self::Validation(_) => "validation",
             Self::EntityNotRegistered { .. } => "entity_not_registered",
             Self::EntityMismatch { .. } => "entity_mismatch",
+            Self::SubjectMismatch { .. } => "subject_mismatch",
             Self::UnknownState { .. } => "unknown_state",
             Self::RevisionExhausted { .. } => "revision_exhausted",
             Self::OperationNotFound { .. } => "operation_not_found",
@@ -1174,6 +1258,14 @@ impl fmt::Display for CoreError {
             } => write!(
                 f,
                 "instance type mismatch: expected '{expected_entity}' v{expected_version}, got '{actual_entity}' v{actual_version}"
+            ),
+            Self::SubjectMismatch {
+                entity,
+                expected_id,
+                actual_id,
+            } => write!(
+                f,
+                "prepared {entity} subject mismatch: expected identity '{expected_id}', got '{actual_id}'"
             ),
             Self::UnknownState { entity, state } => write!(
                 f,

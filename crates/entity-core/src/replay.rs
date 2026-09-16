@@ -140,7 +140,7 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
                 // redundant by construction, and the byte comparison below is what refuses a record
                 // whose fields are not what its arguments produce.
                 DecisionCommand::Create { fields, arguments } if instance.is_none() => {
-                    let input = if definition.semantics.is_service_1() {
+                    let input = if definition.semantics.has_service_semantics() {
                         arguments.clone()
                     } else {
                         fields.clone()
@@ -213,12 +213,12 @@ pub fn rehydrate(
     // a `service/1` creation event's `args` are the caller's arguments and not the fields, so the
     // `changed == args` check below was written for a shape this definition does not have — and a
     // `service/1` definition has no legacy history to fold in the first place.
-    if definition.semantics.is_service_1() {
+    if definition.semantics.has_service_semantics() {
         return refuse(format!(
-            "`{}` is read under `service/1`, whose decisions name the branch that produced them; \
-             an event-only fold cannot see which branch ran, so a `service/1` history is replayed \
+            "`{}` is read under `{}`, whose decisions name the branch that produced them; \
+             an event-only fold cannot see which branch ran, so a service history is replayed \
              from its decision records rather than rehydrated from its events",
-            definition.entity
+            definition.entity, definition.semantics,
         ));
     }
 

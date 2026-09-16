@@ -1,0 +1,51 @@
+domain: service_binding_boundary.contract
+
+# Non-normative diagnostic inventory only. The Rust types and algorithms in
+# docs/design/service-binding-boundary-v0.1.md are the complete implementation contract.
+# These *Inventory and *Kind names deliberately do not duplicate or serialize its public API.
+types:
+  - name: service_binding_boundary.contract.CapabilityKind
+    kind: enum
+    variants: [PreLoadDecision, ConditionalOutputPresence]
+
+  - name: service_binding_boundary.contract.DefinitionSemanticsKind
+    kind: enum
+    variants: [Service1, Service2]
+
+  - name: service_binding_boundary.contract.OutputPositionKind
+    kind: enum
+    variants: [CreationEntityField, EventPayload, Response]
+
+  - name: service_binding_boundary.contract.DurableDomainKind
+    kind: enum
+    variants: [NoNewDomain, Record3Request3]
+
+  - name: service_binding_boundary.contract.BoundaryCapabilityInventory
+    kind: struct
+    fields:
+      - name: capability
+        type: service_binding_boundary.contract.CapabilityKind
+      - name: definition_semantics
+        type: service_binding_boundary.contract.DefinitionSemanticsKind
+      - name: durable_domain
+        type: service_binding_boundary.contract.DurableDomainKind
+      - name: output_positions
+        type: List<service_binding_boundary.contract.OutputPositionKind>
+      - name: normative_section
+        type: String
+
+  - name: service_binding_boundary.contract.CompatibilityInventory
+    kind: struct
+    fields:
+      - name: preserved_definition_semantics
+        type: List<service_binding_boundary.contract.DefinitionSemanticsKind>
+      - name: preserved_record_domains
+        type: List<String>
+      - name: new_record_domain
+        type: String
+      - name: new_request_domain
+        type: String
+      - name: batch_domain
+        type: String
+      - name: normative_section
+        type: String

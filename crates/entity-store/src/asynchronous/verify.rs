@@ -95,7 +95,7 @@ pub(crate) fn validate_entry_against_state(
                 // make: a `service/1` creation that declares no branches records its own input as
                 // its arguments, so all three read one answer.
                 (DecisionCommand::Create { fields, arguments }, None) => {
-                    let input = if definition.semantics.is_service_1() {
+                    let input = if definition.semantics.has_service_semantics() {
                         arguments.clone()
                     } else {
                         fields.clone()

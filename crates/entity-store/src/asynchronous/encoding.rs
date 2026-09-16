@@ -68,6 +68,7 @@ fn tagged_record(entry: &RecordedEntry) -> Result<Value, AsyncStoreError> {
 pub fn record_domain(entry: &RecordedEntry) -> &'static str {
     match entry {
         RecordedEntry::Decision(commit) => match &commit.envelope.record.definition {
+            Some(definition) if definition.semantics.has_conditional_presence() => "er.record/3",
             Some(definition) if definition.semantics.is_service_1() => "er.record/2",
             _ => "er.record/1",
         },
@@ -80,6 +81,7 @@ pub fn record_domain(entry: &RecordedEntry) -> &'static str {
 pub fn request_domain(entry: &RecordedEntry) -> &'static str {
     match record_domain(entry) {
         "er.record/2" => "er.request/2",
+        "er.record/3" => "er.request/3",
         _ => "er.request/1",
     }
 }
@@ -171,18 +173,19 @@ pub fn original_request_comparison_bytes(
                 // the fields the branch produced: reconstructing it as the fields would hand a
                 // retry a request the caller never sent, which is what these bytes exist to
                 // prevent. A `kernel/1` creation's input is its fields and its shape is unchanged.
-                DecisionCommand::Create { fields, arguments } if domain == "er.request/2" => {
-                    canonical_domain_bytes(
-                        domain,
-                        serde_json::json!({
-                            "kind": "create",
-                            "subject": [record.entity, record.id],
-                            "definition_version": record.result.version,
-                            "arguments": arguments,
-                            "recording": recording_value(&recording),
-                        }),
-                    )
-                }
+                DecisionCommand::Create {
+                    fields: _,
+                    arguments,
+                } if matches!(domain, "er.request/2" | "er.request/3") => canonical_domain_bytes(
+                    domain,
+                    serde_json::json!({
+                        "kind": "create",
+                        "subject": [record.entity, record.id],
+                        "definition_version": record.result.version,
+                        "arguments": arguments,
+                        "recording": recording_value(&recording),
+                    }),
+                ),
                 DecisionCommand::Create { fields, .. } => canonical_domain_bytes(
                     domain,
                     serde_json::json!({

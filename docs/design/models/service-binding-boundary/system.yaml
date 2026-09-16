@@ -1,0 +1,6 @@
+format: ess/4
+system: service_binding_boundary
+version: v1
+
+domains:
+  - service_binding_boundary.contract

@@ -6,6 +6,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- Service bindings can decide input-only refusing branches before loading a subject and continue
+  subject-dependent work through an opaque, identity-bound continuation. `service/2` definitions
+  can copy one typed optional argument into creation state, event and response members while
+  preserving absence through replay and retry under `er.record/3` and `er.request/3`.
 - A definition may now opt in to a second set of document rules with `semantics: service/1`. Under
   them a creation and an operation carry **named outcomes** — ordered branches, each with its own
   guard, effect, `set`, `emits`, declared response and optional refusal — instead of, or beside,

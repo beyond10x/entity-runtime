@@ -4,8 +4,8 @@ use crate::{
     observed::Observed,
     validation::{apply_defaults, validate_object_under},
     CompareOp, Comparison, Condition, CoreError, EntityDefinition, EventDefinition, FieldKind,
-    ObjectSchema, OperationDefinition, OutcomeDefinition, OutcomeEffect, Quantifier,
-    RefusalDefinition, Registry, RuleDefinition, Truth, ValidatedDefinition,
+    ObjectSchema, OperationDefinition, OutcomeDefinition, OutcomeEffect, PresentArgument,
+    Quantifier, RefusalDefinition, Registry, RuleDefinition, Truth, ValidatedDefinition,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -238,6 +238,119 @@ pub struct Refusal {
     pub message: Option<String>,
 }
 
+/// What the kernel can answer before a subject store is read.
+#[derive(Debug)]
+pub enum PreloadDecision<'definition> {
+    /// A named refusing branch selected without subject facts.
+    Refused(Refusal),
+    /// Subject facts are required before the kernel can finish the decision.
+    Load(PreparedOperation<'definition>),
+}
+
+/// The subject coordinate a host must load for a prepared operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreparedSubject<'prepared> {
+    entity: &'prepared str,
+    version: u32,
+    id: &'prepared str,
+}
+
+impl PreparedSubject<'_> {
+    /// The entity type to load.
+    #[must_use]
+    pub fn entity(&self) -> &str {
+        self.entity
+    }
+
+    /// The definition version to load.
+    #[must_use]
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+
+    /// The exact subject identity to load.
+    #[must_use]
+    pub fn id(&self) -> &str {
+        self.id
+    }
+}
+
+/// An opaque continuation over one validated definition and one normalized request.
+///
+/// External code cannot clone or serialize the continuation, which keeps its borrowed definition,
+/// normalized arguments, operation and identity together.
+///
+/// ```compile_fail
+/// use entity_core::PreparedOperation;
+/// fn duplicate(prepared: PreparedOperation<'_>) {
+///     let _copy = prepared.clone();
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use entity_core::PreparedOperation;
+/// fn inspect(prepared: PreparedOperation<'_>) {
+///     let PreparedOperation { operation, .. } = prepared;
+///     let _ = operation;
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use entity_core::PreparedOperation;
+/// fn serialize(prepared: PreparedOperation<'_>) {
+///     let _ = serde_json::to_value(prepared);
+/// }
+/// ```
+#[derive(Debug)]
+pub struct PreparedOperation<'definition> {
+    definition: &'definition ValidatedDefinition,
+    operation: String,
+    expected_id: String,
+    arguments: Map<String, Value>,
+}
+
+impl PreparedOperation<'_> {
+    /// The exact subject the host must load.
+    #[must_use]
+    pub fn subject(&self) -> PreparedSubject<'_> {
+        PreparedSubject {
+            entity: &self.definition.entity,
+            version: self.definition.version,
+            id: &self.expected_id,
+        }
+    }
+
+    /// The normalized arguments bound into this continuation.
+    #[must_use]
+    pub fn normalized_arguments(&self) -> &Map<String, Value> {
+        &self.arguments
+    }
+
+    /// Continues the prepared operation with the exact loaded subject.
+    ///
+    /// # Errors
+    ///
+    /// Entity/version mismatch, subject mismatch and unknown state are checked in that order,
+    /// followed by the ordinary decision path's refusals.
+    pub fn continue_with(self, instance: &EntityInstance) -> Result<Evaluation, CoreError> {
+        ensure_entity_matches(self.definition, instance)?;
+        if instance.id != self.expected_id {
+            return Err(CoreError::SubjectMismatch {
+                entity: self.definition.entity.clone(),
+                expected_id: self.expected_id,
+                actual_id: instance.id.clone(),
+            });
+        }
+        ensure_state_known(self.definition, instance)?;
+        decide(
+            self.definition,
+            instance,
+            &self.operation,
+            Value::Object(self.arguments),
+        )
+    }
+}
+
 /// What the kernel decided: the instance as it is afterwards, and its durable record.
 ///
 /// A `Decision` is the only thing the kernel produces. Persisting the instance, appending the
@@ -366,6 +479,24 @@ impl<'a> Runtime<'a> {
         decide(definition, instance, operation, arguments)
     }
 
+    /// Normalizes an operation and answers every subject-independent refusing branch.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::EntityNotRegistered`] for an unknown definition; otherwise the preparation
+    /// errors documented by [`decide_before_load`].
+    pub fn decide_before_load(
+        &self,
+        entity: &str,
+        version: u32,
+        expected_id: impl Into<String>,
+        operation: &str,
+        arguments: Value,
+    ) -> Result<PreloadDecision<'_>, CoreError> {
+        let definition = self.definition(entity, version)?;
+        decide_before_load(definition, expected_id, operation, arguments)
+    }
+
     fn definition(&self, entity: &str, version: u32) -> Result<&ValidatedDefinition, CoreError> {
         self.registry
             .get(entity, version)
@@ -429,7 +560,7 @@ pub fn decide_create(
             "identity cannot be empty; the kernel generates none, so the caller supplies one",
         )]));
     }
-    if definition.semantics.is_service_1() && !definition.create.outcomes.is_empty() {
+    if definition.semantics.has_service_semantics() && !definition.create.outcomes.is_empty() {
         return service_create(definition, id, input);
     }
 
@@ -492,7 +623,7 @@ pub fn decide_create(
             // for it would reconstruct every such creation as the same empty request and hand a
             // retry carrying different input a match it never earned. A `kernel/1` creation records
             // none and keeps its bytes: `arguments` is skipped while it is empty.
-            arguments: if definition.semantics.is_service_1() {
+            arguments: if definition.semantics.has_service_semantics() {
                 instance.fields.clone()
             } else {
                 Map::new()
@@ -590,6 +721,7 @@ fn service_create(
     for (field, template) in &outcome.set {
         fields.insert(field.clone(), resolve_template(template, &set_context)?);
     }
+    insert_present_arguments(&mut fields, &outcome.set_if_present, &args);
     // The declared defaults fill what the branch did not write. A `kernel/1` creation defaults at
     // step 3 because its input is its fields; a `service/1` creation's fields do not exist until
     // the branch has run, so the same rule applies here and the result is validated below either
@@ -646,7 +778,7 @@ fn service_create(
     }
 
     // Step 14, after the events, so both read one set of post-`set` fields.
-    let response = materialize_response(&outcome.responds, &context)?;
+    let response = materialize_response(&outcome.responds, &outcome.responds_if_present, &context)?;
 
     let record = DecisionRecord {
         definition: Some(definition_snapshot(definition)),
@@ -702,6 +834,101 @@ pub fn execute(
     arguments: Value,
 ) -> Result<Decision, CoreError> {
     decide(definition, instance, operation_name, arguments)?.into_decision()
+}
+
+/// Normalizes and evaluates as much of one operation as is possible without an instance.
+///
+/// # Errors
+///
+/// Blank identity, unknown operation, invalid arguments, an unobservable known-input guard or no
+/// selected outcome. An unloaded subject is returned as [`PreloadDecision::Load`], never reported
+/// as an absent field.
+pub fn decide_before_load<'definition>(
+    definition: &'definition ValidatedDefinition,
+    expected_id: impl Into<String>,
+    operation_name: &str,
+    arguments: Value,
+) -> Result<PreloadDecision<'definition>, CoreError> {
+    let expected_id = expected_id.into();
+    if expected_id.trim().is_empty() {
+        return Err(CoreError::Validation(vec![crate::ValidationError::new(
+            "id",
+            "identity cannot be empty; the kernel generates none, so the caller supplies one",
+        )]));
+    }
+    let operation =
+        definition
+            .operations
+            .get(operation_name)
+            .ok_or_else(|| CoreError::OperationNotFound {
+                operation: operation_name.to_owned(),
+            })?;
+    let arguments = normalize_arguments(definition, operation_name, arguments)?;
+    let load = || {
+        PreloadDecision::Load(PreparedOperation {
+            definition,
+            operation: operation_name.to_owned(),
+            expected_id: expected_id.clone(),
+            arguments: arguments.clone(),
+        })
+    };
+
+    if !definition.semantics.has_service_semantics() || operation.outcomes.is_empty() {
+        return Ok(load());
+    }
+
+    let empty = Map::new();
+    let context = TemplateContext {
+        definition,
+        id: &expected_id,
+        args: &arguments,
+        arguments_schema: Some(&operation.arguments),
+        old_fields: &empty,
+        new_fields: &empty,
+        from_state: None,
+        to_state: &definition.lifecycle.initial,
+    };
+    for outcome in operation
+        .outcomes
+        .iter()
+        .filter(|outcome| !outcome.wrong_state)
+    {
+        if outcome.in_state.is_some() {
+            return Ok(load());
+        }
+        let selected = match &outcome.when {
+            None => true,
+            Some(when) => {
+                let mut unobserved = Unobserved::new();
+                match evaluate_condition_before_load(when, &context, None, &mut unobserved)? {
+                    PartialTruth::NeedsSubject => return Ok(load()),
+                    PartialTruth::Known(Truth::False) => false,
+                    PartialTruth::Known(Truth::True) => true,
+                    PartialTruth::Known(Truth::Unknown) => {
+                        return Err(CoreError::OutcomeUnobservable {
+                            operation: operation_name.to_owned(),
+                            outcome: outcome.name.clone(),
+                            unresolved: unobserved.into_iter().collect(),
+                        })
+                    }
+                }
+            }
+        };
+        if !selected {
+            continue;
+        }
+        if let Some(refusal) = &outcome.refuses {
+            return Ok(PreloadDecision::Refused(Refusal {
+                outcome: outcome.name.clone(),
+                error: refusal.error.clone(),
+                message: refusal.message.clone(),
+            }));
+        }
+        return Ok(load());
+    }
+    Err(CoreError::NoOutcomeSelected {
+        operation: operation_name.to_owned(),
+    })
 }
 
 /// Executes `operation_name` on `instance`, answering a refusing branch as a value.
@@ -761,7 +988,8 @@ pub fn decide(
     // The pre-operation fields are borrowed, never copied: they are only ever read, and `set`
     // resolves every assignment against them.
     let old_fields = &instance.fields;
-    let selected = if definition.semantics.is_service_1() && !operation.outcomes.is_empty() {
+    let selected = if definition.semantics.has_service_semantics() && !operation.outcomes.is_empty()
+    {
         // Step 4, in `OutcomeSelector`. The destination state is what the selected branch's effect
         // produces, so a selector may read neither `$state` nor `$to_state`; registration refuses
         // one that does, which is why passing the held state here cannot be read.
@@ -893,7 +1121,9 @@ pub fn decide(
 
     // Step 14, after the events, so both read one set of post-`set` fields.
     let response = match selected.responds {
-        Some(responds) => Some(materialize_response(responds, &context)?),
+        Some((responds, conditional)) => {
+            Some(materialize_response(responds, conditional, &context)?)
+        }
         None => None,
     };
 
@@ -927,6 +1157,11 @@ pub fn decide(
 /// The name a creation's selection refusals carry, since a creation has no operation.
 const CREATE_COMMAND: &str = "create";
 
+type ResponseMembers<'a> = (
+    &'a BTreeMap<String, Value>,
+    &'a BTreeMap<String, PresentArgument>,
+);
+
 /// The branch a command's evaluation selected, resolved to the five things every step after it
 /// needs.
 ///
@@ -936,7 +1171,7 @@ struct Branch<'a> {
     to_state: String,
     set: &'a BTreeMap<String, Value>,
     emits: &'a [EventDefinition],
-    responds: Option<&'a BTreeMap<String, Value>>,
+    responds: Option<ResponseMembers<'a>>,
     effect: Option<DecisionEffect>,
     refuses: Option<&'a RefusalDefinition>,
 }
@@ -971,7 +1206,7 @@ impl<'a> Branch<'a> {
             to_state,
             set: &outcome.set,
             emits: &outcome.emits,
-            responds: Some(&outcome.responds),
+            responds: Some((&outcome.responds, &outcome.responds_if_present)),
             effect: Some(effect),
             refuses: outcome.refuses.as_ref(),
         }
@@ -1136,6 +1371,7 @@ fn check_identity_mirror(
 /// Step 14: the branch's declared response, resolved in the scope its command sits in.
 fn materialize_response(
     responds: &BTreeMap<String, Value>,
+    responds_if_present: &BTreeMap<String, PresentArgument>,
     context: &TemplateContext<'_>,
 ) -> Result<Map<String, Value>, CoreError> {
     let mut response = Map::new();
@@ -1145,7 +1381,45 @@ fn materialize_response(
             canonicalize(resolve_template(template, context)?),
         );
     }
+    insert_present_arguments(&mut response, responds_if_present, context.args);
     Ok(response)
+}
+
+enum Presence<'value> {
+    Absent,
+    Present(&'value Value),
+}
+
+fn argument_presence<'a>(
+    arguments: &'a Map<String, Value>,
+    source: &PresentArgument,
+) -> Presence<'a> {
+    let mut segments = source.argument.split('.');
+    let Some(first) = segments.next() else {
+        return Presence::Absent;
+    };
+    let Some(mut value) = arguments.get(first) else {
+        return Presence::Absent;
+    };
+    for segment in segments {
+        let Some(next) = value.as_object().and_then(|object| object.get(segment)) else {
+            return Presence::Absent;
+        };
+        value = next;
+    }
+    Presence::Present(value)
+}
+
+fn insert_present_arguments(
+    target: &mut Map<String, Value>,
+    conditional: &BTreeMap<String, PresentArgument>,
+    arguments: &Map<String, Value>,
+) {
+    for (field, source) in conditional {
+        if let Presence::Present(value) = argument_presence(arguments, source) {
+            target.insert(field.clone(), canonicalize(value.clone()));
+        }
+    }
 }
 
 fn definition_snapshot(definition: &ValidatedDefinition) -> EntityDefinition {
@@ -1267,6 +1541,172 @@ pub(crate) fn check_invariants(
 /// addresses have been recorded when the answer comes back is not, and a refusal that names one
 /// missing fact out of three costs the operator three round trips. Evaluation here is pure and
 /// cannot fail partway, so there is nothing to be bought by stopping early.
+#[derive(Clone, Copy)]
+enum PartialTruth {
+    Known(Truth),
+    NeedsSubject,
+}
+
+impl PartialTruth {
+    fn and(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Known(Truth::False), _) | (_, Self::Known(Truth::False)) => {
+                Self::Known(Truth::False)
+            }
+            (Self::Known(left), Self::Known(right)) => Self::Known(left.and(right)),
+            _ => Self::NeedsSubject,
+        }
+    }
+
+    fn or(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Known(Truth::True), _) | (_, Self::Known(Truth::True)) => {
+                Self::Known(Truth::True)
+            }
+            (Self::Known(left), Self::Known(right)) => Self::Known(left.or(right)),
+            _ => Self::NeedsSubject,
+        }
+    }
+
+    fn not(self) -> Self {
+        match self {
+            Self::Known(truth) => Self::Known(truth.not()),
+            Self::NeedsSubject => Self::NeedsSubject,
+        }
+    }
+}
+
+fn evaluate_condition_before_load(
+    condition: &Condition,
+    context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
+    unobserved: &mut Unobserved,
+) -> Result<PartialTruth, CoreError> {
+    match condition {
+        Condition::All { all } => {
+            let mut result = PartialTruth::Known(Truth::True);
+            for child in all {
+                result = result.and(evaluate_condition_before_load(
+                    child, context, bindings, unobserved,
+                )?);
+            }
+            Ok(result)
+        }
+        Condition::Any { any } => {
+            let mut result = PartialTruth::Known(Truth::False);
+            for child in any {
+                result = result.or(evaluate_condition_before_load(
+                    child, context, bindings, unobserved,
+                )?);
+            }
+            Ok(result)
+        }
+        Condition::Not { not } => {
+            Ok(evaluate_condition_before_load(not, context, bindings, unobserved)?.not())
+        }
+        Condition::ForAll { for_all } => {
+            quantify_before_load(for_all, context, bindings, unobserved, Quantification::All)
+        }
+        Condition::ForAny { for_any } => {
+            quantify_before_load(for_any, context, bindings, unobserved, Quantification::Any)
+        }
+        _ if condition_needs_subject(condition, bindings) => Ok(PartialTruth::NeedsSubject),
+        _ => evaluate_condition(condition, context, bindings, unobserved).map(PartialTruth::Known),
+    }
+}
+
+fn quantify_before_load(
+    quantifier: &Quantifier,
+    context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
+    unobserved: &mut Unobserved,
+    mode: Quantification,
+) -> Result<PartialTruth, CoreError> {
+    if value_needs_subject(&quantifier.over, bindings) {
+        return Ok(PartialTruth::NeedsSubject);
+    }
+    let Some(collection) = resolve_operand(&quantifier.over, context, bindings, unobserved)? else {
+        return Ok(PartialTruth::Known(Truth::Unknown));
+    };
+    let elements: Vec<&Value> = match &collection {
+        Value::Array(values) => values.iter().collect(),
+        Value::Object(members) => members.values().collect(),
+        _ => return Ok(PartialTruth::Known(Truth::Unknown)),
+    };
+    let mut result = PartialTruth::Known(match mode {
+        Quantification::All => Truth::True,
+        Quantification::Any => Truth::False,
+    });
+    for element in elements {
+        let inner = Bindings {
+            name: &quantifier.bind,
+            value: element,
+            outer: bindings,
+        };
+        let answer =
+            evaluate_condition_before_load(&quantifier.body, context, Some(&inner), unobserved)?;
+        result = match mode {
+            Quantification::All => result.and(answer),
+            Quantification::Any => result.or(answer),
+        };
+    }
+    Ok(result)
+}
+
+fn condition_needs_subject(condition: &Condition, bindings: Option<&Bindings<'_>>) -> bool {
+    match condition {
+        Condition::Literal(_) => false,
+        Condition::All { .. }
+        | Condition::Any { .. }
+        | Condition::Not { .. }
+        | Condition::ForAll { .. }
+        | Condition::ForAny { .. } => false,
+        Condition::Exists { exists } => value_needs_subject(exists, bindings),
+        Condition::Before { before } => before
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Condition::After { after } => after
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Condition::Eq { eq } => eq.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Ne { ne } => ne.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Gt { gt } => gt.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Gte { gte } => gte.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Lt { lt } => lt.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Lte { lte } => lte.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::In { values } => values
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Condition::Contains { contains } => contains
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Condition::Compare { compare } => {
+            value_needs_subject(&compare.left, bindings)
+                || value_needs_subject(&compare.right, bindings)
+        }
+        Condition::Truthy { truthy } => value_needs_subject(truthy, bindings),
+    }
+}
+
+fn value_needs_subject(value: &Value, bindings: Option<&Bindings<'_>>) -> bool {
+    match value {
+        Value::String(reference) if reference.starts_with('$') && !reference.starts_with("$$") => {
+            let root = reference[1..].split('.').next().unwrap_or_default();
+            if bindings.and_then(|bindings| bindings.get(root)).is_some() {
+                return false;
+            }
+            matches!(root, "fields" | "old_fields" | "from_state")
+        }
+        Value::Array(values) => values
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Value::Object(values) => values
+            .values()
+            .any(|value| value_needs_subject(value, bindings)),
+        _ => false,
+    }
+}
+
 fn evaluate_condition(
     condition: &Condition,
     context: &TemplateContext<'_>,
@@ -1419,7 +1859,7 @@ fn equal_under(
     right: &Value,
     right_written: Option<&Value>,
 ) -> bool {
-    if context.definition.semantics.is_service_1() {
+    if context.definition.semantics.has_service_semantics() {
         observed_values_equal(left, left_written, right, right_written)
     } else {
         values_equal(left, right)
@@ -1849,6 +2289,14 @@ fn ensure_instance_matches(
     definition: &EntityDefinition,
     instance: &EntityInstance,
 ) -> Result<(), CoreError> {
+    ensure_entity_matches(definition, instance)?;
+    ensure_state_known(definition, instance)
+}
+
+fn ensure_entity_matches(
+    definition: &EntityDefinition,
+    instance: &EntityInstance,
+) -> Result<(), CoreError> {
     if definition.entity != instance.entity || definition.version != instance.version {
         return Err(CoreError::EntityMismatch {
             expected_entity: definition.entity.clone(),
@@ -1857,7 +2305,13 @@ fn ensure_instance_matches(
             actual_version: instance.version,
         });
     }
+    Ok(())
+}
 
+fn ensure_state_known(
+    definition: &EntityDefinition,
+    instance: &EntityInstance,
+) -> Result<(), CoreError> {
     if !definition
         .lifecycle
         .states
@@ -1879,6 +2333,16 @@ fn materialize_event(
     revision: u64,
     args: &Map<String, Value>,
 ) -> Result<DomainEvent, CoreError> {
+    let mut payload = canonicalize(resolve_template(&definition.payload, context)?);
+    if !definition.payload_if_present.is_empty() {
+        let Some(payload) = payload.as_object_mut() else {
+            return Err(CoreError::Template {
+                expression: "payload_if_present".to_owned(),
+                message: "conditional event members require an object payload".to_owned(),
+            });
+        };
+        insert_present_arguments(payload, &definition.payload_if_present, context.args);
+    }
     Ok(DomainEvent {
         entity: context.definition.entity.clone(),
         version: context.definition.version,
@@ -1889,7 +2353,7 @@ fn materialize_event(
         to_state: context.to_state.to_owned(),
         changed: changed_fields(context),
         args: args.clone(),
-        payload: canonicalize(resolve_template(&definition.payload, context)?),
+        payload,
     })
 }
 
@@ -2015,7 +2479,7 @@ fn resolve_expression_optional(
 
 impl TemplateContext<'_> {
     fn service(&self) -> bool {
-        self.definition.semantics.is_service_1()
+        self.definition.semantics.has_service_semantics()
     }
 }
 
