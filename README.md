@@ -273,9 +273,8 @@ The full public statement is in
 
 ## Develop
 
-Requires Rust 1.85+ and [go-task](https://taskfile.dev). The local gate also needs the `aep`
-CLI for planning-store validation; PostgreSQL tests run when `ENTITY_POSTGRES_URL` is set and print
-that they were skipped otherwise.
+Requires Rust 1.85+ and [go-task](https://taskfile.dev). PostgreSQL tests run when
+`ENTITY_POSTGRES_URL` is set and print that they were skipped otherwise.
 
 ```console
 task check
