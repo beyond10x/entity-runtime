@@ -2,10 +2,11 @@
 
 use crate::{
     observed::Observed,
-    validation::{apply_defaults, validate_object_under},
+    validation::{apply_defaults, validate_field_value, validate_object_under},
     CompareOp, Comparison, Condition, CoreError, EntityDefinition, EventDefinition, FieldKind,
-    ObjectSchema, OperationDefinition, OutcomeDefinition, OutcomeEffect, PresentArgument,
-    Quantifier, RefusalDefinition, Registry, RuleDefinition, Truth, ValidatedDefinition,
+    ObjectSchema, OperationDefinition, OperationFieldAction, OperationFieldActions,
+    OperationFieldRequirement, OutcomeDefinition, OutcomeEffect, PresentArgument, Quantifier,
+    RefusalDefinition, Registry, RuleDefinition, Truth, ValidatedDefinition,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -81,6 +82,10 @@ pub struct DomainEvent {
     /// notification, not a record.
     pub changed: Map<String, Value>,
 
+    /// Entity fields physically removed by this decision, disjoint from [`changed`](Self::changed).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub removed: BTreeSet<String>,
+
     /// The arguments the operation was decided on — what the rules read when they permitted it —
     /// verbatim, after defaults and schema validation. On a creation event, the creation's fields.
     ///
@@ -118,6 +123,9 @@ pub enum DecisionCommand {
         operation: String,
         /// The normalized arguments.
         arguments: Map<String, Value>,
+        /// The exact post-load actions supplied for a `service/3` branch.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        fulfillments: BTreeMap<String, OperationFieldAction>,
     },
     /// Material imported without enough original command data for genesis replay.
     LegacyImport,
@@ -148,6 +156,9 @@ pub struct DecisionRecord {
     pub result: EntityInstance,
     /// Every field whose value changed.
     pub changed: Map<String, Value>,
+    /// Entity fields physically removed by this decision, disjoint from [`changed`](Self::changed).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub removed: BTreeSet<String>,
     /// Ordered domain facts emitted by this one decision.
     pub events: Vec<DomainEvent>,
     /// The named branch the kernel selected. `None` where the branch was the implicit one.
@@ -309,7 +320,69 @@ pub struct PreparedOperation<'definition> {
     arguments: Map<String, Value>,
 }
 
-impl PreparedOperation<'_> {
+/// The post-load result of selecting one prepared operation.
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum LoadedDecision<'definition> {
+    /// Selection and evaluation completed without host field actions.
+    Complete(Evaluation),
+    /// The selected accepting branch requires exact host field actions.
+    NeedsFulfillment(PreparedOutcome<'definition>),
+}
+
+/// An opaque continuation bound to one loaded subject and one selected outcome.
+#[derive(Debug)]
+pub struct PreparedOutcome<'definition> {
+    definition: &'definition ValidatedDefinition,
+    operation: String,
+    instance: EntityInstance,
+    arguments: Map<String, Value>,
+    outcome: String,
+}
+
+impl PreparedOutcome<'_> {
+    /// The selected outcome name.
+    #[must_use]
+    pub fn outcome(&self) -> &str {
+        &self.outcome
+    }
+
+    /// The exact closed field requirements for the selected outcome.
+    #[must_use]
+    pub fn requirements(&self) -> &BTreeMap<String, OperationFieldRequirement> {
+        &self
+            .definition
+            .operations
+            .get(&self.operation)
+            .expect("prepared operation remains in its validated definition")
+            .outcomes
+            .iter()
+            .find(|outcome| outcome.name == self.outcome)
+            .expect("prepared outcome remains in its validated operation")
+            .fulfills
+    }
+
+    /// Completes the selected branch with exactly its advertised actions.
+    ///
+    /// # Errors
+    ///
+    /// Wrong, missing, or extra coordinates; invalid set values; required removal; or any later
+    /// schema, identity, invariant, event, or response refusal.
+    pub fn complete(
+        self,
+        actions: BTreeMap<String, OperationFieldAction>,
+    ) -> Result<Evaluation, CoreError> {
+        decide_with_fulfillments(
+            self.definition,
+            &self.instance,
+            &self.operation,
+            Value::Object(self.arguments),
+            Some(&actions),
+        )
+    }
+}
+
+impl<'definition> PreparedOperation<'definition> {
     /// The exact subject the host must load.
     #[must_use]
     pub fn subject(&self) -> PreparedSubject<'_> {
@@ -333,6 +406,26 @@ impl PreparedOperation<'_> {
     /// Entity/version mismatch, subject mismatch and unknown state are checked in that order,
     /// followed by the ordinary decision path's refusals.
     pub fn continue_with(self, instance: &EntityInstance) -> Result<Evaluation, CoreError> {
+        match self.select_with(instance)? {
+            LoadedDecision::Complete(evaluation) => Ok(evaluation),
+            LoadedDecision::NeedsFulfillment(prepared) => Err(CoreError::FulfillmentRequired {
+                operation: prepared.operation.clone(),
+                outcome: prepared.outcome.clone(),
+                fields: prepared.requirements().keys().cloned().collect(),
+            }),
+        }
+    }
+
+    /// Selects the branch after loading the exact subject, without invoking any host policy.
+    ///
+    /// # Errors
+    ///
+    /// Entity/version mismatch, subject mismatch and unknown state are checked in that order,
+    /// followed by selection, state admission and preconditions.
+    pub fn select_with(
+        self,
+        instance: &EntityInstance,
+    ) -> Result<LoadedDecision<'definition>, CoreError> {
         ensure_entity_matches(self.definition, instance)?;
         if instance.id != self.expected_id {
             return Err(CoreError::SubjectMismatch {
@@ -342,12 +435,24 @@ impl PreparedOperation<'_> {
             });
         }
         ensure_state_known(self.definition, instance)?;
-        decide(
+        match decide_with_fulfillments(
             self.definition,
             instance,
             &self.operation,
-            Value::Object(self.arguments),
-        )
+            Value::Object(self.arguments.clone()),
+            None,
+        ) {
+            Err(CoreError::FulfillmentRequired { outcome, .. }) => {
+                Ok(LoadedDecision::NeedsFulfillment(PreparedOutcome {
+                    definition: self.definition,
+                    operation: self.operation,
+                    instance: instance.clone(),
+                    arguments: self.arguments,
+                    outcome,
+                }))
+            }
+            result => result.map(LoadedDecision::Complete),
+        }
     }
 }
 
@@ -387,6 +492,7 @@ impl Decision {
             to_state: instance.lifecycle_state.clone(),
             result: instance.clone(),
             changed: instance.fields.clone(),
+            removed: BTreeSet::new(),
             events: events.clone(),
             outcome: None,
             effect: None,
@@ -610,6 +716,7 @@ pub fn decide_create(
             &context,
             instance.revision,
             &instance.fields,
+            &BTreeSet::new(),
         )?);
     }
 
@@ -636,6 +743,7 @@ pub fn decide_create(
         to_state: instance.lifecycle_state.clone(),
         result: instance.clone(),
         changed: instance.fields.clone(),
+        removed: BTreeSet::new(),
         events: events.clone(),
         outcome: None,
         effect: None,
@@ -774,6 +882,7 @@ fn service_create(
             &context,
             instance.revision,
             &args,
+            &BTreeSet::new(),
         )?);
     }
 
@@ -793,6 +902,7 @@ fn service_create(
         to_state: instance.lifecycle_state.clone(),
         result: instance.clone(),
         changed: instance.fields.clone(),
+        removed: BTreeSet::new(),
         events: events.clone(),
         outcome: Some(outcome.name.clone()),
         effect: Some(match outcome.effect {
@@ -970,6 +1080,16 @@ pub fn decide(
     operation_name: &str,
     arguments: Value,
 ) -> Result<Evaluation, CoreError> {
+    decide_with_fulfillments(definition, instance, operation_name, arguments, None)
+}
+
+fn decide_with_fulfillments(
+    definition: &ValidatedDefinition,
+    instance: &EntityInstance,
+    operation_name: &str,
+    arguments: Value,
+    fulfillments: Option<&BTreeMap<String, OperationFieldAction>>,
+) -> Result<Evaluation, CoreError> {
     // Steps 0 and 1, in the order the code has always checked them.
     ensure_instance_matches(definition, instance)?;
 
@@ -1065,6 +1185,74 @@ pub fn decide(
         let value = resolve_template(template, &context)?;
         new_fields.insert(field.clone(), value);
     }
+    let mut removed = BTreeSet::new();
+    let requirements = selected.fulfills.unwrap_or(&EMPTY_FULFILLMENTS);
+    if !requirements.is_empty() {
+        let Some(actions) = fulfillments else {
+            return Err(CoreError::FulfillmentRequired {
+                operation: operation_name.to_owned(),
+                outcome: selected.name.unwrap_or_default().to_owned(),
+                fields: requirements.keys().cloned().collect(),
+            });
+        };
+        let required: BTreeSet<&str> = requirements.keys().map(String::as_str).collect();
+        let supplied: BTreeSet<&str> = actions.keys().map(String::as_str).collect();
+        let missing = required
+            .difference(&supplied)
+            .map(|name| (*name).to_owned())
+            .collect::<Vec<_>>();
+        let extra = supplied
+            .difference(&required)
+            .map(|name| (*name).to_owned())
+            .collect::<Vec<_>>();
+        if !missing.is_empty() || !extra.is_empty() {
+            return Err(CoreError::FulfillmentKeysMismatch {
+                operation: operation_name.to_owned(),
+                outcome: selected.name.unwrap_or_default().to_owned(),
+                missing,
+                extra,
+            });
+        }
+        for (field, action) in actions {
+            let requirement = &requirements[field];
+            match action {
+                OperationFieldAction::Preserve => {}
+                OperationFieldAction::Set { value } => {
+                    let target = &definition.schema.fields[field];
+                    let errors = validate_field_value(
+                        target,
+                        value,
+                        &format!("fulfillments.{field}.value"),
+                        definition.semantics,
+                    );
+                    if !errors.is_empty() {
+                        return Err(CoreError::Validation(errors));
+                    }
+                    new_fields.insert(field.clone(), canonicalize(value.clone()));
+                }
+                OperationFieldAction::Remove => {
+                    if matches!(requirement.actions, OperationFieldActions::Required) {
+                        return Err(CoreError::RequiredFieldRemoval {
+                            operation: operation_name.to_owned(),
+                            outcome: selected.name.unwrap_or_default().to_owned(),
+                            field: field.clone(),
+                        });
+                    }
+                    new_fields.remove(field);
+                    removed.insert(field.clone());
+                }
+            }
+        }
+    } else if let Some(actions) = fulfillments {
+        if !actions.is_empty() {
+            return Err(CoreError::FulfillmentKeysMismatch {
+                operation: operation_name.to_owned(),
+                outcome: selected.name.unwrap_or_default().to_owned(),
+                missing: Vec::new(),
+                extra: actions.keys().cloned().collect(),
+            });
+        }
+    }
 
     // Step 9.
     let state_errors = validate_object_under(
@@ -1116,7 +1304,13 @@ pub fn decide(
     // Step 13, in declaration order, duplicates preserved.
     let mut events = Vec::with_capacity(selected.emits.len());
     for event in selected.emits {
-        events.push(materialize_event(event, &context, next_revision, &args)?);
+        events.push(materialize_event(
+            event,
+            &context,
+            next_revision,
+            &args,
+            &removed,
+        )?);
     }
 
     // Step 14, after the events, so both read one set of post-`set` fields.
@@ -1133,6 +1327,7 @@ pub fn decide(
         command: DecisionCommand::Execute {
             operation: operation_name.to_owned(),
             arguments: args,
+            fulfillments: fulfillments.cloned().unwrap_or_default(),
         },
         entity: next_instance.entity.clone(),
         id: next_instance.id.clone(),
@@ -1141,6 +1336,7 @@ pub fn decide(
         to_state: next_instance.lifecycle_state.clone(),
         result: next_instance.clone(),
         changed,
+        removed,
         events: events.clone(),
         outcome: selected.name.map(ToOwned::to_owned),
         effect: selected.effect,
@@ -1162,6 +1358,8 @@ type ResponseMembers<'a> = (
     &'a BTreeMap<String, PresentArgument>,
 );
 
+static EMPTY_FULFILLMENTS: BTreeMap<String, OperationFieldRequirement> = BTreeMap::new();
+
 /// The branch a command's evaluation selected, resolved to the five things every step after it
 /// needs.
 ///
@@ -1170,6 +1368,7 @@ struct Branch<'a> {
     name: Option<&'a str>,
     to_state: String,
     set: &'a BTreeMap<String, Value>,
+    fulfills: Option<&'a BTreeMap<String, OperationFieldRequirement>>,
     emits: &'a [EventDefinition],
     responds: Option<ResponseMembers<'a>>,
     effect: Option<DecisionEffect>,
@@ -1184,6 +1383,7 @@ impl<'a> Branch<'a> {
             name: None,
             to_state: to_state.to_owned(),
             set: &operation.set,
+            fulfills: None,
             emits: &operation.emits,
             responds: None,
             effect: None,
@@ -1205,6 +1405,7 @@ impl<'a> Branch<'a> {
             name: Some(&outcome.name),
             to_state,
             set: &outcome.set,
+            fulfills: Some(&outcome.fulfills),
             emits: &outcome.emits,
             responds: Some((&outcome.responds, &outcome.responds_if_present)),
             effect: Some(effect),
@@ -2332,6 +2533,7 @@ fn materialize_event(
     context: &TemplateContext<'_>,
     revision: u64,
     args: &Map<String, Value>,
+    removed: &BTreeSet<String>,
 ) -> Result<DomainEvent, CoreError> {
     let mut payload = canonicalize(resolve_template(&definition.payload, context)?);
     if !definition.payload_if_present.is_empty() {
@@ -2352,6 +2554,7 @@ fn materialize_event(
         from_state: context.from_state.map(ToOwned::to_owned),
         to_state: context.to_state.to_owned(),
         changed: changed_fields(context),
+        removed: removed.clone(),
         args: args.clone(),
         payload,
     })

@@ -2470,6 +2470,7 @@ mod tests {
             expected_revision: 1,
             operation: "close".into(),
             arguments: serde_json::json!({}),
+            fulfillments: Default::default(),
             recording: recording("execute"),
         };
         execution_deadline_case(

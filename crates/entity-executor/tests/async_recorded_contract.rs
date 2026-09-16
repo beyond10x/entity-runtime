@@ -76,6 +76,7 @@ fn execute(id: &str, revision: u64, operation: &str, record_id: &str) -> Execute
         expected_revision: revision,
         operation: operation.to_owned(),
         arguments: json!({}),
+        fulfillments: Default::default(),
         recording: recording(record_id),
     }
 }

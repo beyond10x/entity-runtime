@@ -135,9 +135,10 @@ pub use definition::{
     Cardinality, CompareOp, Comparison, Condition, CreateDefinition, DeclaredDefault,
     EntityDefinition, EventDefinition, FieldDefinition, FieldKind, IdentityDefinition,
     LifecycleDefinition, MapKey, NumberObservation, ObjectSchema, OneOrMany, OperationDefinition,
-    OutcomeDefinition, OutcomeEffect, PresentArgument, ProjectionDefinition, Quantifier,
-    RefusalDefinition, RelationDefinition, RelationKind, RuleDefinition, Semantics,
-    TransitionDefinition, CONDITION_OPERATORS, MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
+    OperationFieldAction, OperationFieldActions, OperationFieldRequirement, OutcomeDefinition,
+    OutcomeEffect, PresentArgument, ProjectionDefinition, Quantifier, RefusalDefinition,
+    RelationDefinition, RelationKind, RuleDefinition, Semantics, TransitionDefinition,
+    CONDITION_OPERATORS, MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
 };
 pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
 pub use observed::Observed;
@@ -146,7 +147,8 @@ pub use replay::{rehydrate, replay};
 pub use runtime::{
     create, decide, decide_before_load, decide_create, execute, normalize_arguments, scale_compare,
     Decision, DecisionCommand, DecisionEffect, DecisionRecord, DomainEvent, EntityInstance,
-    Evaluation, PreloadDecision, PreparedOperation, PreparedSubject, Refusal, Runtime,
+    Evaluation, LoadedDecision, PreloadDecision, PreparedOperation, PreparedOutcome,
+    PreparedSubject, Refusal, Runtime,
 };
 pub use truth::Truth;
 

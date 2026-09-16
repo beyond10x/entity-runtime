@@ -318,6 +318,28 @@ impl RecordedCommit {
                 "recorded decision does not describe its resulting instance".to_owned(),
             ));
         }
+        if record
+            .removed
+            .iter()
+            .any(|field| record.changed.contains_key(field))
+        {
+            return Err(StoreError::Backend(
+                "recorded decision names one field in both changed and removed".to_owned(),
+            ));
+        }
+        if record.definition.is_some()
+            && record.events.iter().any(|event| {
+                event.removed != record.removed
+                    || event
+                        .removed
+                        .iter()
+                        .any(|field| event.changed.contains_key(field))
+            })
+        {
+            return Err(StoreError::Backend(
+                "recorded decision event removal evidence disagrees with its decision".to_owned(),
+            ));
+        }
         Ok(())
     }
 

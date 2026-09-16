@@ -146,6 +146,7 @@ fn touch(label: &str) -> ExecuteRequest {
         expected_revision: 1,
         operation: "touch".into(),
         arguments: json!({}),
+        fulfillments: Default::default(),
         recording: recording(&format!("{label}-touch")),
     }
 }
@@ -355,6 +356,7 @@ where
             expected_revision: 1,
             operation: "touch".into(),
             arguments: json!({}),
+            fulfillments: Default::default(),
             recording: recording(&format!("{label}-legacy-touch")),
         })
         .await

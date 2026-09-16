@@ -6,6 +6,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
+- `service/3` operations can request typed Set, Preserve and optional Remove actions after the
+  runtime selects and validates the loaded outcome. Events, responses and replay use the same
+  resulting values; exact retries retain the actions under `er.record/4` and `er.request/4`.
+  Earlier service formats and record bytes keep their existing behavior.
+
 - Service bindings can decide input-only refusing branches before loading a subject and continue
   subject-dependent work through an opaque, identity-bound continuation. `service/2` definitions
   can copy one typed optional argument into creation state, event and response members while

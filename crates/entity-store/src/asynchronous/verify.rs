@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use entity_core::{create, execute, DecisionCommand, EntityInstance, ValidatedDefinition};
+use entity_core::{
+    create, decide_before_load, CoreError, DecisionCommand, EntityInstance, LoadedDecision,
+    PreloadDecision, ValidatedDefinition,
+};
 use serde_json::Value;
 
 use crate::Expect;
@@ -114,14 +117,32 @@ pub fn validate_entry_against_state(
                     DecisionCommand::Execute {
                         operation,
                         arguments,
+                        fulfillments,
                     },
                     Some(current),
-                ) => execute(
-                    &definition,
-                    current,
-                    operation,
-                    Value::Object(arguments.clone()),
-                ),
+                ) => (|| {
+                    let prepared = match decide_before_load(
+                        &definition,
+                        record.id.clone(),
+                        operation,
+                        Value::Object(arguments.clone()),
+                    )? {
+                        PreloadDecision::Load(prepared) => prepared,
+                        PreloadDecision::Refused(refusal) => {
+                            return Err(CoreError::Refused {
+                                outcome: refusal.outcome,
+                                error: refusal.error,
+                                message: refusal.message,
+                            })
+                        }
+                    };
+                    match prepared.select_with(current)? {
+                        LoadedDecision::Complete(evaluation) => evaluation.into_decision(),
+                        LoadedDecision::NeedsFulfillment(prepared) => {
+                            prepared.complete(fulfillments.clone())?.into_decision()
+                        }
+                    }
+                })(),
                 (DecisionCommand::Create { .. }, Some(_)) => {
                     return Err(corrupt(&subject, "creation appears after a predecessor"))
                 }

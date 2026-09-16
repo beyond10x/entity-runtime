@@ -541,6 +541,7 @@ fn observations_land(store: &mut dyn Store, registry: &Registry) -> Result<(), S
                 from_state: Some(created.lifecycle_state.clone()),
                 to_state: created.lifecycle_state.clone(),
                 changed: serde_json::Map::new(),
+                removed: Default::default(),
                 args,
                 payload: json!({ "what": what }),
             }],

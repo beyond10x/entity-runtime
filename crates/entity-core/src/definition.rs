@@ -114,6 +114,9 @@ pub enum Semantics {
     /// Service rules with typed conditional presence in produced values.
     #[serde(rename = "service/2")]
     Service2,
+    /// Service rules with post-load operation-field fulfillment.
+    #[serde(rename = "service/3")]
+    Service3,
 }
 
 impl Semantics {
@@ -132,13 +135,19 @@ impl Semantics {
     /// Whether either version of the service document rules applies.
     #[must_use]
     pub fn has_service_semantics(self) -> bool {
-        matches!(self, Self::Service1 | Self::Service2)
+        matches!(self, Self::Service1 | Self::Service2 | Self::Service3)
     }
 
     /// Whether typed conditional presence is available.
     #[must_use]
     pub fn has_conditional_presence(self) -> bool {
-        matches!(self, Self::Service2)
+        matches!(self, Self::Service2 | Self::Service3)
+    }
+
+    /// Whether post-load operation-field fulfillment is available.
+    #[must_use]
+    pub fn has_operation_fulfillment(self) -> bool {
+        matches!(self, Self::Service3)
     }
 
     /// The spelling used in a document, for messages.
@@ -148,6 +157,7 @@ impl Semantics {
             Self::Kernel1 => "kernel/1",
             Self::Service1 => "service/1",
             Self::Service2 => "service/2",
+            Self::Service3 => "service/3",
         }
     }
 }
@@ -739,6 +749,10 @@ pub struct OutcomeDefinition {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub set: BTreeMap<String, Value>,
 
+    /// Host-supplied actions for entity fields whose value is known only after branch selection.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fulfills: BTreeMap<String, OperationFieldRequirement>,
+
     /// Creation fields copied from optional argument leaves when those leaves are present.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub set_if_present: BTreeMap<String, PresentArgument>,
@@ -775,12 +789,46 @@ impl OutcomeDefinition {
     pub fn is_observable(&self) -> bool {
         !self.emits.is_empty()
             || !self.set.is_empty()
+            || !self.fulfills.is_empty()
             || !self.set_if_present.is_empty()
             || !self.responds.is_empty()
             || !self.responds_if_present.is_empty()
             || self.refuses.is_some()
             || !self.effect.is_none()
     }
+}
+
+/// The actions a selected operation branch admits for one entity field.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct OperationFieldRequirement {
+    /// Whether absence may be selected for this field.
+    pub actions: OperationFieldActions,
+}
+
+/// Whether a fulfillment target is required or optional in the entity schema.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationFieldActions {
+    /// The field must remain present: `Set` and `Preserve` are admitted.
+    Required,
+    /// The field may be absent: `Set`, `Preserve`, and `Remove` are admitted.
+    Optional,
+}
+
+/// One host-supplied action for a selected operation field.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationFieldAction {
+    /// Keep the loaded value or absence.
+    Preserve,
+    /// Replace the field with this exact value.
+    Set {
+        /// The value to validate against the target field definition.
+        value: Value,
+    },
+    /// Remove the field. Admitted only for an optional target.
+    Remove,
 }
 
 /// What a selected branch does to the instance.
