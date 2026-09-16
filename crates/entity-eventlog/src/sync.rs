@@ -518,6 +518,7 @@ const COMPLETED: u8 = 3;
 
 struct Shared {
     lifecycle: AtomicU8,
+    admission: Mutex<()>,
     queued: AtomicUsize,
     dispatched: Mutex<Option<BridgeOperationIdentity>>,
     finished: (Mutex<bool>, Condvar),
@@ -526,6 +527,14 @@ struct Shared {
     before_dispatch: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
     #[cfg(test)]
     after_dispatch: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
+    #[cfg(test)]
+    after_admission_check: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
+    #[cfg(test)]
+    after_enqueue: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
+    #[cfg(test)]
+    before_terminal_admission: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
+    #[cfg(test)]
+    after_terminal_drain: Mutex<std::collections::VecDeque<Box<dyn FnOnce() + Send>>>,
 }
 
 struct Cell<T> {
@@ -791,6 +800,7 @@ impl RecordedEventlogBridge {
         let (sender, receiver) = sync_channel(usize::from(config.queue_capacity.get()));
         let shared = Arc::new(Shared {
             lifecycle: AtomicU8::new(RUNNING),
+            admission: Mutex::new(()),
             queued: AtomicUsize::new(0),
             dispatched: Mutex::new(None),
             finished: (Mutex::new(false), Condvar::new()),
@@ -799,12 +809,20 @@ impl RecordedEventlogBridge {
             before_dispatch: Mutex::new(std::collections::VecDeque::new()),
             #[cfg(test)]
             after_dispatch: Mutex::new(std::collections::VecDeque::new()),
+            #[cfg(test)]
+            after_admission_check: Mutex::new(std::collections::VecDeque::new()),
+            #[cfg(test)]
+            after_enqueue: Mutex::new(std::collections::VecDeque::new()),
+            #[cfg(test)]
+            before_terminal_admission: Mutex::new(std::collections::VecDeque::new()),
+            #[cfg(test)]
+            after_terminal_drain: Mutex::new(std::collections::VecDeque::new()),
         });
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         let worker_shared = shared.clone();
         let work = Box::new(move || {
-            contain_worker(worker_shared.clone(), || {
-                worker_main(startup, runtime_builder, receiver, worker_shared, ready_tx);
+            contain_worker(worker_shared.clone(), &receiver, || {
+                worker_main(startup, runtime_builder, &receiver, worker_shared, ready_tx);
             });
         });
         let join = spawn(work).map_err(BridgeStartError::ThreadSpawn)?;
@@ -1039,12 +1057,34 @@ where
     if matches!(wait,CallWait::Until(deadline) if deadline<=Instant::now()) {
         return Err(E::rejected(BridgeRejection::DeadlineBeforeAcceptance));
     }
+    let admission = shared.admission.lock().expect("admission");
     if shared.lifecycle.load(Ordering::Acquire) != RUNNING {
         return Err(E::rejected(BridgeRejection::Closed));
     }
+    #[cfg(test)]
+    if let Some(hook) = shared
+        .after_admission_check
+        .lock()
+        .expect("admission hook")
+        .pop_front()
+    {
+        hook();
+    }
     shared.queued.fetch_add(1, Ordering::AcqRel);
     match sender.try_send(request) {
-        Ok(()) => wait_cell(cell, wait, identity),
+        Ok(()) => {
+            #[cfg(test)]
+            if let Some(hook) = shared
+                .after_enqueue
+                .lock()
+                .expect("enqueue hook")
+                .pop_front()
+            {
+                hook();
+            }
+            drop(admission);
+            wait_cell(cell, wait, identity)
+        }
         Err(TrySendError::Full(_)) => {
             shared.queued.fetch_sub(1, Ordering::AcqRel);
             Err(E::rejected(BridgeRejection::QueueFull { capacity }))
@@ -1248,7 +1288,7 @@ where
 fn worker_main(
     startup: impl FnOnce(&tokio::runtime::Runtime) -> Result<Box<dyn WorkerDriver>, BridgeStartError>,
     runtime_builder: impl FnOnce() -> std::io::Result<tokio::runtime::Runtime>,
-    receiver: Receiver<Request>,
+    receiver: &Receiver<Request>,
     shared: Arc<Shared>,
     ready: std::sync::mpsc::Sender<Result<ThreadId, BridgeStartError>>,
 ) {
@@ -1306,7 +1346,6 @@ fn worker_main(
         {
             shared.queued.fetch_sub(1, Ordering::AcqRel);
             request.cancel_stopped();
-            shared.lifecycle.store(CLOSING_CANCEL, Ordering::Release);
             worker_panicked = true;
             break;
         }
@@ -1339,14 +1378,12 @@ fn worker_main(
         {
             request.cancel_after_dispatch_stopped();
             *shared.dispatched.lock().expect("dispatch state") = None;
-            shared.lifecycle.store(CLOSING_CANCEL, Ordering::Release);
             worker_panicked = true;
             break;
         }
         let panicked = drive_request(&runtime, driver.as_ref(), request);
         *shared.dispatched.lock().expect("dispatch state") = None;
         if panicked {
-            shared.lifecycle.store(CLOSING_CANCEL, Ordering::Release);
             worker_panicked = true;
             break;
         }
@@ -1356,20 +1393,54 @@ fn worker_main(
             break;
         }
     }
+    terminal_drain(&shared, receiver, worker_panicked);
+    let retired = runtime.block_on(driver.retire());
+    finish(&shared, retired);
+}
+
+fn terminal_drain(shared: &Shared, receiver: &Receiver<Request>, worker_panicked: bool) {
+    #[cfg(test)]
+    if let Some(hook) = shared
+        .before_terminal_admission
+        .lock()
+        .expect("terminal admission hook")
+        .pop_front()
+    {
+        hook();
+    }
+    let admission = shared.admission.lock().expect("admission");
+    if worker_panicked || shared.lifecycle.load(Ordering::Acquire) == RUNNING {
+        shared.lifecycle.store(CLOSING_CANCEL, Ordering::Release);
+    }
+    let mut pending = Vec::new();
     while let Ok(request) = receiver.try_recv() {
+        if request.phase().is_some() {
+            shared.queued.fetch_sub(1, Ordering::AcqRel);
+        }
+        pending.push(request);
+    }
+    #[cfg(test)]
+    if let Some(hook) = shared
+        .after_terminal_drain
+        .lock()
+        .expect("terminal drain hook")
+        .pop_front()
+    {
+        hook();
+    }
+    drop(admission);
+    for request in pending {
         if worker_panicked {
             request.cancel_stopped();
         } else {
             request.cancel_closed();
         }
     }
-    let retired = runtime.block_on(driver.retire());
-    finish(&shared, retired);
 }
 
-fn contain_worker(shared: Arc<Shared>, work: impl FnOnce()) {
+fn contain_worker(shared: Arc<Shared>, receiver: &Receiver<Request>, work: impl FnOnce()) {
     if std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).is_err() {
-        shared.lifecycle.store(CLOSING_CANCEL, Ordering::Release);
+        terminal_drain(&shared, receiver, true);
         let already_finished = *shared.finished.0.lock().expect("finish lock");
         if !already_finished {
             finish(
@@ -1544,6 +1615,25 @@ mod tests {
             }
         }
 
+        fn wait_until_entered_for(&self, timeout: Duration) -> bool {
+            let deadline = Instant::now() + timeout;
+            let mut state = self.state.lock().expect("barrier state");
+            while self.entered.load(Ordering::Acquire) == 0 {
+                let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+                    return false;
+                };
+                let (next, result) = self
+                    .wake
+                    .wait_timeout(state, left)
+                    .expect("barrier entered");
+                state = next;
+                if result.timed_out() && self.entered.load(Ordering::Acquire) == 0 {
+                    return false;
+                }
+            }
+            true
+        }
+
         fn release(&self) {
             self.released.store(true, Ordering::Release);
             self.wake.notify_all();
@@ -1568,6 +1658,7 @@ mod tests {
         next_execution_error: Mutex<Option<ExecutionFailure>>,
         committed: Mutex<Option<(AppendRequest, CommitReceipt)>>,
         panic_next: AtomicBool,
+        panic_after_gate: AtomicBool,
         retire_gate: Mutex<Option<Arc<Barrier>>>,
         retire_result: Mutex<Result<(), AsyncStoreError>>,
         retire_calls: AtomicUsize,
@@ -1586,6 +1677,7 @@ mod tests {
                 next_execution_error: Mutex::new(None),
                 committed: Mutex::new(None),
                 panic_next: AtomicBool::new(false),
+                panic_after_gate: AtomicBool::new(false),
                 retire_gate: Mutex::new(None),
                 retire_result: Mutex::new(Ok(())),
                 retire_calls: AtomicUsize::new(0),
@@ -1615,6 +1707,9 @@ mod tests {
             let gate = self.next_gate.lock().expect("next gate").take();
             if let Some(gate) = gate {
                 gate.arrive_and_wait().await;
+            }
+            if self.panic_after_gate.swap(false, Ordering::AcqRel) {
+                panic!("controlled worker-driver panic after gate");
             }
         }
 
@@ -1962,12 +2057,17 @@ mod tests {
     fn shared(lifecycle: u8) -> Arc<Shared> {
         Arc::new(Shared {
             lifecycle: AtomicU8::new(lifecycle),
+            admission: Mutex::new(()),
             queued: AtomicUsize::new(0),
             dispatched: Mutex::new(None),
             finished: (Mutex::new(false), Condvar::new()),
             provider: Mutex::new(None),
             before_dispatch: Mutex::new(std::collections::VecDeque::new()),
             after_dispatch: Mutex::new(std::collections::VecDeque::new()),
+            after_admission_check: Mutex::new(std::collections::VecDeque::new()),
+            after_enqueue: Mutex::new(std::collections::VecDeque::new()),
+            before_terminal_admission: Mutex::new(std::collections::VecDeque::new()),
+            after_terminal_drain: Mutex::new(std::collections::VecDeque::new()),
         })
     }
 
@@ -2796,6 +2896,148 @@ mod tests {
     }
 
     #[test]
+    fn worker_panic_closes_admission_before_terminal_drain_and_wakes_late_accepted_caller() {
+        let state = Arc::new(FakeState::default());
+        let retirement = Arc::new(Barrier::default());
+        *state.retire_gate.lock().expect("retire gate") = Some(retirement.clone());
+        let mut bridge = fake_bridge(state.clone(), 2);
+
+        let active_gate = state.arm_call();
+        state.panic_after_gate.store(true, Ordering::Release);
+        let active = enqueue_load(&bridge, "terminal-active");
+        let active_entered = active_gate.wait_until_entered_for(Duration::from_secs(2));
+
+        let admission_gate = Arc::new(Barrier::default());
+        let caller_gate = admission_gate.clone();
+        bridge
+            .shared
+            .after_admission_check
+            .lock()
+            .expect("admission hook")
+            .push_back(Box::new(move || caller_gate.arrive_and_wait_blocking()));
+        let (enqueued_tx, enqueued_rx) = std::sync::mpsc::channel();
+        let (drained_tx, drained_rx) = std::sync::mpsc::channel();
+        let drained_while_admitted = Arc::new(AtomicBool::new(false));
+        let observed_drain = drained_while_admitted.clone();
+        bridge
+            .shared
+            .after_enqueue
+            .lock()
+            .expect("enqueue hook")
+            .push_back(Box::new(move || {
+                let _ = enqueued_tx.send(());
+                if drained_rx.recv_timeout(Duration::from_millis(250)).is_ok() {
+                    observed_drain.store(true, Ordering::Release);
+                }
+            }));
+        let (terminal_tx, terminal_rx) = std::sync::mpsc::channel();
+        bridge
+            .shared
+            .before_terminal_admission
+            .lock()
+            .expect("terminal admission hook")
+            .push_back(Box::new(move || {
+                let _ = terminal_tx.send(());
+            }));
+        bridge
+            .shared
+            .after_terminal_drain
+            .lock()
+            .expect("terminal drain hook")
+            .push_back(Box::new(move || {
+                let _ = drained_tx.send(());
+            }));
+
+        let late = Cell::new();
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let mut admission_entered = false;
+        let mut terminal_entered = false;
+        let mut late_enqueued = false;
+        let mut retirement_entered = false;
+        let mut completed_on_time = false;
+        let mut late_result = None;
+        std::thread::scope(|scope| {
+            let caller_cell = late.clone();
+            let sender = &bridge.sender;
+            let worker_id = bridge.worker_id;
+            let shared = &bridge.shared;
+            let capacity = bridge.capacity;
+            let caller = scope.spawn(move || {
+                let result = submit_request(
+                    sender,
+                    worker_id,
+                    shared,
+                    capacity,
+                    Request::Load(
+                        Subject::new("ticket", "terminal-late").expect("subject"),
+                        caller_cell.clone(),
+                    ),
+                    &caller_cell,
+                    CallWait::Forever,
+                    BridgeOperationIdentity::Read(BridgeReadKind::Load),
+                );
+                let _ = result_tx.send(result);
+            });
+
+            admission_entered = admission_gate.wait_until_entered_for(Duration::from_secs(2));
+            active_gate.release();
+            terminal_entered = terminal_rx.recv_timeout(Duration::from_secs(2)).is_ok();
+            admission_gate.release();
+            late_enqueued = enqueued_rx.recv_timeout(Duration::from_secs(2)).is_ok();
+            retirement_entered = retirement.wait_until_entered_for(Duration::from_secs(2));
+            if let Ok(result) = result_rx.recv_timeout(Duration::from_secs(2)) {
+                completed_on_time = true;
+                late_result = Some(result);
+            }
+            retirement.release();
+            if !completed_on_time {
+                late.complete(Err(SyncReadError::Rejected(BridgeRejection::Closed)));
+                late_result = result_rx.recv_timeout(Duration::from_secs(2)).ok();
+            }
+            caller.join().expect("caller");
+        });
+
+        assert!(active_entered, "active driver call did not reach its gate");
+        assert!(admission_entered, "late caller did not enter admission");
+        assert!(terminal_entered, "worker did not begin terminal admission");
+        assert!(late_enqueued, "late caller did not enqueue after admission");
+        assert!(
+            !drained_while_admitted.load(Ordering::Acquire),
+            "worker drained before the admitted caller finished enqueueing"
+        );
+        assert!(
+            retirement_entered,
+            "worker did not begin provider retirement"
+        );
+        assert!(
+            completed_on_time,
+            "late accepted Forever caller was not completed by terminal drain"
+        );
+        assert!(matches!(
+            late_result,
+            Some(Err(SyncReadError::Rejected(
+                BridgeRejection::WorkerStoppedBeforeDispatch
+            )))
+        ));
+        assert!(matches!(
+            wait_cell(
+                &active,
+                CallWait::Forever,
+                BridgeOperationIdentity::Read(BridgeReadKind::Load)
+            ),
+            Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerPanicked
+            ))
+        ));
+        assert_eq!(bridge.shared.queued.load(Ordering::Acquire), 0);
+        assert_eq!(state.call_count(), 1);
+        assert_eq!(
+            bridge.shutdown(ShutdownMode::CancelQueued, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+    }
+
+    #[test]
     fn drop_requests_closure_without_waiting_for_an_active_future() {
         let state = Arc::new(FakeState::default());
         let active_gate = state.arm_call();
@@ -3302,7 +3544,8 @@ mod tests {
     #[test]
     fn outer_worker_panic_marks_finished_and_preserves_a_retirement_failure() {
         let shared = shared(RUNNING);
-        contain_worker(shared.clone(), || panic!("worker disappeared"));
+        let (_sender, receiver) = sync_channel(1);
+        contain_worker(shared.clone(), &receiver, || panic!("worker disappeared"));
         assert!(*shared.finished.0.lock().expect("finish lock"));
         assert_eq!(shared.lifecycle.load(Ordering::Acquire), CLOSING_CANCEL);
         assert!(matches!(
