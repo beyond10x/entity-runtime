@@ -6,6 +6,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Fixed
 
+- `service/1` adjacent unions admit a variant object's nested `value` or `content` member.
+  The outer tag/payload pair, exact retained bytes, and malformed-value refusals are unchanged.
 - Legacy Eventlog import binds the acquisition source identity into each persisted anchor,
   including boundaries with no envelopes. Same-source retries recover after reopen; identical
   histories from another source conflict. New source-bound anchor blobs use version 2; existing

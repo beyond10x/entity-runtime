@@ -259,7 +259,7 @@ New `DefinitionError` variants, accumulated like every other defect
 | `RelationViaUnknown` / `RelationViaWrongShape` | for a `References` relation: `via` is not a declared field of **this** definition, or it is not a list on the `Many` row, or **at `Registry::validate_all`** its kind is not the one § 8.1's row admits. The kind half is the registry's on both rows because it is a claim about the *target's* identity field (§ 8.2). **Optionality is not part of this test for a `References`/`One` carrier**: both `required: true` and `required: false` are admitted, because `carried_types` admits both the target's identity type and `Optional<it>` | `ESS/crates/specify/ess-domain/src/entity.rs:1392-1407` |
 | `RelationTargetMissing` / `RelationSecondOwner` / `RelationCarrierWrong` / `RelationFieldClaimedTwice` | at `Registry::validate_all`: an unregistered target; two definitions owning one entity; an `Owns` `via` that is not a correctly shaped **required** field of the **target** — its kind is the **source's** identity kind, once, on both cardinalities, so an array carrier is refused where that identity is not itself a list and admitted where it is; one field carrying two relations | `ESS/crates/specify/ess-domain/src/entity.rs:1213-1274,1392-1407` |
 | `RelationCarrierOptionality` | a `References`/`Many` carrier or an `Owns` carrier declared `required: false` — `carried_types` offers `Optional` for the `References`/`One` row and for no other | `ESS/crates/specify/ess-domain/src/entity.rs:1392-1407` |
-| `MapKeyNotText` / `MapValueMissing` / `UnionTagCollides` / `UnionVariantMissing` | the new field kinds of § 10.1 | `ESS/crates/generate/ess-gen/src/types.rs:527-548,696-733` |
+| `MapKeyNotText` / `MapValueMissing` / `UnionVariantMissing` | missing map key/value or union tag/variants in § 10.1 | `ESS/crates/generate/ess-gen/src/types.rs:527-548,696-733` |
 | `QuantifierBindInvalid` / `QuantifierOverNotCollection` / `QuantifierBodyScope` | the quantifier of § 10.4: `as` is not one non-empty path segment; `in` does not name an `array` or `map` field; the body reads an address neither the enclosing scope nor the binder admits | `ESS/crates/specify/ess-domain/src/expression.rs:687-701`; `ESS/crates/specify/ess-primitives/src/predicate.rs:383-391` |
 | `ConditionTooDeep` | a condition nests deeper than 32 | `ESS/crates/specify/ess-primitives/src/predicate.rs:292-298` |
 | `CompareOperandNotAddressable` | a `compare` operand is a literal object or array (§ 10.4: ESS compares scalars only) | `ESS/crates/verify/ess-conformance/src/decision.rs:171-181` |
@@ -1202,8 +1202,14 @@ The content key is **derived**, not declared: `"value"`, or `"content"` when `ta
 it is what keeps ER and ESS from disagreeing about it. A value of a `union` field is an object with
 exactly the tag key and — unless the variant's payload is optional — the content key; the tag's value
 names a declared variant, and the content satisfies that variant's definition. Anything else is a
-validation error naming the tag it found. `UnionTagCollides` refuses a `tag` equal to the derived
-content key of a nested variant object; `UnionVariantMissing` refuses an empty `variants`.
+validation error naming the tag it found. The derived outer keys are always distinct: `kind`
+beside `value`, or `value` beside `content`. A variant object sits **inside** that payload, so its
+own `value` or `content` property cannot collide with either outer key. The former
+`UnionTagCollides` check compared keys across those two object levels and refused ordinary ESS
+`Parameter`/`BodyParameter` structs. Its public error variant remains for compatibility, but no
+valid adjacent tag derives a colliding outer content key. `UnionVariantMissing` still refuses a
+missing tag or empty `variants`, and value validation still refuses an unknown/non-text tag,
+wrongly typed payload, or extra outer member.
 
 **`binary64`.** A JSON number, which is ESS's own wire node for the primitive
 (`ESS/crates/generate/ess-gen/src/types.rs:499-502`), held as its token so the sign of zero survives in

@@ -2,8 +2,8 @@
 //! scale context, the four new operators and the two collection address forms.
 
 use entity_core::{
-    create, CoreError, DefinitionError, DefinitionErrors, EntityDefinition, Registry, Truth,
-    ValidatedDefinition,
+    create, replay, CoreError, DefinitionError, DefinitionErrors, EntityDefinition, Registry,
+    Runtime, Truth, ValidatedDefinition,
 };
 use serde_json::{json, Value};
 
@@ -212,6 +212,145 @@ fn a_union_tagged_value_reads_its_content_under_content() {
         ),
         Truth::True
     );
+}
+
+#[test]
+fn nested_union_payload_names_preserve_adjacent_bytes_through_create_update_and_replay() {
+    // The real Parameter and BodyParameter declarations use `kind` beside `value`; their
+    // constant variants are structs with their own `value` member one object level deeper.
+    let parameter = json!({
+        "type": "union", "tag": "kind", "required": true, "variants": {
+            "input": { "type": "object", "required": true, "properties": {
+                "name": { "type": "string", "required": true }
+            }},
+            "constant": { "type": "object", "required": true, "properties": {
+                "value": { "type": "string", "required": true }
+            }}
+        }
+    });
+    let body_parameter = json!({
+        "type": "union", "tag": "kind", "required": true, "variants": {
+            "integer": { "type": "object", "required": true, "properties": {
+                "value": { "type": "integer", "required": true }
+            }}
+        }
+    });
+    let value_tagged = json!({
+        "type": "union", "tag": "value", "required": true, "variants": {
+            "payload": { "type": "object", "required": true, "properties": {
+                "content": { "type": "string", "required": true },
+                "value": { "type": "string", "required": true }
+            }}
+        }
+    });
+    let parameters =
+        json!({ "type": "map", "key": "string", "required": true, "items": parameter });
+    let body = json!({ "type": "map", "key": "string", "required": true, "items": body_parameter });
+    let document = json!({
+        "entity": "nested_parameters", "version": 1, "semantics": "service/1",
+        "schema": { "fields": {
+            "parameters": parameters.clone(), "body": body.clone(),
+            "value_tagged": value_tagged.clone()
+        }},
+        "lifecycle": { "initial": "active", "states": ["active"] },
+        "operations": { "replace": {
+            "arguments": { "fields": {
+                "parameters": parameters, "body": body, "value_tagged": value_tagged
+            }},
+            "outcomes": [{ "name": "updated", "effect": "updates", "set": {
+                "parameters": "$args.parameters", "body": "$args.body",
+                "value_tagged": "$args.value_tagged"
+            }}]
+        }}
+    });
+    let mut registry = Registry::new();
+    registry
+        .register(definition(document.clone()))
+        .expect("nested variant members occupy a different object level from the union tag");
+    let runtime = Runtime::new(&registry);
+    let mut fields = json!({
+        "parameters": { "id": { "kind": "constant", "value": { "value": "old" } } },
+        "body": { "count": { "kind": "integer", "value": { "value": 3 } } },
+        "value_tagged": {
+            "value": "payload", "content": { "content": "inside", "value": "shadow" }
+        }
+    });
+    let created = runtime
+        .create("nested_parameters", 1, "nested-1", fields.clone())
+        .expect("adjacent nested union values create");
+    assert_eq!(
+        serde_json::to_string(&created.instance.fields).expect("serializes"),
+        r#"{"body":{"count":{"kind":"integer","value":{"value":3}}},"parameters":{"id":{"kind":"constant","value":{"value":"old"}}},"value_tagged":{"content":{"content":"inside","value":"shadow"},"value":"payload"}}"#
+    );
+    fields["parameters"]["id"]["value"]["value"] = json!("new");
+    let updated = runtime
+        .execute(&created.instance, "replace", fields.clone())
+        .expect("operation retains nested union values");
+    assert_eq!(
+        updated.instance.fields,
+        fields.as_object().expect("fields object").clone()
+    );
+    let rebuilt = replay(&[created.record.clone(), updated.record.clone()]).expect("replays");
+    assert_eq!(rebuilt, updated.instance);
+    assert_eq!(
+        serde_json::to_string(&rebuilt.fields).expect("serializes"),
+        r#"{"body":{"count":{"kind":"integer","value":{"value":3}}},"parameters":{"id":{"kind":"constant","value":{"value":"new"}}},"value_tagged":{"content":{"content":"inside","value":"shadow"},"value":"payload"}}"#
+    );
+
+    let mut unknown_tag = fields.clone();
+    unknown_tag["parameters"]["id"]["kind"] = json!("absent");
+    let Err(CoreError::Validation(unknown)) =
+        runtime.execute(&updated.instance, "replace", unknown_tag)
+    else {
+        panic!("an unknown tag is refused");
+    };
+    assert_eq!(unknown[0].path, "arguments.parameters.id");
+    assert!(unknown[0].message.contains("'absent' is not one of"));
+
+    let mut wrong_type = fields.clone();
+    wrong_type["body"]["count"]["value"]["value"] = json!("three");
+    let Err(CoreError::Validation(typed)) =
+        runtime.execute(&updated.instance, "replace", wrong_type)
+    else {
+        panic!("a nested payload still has its declared type");
+    };
+    assert_eq!(typed[0].path, "arguments.body.count.value.value");
+    assert_eq!(typed[0].message, "expected integer");
+
+    let mut extra = fields.clone();
+    extra["parameters"]["id"]["unexpected"] = json!(true);
+    let Err(CoreError::Validation(extra_errors)) =
+        runtime.execute(&updated.instance, "replace", extra)
+    else {
+        panic!("an adjacent union still refuses extra outer members");
+    };
+    assert_eq!(extra_errors[0].path, "arguments.parameters.id.unexpected");
+
+    let mut non_text_tag = fields;
+    non_text_tag["value_tagged"]["value"] = json!(3);
+    let Err(CoreError::Validation(tag_errors)) =
+        runtime.execute(&updated.instance, "replace", non_text_tag)
+    else {
+        panic!("a union tag still has to be text");
+    };
+    assert_eq!(tag_errors[0].path, "arguments.value_tagged");
+    assert!(tag_errors[0]
+        .message
+        .contains("variant label as text under 'value'"));
+
+    let mut kernel_document = document;
+    kernel_document
+        .as_object_mut()
+        .expect("definition object")
+        .remove("semantics");
+    let defects = refused(kernel_document);
+    assert!(carries(
+        &defects,
+        &DefinitionError::SemanticsKeyNotAvailable {
+            path: "schema.parameters".to_owned(),
+            key: "map".to_owned()
+        }
+    ));
 }
 
 /// The precondition for the billing acceptance fixture to exist at all: nothing in that entity is

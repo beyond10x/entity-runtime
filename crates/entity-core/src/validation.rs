@@ -2244,27 +2244,15 @@ fn validate_field_definition(
                 });
             }
         }
-        FieldKind::Union => {
+        // Derived tag/content keys are distinct on the outer union object. A variant object's
+        // own properties live one level deeper and are checked recursively below.
+        FieldKind::Union
             if field.tag.as_deref().is_none_or(|tag| tag.trim().is_empty())
-                || field.variants.is_empty()
-            {
-                defects.push(DefinitionError::UnionVariantMissing {
-                    path: path.to_owned(),
-                });
-            } else {
-                let content = content_key(field);
-                // A tag equal to the key a nested variant object would carry its payload under
-                // would make one key answer two questions.
-                let collides = field.variants.values().any(|variant| {
-                    variant.kind == FieldKind::Object && variant.properties.contains_key(content)
-                });
-                if collides {
-                    defects.push(DefinitionError::UnionTagCollides {
-                        path: path.to_owned(),
-                        tag: field.tag.clone().unwrap_or_default(),
-                    });
-                }
-            }
+                || field.variants.is_empty() =>
+        {
+            defects.push(DefinitionError::UnionVariantMissing {
+                path: path.to_owned(),
+            });
         }
         _ => {}
     }
