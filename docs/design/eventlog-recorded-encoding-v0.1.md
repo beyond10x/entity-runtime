@@ -65,7 +65,22 @@ JSON tokens. `Digest` is the corresponding `K` result above. All fields are requ
 }]
 ```
 
-Import `Evidence` is exactly one closed variant:
+Source-bound legacy import adds one closed blob version. Its nested `anchor` has exactly the v1
+payload fields above (without a second framing array), and `source_id` is nonblank and equals every
+envelope evidence source identity. The entire versioned document participates in canonical anchor
+bytes and replay comparison:
+
+```text
+["er.eventlog.import-anchor/2", {"anchor": ImportAnchorV1Payload, "source_id": String}]
+```
+
+Readers accept v1 without inventing its absent source identity and accept v2 only after validating
+the binding. The unchanged v1 decoder rejects v2 framing. Unbound low-level imports still write
+v1; source-bound imports write v2 and cannot recover a v1 anchor as an equal retry. Reference events
+retain their existing schema and blob-reference payload; this changes the referenced blob format,
+not the reference event or existing recorded-entry/binding bytes.
+
+Import `Evidence` retains these exact closed variants:
 
 ```text
 {"kind":"envelope", "known_order":["per_kind",U64] | ["subject",U64],

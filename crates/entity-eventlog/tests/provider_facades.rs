@@ -8,14 +8,14 @@ use entity_eventlog::{
     Authority, EventlogFileStore, EventlogOperationContext, LegacyImportError,
     RecordedProviderFacade,
     sync::{
-        BridgeConfig, CallWait, EventlogRecordedStoreProvisioner, ProvisionAuthority, ShutdownMode,
-        ShutdownOutcome,
+        BridgeConfig, CallWait, EventlogRecordedStoreOwner, EventlogRecordedStoreProvisioner,
+        ProvisionAuthority, ShutdownMode, ShutdownOutcome,
     },
 };
 use entity_executor::{BatchAction, CreateRequest, ExecuteRequest};
 use entity_query::{DocumentQuery, DocumentQueryProvider};
 use entity_store::{
-    EventProvider, HistoryProvider, LegacyStoreSnapshot, LegacyStoreSource, Recording,
+    EventProvider, Expect, HistoryProvider, LegacyStoreSnapshot, LegacyStoreSource, Recording,
     StateProvider, Store,
     asynchronous::{AppendOutcome, BatchKey, Subject},
 };
@@ -34,6 +34,31 @@ fn bridge() -> BridgeConfig {
     BridgeConfig {
         queue_capacity: NonZeroU16::new(8).expect("nonzero"),
     }
+}
+
+fn provider_files(
+    root: &std::path::Path,
+) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+    fn collect(
+        root: &std::path::Path,
+        path: &std::path::Path,
+        files: &mut std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>,
+    ) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                collect(root, &path, files);
+            } else {
+                files.insert(
+                    path.strip_prefix(root).unwrap().to_owned(),
+                    std::fs::read(path).unwrap(),
+                );
+            }
+        }
+    }
+    let mut files = std::collections::BTreeMap::new();
+    collect(root, root, &mut files);
+    files
 }
 
 fn registry() -> Registry {
@@ -114,6 +139,109 @@ fn file_authority(path: &std::path::Path, label: &str) -> Authority {
         tenant: tenant.as_str().to_owned(),
         stream_identity,
     }
+}
+
+#[test]
+fn opening_an_absent_file_authority_does_not_create_provider_bytes() {
+    let directory = tempfile::tempdir().expect("temporary parent");
+    let root = directory.path().join("absent-eventlog");
+    let authority = Authority {
+        logical_scope: "missing-file-scope".to_owned(),
+        tenant: "missing-file-tenant".to_owned(),
+        stream_identity: "expected-existing-generation".to_owned(),
+    };
+
+    assert!(
+        EventlogFileStore::open(&root, registry(), authority, LIMITS, bridge()).is_err(),
+        "ordinary open must refuse a missing bound authority"
+    );
+    assert!(
+        !root.exists(),
+        "ordinary open must not provision native File provider bytes"
+    );
+}
+
+#[test]
+fn opening_an_absent_sqlite_authority_does_not_create_provider_bytes() {
+    let directory = tempfile::tempdir().expect("temporary parent");
+    let path = directory.path().join("absent-eventlog.db");
+    let authority = Authority {
+        logical_scope: "missing-sqlite-scope".to_owned(),
+        tenant: "missing-sqlite-tenant".to_owned(),
+        stream_identity: "expected-existing-generation".to_owned(),
+    };
+
+    assert!(
+        RecordedProviderFacade::start(
+            registry(),
+            EventlogRecordedStoreOwner::Sqlite {
+                path: path.to_string_lossy().into_owned(),
+                prefix: "missing_sqlite".to_owned(),
+                authority,
+                limits: LIMITS,
+            },
+            bridge(),
+        )
+        .is_err(),
+        "ordinary open must refuse a missing bound authority"
+    );
+    assert!(
+        !path.exists(),
+        "ordinary open must not provision native SQLite provider bytes"
+    );
+}
+
+#[test]
+fn opening_native_stores_without_er_bindings_preserves_provider_authority() {
+    let directory = tempfile::tempdir().expect("temporary parent");
+    let file_root = directory.path().join("native-file");
+    let file = file_authority(&file_root, "unbound-file");
+    let before = provider_files(&file_root);
+    assert!(
+        EventlogFileStore::open(&file_root, registry(), file, LIMITS, bridge()).is_err(),
+        "a native File store is not an ER-bound store"
+    );
+    assert_eq!(provider_files(&file_root), before, "File authority changed");
+
+    let sqlite_path = directory.path().join("native-sqlite.db");
+    let sqlite_path = sqlite_path.to_str().expect("utf-8 path");
+    let tenant = TenantId::new("unbound-sqlite").expect("tenant");
+    let native = block_on(eventlog_sqlite::SqliteEventStore::open(
+        sqlite_path,
+        "unbound",
+    ))
+    .expect("native SQLite provisioned");
+    let identity = block_on(native.stream_identity(&tenant)).expect("native identity");
+    drop(native);
+    let authority = Authority {
+        logical_scope: "unbound-sqlite-scope".to_owned(),
+        tenant: tenant.as_str().to_owned(),
+        stream_identity: identity.clone(),
+    };
+    assert!(
+        RecordedProviderFacade::start(
+            registry(),
+            EventlogRecordedStoreOwner::Sqlite {
+                path: sqlite_path.to_owned(),
+                prefix: "unbound".to_owned(),
+                authority,
+                limits: LIMITS,
+            },
+            bridge(),
+        )
+        .is_err(),
+        "a native SQLite store is not an ER-bound store"
+    );
+    let reopened = block_on(eventlog_sqlite::SqliteEventStore::open_existing(
+        sqlite_path,
+        "unbound",
+    ))
+    .expect("same native SQLite store remains");
+    assert_eq!(
+        block_on(reopened.stream_identity(&tenant)).expect("native identity after refusal"),
+        identity,
+        "SQLite authority was replaced"
+    );
 }
 
 #[test]
@@ -308,6 +436,100 @@ fn legacy_file_import_is_exact_resumable_and_provider_verified() {
         entity_store::asynchronous::HistoryOrigin::Imported(_)
     ));
     assert_eq!(history.records.len(), 1);
+    assert_eq!(
+        facade.shutdown(ShutdownMode::Drain, CallWait::Forever),
+        ShutdownOutcome::Joined { provider: Ok(()) }
+    );
+}
+
+#[test]
+fn legacy_import_refuses_a_different_source_identity_for_an_identical_bare_boundary() {
+    let definitions = registry();
+    let source_dir = tempfile::tempdir().expect("legacy source");
+    let mut source = entity_store::FileStore::open(source_dir.path());
+    let created = entity_core::Runtime::new(&definitions)
+        .create("ticket", 1, "bare", json!({"title":"bare"}))
+        .expect("creation");
+    source
+        .commit(&created, Expect::Absent)
+        .expect("bare legacy write");
+    let first_source = source
+        .acquire_legacy("file/source-a")
+        .expect("first source acquisition");
+    let renamed_source = source
+        .acquire_legacy("file/source-b")
+        .expect("renamed source acquisition");
+    let entity_store::asynchronous::HistoryOrigin::Imported(anchor) =
+        &first_source.histories[0].origin
+    else {
+        panic!("legacy acquisition has an imported boundary")
+    };
+    assert!(
+        anchor.evidence.is_empty(),
+        "the source identity must survive even when no envelope carries it"
+    );
+
+    let destination = tempfile::tempdir().expect("destination");
+    let authority = file_authority(destination.path(), "source-identity");
+    let mut facade = EventlogFileStore::provision(
+        destination.path(),
+        definitions,
+        ProvisionAuthority {
+            logical_scope: authority.logical_scope.clone(),
+            tenant: authority.tenant.clone(),
+            expected_stream_identity: Some(authority.stream_identity.clone()),
+        },
+        context("provision-source-identity"),
+        LIMITS,
+        bridge(),
+    )
+    .expect("destination provisioned");
+    facade
+        .recorded()
+        .import_legacy(first_source.clone(), context("source-a"), CallWait::Forever)
+        .expect("first source identity imported");
+    assert_eq!(
+        facade.shutdown(ShutdownMode::Drain, CallWait::Forever),
+        ShutdownOutcome::Joined { provider: Ok(()) }
+    );
+    let mut facade =
+        EventlogFileStore::open(destination.path(), registry(), authority, LIMITS, bridge())
+            .expect("reopen source-bound anchors from provider bytes");
+    let before = provider_files(destination.path());
+    let replay = facade
+        .recorded()
+        .import_legacy(first_source, context("source-a-retry"), CallWait::Forever)
+        .expect("the same source recovers after reopen");
+    assert_eq!(replay.replayed, 1);
+    assert_eq!(provider_files(destination.path()), before);
+
+    let error = facade
+        .recorded()
+        .import_legacy(renamed_source, context("source-b"), CallWait::Forever)
+        .expect_err("a different source identity must not recover the existing anchor");
+    let LegacyImportError::Subject {
+        subject,
+        settled,
+        error,
+    } = error
+    else {
+        panic!("the source-identity conflict must name its subject")
+    };
+    assert_eq!(subject, Subject::new("ticket", "bare").expect("subject"));
+    assert!(settled.is_empty());
+    assert!(matches!(
+        *error,
+        entity_eventlog::sync::SyncImportError::Import(
+            entity_eventlog::ImportAnchorFailure::NotCommitted(
+                entity_store::asynchronous::AsyncStoreError::RevisionConflict { .. }
+            )
+        )
+    ));
+    assert_eq!(
+        provider_files(destination.path()),
+        before,
+        "a different source changes no provider bytes"
+    );
     assert_eq!(
         facade.shutdown(ShutdownMode::Drain, CallWait::Forever),
         ShutdownOutcome::Joined { provider: Ok(()) }

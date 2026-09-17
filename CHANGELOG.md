@@ -4,6 +4,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Fixed
+
+- Legacy Eventlog import binds the acquisition source identity into each persisted anchor,
+  including boundaries with no envelopes. Same-source retries recover after reopen; identical
+  histories from another source conflict. New source-bound anchor blobs use version 2; existing
+  version 1 anchors remain readable without an inferred source identity.
+
 ### Added
 
 - Eventlog-backed File, SQLite and PostgreSQL facades preserve complete recorded receipts,
@@ -61,6 +68,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   new crate requires Rust 1.91; the pure runtime crates remain on 1.85.
 
 ### Changed
+
+- `entity-sqlite` selects the exact bundled `rusqlite` 0.40.2 line shared with its Eventlog
+  provider, preserving the existing schema, storage semantics and Rust minimums while allowing
+  both providers in one consumer dependency graph.
 
 - A `service/1` decision's record carries `outcome`, `effect` and `response`, and its `create`
   command carries the caller's `arguments` beside the fields they produced. Because that is a shape

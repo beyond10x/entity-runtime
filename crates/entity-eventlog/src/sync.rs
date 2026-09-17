@@ -236,7 +236,7 @@ impl EventlogRecordedStoreOwner {
                 limits,
             } => {
                 let concrete = Arc::new(
-                    eventlog_file::FileEventStore::open(path)
+                    eventlog_file::FileEventStore::open_existing(path)
                         .await
                         .map_err(store_open)?,
                 );
@@ -258,7 +258,7 @@ impl EventlogRecordedStoreOwner {
                 limits,
             } => {
                 let concrete = Arc::new(
-                    eventlog_sqlite::SqliteEventStore::open(&path, &prefix)
+                    eventlog_sqlite::SqliteEventStore::open_existing(&path, &prefix)
                         .await
                         .map_err(store_open)?,
                 );
@@ -607,6 +607,7 @@ trait WorkerDriver: Send {
         &'a self,
         context: EventlogOperationContext,
         history: SubjectHistory,
+        source_id: Option<String>,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>>;
     fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>>;
 }
@@ -718,8 +719,15 @@ impl WorkerDriver for ProductionDriver {
         &'a self,
         context: EventlogOperationContext,
         history: SubjectHistory,
+        source_id: Option<String>,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
-        Box::pin(async move { self.store.operation(context).import_anchor(history).await })
+        Box::pin(async move {
+            let operation = self.store.operation(context);
+            match source_id {
+                Some(source_id) => operation.import_source_anchor(source_id, history).await,
+                None => operation.import_anchor(history).await,
+            }
+        })
     }
 
     fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>> {
@@ -968,6 +976,7 @@ enum Request {
         SubjectHistory,
         Subject,
         Arc<Cell<Result<ImportAnchorOutcome, SyncImportError>>>,
+        Option<String>,
     ),
     Wake,
 }
@@ -985,7 +994,7 @@ impl Request {
             Self::Execute(_, _, _, c) => Some(&c.phase),
             Self::Observe(_, _, _, c) => Some(&c.phase),
             Self::Batch(_, _, _, c) => Some(&c.phase),
-            Self::Import(_, _, _, c) => Some(&c.phase),
+            Self::Import(_, _, _, c, _) => Some(&c.phase),
             Self::Wake => None,
         }
     }
@@ -1007,7 +1016,7 @@ impl Request {
             | Self::Execute(_, _, k, _)
             | Self::Observe(_, _, k, _)
             | Self::Batch(_, k, _, _) => Some(BridgeOperationIdentity::Write(k.clone())),
-            Self::Import(_, _, subject, _) => {
+            Self::Import(_, _, subject, _, _) => {
                 Some(BridgeOperationIdentity::Import(subject.clone()))
             }
             Self::Wake => None,
@@ -1037,7 +1046,7 @@ impl Request {
             Self::Batch(_, _, _, c) => {
                 c.complete(Err(SyncExecutionError::Rejected(BridgeRejection::Closed)))
             }
-            Self::Import(_, _, _, c) => {
+            Self::Import(_, _, _, c, _) => {
                 c.complete(Err(SyncImportError::Rejected(BridgeRejection::Closed)))
             }
             Self::Wake => {}
@@ -1057,7 +1066,7 @@ impl Request {
                 c.complete(Err(SyncExecutionError::Rejected(rejection)))
             }
             Self::Batch(_, _, _, c) => c.complete(Err(SyncExecutionError::Rejected(rejection))),
-            Self::Import(_, _, _, c) => c.complete(Err(SyncImportError::Rejected(rejection))),
+            Self::Import(_, _, _, c, _) => c.complete(Err(SyncImportError::Rejected(rejection))),
             Self::Wake => {}
         }
     }
@@ -1095,7 +1104,7 @@ impl Request {
                     cause: "sync bridge worker stopped after dispatch".into(),
                 }),
             ))),
-            Self::Import(_, _, subject, c) => c.complete(Err(SyncImportError::Import(
+            Self::Import(_, _, subject, c, _) => c.complete(Err(SyncImportError::Import(
                 ImportAnchorFailure::Uncertain {
                     subject,
                     cause: ImportAnchorUncertainty::RecoveryUnavailable,
@@ -1614,10 +1623,35 @@ impl SyncEventlogOperation<'_> {
         history: SubjectHistory,
         wait: CallWait,
     ) -> Result<ImportAnchorOutcome, SyncImportError> {
+        self.submit_import(history, None, wait)
+    }
+
+    /// Establishes a legacy boundary whose durable replay identity includes its acquisition source.
+    pub fn import_source_anchor(
+        &self,
+        source_id: String,
+        history: SubjectHistory,
+        wait: CallWait,
+    ) -> Result<ImportAnchorOutcome, SyncImportError> {
+        self.submit_import(history, Some(source_id), wait)
+    }
+
+    fn submit_import(
+        &self,
+        history: SubjectHistory,
+        source_id: Option<String>,
+        wait: CallWait,
+    ) -> Result<ImportAnchorOutcome, SyncImportError> {
         let subject = history.subject.clone();
         let cell = Cell::new();
         self.bridge.submit(
-            Request::Import(self.context.clone(), history, subject.clone(), cell.clone()),
+            Request::Import(
+                self.context.clone(),
+                history,
+                subject.clone(),
+                cell.clone(),
+                source_id,
+            ),
             &cell,
             wait,
             BridgeOperationIdentity::Import(subject),
@@ -1934,8 +1968,8 @@ fn drive_request(
                 runtime.block_on(driver.batch(context, key, v))
             })
         }
-        Request::Import(context, history, subject, c) => poll_import(c, subject, || {
-            runtime.block_on(driver.import_anchor(context, history))
+        Request::Import(context, history, subject, c, source_id) => poll_import(c, subject, || {
+            runtime.block_on(driver.import_anchor(context, history, source_id))
         }),
         Request::Wake => false,
     }
@@ -2332,6 +2366,7 @@ mod tests {
             &'a self,
             context: EventlogOperationContext,
             history: SubjectHistory,
+            _source_id: Option<String>,
         ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
             Box::pin(async move {
                 self.state.contexts.lock().expect("contexts").push(context);

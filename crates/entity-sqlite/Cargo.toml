@@ -16,7 +16,7 @@ entity-core = { path = "../entity-core", version = "0.18.1" }
 entity-eventlog = { path = "../entity-eventlog", version = "0.18.1", features = ["sync-bridge", "sqlite"], optional = true }
 entity-query = { path = "../entity-query", version = "0.18.1", optional = true }
 entity-store = { path = "../entity-store", version = "0.18.1" }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "088c27b5df9745c68d8a2240dbb2038998b03efe", optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "6d5e249b83552b3417ce5b0c883999c95d304db4", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 time = { version = "0.3", optional = true }
@@ -24,8 +24,8 @@ time = { version = "0.3", optional = true }
 # happens to have. A store whose behaviour depends on the host's library version is a store two
 # machines can disagree about, which is the one thing a provider must not be.
 # Match the pinned Eventlog SQLite provider: Cargo permits only one sqlite3 native-link package
-# in the composed workspace. This crate uses the same stable wrapper API on both versions.
-rusqlite = { version = "0.37", features = ["bundled"] }
+# in the composed workspace.
+rusqlite = { version = "=0.40.2", features = ["bundled"] }
 
 [lints]
 workspace = true

@@ -234,9 +234,52 @@ pub(crate) fn encode_anchor(value: &ImportAnchorWrapper) -> Result<Vec<u8>, Asyn
 }
 
 pub(crate) fn decode_anchor(bytes: &[u8]) -> Result<ImportAnchorWrapper, AsyncStoreError> {
-    decode_tagged("er.eventlog.import-anchor/1", bytes, |value| {
-        serde_json::from_value(value).map_err(enc)
-    })
+    let value: Value = serde_json::from_slice(bytes).map_err(enc)?;
+    if value.get(0).and_then(Value::as_str) == Some("er.eventlog.import-anchor/2") {
+        decode_tagged("er.eventlog.import-anchor/2", bytes, |value| {
+            let bound: SourceBoundAnchorWrapper = serde_json::from_value(value).map_err(enc)?;
+            validate_anchor_source(&bound.source_id, &bound.anchor)?;
+            Ok(bound.anchor)
+        })
+    } else {
+        decode_tagged("er.eventlog.import-anchor/1", bytes, |value| {
+            serde_json::from_value(value).map_err(enc)
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceBoundAnchorWrapper {
+    anchor: ImportAnchorWrapper,
+    source_id: String,
+}
+
+pub(crate) fn encode_source_anchor(
+    source_id: &str,
+    anchor: &ImportAnchorWrapper,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    validate_anchor_source(source_id, anchor)?;
+    canonical_domain_bytes(
+        "er.eventlog.import-anchor/2",
+        serde_json::to_value(SourceBoundAnchorWrapper {
+            anchor: anchor.clone(),
+            source_id: source_id.to_owned(),
+        })
+        .map_err(enc)?,
+    )
+}
+
+fn validate_anchor_source(
+    source_id: &str,
+    anchor: &ImportAnchorWrapper,
+) -> Result<(), AsyncStoreError> {
+    if source_id.trim().is_empty() || anchor.evidence.iter().any(|evidence| {
+        matches!(evidence, EvidenceWire::Envelope { source_id: saved, .. } if saved != source_id)
+    }) {
+        return Err(invalid("import anchor source identity is absent or contradicts its evidence"));
+    }
+    Ok(())
 }
 
 fn decode_tagged<T>(
@@ -529,5 +572,85 @@ mod tests {
             framed_key(RECORD_BLOB_DOMAIN, b"same bytes").unwrap(),
             framed_key(REQUEST_BLOB_DOMAIN, b"same bytes").unwrap()
         );
+    }
+
+    #[test]
+    fn source_bound_anchor_version_preserves_old_bytes_and_old_reader_refusal() {
+        let old = br#"["er.eventlog.import-anchor/1",{"authority":{"logical_scope":"scope","stream_identity":"generation","tenant":"tenant"},"completeness":"available_evidence_only","evidence":[],"instance":{"entity":"ticket","fields":{"title":"bare"},"id":"bare","lifecycle_state":"open","revision":1,"version":1},"order":"per_kind_only","subject":["ticket","bare"]}]"#;
+        let anchor = decode_anchor(old).expect("existing unbound anchor stays readable");
+        assert_eq!(encode_anchor(&anchor).unwrap(), old.as_slice());
+        let bound = encode_source_anchor("file/source-a", &anchor).unwrap();
+        assert_eq!(decode_anchor(&bound).unwrap(), anchor);
+        assert_ne!(bound, old.as_slice());
+        assert_ne!(
+            bound,
+            encode_source_anchor("file/source-b", &anchor).unwrap()
+        );
+        let old_reader =
+            decode_tagged::<ImportAnchorWrapper>("er.eventlog.import-anchor/1", &bound, |value| {
+                serde_json::from_value(value).map_err(enc)
+            });
+        assert!(matches!(
+            old_reader,
+            Err(AsyncStoreError::ProviderIntegrity { .. })
+        ));
+        assert!(matches!(
+            encode_source_anchor(" \n", &anchor),
+            Err(AsyncStoreError::ProviderIntegrity { .. })
+        ));
+
+        let mut value: Value = serde_json::from_slice(&bound).unwrap();
+        value[1]["unexpected"] = Value::Bool(true);
+        let unknown =
+            canonical_domain_bytes("er.eventlog.import-anchor/2", value[1].clone()).unwrap();
+        assert!(matches!(
+            decode_anchor(&unknown),
+            Err(AsyncStoreError::Encoding(_))
+        ));
+        value[1].as_object_mut().unwrap().remove("unexpected");
+        value[1]["source_id"] = Value::String(String::new());
+        let empty =
+            canonical_domain_bytes("er.eventlog.import-anchor/2", value[1].clone()).unwrap();
+        assert!(matches!(
+            decode_anchor(&empty),
+            Err(AsyncStoreError::ProviderIntegrity { .. })
+        ));
+    }
+
+    #[test]
+    fn source_bound_anchor_refuses_a_contradictory_envelope_source() {
+        let anchor = ImportAnchorWrapper {
+            authority: serde_json::from_str(AUTHORITY).unwrap(),
+            completeness: CompletenessWire::AvailableEvidenceOnly,
+            evidence: vec![EvidenceWire::Envelope {
+                known_order: KnownOrderWire::PerKind((PerKindTag::PerKind, 0)),
+                record_blob: "sha256:record".into(),
+                source_id: "file/source-a".into(),
+                source_locator: "ticket/bare:0".into(),
+            }],
+            instance: entity_core::EntityInstance {
+                entity: "ticket".into(),
+                version: 1,
+                id: "bare".into(),
+                lifecycle_state: "open".into(),
+                revision: 1,
+                fields: serde_json::Map::new(),
+            },
+            order: OrderWire::PerKindOnly,
+            subject: SubjectWire("ticket".into(), "bare".into()),
+        };
+        assert!(matches!(
+            encode_source_anchor("file/source-b", &anchor),
+            Err(AsyncStoreError::ProviderIntegrity { .. })
+        ));
+        let bytes = encode_source_anchor("file/source-a", &anchor).unwrap();
+        let mut value: Value = serde_json::from_slice(&bytes).unwrap();
+        value[1]["source_id"] = Value::String("file/source-b".into());
+        let changed =
+            canonical_domain_bytes("er.eventlog.import-anchor/2", value[1].clone()).unwrap();
+        assert!(matches!(
+            decode_anchor(&changed),
+            Err(AsyncStoreError::ProviderIntegrity { .. })
+        ));
     }
 }

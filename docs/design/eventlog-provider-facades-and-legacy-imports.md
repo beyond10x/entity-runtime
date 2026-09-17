@@ -146,6 +146,18 @@ the exact existing anchor; different bytes at the same destination subject or re
 a conclusive conflict. An unknown native commit remains uncertain until authoritative recovery
 settles it.
 
+The acquisition's `source_id` is part of that exact retry identity even when a subject has no
+envelope evidence. Facade import passes the source identity through the existing bridge and adapter
+and persists it with each anchor. Source-bound anchors use the closed
+`er.eventlog.import-anchor/2` blob below; v1 bytes retain their meaning and are never upgraded by
+guessing a source. A v1 anchor is readable, but cannot satisfy a source-bound retry. A different
+source with identical subject/history bytes conflicts before blob upload or append. Bare decisions,
+events and empty evidence remain bare; source binding creates no fabricated envelope or receipt.
+
+This is the finite correction for the original facade review's lost-source finding. It requires
+same-source reopen/retry, changed-source refusal with no destination change, and v1-reader rejection
+of v2 blobs, in addition to the existing provider and facade gates. No extra review round is added.
+
 After all subject anchors settle, import obtains an actual provider-owned complete snapshot and
 compares its scope, subjects, terminal instances, typed imported evidence, original record IDs and
 known order to the source document. The comparison ignores facts the source never possessed:
@@ -172,11 +184,13 @@ and a late conflict rolls back every earlier member.
 ## Formats and compatibility
 
 No existing FileStore, SQLite or PostgreSQL table or JSON document changes. Acquisition is a
-reader of those formats. No `entity-eventlog` binding, record, request, batch or imported-anchor
-encoding changes. New public acquisition/report types are runtime API data, not a persisted format.
+reader of those formats. Binding, record, request and batch encodings remain unchanged. The
+source-bound imported anchor adds `er.eventlog.import-anchor/2` while preserving `/1` bytes and
+old-reader refusal of `/2`. New public acquisition/report types are runtime API data, not a
+persisted format.
 
-Old readers therefore retain exact bytes. The Eventlog destination uses the already frozen
-canonical `er.record/*`, `er.request/1`, `er.batch/1` and imported-anchor encodings. Corrupt source
+Existing encodings retain exact bytes. The Eventlog destination uses the frozen canonical
+`er.record/*`, `er.request/1`, `er.batch/1` and versioned `/1` and `/2` imported-anchor encodings. Corrupt source
 JSON, duplicated global IDs, stale snapshots, missing Eventlog blobs, substituted authority and
 unknown fields are refusals rather than repair guesses.
 

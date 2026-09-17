@@ -371,10 +371,11 @@ impl RecordedProviderFacade {
         let mut settled = Vec::with_capacity(snapshot.histories.len());
         let mut replayed = 0;
         for history in &snapshot.histories {
-            match self
-                .operation(context.clone())
-                .import_anchor(history.clone(), wait)
-            {
+            match self.operation(context.clone()).import_source_anchor(
+                snapshot.source_id.clone(),
+                history.clone(),
+                wait,
+            ) {
                 Ok(outcome) => {
                     replayed += usize::from(outcome.replayed);
                     settled.push(outcome.assurance);

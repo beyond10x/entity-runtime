@@ -28,8 +28,8 @@ use crate::{
         ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN, ENTRY_BLOB_DOMAIN,
         EvidenceWire, PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, RecordedEntryWrapper,
         SubjectWire, anchor_from_history, decode_anchor, decode_batch, decode_binding,
-        decode_entry, decode_record, encode_anchor, encode_binding, encode_entry, framed_key,
-        history_from_anchor, key_for_value,
+        decode_entry, decode_record, encode_anchor, encode_binding, encode_entry,
+        encode_source_anchor, framed_key, history_from_anchor, key_for_value,
     },
     projection::{
         PROJECTOR_NAME, batch_key as physical_batch_key, batch_spec, binding_spec, physical,
@@ -1273,14 +1273,25 @@ impl AsyncImportedAnchorWriter for EventlogOperationStore<'_> {
         &'a self,
         history: SubjectHistory,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
-        Box::pin(async move { self.import_inner(history).await })
+        Box::pin(async move { self.import_inner(history, None).await })
     }
 }
 
 impl EventlogOperationStore<'_> {
+    /// Imports a legacy boundary with its acquisition source bound into durable replay identity.
+    /// An unbound older anchor cannot establish that source and is not an equal retry.
+    pub async fn import_source_anchor(
+        &self,
+        source_id: String,
+        history: SubjectHistory,
+    ) -> Result<ImportAnchorOutcome, ImportAnchorFailure> {
+        self.import_inner(history, Some(source_id)).await
+    }
+
     async fn import_inner(
         &self,
         history: SubjectHistory,
+        source_id: Option<String>,
     ) -> Result<ImportAnchorOutcome, ImportAnchorFailure> {
         let subject = history.subject.clone();
         let HistoryOrigin::Imported(anchor) = &history.origin else {
@@ -1316,7 +1327,11 @@ impl EventlogOperationStore<'_> {
         }
         let wrapper = anchor_from_history(self.store.authority.clone(), &history, &record_blobs)
             .map_err(ImportAnchorFailure::NotCommitted)?;
-        let bytes = encode_anchor(&wrapper).map_err(ImportAnchorFailure::NotCommitted)?;
+        let bytes = match source_id {
+            Some(source_id) => encode_source_anchor(&source_id, &wrapper),
+            None => encode_anchor(&wrapper),
+        }
+        .map_err(ImportAnchorFailure::NotCommitted)?;
         if let Some(existing) = model.anchors.get(&subject) {
             if *existing == bytes {
                 return Ok(ImportAnchorOutcome {
