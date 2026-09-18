@@ -58,6 +58,12 @@ are refused even when identical, preserving requested ordering and receipt membe
 Empty batches are inert: no IO, key validation/consumption, fingerprint, position or receipt.
 For a fresh request, apply actions in order to a local state overlay, then append once. Do not
 hold a provider transaction while deciding or automatically re-decide stale caller intent.
+The Eventlog synchronous command facade uses one fully verified tenant capture for the related
+identity, history and subject reads of that single executor call. It drops that read view before
+any append attempt; replay or uncertain-outcome recovery after append obtains fresh authority.
+The view is never retained by an ordinary operation handle or shared with a later call. Ordinary
+reader methods continue to capture fresh authority, and the guarded append still rechecks
+physical binding, identities and predecessor heads under its transaction lock.
 
 ## Complete records, comparisons and atomicity
 

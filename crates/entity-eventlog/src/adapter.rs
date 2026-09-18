@@ -1,9 +1,15 @@
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
 };
 
 use entity_core::EntityInstance;
+#[cfg(feature = "sync-bridge")]
+use entity_core::Registry;
+#[cfg(feature = "sync-bridge")]
+use entity_executor::{BatchAction, ExecutionError, Executor};
 use entity_store::{
     Expect,
     asynchronous::{
@@ -42,6 +48,300 @@ use crate::{
 pub trait EventlogBackend:
     EventStore + AtomicEventStore + ConsistentTenantCapture + InlineProjectionAdmin
 {
+}
+
+#[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
+mod batch_read_tests {
+    use super::*;
+    use entity_executor::{CreateRequest, ExecuteRequest};
+    use entity_store::Recording;
+
+    const LIMITS: CaptureLimits = CaptureLimits {
+        max_events: 128,
+        max_blobs: 512,
+        max_projection_rows: 512,
+        max_payload_bytes: 4 * 1024 * 1024,
+    };
+
+    fn context(label: &str) -> EventlogOperationContext {
+        EventlogOperationContext {
+            subject: "batch-read-test".into(),
+            actor: "entity-eventlog-test".into(),
+            request_id: format!("request-{label}"),
+            trace_id: format!("trace-{label}"),
+            causation_id: None,
+            causation_depth: 0,
+            occurred_at: OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    fn registry() -> Registry {
+        let definition = serde_json::from_value(json!({
+            "entity": "ticket",
+            "version": 1,
+            "schema": { "fields": { "title": { "type": "string", "required": true } } },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "operations": {
+                "touch": {
+                    "transitions": [{ "from": "open", "to": "open" }],
+                    "arguments": { "fields": {} },
+                    "emits": []
+                }
+            }
+        }))
+        .expect("definition parses");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("definition validates");
+        registry
+    }
+
+    fn recording(id: &str) -> Recording {
+        Recording {
+            record_id: id.into(),
+            recorded_at: "2026-09-18T00:00:00Z".into(),
+            correlation: None,
+            causation: None,
+            actor: None,
+        }
+    }
+
+    fn create(id: &str, record_id: &str) -> BatchAction {
+        BatchAction::Create(CreateRequest {
+            subject: Subject::new("ticket", id).expect("subject"),
+            definition_version: 1,
+            fields: json!({"title": id}),
+            recording: recording(record_id),
+        })
+    }
+
+    fn touch(id: &str, record_id: &str) -> BatchAction {
+        BatchAction::Execute(ExecuteRequest {
+            subject: Subject::new("ticket", id).expect("subject"),
+            expected_revision: 1,
+            operation: "touch".into(),
+            arguments: json!({}),
+            fulfillments: BTreeMap::new(),
+            recording: recording(record_id),
+        })
+    }
+
+    async fn store() -> EventlogRecordedStore {
+        let backend = Arc::new(
+            eventlog_sqlite::SqliteEventStore::in_memory("batch_read")
+                .await
+                .expect("SQLite provider"),
+        );
+        let tenant = TenantId::new("batch-read-test").expect("tenant");
+        let stream_identity = backend.stream_identity(&tenant).await.expect("generation");
+        let projector = Arc::new(crate::ErRecordedProjector::new());
+        backend
+            .create_projections(projector.clone())
+            .await
+            .expect("projection admission");
+        backend
+            .attach_inline_existing(projector)
+            .await
+            .expect("projection attachment");
+        let authority = Authority {
+            logical_scope: "batch-read-scope".into(),
+            tenant: tenant.as_str().into(),
+            stream_identity,
+        };
+        let erased: Arc<dyn EventlogBackend> = backend;
+        EventlogBindingProvisioner::new(erased.clone(), LIMITS)
+            .provision_binding(authority.clone(), context("binding"))
+            .await
+            .expect("binding");
+        EventlogRecordedStore::open(erased, authority, LIMITS)
+            .await
+            .expect("bound store")
+    }
+
+    fn captures(store: &EventlogRecordedStore) -> usize {
+        store.native_captures.load(Ordering::Relaxed)
+    }
+
+    #[tokio::test]
+    async fn one_native_capture_serves_each_preflight_and_is_never_reused_across_calls() {
+        let store = store().await;
+        let registry = registry();
+        let first_key = BatchKey::Named("first".into());
+        let first: Vec<_> = (0..4)
+            .map(|i| create(&format!("first-{i}"), &format!("first-record-{i}")))
+            .collect();
+        let before = captures(&store);
+        assert_eq!(
+            store
+                .operation(context("empty"))
+                .execute_batch(&registry, BatchKey::Named("".into()), Vec::new())
+                .await
+                .expect("empty batch"),
+            AppendOutcome::Empty
+        );
+        assert_eq!(captures(&store), before, "empty batches do no IO");
+
+        let committed = store
+            .operation(context("first"))
+            .execute_batch(&registry, first_key.clone(), first.clone())
+            .await
+            .expect("four authored decisions commit");
+        assert_eq!(
+            captures(&store) - before,
+            4,
+            "one preflight, append recovery, heads, postcommit verification"
+        );
+        let before = captures(&store);
+        let replay = store
+            .operation(context("first-replay"))
+            .execute_batch(&registry, first_key, first)
+            .await
+            .expect("exact replay");
+        assert!(replay.replayed());
+        assert_eq!(replay.receipt(), committed.receipt());
+        assert_eq!(
+            captures(&store) - before,
+            1,
+            "replay verifies one fresh authority"
+        );
+
+        let second: Vec<_> = (0..4)
+            .map(|i| create(&format!("second-{i}"), &format!("second-record-{i}")))
+            .collect();
+        let before = captures(&store);
+        store
+            .operation(context("second"))
+            .execute_batch(&registry, BatchKey::Named("second".into()), second)
+            .await
+            .expect("second batch commits");
+        assert_eq!(
+            captures(&store) - before,
+            4,
+            "second call takes its own preflight"
+        );
+
+        let pending = touch("later", "later-touch");
+        let before = captures(&store);
+        assert!(
+            store
+                .operation(context("refused"))
+                .execute_batch(
+                    &registry,
+                    BatchKey::SingleRecord("later-touch".into()),
+                    vec![pending.clone()]
+                )
+                .await
+                .expect_err("missing predecessor refuses")
+                .is_revision_conflict()
+        );
+        assert_eq!(captures(&store) - before, 1);
+        store
+            .operation(context("later-create"))
+            .execute_batch(
+                &registry,
+                BatchKey::SingleRecord("later-create".into()),
+                vec![create("later", "later-create")],
+            )
+            .await
+            .expect("authority changes after refusal");
+        let before = captures(&store);
+        store
+            .operation(context("later-touch"))
+            .execute_batch(
+                &registry,
+                BatchKey::SingleRecord("later-touch".into()),
+                vec![pending],
+            )
+            .await
+            .expect("fresh call sees created subject");
+        assert_eq!(captures(&store) - before, 4);
+    }
+
+    #[tokio::test]
+    async fn stale_preflight_is_guarded_and_replayed_append_recovers_from_fresh_capture() {
+        let store = store().await;
+        let registry = registry();
+        let stale = BatchReadStore::new(store.operation(context("stale")));
+        stale
+            .lookup_batch(&BatchKey::Named("stale".into()))
+            .await
+            .expect("preflight");
+        let winner = store
+            .operation(context("winner"))
+            .execute_batch(
+                &registry,
+                BatchKey::SingleRecord("winner".into()),
+                vec![create("same", "winner")],
+            )
+            .await
+            .expect("winner commits");
+        assert!(!winner.replayed());
+        let conflict = Executor::new(&registry, &stale)
+            .batch(
+                BatchKey::SingleRecord("stale".into()),
+                vec![create("same", "stale")],
+            )
+            .await
+            .expect_err("stale predecessor must not append");
+        assert!(conflict.is_revision_conflict(), "{conflict:?}");
+        assert!(
+            store
+                .lookup_record("stale")
+                .await
+                .expect("fresh lookup")
+                .is_none()
+        );
+
+        let action = create("replayed", "replayed");
+        let replay_key = BatchKey::SingleRecord("replayed".into());
+        let pending = BatchReadStore::new(store.operation(context("pending")));
+        pending
+            .lookup_batch(&replay_key)
+            .await
+            .expect("stale empty preflight");
+        let committed = store
+            .operation(context("commit-replayed"))
+            .execute_batch(&registry, replay_key.clone(), vec![action.clone()])
+            .await
+            .expect("other caller commits exact action");
+        let before = captures(&store);
+        let replay = Executor::new(&registry, &pending)
+            .batch(replay_key, vec![action])
+            .await
+            .expect("append replay recovers");
+        assert!(replay.replayed());
+        assert_eq!(replay.receipt(), committed.receipt());
+        assert_eq!(
+            captures(&store) - before,
+            2,
+            "append and executor recovery use fresh captures"
+        );
+    }
+
+    #[tokio::test]
+    async fn lost_append_reply_recovers_with_a_fresh_verified_capture() {
+        let store = store().await;
+        let registry = registry();
+        let key = BatchKey::Named("lost-reply".into());
+        let mut operation = BatchReadStore::new(store.operation(context("lost-reply")));
+        operation.return_uncertain_after_commit = true;
+        let before = captures(&store);
+        let recovered = Executor::new(&registry, &operation)
+            .batch(key.clone(), vec![create("lost-reply", "lost-reply-record")])
+            .await
+            .expect("uncertain append recovers from committed authority");
+        assert!(recovered.replayed());
+        assert_eq!(
+            captures(&store) - before,
+            5,
+            "preflight, guarded write path, postcommit check and fresh recovery"
+        );
+        let committed = store
+            .lookup_batch(&key)
+            .await
+            .expect("fresh authoritative lookup")
+            .expect("committed batch");
+        assert_eq!(recovered.receipt(), Some(&committed.receipt));
+    }
 }
 
 impl<T> EventlogBackend for T where
@@ -97,6 +397,8 @@ pub struct EventlogRecordedStore {
     authority: Authority,
     tenant: TenantId,
     limits: CaptureLimits,
+    #[cfg(test)]
+    native_captures: AtomicUsize,
 }
 
 impl std::fmt::Debug for EventlogRecordedStore {
@@ -135,6 +437,8 @@ impl EventlogRecordedStore {
             authority,
             tenant,
             limits,
+            #[cfg(test)]
+            native_captures: AtomicUsize::new(0),
         };
         let model = store.capture_model().await?;
         if model.binding.is_none() {
@@ -169,6 +473,8 @@ impl EventlogRecordedStore {
     }
 
     async fn capture(&self) -> Result<TenantCapture, AsyncStoreError> {
+        #[cfg(test)]
+        self.native_captures.fetch_add(1, Ordering::Relaxed);
         let capture = self
             .backend
             .capture_tenant(&self.tenant, projection_specs(), self.limits)
@@ -192,6 +498,115 @@ impl EventlogRecordedStore {
 pub struct EventlogOperationStore<'a> {
     store: &'a EventlogRecordedStore,
     context: EventlogOperationContext,
+}
+
+/// The executor's reads for one command share a verified capture. The writer clears it before
+/// attempting an append, so replay and uncertain-outcome recovery acquire fresh authority.
+#[cfg(feature = "sync-bridge")]
+pub(crate) struct BatchReadStore<'a> {
+    operation: EventlogOperationStore<'a>,
+    model: Mutex<Option<Arc<CapturedModel>>>,
+    #[cfg(test)]
+    return_uncertain_after_commit: bool,
+}
+
+#[cfg(feature = "sync-bridge")]
+impl<'a> BatchReadStore<'a> {
+    pub(crate) fn new(operation: EventlogOperationStore<'a>) -> Self {
+        Self {
+            operation,
+            model: Mutex::new(None),
+            #[cfg(test)]
+            return_uncertain_after_commit: false,
+        }
+    }
+
+    async fn model(&self) -> Result<Arc<CapturedModel>, AsyncStoreError> {
+        if let Some(model) = self.model.lock().expect("batch read lock").as_ref() {
+            return Ok(Arc::clone(model));
+        }
+        let captured = Arc::new(self.operation.store.capture_model().await?);
+        let mut slot = self.model.lock().expect("batch read lock");
+        Ok(Arc::clone(slot.get_or_insert(captured)))
+    }
+}
+
+#[cfg(feature = "sync-bridge")]
+impl AsyncStateReader for BatchReadStore<'_> {
+    fn load<'a>(
+        &'a self,
+        subject: &'a Subject,
+    ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>> {
+        Box::pin(async move { Ok(self.model().await?.terminals.get(subject).cloned()) })
+    }
+}
+
+#[cfg(feature = "sync-bridge")]
+impl AsyncRecordedReader for BatchReadStore<'_> {
+    fn lookup_record<'a>(
+        &'a self,
+        record_id: &'a str,
+    ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>> {
+        Box::pin(async move { Ok(self.model().await?.records.get(record_id).cloned()) })
+    }
+
+    fn lookup_batch<'a>(
+        &'a self,
+        key: &'a BatchKey,
+    ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>> {
+        Box::pin(async move { Ok(self.model().await?.batches.get(key).cloned()) })
+    }
+
+    fn history<'a>(
+        &'a self,
+        subject: &'a Subject,
+    ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>> {
+        Box::pin(async move {
+            Ok(self
+                .model()
+                .await?
+                .histories
+                .get(subject)
+                .cloned()
+                .unwrap_or_else(|| SubjectHistory {
+                    subject: subject.clone(),
+                    origin: HistoryOrigin::Genesis,
+                    records: Vec::new(),
+                }))
+        })
+    }
+
+    fn complete_snapshot<'a>(
+        &'a self,
+        scope: &'a str,
+    ) -> BoxFuture<'a, Result<CompleteStoreSnapshot, AsyncStoreError>> {
+        self.operation.complete_snapshot(scope)
+    }
+}
+
+#[cfg(feature = "sync-bridge")]
+impl AsyncRecordedWriter for BatchReadStore<'_> {
+    fn append<'a>(
+        &'a self,
+        request: AppendRequest,
+    ) -> BoxFuture<'a, Result<AppendOutcome, WriteFailure>> {
+        Box::pin(async move {
+            self.model.lock().expect("batch read lock").take();
+            #[cfg(test)]
+            let key = request.key.clone();
+            let outcome = self.operation.append(request).await;
+            #[cfg(test)]
+            if self.return_uncertain_after_commit
+                && matches!(&outcome, Ok(AppendOutcome::Committed { .. }))
+            {
+                return Err(WriteFailure::Uncertain {
+                    key: key.expect("committed request has a key"),
+                    cause: "test-only lost append reply".into(),
+                });
+            }
+            outcome
+        })
+    }
 }
 
 impl AsyncStateReader for EventlogRecordedStore {
@@ -311,6 +726,21 @@ impl AsyncRecordedWriter for EventlogOperationStore<'_> {
 }
 
 impl EventlogOperationStore<'_> {
+    /// Executes one recorded batch with a verified read view scoped to this call.
+    ///
+    /// # Errors
+    /// Invalid input, kernel refusal, conflicting or corrupt evidence, or append failure.
+    #[cfg(feature = "sync-bridge")]
+    pub(crate) async fn execute_batch(
+        self,
+        registry: &Registry,
+        key: BatchKey,
+        actions: Vec<BatchAction>,
+    ) -> Result<AppendOutcome, ExecutionError> {
+        let reads = BatchReadStore::new(self);
+        Executor::new(registry, &reads).batch(key, actions).await
+    }
+
     async fn append_inner(&self, request: AppendRequest) -> Result<AppendOutcome, WriteFailure> {
         request.validate().map_err(WriteFailure::NotCommitted)?;
         let Some(key) = request.key.clone() else {

@@ -14,7 +14,7 @@ use std::{
 };
 
 use entity_core::{EntityInstance, Registry};
-use entity_executor::{BatchAction, CreateRequest, ExecuteRequest, ExecutionError, Executor};
+use entity_executor::{BatchAction, CreateRequest, ExecuteRequest, ExecutionError};
 use entity_store::{
     RecordedObservation,
     asynchronous::{
@@ -668,9 +668,10 @@ impl WorkerDriver for ProductionDriver {
         request: CreateRequest,
     ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
         Box::pin(async move {
-            let operation = self.store.operation(context);
-            Executor::new(&self.registry, &operation)
-                .create(request)
+            let key = BatchKey::SingleRecord(request.recording.record_id.clone());
+            self.store
+                .operation(context)
+                .execute_batch(&self.registry, key, vec![BatchAction::Create(request)])
                 .await
         })
     }
@@ -681,9 +682,10 @@ impl WorkerDriver for ProductionDriver {
         request: ExecuteRequest,
     ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
         Box::pin(async move {
-            let operation = self.store.operation(context);
-            Executor::new(&self.registry, &operation)
-                .execute(request)
+            let key = BatchKey::SingleRecord(request.recording.record_id.clone());
+            self.store
+                .operation(context)
+                .execute_batch(&self.registry, key, vec![BatchAction::Execute(request)])
                 .await
         })
     }
@@ -694,9 +696,10 @@ impl WorkerDriver for ProductionDriver {
         request: RecordedObservation,
     ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
         Box::pin(async move {
-            let operation = self.store.operation(context);
-            Executor::new(&self.registry, &operation)
-                .observe(request)
+            let key = BatchKey::SingleRecord(request.envelope.record_id.clone());
+            self.store
+                .operation(context)
+                .execute_batch(&self.registry, key, vec![BatchAction::Observe(request)])
                 .await
         })
     }
@@ -708,9 +711,9 @@ impl WorkerDriver for ProductionDriver {
         actions: Vec<BatchAction>,
     ) -> BoxFuture<'a, Result<AppendOutcome, ExecutionError>> {
         Box::pin(async move {
-            let operation = self.store.operation(context);
-            Executor::new(&self.registry, &operation)
-                .batch(key, actions)
+            self.store
+                .operation(context)
+                .execute_batch(&self.registry, key, actions)
                 .await
         })
     }
