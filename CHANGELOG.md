@@ -77,10 +77,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - Every crate that depends on the Eventlog providers — `entity-eventlog`, `entity-sqlite`,
   `entity-postgres` and `entity-cli` — pins them to
   `c698923038de4413e0bbba3cd91ae108607d6be9`, which verifies history and blobs once per open and
-  re-checks only what a transaction changed. A caller making repeated reads against an already-open
-  store no longer pays whole-store verification per transaction; stored bytes, guarded append,
-  receipts, recovery and refusals are unchanged. The four manifests name one commit, so a consumer
-  enabling `eventlog-facade` or `eventlog-providers` resolves a single `eventlog-core`.
+  re-checks only what a transaction changed. Measured through the runtime adapter over a
+  48-record store: 48 commits cost 29.97 s and 53.22 s against 74.86 s and 65.54 s before, while a
+  read through an already-open handle is unchanged at about 240 ms — the adapter verifies every
+  blob it reads against its own domain-framed digest, so the saving a caller sees here is on the
+  write path. Stored bytes, guarded append, receipts, recovery and refusals are unchanged. The four
+  manifests name one commit, so a consumer enabling `eventlog-facade` or `eventlog-providers`
+  resolves a single `eventlog-core`.
 
 - `entity-sqlite` selects the exact bundled `rusqlite` 0.40.2 line shared with its Eventlog
   provider, preserving the existing schema, storage semantics and Rust minimums while allowing
