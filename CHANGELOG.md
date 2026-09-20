@@ -74,6 +74,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Changed
 
+- Every crate that depends on the Eventlog providers — `entity-eventlog`, `entity-sqlite`,
+  `entity-postgres` and `entity-cli` — pins them to
+  `c698923038de4413e0bbba3cd91ae108607d6be9`, which verifies history and blobs once per open and
+  re-checks only what a transaction changed. A caller making repeated reads against an already-open
+  store no longer pays whole-store verification per transaction; stored bytes, guarded append,
+  receipts, recovery and refusals are unchanged. The four manifests name one commit, so a consumer
+  enabling `eventlog-facade` or `eventlog-providers` resolves a single `eventlog-core`.
+
 - `entity-sqlite` selects the exact bundled `rusqlite` 0.40.2 line shared with its Eventlog
   provider, preserving the existing schema, storage semantics and Rust minimums while allowing
   both providers in one consumer dependency graph.

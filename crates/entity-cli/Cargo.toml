@@ -28,7 +28,7 @@ entity-store = { path = "../entity-store", version = "0.18.1" }
 entity-yaml = { path = "../entity-yaml", version = "0.18.1" }
 entity-eventlog = { path = "../entity-eventlog", version = "0.18.1", features = ["sync-bridge", "file"], optional = true }
 entity-executor = { path = "../entity-executor", version = "0.18.1", optional = true }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "f802eb8b01b44ba04a93394b20f0c07391f7757a", optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "c698923038de4413e0bbba3cd91ae108607d6be9", optional = true }
 time = { version = "0.3", features = ["parsing"], optional = true }
 serde.workspace = true
 serde_json.workspace = true
