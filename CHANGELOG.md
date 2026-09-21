@@ -76,8 +76,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 - Every crate that depends on the Eventlog providers — `entity-eventlog`, `entity-sqlite`,
   `entity-postgres` and `entity-cli` — pins them to
-  `c698923038de4413e0bbba3cd91ae108607d6be9`, which verifies history and blobs once per open and
-  re-checks only what a transaction changed. Measured through the runtime adapter over a
+  `db608cd4152e6a2370e8ef0e3a562d7a829cf34a`, which verifies history and blobs once per open and
+  re-checks only what a transaction changed, and which proves on every resume that the committed
+  prefix is still the one it verified — a committed frame damaged in place after `open` refuses
+  without altering the history, as it did before the once-per-open change.
+  Measured through the runtime adapter over a
   48-record store: 48 commits cost 29.97 s and 53.22 s against 74.86 s and 65.54 s before, while a
   read through an already-open handle is unchanged at about 240 ms — the adapter verifies every
   blob it reads against its own domain-framed digest, so the saving a caller sees here is on the
