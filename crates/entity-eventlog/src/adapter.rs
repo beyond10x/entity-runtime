@@ -1306,6 +1306,23 @@ async fn resolve_subject_state(
     }
 }
 
+/// The revision a destination can point at for a subject it already answers for.
+///
+/// `None` means the destination holds nothing for this subject — which is the absence of a
+/// conflict, not a conflict whose value is unknown. Callers use that distinction to keep
+/// `expected: Absent, found: None` — a report that a subject was expected absent and found
+/// absent — from being constructible.
+fn occupied_revision(model: &CapturedModel, subject: &Subject) -> Option<u64> {
+    model
+        .terminals
+        .get(subject)
+        .map(|instance| instance.revision)
+        .or_else(|| match model.histories.get(subject)?.origin {
+            HistoryOrigin::Imported(ref anchor) => Some(anchor.instance.revision),
+            HistoryOrigin::Genesis => None,
+        })
+}
+
 fn validate_group_result(
     result: &eventlog_core::AppendGroupResult,
     members: usize,
@@ -2049,7 +2066,7 @@ impl EventlogOperationStore<'_> {
             }
         }
 
-        let model = self
+        let mut model = self
             .store
             .capture_model()
             .await
@@ -2087,6 +2104,7 @@ impl EventlogOperationStore<'_> {
             }
         }
         drop(claimed);
+        let held = std::mem::take(&mut model.held);
         drop(model);
         let pending: Vec<&PreparedImport> = prepared
             .iter()
@@ -2101,6 +2119,60 @@ impl EventlogOperationStore<'_> {
                     replayed: true,
                 })
                 .collect());
+        }
+
+        // What this batch would add to what the destination already holds, against the bounds
+        // this handle reads it back with. A writer that commits past its own reader leaves a
+        // destination it cannot read — and because this call reports its outcome by reading the
+        // destination back, it would also lose every receipt for what it had just committed.
+        // The singular path overshoots its reader by at most the one event it wrote and the next
+        // call refuses; a batch would overshoot by the whole batch, in one commit.
+        //
+        // Counted before a byte is uploaded, so the refusal costs nothing and leaves nothing. A
+        // caller that meets it divides the work and calls again; `CaptureLimits` is the caller's
+        // own, so the bound it is measured against is the one it chose.
+        let limits = self.store.limits;
+        let added_rows: u64 = pending
+            .iter()
+            .map(|item| 1 + item.record_ids.len() as u64)
+            .sum();
+        let added_blobs = pending
+            .iter()
+            .flat_map(|item| {
+                item.uploads
+                    .iter()
+                    .map(|(digest, _)| digest)
+                    .chain(std::iter::once(&item.anchor_digest))
+            })
+            .filter(|digest| !held.digests.contains(digest.as_str()))
+            .collect::<BTreeSet<_>>()
+            .len() as u64;
+        for (bound, limit, would_hold) in [
+            (
+                "max_events",
+                limits.max_events,
+                held.events.saturating_add(pending.len() as u64),
+            ),
+            (
+                "max_blobs",
+                limits.max_blobs,
+                held.blobs.saturating_add(added_blobs),
+            ),
+            (
+                "max_projection_rows",
+                limits.max_projection_rows,
+                held.rows.saturating_add(added_rows),
+            ),
+        ] {
+            if would_hold > limit {
+                return Err(ImportAnchorFailure::NotCommitted(
+                    AsyncStoreError::BatchExceedsReadBounds {
+                        bound: bound.to_owned(),
+                        limit,
+                        would_hold,
+                    },
+                ));
+            }
         }
 
         let command_key = key_for_value(
@@ -2225,19 +2297,44 @@ impl EventlogOperationStore<'_> {
             Err(EventLogError::Conflict { .. } | EventLogError::IdempotencyMismatch { .. }) => {
                 match self.store.capture_model().await {
                     Ok(model) => {
-                        let mismatched = pending.iter().find(|item| {
-                            model.anchors.get(&item.subject) != Some(&item.anchor_bytes)
-                        });
-                        if let Some(item) = mismatched {
-                            return Err(ImportAnchorFailure::NotCommitted(
-                                AsyncStoreError::RevisionConflict {
-                                    subject: item.subject.clone(),
-                                    expected: Expect::Absent,
-                                    found: model.terminals.get(&item.subject).map(|i| i.revision),
-                                },
-                            ));
+                        // Every member present under this batch's own bytes: the group is a
+                        // replay of one already committed, which is what idempotency is for.
+                        if pending.iter().all(|item| {
+                            model.anchors.get(&item.subject) == Some(&item.anchor_bytes)
+                        }) {
+                            true
+                        } else {
+                            // Otherwise something holds a subject this group required absent.
+                            // Name the member that is actually held — not the first member whose
+                            // anchor is missing, which is an innocent member that simply was not
+                            // written because the group refused as a whole. Reporting that one
+                            // produced `expected: Absent, found: None`: the subject was expected
+                            // absent and found absent, which describes no conflict at all.
+                            //
+                            // A conflict is only claimed when the destination can say what it
+                            // holds. Where it cannot, the outcome is unresolved and says so,
+                            // which is why `found: None` cannot be produced here.
+                            let occupied = pending.iter().find_map(|item| {
+                                occupied_revision(&model, &item.subject)
+                                    .map(|revision| (item, revision))
+                            });
+                            match occupied {
+                                Some((item, revision)) => {
+                                    return Err(ImportAnchorFailure::NotCommitted(
+                                        AsyncStoreError::RevisionConflict {
+                                            subject: item.subject.clone(),
+                                            expected: Expect::Absent,
+                                            found: Some(revision),
+                                        },
+                                    ));
+                                }
+                                None => {
+                                    return Err(uncertain(
+                                        ImportAnchorUncertainty::RecoveryUnavailable,
+                                    ));
+                                }
+                            }
                         }
-                        true
                     }
                     Err(_) => return Err(uncertain(ImportAnchorUncertainty::RecoveryUnavailable)),
                 }
@@ -2325,22 +2422,20 @@ impl Guard for ImportGuard {
             // each other's next lock. A per-member loop in caller order gives that sequence away
             // to the caller.
             //
-            // The set is also what answers a record identity two members share: the guard sees
-            // each member's keys before any of this group's entries exist, so the store cannot
-            // report the collision and the set has to.
+            // A duplicate key within the group is not refused here, because nothing can present
+            // one. Two members sharing a record identity are refused from the batch's own capture
+            // in step 1 (`a_batch_refuses_a_record_identity_two_of_its_members_share`), and one
+            // anchor naming a record twice is refused further up still, by
+            // `verify_subject_history`, as `CorruptHistory { detail: "an imported record identity
+            // appears more than once" }` (`one_anchor_naming_a_record_identity_twice_is_refused`).
+            // A refusal arm nothing can reach is not a safety net; it is a comment that compiles,
+            // and it would report a different error than either reacher already does.
             let mut records = BTreeMap::new();
             for member in &self.members {
                 for id in &member.record_ids {
                     let key = record_key(&self.authority, id)
                         .map_err(|error| EventLogError::Invalid(error.to_string()))?;
-                    if records
-                        .insert(key, (id, member.anchor_digest.as_str()))
-                        .is_some()
-                    {
-                        return self.refuse(AsyncStoreError::RecordConflict {
-                            record_id: id.clone(),
-                        });
-                    }
+                    records.insert(key, (id, member.anchor_digest.as_str()));
                 }
             }
             // A row this group already wrote is not somebody else's. A batch-bearing retry is
@@ -2387,12 +2482,25 @@ impl Guard for ImportGuard {
                     .await?
                 {
                     let body = tagged_body(&row, "er.eventlog.subject-index/1")?;
-                    if body
+                    // `origin` alone is not evidence the row is still the row this anchor wrote.
+                    // `fold_subject_source` copies `origin` verbatim onto every later entry
+                    // (`projection.rs:371-378`), so a subject that was imported and has since
+                    // taken a decision or an observation still names this anchor there. What
+                    // moves with the subject is `state_source`: the import writes
+                    // `{"kind":"anchor","anchor_blob":…}` and the first suffix entry replaces it.
+                    // Requiring both is what distinguishes "the row my own commit wrote" from
+                    // "a subject my anchor started and somebody has since appended to".
+                    let still_the_anchor = body
                         .get("origin")
                         .and_then(|origin| origin.get("anchor_blob"))
                         .and_then(Value::as_str)
-                        != Some(*anchor_digest)
-                    {
+                        == Some(*anchor_digest)
+                        && body
+                            .get("state_source")
+                            .and_then(|source| source.get("anchor_blob"))
+                            .and_then(Value::as_str)
+                            == Some(*anchor_digest);
+                    if !still_the_anchor {
                         let found = body.get("revision").and_then(Value::as_u64);
                         return self.refuse(AsyncStoreError::RevisionConflict {
                             subject: (*subject).clone(),
@@ -2426,8 +2534,24 @@ impl ImportGuard {
     }
 }
 
+/// What the capture this model was built from actually charged against its limits.
+///
+/// Counts only. The payload-byte charge is deliberately absent: computing it would re-encode
+/// every event, blob and projection row of the whole authority on every capture, which is the
+/// per-capture cost over the whole store that batching exists to remove. The three counts are
+/// free — they are vector lengths — and are exact.
+#[derive(Default)]
+struct CaptureHeld {
+    events: u64,
+    blobs: u64,
+    rows: u64,
+    /// Which blobs are already bound, so a batch counts only the ones it would add.
+    digests: BTreeSet<String>,
+}
+
 #[derive(Default)]
 struct CapturedModel {
+    held: CaptureHeld,
     binding: Option<PhysicalRef>,
     histories: BTreeMap<Subject, SubjectHistory>,
     terminals: BTreeMap<Subject, EntityInstance>,
@@ -2455,7 +2579,19 @@ fn build_model(
         .into_iter()
         .map(|blob| (blob.digest, blob.bytes))
         .collect();
-    let mut model = CapturedModel::default();
+    let mut model = CapturedModel {
+        held: CaptureHeld {
+            events: capture.events.len() as u64,
+            blobs: blobs.len() as u64,
+            rows: capture
+                .projections
+                .iter()
+                .map(|projection| projection.rows.len() as u64)
+                .sum(),
+            digests: blobs.keys().cloned().collect(),
+        },
+        ..CapturedModel::default()
+    };
     let mut pending = Vec::new();
     for event in &capture.events {
         if event.is_redacted() || event.schema_version != 1 {

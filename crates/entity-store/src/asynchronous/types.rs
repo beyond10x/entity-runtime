@@ -710,6 +710,21 @@ pub enum AsyncStoreError {
         /// Coordinate domain.
         domain: String,
     },
+    /// Committing this write would put the destination past a bound the caller set on its own
+    /// reads of it.
+    ///
+    /// A writer that commits more than its own reader admits leaves a destination it can no
+    /// longer read — and, for a write that reports its outcome by reading the destination back,
+    /// no way to report what it committed. Refusing before the write is what lets a caller
+    /// divide the work to fit bounds it chose, rather than discover the bound afterwards.
+    BatchExceedsReadBounds {
+        /// The bound's name, as the provider enforcing it calls it.
+        bound: String,
+        /// The value the caller set.
+        limit: u64,
+        /// What the destination would hold if this write committed.
+        would_hold: u64,
+    },
     /// The named authority could not be reached, which proves neither absence nor rollback.
     Unreachable {
         /// Provider name.
@@ -777,6 +792,15 @@ impl fmt::Display for AsyncStoreError {
             Self::PositionExhausted { domain } => {
                 write!(formatter, "{domain} physical position is exhausted")
             }
+            Self::BatchExceedsReadBounds {
+                bound,
+                limit,
+                would_hold,
+            } => write!(
+                formatter,
+                "committing this batch would hold {would_hold} against a {bound} of {limit}, \
+                 which is the bound this caller reads the destination with"
+            ),
             Self::Unreachable { provider, detail } => {
                 write!(formatter, "{provider} could not be reached: {detail}")
             }

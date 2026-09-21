@@ -37,7 +37,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   the same bytes, keys and receipts and only the single barrier lost. A retry that carries its
   batch is admitted a second time, so the destination guard now refuses an occupied record or
   subject only after checking which anchor occupies it — a retry of a batch's own commit settles
-  instead of being refused into a second append. The singular entry points are unchanged.
+  instead of being refused into a second append. A batch refuses before it writes when committing
+  it would put the destination past the `CaptureLimits` its own handle reads it back with, as
+  `AsyncStoreError::BatchExceedsReadBounds`, so a caller can divide the work to bounds it chose
+  rather than discover them afterwards. When a batch is blocked by a subject another writer holds,
+  the refusal names that subject and the revision it is actually at. The singular entry points are
+  unchanged.
   `EventlogRecordedStore::calls()` reports the captures a handle has taken, so a caller can assert
   that fixed cost.
 - Eventlog-backed File, SQLite and PostgreSQL facades preserve complete recorded receipts,

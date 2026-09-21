@@ -345,12 +345,12 @@ The batch changes what is *read*, never what is *written*:
    the request hash is `K("er.eventlog.import-batch-request/1", C([anchor_digest…]))`. Command
    metadata is Eventlog's own command bookkeeping and appears in no anchor, blob key or receipt, so
    a batch's differing keys do not change what the destination retains.
-4. One `ImportGuard` locks the binding row once and then, per member in the group's order, that
-   member's global record keys in the selected total order and its subject key — the same checks
-   the singular guard performs. It takes them in one order derived from the keys themselves rather
-   than from the order the caller listed its members in, so two overlapping batches take the same
-   locks in the same sequence whoever assembled them. Any refusal refuses the whole group, so a
-   batch commits completely or not at all.
+4. One `ImportGuard` locks the binding row once, then every member's global record keys, then
+   every member's subject key — the same checks the singular guard performs, and for a one-member
+   group the same order. Both sets are locked in an order derived from the keys themselves, not
+   from the order the caller listed its members in, so two overlapping batches take the same locks
+   in the same sequence whoever assembled them. Any refusal refuses the whole group, so a batch
+   commits completely or not at all.
 
    **The guard is idempotent over its own commit, and that is a requirement rather than a
    courtesy.** A retry that carries a batch is admitted again — the port runs admission before it
@@ -359,7 +359,12 @@ The batch changes what is *read*, never what is *written*:
    committed. It therefore refuses an occupied record or subject row only after asking *by what*
    it is occupied: the row carries the `anchor_blob` of the anchor that wrote it, and a row naming
    this member's own anchor digest was written by bytes identical to the ones being submitted.
-   Anything else is another writer's and is still refused. Reading "occupied" alone would refuse
+   For a subject row that is necessary but not sufficient — `fold_subject_source`
+   (`projection.rs:371-378`) copies `origin` verbatim onto every later entry, so a subject this
+   anchor started and somebody has since appended to still names this anchor there. What moves
+   with the subject is `state_source`, which the import writes as
+   `{"kind":"anchor","anchor_blob":…}` and the first suffix entry replaces, so the guard requires
+   both. Anything else is another writer's and is still refused. Reading "occupied" alone would refuse
    the retry idempotency exists to serve, and the caller's only way forward would be a new command
    key — which appends every member of the batch a second time, into a log that has no delete
    (`a_batch_bearing_retry_is_admitted_over_the_commit_it_already_made`).
@@ -370,21 +375,55 @@ The batch changes what is *read*, never what is *written*:
    bound, so a refused batch leaves no byte of itself behind, not even a bound orphan blob for a
    member the guard never objected to
    (`a_refused_member_leaves_no_part_of_the_batch_committed`). On a provider that takes the port's
-   default, the default is the singular sequence — every blob uploaded on its own path, then the
-   guarded group — and a refusal can leave those blobs bound as orphans, exactly as the singular
-   `import_anchor` can. Both are admissible: an unreferenced content-addressed blob is
-   non-authority and binds nothing.
+   default, the default itself writes nothing at all — it fails closed, refusing with
+   `UNAVAILABLE` as step 3 describes — and the blobs are uploaded by **this adapter's own fallback
+   loop**, one at a time, before it calls `append_group_guarded`. A refusal after that point can
+   leave those blobs bound as orphans, exactly as the singular `import_anchor` can, and for the
+   same reason: they were written by the same `EventStore::put_blob` calls. Both are admissible —
+   an unreferenced content-addressed blob is non-authority and binds nothing — but the component
+   that wrote them is this adapter, not the port
+   (`the_port_default_fails_closed_and_binds_no_blob`, and
+   `a_batch_import_commits_through_the_port_default_on_the_sqlite_provider` for the upload).
 
    What holds on *every* provider is narrower and is the part worth relying on: the refusals this
    adapter can see from its own capture — a record identity already taken, one shared by two
    members, a subject already answered for — are made in step 1 and 2, before a single blob is
    uploaded. `import_batch_blob_binding.rs` holds that on SQLite, which takes the default.
+
+   **That is also why the guard is reached only by a second writer.** Under a single writer the
+   pre-capture answers, from the same authority, every refusal the guard could give, and answers
+   it earlier and more cheaply. The guard's arms are reached when a capture is *stale* — a second
+   importer whose pre-capture predates another writer's commit — and that is what
+   `the_guard_refuses_a_record_identity_another_writer_committed_after_the_pre_capture` and
+   `the_guard_refuses_a_subject_another_writer_answered_for_under_different_bytes` construct,
+   deterministically, by pinning one capture. The guard had a third arm, refusing a record
+   identity two members of one group share; it was removed rather than left as cover, because
+   nothing can present one: the cross-member case is refused in step 1 and the within-anchor case
+   is refused above this adapter entirely, by `verify_subject_history`
+   (`one_anchor_naming_a_record_identity_twice_is_refused`).
+4b. Before any of that — before the blobs of step 3 are uploaded — count what the group would add
+   against the `CaptureLimits` this handle reads the destination back with, and refuse with
+   `AsyncStoreError::BatchExceedsReadBounds` if it would exceed them. A writer that commits past
+   its own reader leaves a destination it cannot read, and because step 5 reports the outcome by
+   reading the destination back, it would also lose every receipt for what it had just committed.
+   The singular path overshoots its reader by at most the one event it wrote and the next call
+   refuses; a batch would overshoot by the whole batch in one commit. The three counts — events,
+   blobs not already bound, and projection rows — are exact and free. The payload-byte cap is
+   deliberately **not** checked: computing what a capture holds against it means re-encoding every
+   event, blob and row of the whole authority on every capture, which is the per-capture cost over
+   the whole store that batching exists to remove. A caller that meets this refusal divides the
+   work; the limits are its own, so the bound is one it chose.
 5. Take **one** post-capture and verify every member's anchor bytes and returned `PhysicalRef`
    before returning one outcome per input, in the input's order.
 
 `UnknownCommit`, `Conflict` and `IdempotencyMismatch` resolve against semantic authority exactly as
-above, over the whole set: every member's anchor present is a replay, the first member absent is
-the typed conflict, and unsettled authority is `Uncertain`. The group is atomic, so its members
+above, over the whole set: every member's anchor present under this batch's own bytes is a replay.
+Otherwise something holds a subject the group required absent, and the member named is **the one
+that is actually held** — not the first member whose anchor is missing, which is an innocent member
+that simply was not written because the group refused as a whole. A conflict is reported only when
+the destination can say what revision it holds, so `expected: Absent, found: None` — a report that
+a subject was expected absent and was found absent, which describes no conflict — cannot be
+produced. Where the destination cannot say, the outcome is `Uncertain` and says so. The group is atomic, so its members
 share one outcome and an uncertain batch names its first pending subject; settling that subject
 settles the rest.
 
