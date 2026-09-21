@@ -1,8 +1,9 @@
-#[cfg(test)]
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
+    collections::{BTreeMap, BTreeSet},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use entity_core::EntityInstance;
@@ -391,13 +392,24 @@ impl EventlogOperationContext {
     }
 }
 
+/// What one store handle has actually asked its provider for.
+///
+/// A capture verifies every blob digest of the whole authority, so its cost grows with the store.
+/// A caller proving that a batch costs a fixed number of them — rather than a number that grows
+/// with the batch — reads this counter, because no assertion about wall clock can say the same
+/// thing on a machine under load.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StoreCalls {
+    /// Complete authoritative tenant captures taken through this handle.
+    pub captures: usize,
+}
+
 /// Bound, non-initializing Eventlog implementation of complete recorded reads.
 pub struct EventlogRecordedStore {
     backend: Arc<dyn EventlogBackend>,
     authority: Authority,
     tenant: TenantId,
     limits: CaptureLimits,
-    #[cfg(test)]
     native_captures: AtomicUsize,
 }
 
@@ -416,6 +428,14 @@ impl EventlogRecordedStore {
     #[must_use]
     pub const fn authority(&self) -> &Authority {
         &self.authority
+    }
+
+    /// Provider work this handle has done since it was opened.
+    #[must_use]
+    pub fn calls(&self) -> StoreCalls {
+        StoreCalls {
+            captures: self.native_captures.load(Ordering::Relaxed),
+        }
     }
 
     /// Opens an already provisioned, already attached store without mutating provider state.
@@ -437,7 +457,6 @@ impl EventlogRecordedStore {
             authority,
             tenant,
             limits,
-            #[cfg(test)]
             native_captures: AtomicUsize::new(0),
         };
         let model = store.capture_model().await?;
@@ -473,7 +492,6 @@ impl EventlogRecordedStore {
     }
 
     async fn capture(&self) -> Result<TenantCapture, AsyncStoreError> {
-        #[cfg(test)]
         self.native_captures.fetch_add(1, Ordering::Relaxed);
         let capture = self
             .backend
@@ -1664,6 +1682,23 @@ pub trait AsyncImportedAnchorWriter: Send + Sync {
         &'a self,
         history: SubjectHistory,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>>;
+
+    /// Atomically establishes every verified imported boundary of one batch.
+    ///
+    /// The batch writes exactly the anchors, blob keys and receipts that the same histories
+    /// written one at a time through [`AsyncImportedAnchorWriter::import_anchor`] write, in the
+    /// same subject streams, and returns one outcome per input in the input's order. What it does
+    /// not do is verify the whole destination once per subject: it takes one capture to verify
+    /// every anchor against, publishes one atomic append group, and takes one capture to verify
+    /// the result — a fixed cost rather than one that grows with the batch.
+    ///
+    /// A batch commits completely or not at all: any refusal, from this adapter or from the
+    /// destination guard, leaves none of its members committed. An empty batch settles without
+    /// reaching the provider.
+    fn import_anchors<'a>(
+        &'a self,
+        histories: Vec<SubjectHistory>,
+    ) -> BoxFuture<'a, Result<Vec<ImportAnchorOutcome>, ImportAnchorFailure>>;
 }
 
 /// Result of a settled imported boundary.
@@ -1705,6 +1740,28 @@ impl AsyncImportedAnchorWriter for EventlogOperationStore<'_> {
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
         Box::pin(async move { self.import_inner(history, None).await })
     }
+
+    fn import_anchors<'a>(
+        &'a self,
+        histories: Vec<SubjectHistory>,
+    ) -> BoxFuture<'a, Result<Vec<ImportAnchorOutcome>, ImportAnchorFailure>> {
+        Box::pin(async move { self.import_batch_inner(histories, None).await })
+    }
+}
+
+/// Everything one imported boundary contributes to the destination, decided without reading it.
+///
+/// Both import paths build this with the same code, which is what makes a batch's bytes the
+/// bytes the singular path would have written: the anchor, the blob keys it is stored under and
+/// the record blobs it binds are all decided here, from the caller's history and this store's
+/// authority alone.
+struct PreparedImport {
+    subject: Subject,
+    assurance: SubjectAssurance,
+    record_ids: Vec<String>,
+    uploads: Vec<(String, Vec<u8>)>,
+    anchor_bytes: Vec<u8>,
+    anchor_digest: String,
 }
 
 impl EventlogOperationStore<'_> {
@@ -1718,12 +1775,27 @@ impl EventlogOperationStore<'_> {
         self.import_inner(history, Some(source_id)).await
     }
 
-    async fn import_inner(
+    /// Imports a batch of legacy boundaries bound to one acquisition source.
+    ///
+    /// The batch equivalent of [`EventlogOperationStore::import_source_anchor`], with the
+    /// atomicity and single-capture cost described on
+    /// [`AsyncImportedAnchorWriter::import_anchors`].
+    ///
+    /// # Errors
+    /// The first member this adapter or the destination guard refuses, with nothing committed.
+    pub async fn import_source_anchors(
         &self,
-        history: SubjectHistory,
-        source_id: Option<String>,
-    ) -> Result<ImportAnchorOutcome, ImportAnchorFailure> {
-        let subject = history.subject.clone();
+        source_id: String,
+        histories: Vec<SubjectHistory>,
+    ) -> Result<Vec<ImportAnchorOutcome>, ImportAnchorFailure> {
+        self.import_batch_inner(histories, Some(source_id)).await
+    }
+
+    fn prepare_import(
+        &self,
+        history: &SubjectHistory,
+        source_id: Option<&str>,
+    ) -> Result<PreparedImport, ImportAnchorFailure> {
         let HistoryOrigin::Imported(anchor) = &history.origin else {
             return Err(ImportAnchorFailure::NotCommitted(
                 AsyncStoreError::InvalidInput("import requires an Imported origin".into()),
@@ -1736,14 +1808,10 @@ impl EventlogOperationStore<'_> {
                 ),
             ));
         }
-        let assurance = verify_subject_history(&history, &anchor.instance)
-            .map_err(ImportAnchorFailure::NotCommitted)?;
-        let model = self
-            .store
-            .capture_model()
-            .await
+        let assurance = verify_subject_history(history, &anchor.instance)
             .map_err(ImportAnchorFailure::NotCommitted)?;
         let mut record_blobs = Vec::new();
+        let mut record_ids = Vec::new();
         let mut uploads = Vec::new();
         for evidence in &anchor.evidence {
             if let entity_store::asynchronous::LegacyEvidence::Envelope(saved) = evidence {
@@ -1752,42 +1820,112 @@ impl EventlogOperationStore<'_> {
                 let digest = framed_key(RECORD_BLOB_DOMAIN, &bytes)
                     .map_err(ImportAnchorFailure::NotCommitted)?;
                 record_blobs.push(digest.clone());
+                record_ids.push(saved.entry.record_id().to_owned());
                 uploads.push((digest, bytes));
             }
         }
-        let wrapper = anchor_from_history(self.store.authority.clone(), &history, &record_blobs)
+        let wrapper = anchor_from_history(self.store.authority.clone(), history, &record_blobs)
             .map_err(ImportAnchorFailure::NotCommitted)?;
-        let bytes = match source_id {
-            Some(source_id) => encode_source_anchor(&source_id, &wrapper),
+        let anchor_bytes = match source_id {
+            Some(source_id) => encode_source_anchor(source_id, &wrapper),
             None => encode_anchor(&wrapper),
         }
         .map_err(ImportAnchorFailure::NotCommitted)?;
-        if let Some(existing) = model.anchors.get(&subject) {
-            if *existing == bytes {
-                return Ok(ImportAnchorOutcome {
-                    assurance,
-                    replayed: true,
-                });
+        let anchor_digest = framed_key(ANCHOR_BLOB_DOMAIN, &anchor_bytes)
+            .map_err(ImportAnchorFailure::NotCommitted)?;
+        Ok(PreparedImport {
+            subject: history.subject.clone(),
+            assurance,
+            record_ids,
+            uploads,
+            anchor_bytes,
+            anchor_digest,
+        })
+    }
+
+    fn import_append(
+        &self,
+        prepared: &PreparedImport,
+    ) -> Result<StreamAppend, ImportAnchorFailure> {
+        Ok(StreamAppend {
+            stream: StreamId::new(
+                self.store.tenant.clone(),
+                "er.subject",
+                subject_stream_id(&self.store.authority, &prepared.subject)
+                    .map_err(ImportAnchorFailure::NotCommitted)?,
+            )
+            .map_err(|e| ImportAnchorFailure::NotCommitted(input_eventlog(e)))?,
+            expected: Expected::NoStream,
+            events: vec![
+                NewEvent::new(
+                    "er.import_anchor",
+                    1,
+                    json!({ "blob": prepared.anchor_digest }),
+                )
+                .map_err(|e| ImportAnchorFailure::NotCommitted(input_eventlog(e)))?,
+            ],
+        })
+    }
+
+    /// Refuses an anchor the destination already answers for, and reports an exact equal retry.
+    ///
+    /// `Ok(true)` means the destination already holds exactly these bytes.
+    fn settled_against(
+        model: &CapturedModel,
+        prepared: &PreparedImport,
+    ) -> Result<bool, ImportAnchorFailure> {
+        if let Some(existing) = model.anchors.get(&prepared.subject) {
+            if *existing == prepared.anchor_bytes {
+                return Ok(true);
             }
             return Err(ImportAnchorFailure::NotCommitted(
                 AsyncStoreError::RevisionConflict {
-                    subject,
+                    subject: prepared.subject.clone(),
                     expected: Expect::Absent,
-                    found: model.terminals.get(&history.subject).map(|i| i.revision),
+                    found: model.terminals.get(&prepared.subject).map(|i| i.revision),
                 },
             ));
         }
-        if let Some(existing) = model.histories.get(&subject) {
+        if let Some(existing) = model.histories.get(&prepared.subject) {
             return Err(ImportAnchorFailure::NotCommitted(
                 AsyncStoreError::RevisionConflict {
-                    subject,
+                    subject: prepared.subject.clone(),
                     expected: Expect::Absent,
                     found: model.terminals.get(&existing.subject).map(|i| i.revision),
                 },
             ));
         }
-        let digest =
-            framed_key(ANCHOR_BLOB_DOMAIN, &bytes).map_err(ImportAnchorFailure::NotCommitted)?;
+        Ok(false)
+    }
+
+    async fn upload(&self, key: &str, value: &[u8]) -> Result<(), ImportAnchorFailure> {
+        self.store
+            .backend
+            .put_blob(&self.store.tenant, key, value)
+            .await
+            .map_err(|e| ImportAnchorFailure::NotCommitted(map_put_error(e)))
+    }
+
+    async fn import_inner(
+        &self,
+        history: SubjectHistory,
+        source_id: Option<String>,
+    ) -> Result<ImportAnchorOutcome, ImportAnchorFailure> {
+        let subject = history.subject.clone();
+        let prepared = self.prepare_import(&history, source_id.as_deref())?;
+        let model = self
+            .store
+            .capture_model()
+            .await
+            .map_err(ImportAnchorFailure::NotCommitted)?;
+        if Self::settled_against(&model, &prepared)? {
+            return Ok(ImportAnchorOutcome {
+                assurance: prepared.assurance,
+                replayed: true,
+            });
+        }
+        let digest = prepared.anchor_digest.clone();
+        let bytes = prepared.anchor_bytes.clone();
         let command_key = key_for_value(
             "er.eventlog.import-command-key/1",
             json!({"authority":self.store.authority,"subject":SubjectWire::from(&history.subject)}),
@@ -1797,51 +1935,23 @@ impl EventlogOperationStore<'_> {
             .context
             .meta(command_key, digest.clone())
             .map_err(ImportAnchorFailure::NotCommitted)?;
-        for (key, value) in uploads {
-            self.store
-                .backend
-                .put_blob(&self.store.tenant, &key, &value)
-                .await
-                .map_err(|e| ImportAnchorFailure::NotCommitted(map_put_error(e)))?;
+        for (key, value) in &prepared.uploads {
+            self.upload(key, value).await?;
         }
-        self.store
-            .backend
-            .put_blob(&self.store.tenant, &digest, &bytes)
-            .await
-            .map_err(|e| ImportAnchorFailure::NotCommitted(map_put_error(e)))?;
+        self.upload(&digest, &bytes).await?;
         let group = AppendGroup {
             tenant: self.store.tenant.clone(),
-            appends: vec![StreamAppend {
-                stream: StreamId::new(
-                    self.store.tenant.clone(),
-                    "er.subject",
-                    subject_stream_id(&self.store.authority, &history.subject)
-                        .map_err(ImportAnchorFailure::NotCommitted)?,
-                )
-                .map_err(|e| ImportAnchorFailure::NotCommitted(input_eventlog(e)))?,
-                expected: Expected::NoStream,
-                events: vec![
-                    NewEvent::new("er.import_anchor", 1, json!({"blob":digest}))
-                        .map_err(|e| ImportAnchorFailure::NotCommitted(input_eventlog(e)))?,
-                ],
-            }],
+            appends: vec![self.import_append(&prepared)?],
             meta,
         };
         let slot = Arc::new(Mutex::new(None));
         let guard = Arc::new(ImportGuard {
             authority: self.store.authority.clone(),
             tenant: self.store.tenant.clone(),
-            subject: history.subject.clone(),
-            record_ids: anchor
-                .evidence
-                .iter()
-                .filter_map(|e| match e {
-                    entity_store::asynchronous::LegacyEvidence::Envelope(saved) => {
-                        Some(saved.entry.record_id().to_owned())
-                    }
-                    _ => None,
-                })
-                .collect(),
+            members: vec![ImportGuardMember {
+                subject: history.subject.clone(),
+                record_ids: prepared.record_ids.clone(),
+            }],
             slot: slot.clone(),
         });
         match self.store.backend.append_group_guarded(&group, guard).await {
@@ -1859,7 +1969,7 @@ impl EventlogOperationStore<'_> {
                             && model.anchor_physical.get(&history.subject) == Some(&returned) =>
                     {
                         Ok(ImportAnchorOutcome {
-                            assurance,
+                            assurance: prepared.assurance,
                             replayed: result.deduplicated,
                         })
                     }
@@ -1872,7 +1982,7 @@ impl EventlogOperationStore<'_> {
             Err(EventLogError::UnknownCommit) => match self.store.capture_model().await {
                 Ok(model) if model.anchors.get(&history.subject) == Some(&bytes) => {
                     Ok(ImportAnchorOutcome {
-                        assurance,
+                        assurance: prepared.assurance,
                         replayed: true,
                     })
                 }
@@ -1885,7 +1995,7 @@ impl EventlogOperationStore<'_> {
                 match self.store.capture_model().await {
                     Ok(model) if model.anchors.get(&history.subject) == Some(&bytes) => {
                         Ok(ImportAnchorOutcome {
-                            assurance,
+                            assurance: prepared.assurance,
                             replayed: true,
                         })
                     }
@@ -1902,37 +2012,229 @@ impl EventlogOperationStore<'_> {
                     }),
                 }
             }
-            Err(EventLogError::GuardRefused { code }) => {
-                let refusal = slot
-                    .lock()
-                    .map_err(|_| {
-                        ImportAnchorFailure::NotCommitted(integrity(
-                            "import guard refusal slot was poisoned",
-                        ))
-                    })?
-                    .take();
-                match refusal {
-                    Some(refusal)
-                        if refusal.code.as_str() == code
-                            && refusal.code.matches(&refusal.error) =>
-                    {
-                        Err(ImportAnchorFailure::NotCommitted(refusal.error))
-                    }
-                    _ => Err(ImportAnchorFailure::NotCommitted(integrity(
-                        "import guard refusal code and typed slot disagree",
-                    ))),
-                }
-            }
+            Err(EventLogError::GuardRefused { code }) => Err(Self::guard_failure(&slot, &code)),
             Err(error) => Err(ImportAnchorFailure::NotCommitted(map_append_error(error))),
         }
     }
+
+    async fn import_batch_inner(
+        &self,
+        histories: Vec<SubjectHistory>,
+        source_id: Option<String>,
+    ) -> Result<Vec<ImportAnchorOutcome>, ImportAnchorFailure> {
+        if histories.is_empty() {
+            return Ok(Vec::new());
+        }
+        // One append group holds at most one `Expected::NoStream` append per subject stream, and
+        // the singular path's per-call capture is what would otherwise settle the second mention
+        // of a subject against the first. Refusing the input is definite and commits nothing;
+        // silently collapsing it would make the batch disagree with N singular calls.
+        let mut named = BTreeSet::new();
+        let mut prepared = Vec::with_capacity(histories.len());
+        for history in &histories {
+            if !named.insert(history.subject.clone()) {
+                return Err(ImportAnchorFailure::NotCommitted(
+                    AsyncStoreError::InvalidInput(
+                        "one import batch may name each subject only once".into(),
+                    ),
+                ));
+            }
+            prepared.push(self.prepare_import(history, source_id.as_deref())?);
+        }
+
+        let model = self
+            .store
+            .capture_model()
+            .await
+            .map_err(ImportAnchorFailure::NotCommitted)?;
+        let mut already = Vec::with_capacity(prepared.len());
+        for item in &prepared {
+            already.push(Self::settled_against(&model, item)?);
+        }
+        drop(model);
+        let pending: Vec<&PreparedImport> = prepared
+            .iter()
+            .zip(&already)
+            .filter_map(|(item, settled)| (!settled).then_some(item))
+            .collect();
+        if pending.is_empty() {
+            return Ok(prepared
+                .into_iter()
+                .map(|item| ImportAnchorOutcome {
+                    assurance: item.assurance,
+                    replayed: true,
+                })
+                .collect());
+        }
+
+        let command_key = key_for_value(
+            "er.eventlog.import-batch-command-key/1",
+            json!({
+                "authority": self.store.authority,
+                "subjects": pending
+                    .iter()
+                    .map(|item| SubjectWire::from(&item.subject))
+                    .collect::<Vec<_>>(),
+            }),
+        )
+        .map_err(ImportAnchorFailure::NotCommitted)?;
+        let request_hash = key_for_value(
+            "er.eventlog.import-batch-request/1",
+            json!(
+                pending
+                    .iter()
+                    .map(|item| item.anchor_digest.clone())
+                    .collect::<Vec<_>>()
+            ),
+        )
+        .map_err(ImportAnchorFailure::NotCommitted)?;
+        let meta = self
+            .context
+            .meta(command_key, request_hash)
+            .map_err(ImportAnchorFailure::NotCommitted)?;
+
+        let mut appends = Vec::with_capacity(pending.len());
+        let mut members = Vec::with_capacity(pending.len());
+        for item in &pending {
+            appends.push(self.import_append(item)?);
+            members.push(ImportGuardMember {
+                subject: item.subject.clone(),
+                record_ids: item.record_ids.clone(),
+            });
+        }
+        // Every blob the group binds, in the order the singular path uploads them — the record
+        // blobs of each member, then that member's anchor. They travel with the group so the
+        // whole batch costs the one durability barrier the group already commits, instead of one
+        // barrier per blob. Content addressing makes the bytes and the keys the same either way;
+        // what changes is only how many times the provider is made to wait for the disk.
+        let mut blobs = Vec::new();
+        for item in &pending {
+            blobs.extend(item.uploads.iter().cloned());
+            blobs.push((item.anchor_digest.clone(), item.anchor_bytes.clone()));
+        }
+        let group = AppendGroup {
+            tenant: self.store.tenant.clone(),
+            appends,
+            meta,
+        };
+        group
+            .fingerprint()
+            .map_err(|e| ImportAnchorFailure::NotCommitted(input_eventlog(e)))?;
+        let slot = Arc::new(Mutex::new(None));
+        let guard = Arc::new(ImportGuard {
+            authority: self.store.authority.clone(),
+            tenant: self.store.tenant.clone(),
+            members,
+            slot: slot.clone(),
+        });
+        // Every member shares one atomic group, so every member shares its outcome: the subject
+        // named on an uncertain batch is the first of them, and settling it settles the rest.
+        let uncertain = |cause| ImportAnchorFailure::Uncertain {
+            subject: pending[0].subject.clone(),
+            cause,
+        };
+        let deduplicated = match self
+            .store
+            .backend
+            .append_group_guarded_with_blobs(&group, guard, &blobs)
+            .await
+        {
+            Ok(result) => {
+                if validate_group_result(&result, pending.len()).is_err() {
+                    return Err(uncertain(ImportAnchorUncertainty::RecoveryUnavailable));
+                }
+                let returned: Vec<PhysicalRef> = result
+                    .appends
+                    .iter()
+                    .map(|append| physical(&append.events[0]))
+                    .collect();
+                let Ok(model) = self.store.capture_model().await else {
+                    return Err(uncertain(ImportAnchorUncertainty::RecoveryUnavailable));
+                };
+                if !pending.iter().zip(&returned).all(|(item, physical)| {
+                    model.anchors.get(&item.subject) == Some(&item.anchor_bytes)
+                        && model.anchor_physical.get(&item.subject) == Some(physical)
+                }) {
+                    return Err(uncertain(ImportAnchorUncertainty::RecoveryUnavailable));
+                }
+                result.deduplicated
+            }
+            Err(EventLogError::UnknownCommit) => {
+                match self.store.capture_model().await {
+                    Ok(model)
+                        if pending.iter().all(|item| {
+                            model.anchors.get(&item.subject) == Some(&item.anchor_bytes)
+                        }) => {}
+                    _ => return Err(uncertain(ImportAnchorUncertainty::UnknownCommit)),
+                }
+                true
+            }
+            Err(EventLogError::Conflict { .. } | EventLogError::IdempotencyMismatch { .. }) => {
+                match self.store.capture_model().await {
+                    Ok(model) => {
+                        let mismatched = pending.iter().find(|item| {
+                            model.anchors.get(&item.subject) != Some(&item.anchor_bytes)
+                        });
+                        if let Some(item) = mismatched {
+                            return Err(ImportAnchorFailure::NotCommitted(
+                                AsyncStoreError::RevisionConflict {
+                                    subject: item.subject.clone(),
+                                    expected: Expect::Absent,
+                                    found: model.terminals.get(&item.subject).map(|i| i.revision),
+                                },
+                            ));
+                        }
+                        true
+                    }
+                    Err(_) => return Err(uncertain(ImportAnchorUncertainty::RecoveryUnavailable)),
+                }
+            }
+            Err(EventLogError::GuardRefused { code }) => {
+                return Err(Self::guard_failure(&slot, &code));
+            }
+            Err(error) => {
+                return Err(ImportAnchorFailure::NotCommitted(map_append_error(error)));
+            }
+        };
+        Ok(prepared
+            .into_iter()
+            .zip(already)
+            .map(|(item, settled)| ImportAnchorOutcome {
+                assurance: item.assurance,
+                replayed: settled || deduplicated,
+            })
+            .collect())
+    }
+
+    fn guard_failure(slot: &Arc<Mutex<Option<GuardRefusal>>>, code: &str) -> ImportAnchorFailure {
+        let Ok(mut held) = slot.lock() else {
+            return ImportAnchorFailure::NotCommitted(integrity(
+                "import guard refusal slot was poisoned",
+            ));
+        };
+        match held.take() {
+            Some(refusal)
+                if refusal.code.as_str() == code && refusal.code.matches(&refusal.error) =>
+            {
+                ImportAnchorFailure::NotCommitted(refusal.error)
+            }
+            _ => ImportAnchorFailure::NotCommitted(integrity(
+                "import guard refusal code and typed slot disagree",
+            )),
+        }
+    }
+}
+
+/// One imported boundary the guard has to find room for.
+struct ImportGuardMember {
+    subject: Subject,
+    record_ids: Vec<String>,
 }
 
 struct ImportGuard {
     authority: Authority,
     tenant: TenantId,
-    subject: Subject,
-    record_ids: Vec<String>,
+    members: Vec<ImportGuardMember>,
     slot: Arc<Mutex<Option<GuardRefusal>>>,
 }
 impl Guard for ImportGuard {
@@ -1954,41 +2256,43 @@ impl Guard for ImportGuard {
                 return self.refuse(integrity("binding row authority changed"));
             }
 
-            let mut records = self
-                .record_ids
-                .iter()
-                .map(|id| {
-                    record_key(&self.authority, id)
-                        .map(|key| (key, id))
-                        .map_err(|error| EventLogError::Invalid(error.to_string()))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            records.sort_by(|left, right| left.0.as_bytes().cmp(right.0.as_bytes()));
-            for (key, record_id) in records {
-                if store
-                    .get_for_update(record_spec(), &self.tenant, &key)
+            for member in &self.members {
+                let mut records = member
+                    .record_ids
+                    .iter()
+                    .map(|id| {
+                        record_key(&self.authority, id)
+                            .map(|key| (key, id))
+                            .map_err(|error| EventLogError::Invalid(error.to_string()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                records.sort_by(|left, right| left.0.as_bytes().cmp(right.0.as_bytes()));
+                for (key, record_id) in records {
+                    if store
+                        .get_for_update(record_spec(), &self.tenant, &key)
+                        .await?
+                        .is_some()
+                    {
+                        return self.refuse(AsyncStoreError::RecordConflict {
+                            record_id: record_id.clone(),
+                        });
+                    }
+                }
+
+                let subject_key = subject_key(&self.authority, &member.subject)
+                    .map_err(|error| EventLogError::Invalid(error.to_string()))?;
+                if let Some(row) = store
+                    .get_for_update(subject_spec(), &self.tenant, &subject_key)
                     .await?
-                    .is_some()
                 {
-                    return self.refuse(AsyncStoreError::RecordConflict {
-                        record_id: record_id.clone(),
+                    let body = tagged_body(&row, "er.eventlog.subject-index/1")?;
+                    let found = body.get("revision").and_then(Value::as_u64);
+                    return self.refuse(AsyncStoreError::RevisionConflict {
+                        subject: member.subject.clone(),
+                        expected: Expect::Absent,
+                        found,
                     });
                 }
-            }
-
-            let subject_key = subject_key(&self.authority, &self.subject)
-                .map_err(|error| EventLogError::Invalid(error.to_string()))?;
-            if let Some(row) = store
-                .get_for_update(subject_spec(), &self.tenant, &subject_key)
-                .await?
-            {
-                let body = tagged_body(&row, "er.eventlog.subject-index/1")?;
-                let found = body.get("revision").and_then(Value::as_u64);
-                return self.refuse(AsyncStoreError::RevisionConflict {
-                    subject: self.subject.clone(),
-                    expected: Expect::Absent,
-                    found,
-                });
             }
             Ok(())
         })

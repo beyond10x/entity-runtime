@@ -7,7 +7,7 @@ use entity_core::{Registry, Runtime};
 use entity_eventlog::{
     AsyncBindingProvisioner, AsyncImportedAnchorWriter, Authority, ErRecordedProjector,
     EventlogBackend, EventlogBindingProvisioner, EventlogOperationContext, EventlogRecordedStore,
-    projection_specs,
+    ImportAnchorFailure, projection_specs,
 };
 use entity_executor::{BatchAction, CreateRequest, ExecuteRequest, Executor};
 use entity_store::{
@@ -19,7 +19,9 @@ use entity_store::{
         Subject, SubjectHistory,
     },
 };
-use eventlog_core::{CaptureLimits, EventStore, InlineProjectionAdmin, TenantId};
+use eventlog_core::{
+    CaptureLimits, ConsistentTenantCapture, EventStore, InlineProjectionAdmin, TenantId,
+};
 use serde_json::json;
 use time::OffsetDateTime;
 
@@ -34,8 +36,7 @@ use entity_eventlog::sync::{
 
 #[cfg(all(feature = "sync-bridge", feature = "sqlite"))]
 use eventlog_core::{
-    BoxFuture, ConsistentTenantCapture, EventLogError, ProjectionSpec, ProjectionStore, Projector,
-    RecordedEvent,
+    BoxFuture, EventLogError, ProjectionSpec, ProjectionStore, Projector, RecordedEvent,
 };
 
 const LIMITS: CaptureLimits = CaptureLimits {
@@ -921,5 +922,438 @@ fn postgres_bridge_awaits_worker_owned_provider_retirement_when_assigned() {
             bridge.shutdown(ShutdownMode::Drain, CallWait::Forever),
             ShutdownOutcome::Joined { provider: Ok(()) }
         );
+    });
+}
+
+// --- Batched imported boundaries ------------------------------------------------------------
+//
+// One capture and one append group for a whole batch, writing exactly the bytes N singular
+// `import_anchor` calls write. The byte comparison is what makes the batch admissible: a faster
+// import that writes different anchors, keys or receipts has changed what the migration moves.
+
+#[cfg(feature = "file")]
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).expect("destination directory");
+    for entry in std::fs::read_dir(from).expect("readable source directory") {
+        let entry = entry.expect("directory entry");
+        let target = to.join(entry.file_name());
+        if entry.file_type().expect("entry type").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).expect("copied file");
+        }
+    }
+}
+
+#[cfg(feature = "file")]
+fn imported_batch_history_with(label: &str, record_id: &str, locator: &str) -> SubjectHistory {
+    let registry = registry();
+    let decision = Runtime::new(&registry)
+        .create("ticket", 1, label, json!({ "title": label }))
+        .expect("legacy decision");
+    let commit =
+        entity_store::RecordedCommit::new(decision, &recording(record_id)).expect("legacy record");
+    SubjectHistory {
+        subject: Subject::new("ticket", label).expect("legacy subject"),
+        origin: HistoryOrigin::Imported(LegacyAnchor {
+            instance: commit.instance.clone(),
+            completeness: LegacyCompleteness::AvailableEvidenceOnly,
+            order: LegacyOrderDeclaration::PerKindOnly,
+            evidence: vec![LegacyEvidence::Envelope(
+                ImportedRecordEvidence::new(
+                    RecordedEntry::Decision(commit),
+                    "import-batch-source".to_owned(),
+                    locator.to_owned(),
+                    KnownLegacyOrder::PerKind(0),
+                )
+                .expect("imported evidence"),
+            )],
+        }),
+        records: Vec::new(),
+    }
+}
+
+#[cfg(feature = "file")]
+fn imported_batch_history(label: &str) -> SubjectHistory {
+    imported_batch_history_with(label, &format!("{label}-create"), "records/0")
+}
+
+/// Everything about an event that the adapter decides, with the provider's own minted identity
+/// and arrival order removed: two runs of the same input cannot share an event id or a wall clock.
+#[cfg(feature = "file")]
+fn event_content(capture: &eventlog_core::TenantCapture) -> Vec<serde_json::Value> {
+    capture
+        .events
+        .iter()
+        .map(|event| {
+            json!({
+                "stream_type": event.stream_type,
+                "stream_id": event.stream_id,
+                "version": event.version,
+                "name": event.name,
+                "schema_version": event.schema_version,
+                "occurred_at": event.occurred_at.unix_timestamp_nanos().to_string(),
+                "subject": event.subject,
+                "actor": event.actor,
+                "request_id": event.request_id,
+                "trace_id": event.trace_id,
+                "causation_id": event.causation_id,
+                "causation_depth": event.causation_depth,
+                "data": event.data,
+            })
+        })
+        .collect()
+}
+
+/// Every blob the destination currently binds, by key.
+#[cfg(feature = "file")]
+async fn bound_digests(backend: &Arc<dyn EventlogBackend>, tenant: &TenantId) -> Vec<String> {
+    backend
+        .capture_tenant(tenant, projection_specs(), LIMITS)
+        .await
+        .expect("capture")
+        .blobs
+        .into_iter()
+        .map(|blob| blob.digest)
+        .collect()
+}
+
+#[cfg(feature = "file")]
+async fn open_import_destination(
+    directory: &std::path::Path,
+    authority: &Authority,
+) -> (Arc<dyn EventlogBackend>, EventlogRecordedStore) {
+    let backend = Arc::new(
+        eventlog_file::FileEventStore::open(directory)
+            .await
+            .expect("file provider"),
+    );
+    backend
+        .attach_inline_existing(Arc::new(ErRecordedProjector::new()))
+        .await
+        .expect("projection attachment");
+    let erased: Arc<dyn EventlogBackend> = backend;
+    let store = EventlogRecordedStore::open(erased.clone(), authority.clone(), LIMITS)
+        .await
+        .expect("bound store");
+    (erased, store)
+}
+
+#[cfg(feature = "file")]
+async fn provisioned_file_destination(
+    directory: &std::path::Path,
+    label: &str,
+) -> (Arc<dyn EventlogBackend>, Authority, TenantId) {
+    let tenant = TenantId::new(format!("import-batch-{label}")).expect("valid tenant");
+    let backend = Arc::new(
+        eventlog_file::FileEventStore::open(directory)
+            .await
+            .expect("file provider"),
+    );
+    let stream_identity = backend
+        .stream_identity(&tenant)
+        .await
+        .expect("tenant identity");
+    let projector = Arc::new(ErRecordedProjector::new());
+    backend
+        .create_projections(projector.clone())
+        .await
+        .expect("projection admission");
+    backend
+        .attach_inline_existing(projector)
+        .await
+        .expect("projection attachment");
+    let authority = Authority {
+        logical_scope: format!("import-batch-{label}-scope"),
+        tenant: tenant.as_str().to_owned(),
+        stream_identity,
+    };
+    let erased: Arc<dyn EventlogBackend> = backend;
+    EventlogBindingProvisioner::new(erased.clone(), LIMITS)
+        .provision_binding(authority.clone(), context(label))
+        .await
+        .expect("binding provisioned");
+    (erased, authority, tenant)
+}
+
+#[cfg(feature = "file")]
+#[test]
+fn a_batch_import_writes_the_same_bytes_as_singular_imports_from_one_capture() {
+    block_on(async {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let singular_directory = root.path().join("singular");
+        let batch_directory = root.path().join("batch");
+
+        // One provisioned destination, copied before the first import, so both runs carry the
+        // same `Authority` — identical tenant, logical scope and stream identity. Without that the
+        // anchors would differ for a reason that says nothing about batching.
+        let (_, authority, tenant) =
+            provisioned_file_destination(&singular_directory, "identity").await;
+        copy_tree(&singular_directory, &batch_directory);
+
+        let histories: Vec<SubjectHistory> = (0..4)
+            .map(|ordinal| imported_batch_history(&format!("batch-subject-{ordinal}")))
+            .collect();
+
+        let (singular_backend, singular_store) =
+            open_import_destination(&singular_directory, &authority).await;
+        let singular_operation = singular_store.operation(context("identity-run"));
+        let singular_before = singular_store.calls().captures;
+        let mut singular_outcomes = Vec::new();
+        for history in &histories {
+            singular_outcomes.push(
+                singular_operation
+                    .import_anchor(history.clone())
+                    .await
+                    .expect("singular import"),
+            );
+        }
+        let singular_captures = singular_store.calls().captures - singular_before;
+
+        let (batch_backend, batch_store) =
+            open_import_destination(&batch_directory, &authority).await;
+        let batch_operation = batch_store.operation(context("identity-run"));
+        let batch_before = batch_store.calls().captures;
+        let batch_outcomes = batch_operation
+            .import_anchors(histories.clone())
+            .await
+            .expect("batch import");
+        let batch_captures = batch_store.calls().captures - batch_before;
+
+        assert_eq!(
+            singular_captures,
+            2 * histories.len(),
+            "each singular import takes a capture before and after"
+        );
+        assert_eq!(
+            batch_captures, 2,
+            "the batch takes one capture to verify against and one to verify with"
+        );
+
+        assert_eq!(
+            batch_outcomes, singular_outcomes,
+            "the batch returns the receipts the singular calls return"
+        );
+
+        let singular_capture = singular_backend
+            .capture_tenant(&tenant, projection_specs(), LIMITS)
+            .await
+            .expect("singular capture");
+        let batch_capture = batch_backend
+            .capture_tenant(&tenant, projection_specs(), LIMITS)
+            .await
+            .expect("batch capture");
+
+        assert_eq!(
+            batch_capture.blobs, singular_capture.blobs,
+            "every anchor and record blob, and the key it is stored under, is byte-identical"
+        );
+        assert_eq!(
+            event_content(&batch_capture),
+            event_content(&singular_capture),
+            "the same subject streams carry the same events naming the same anchor blobs"
+        );
+        assert_eq!(
+            batch_store
+                .complete_snapshot(&authority.logical_scope)
+                .await
+                .expect("batch snapshot")
+                .histories,
+            singular_store
+                .complete_snapshot(&authority.logical_scope)
+                .await
+                .expect("singular snapshot")
+                .histories,
+            "both destinations hold the same complete logical history"
+        );
+
+        // The singular path's own byte comparison, run against what the batch committed: an exact
+        // replay is only reported when the committed anchor equals the bytes this call encodes.
+        for history in &histories {
+            assert!(
+                batch_operation
+                    .import_anchor(history.clone())
+                    .await
+                    .expect("singular replay of a batched anchor")
+                    .replayed,
+                "the singular path recognises the batched anchor as its own"
+            );
+        }
+
+        // Cost does not grow with the batch.
+        let wider: Vec<SubjectHistory> = (0..8)
+            .map(|ordinal| imported_batch_history(&format!("wider-subject-{ordinal}")))
+            .collect();
+        let before = batch_store.calls().captures;
+        assert_eq!(
+            batch_operation
+                .import_anchors(wider)
+                .await
+                .expect("wider batch")
+                .len(),
+            8
+        );
+        assert_eq!(
+            batch_store.calls().captures - before,
+            2,
+            "twice the subjects still costs two captures"
+        );
+    });
+}
+
+#[cfg(feature = "file")]
+#[test]
+fn a_refused_member_leaves_no_part_of_the_batch_committed() {
+    block_on(async {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let (erased, authority, tenant) =
+            provisioned_file_destination(directory.path(), "atomicity").await;
+        let store = EventlogRecordedStore::open(erased.clone(), authority.clone(), LIMITS)
+            .await
+            .expect("bound store");
+        let operation = store.operation(context("atomicity-run"));
+
+        operation
+            .import_anchor(imported_batch_history("taken"))
+            .await
+            .expect("first subject is imported alone");
+
+        // A member the pre-capture already refuses: the same subject under different anchor bytes.
+        let refused = operation
+            .import_anchors(vec![
+                imported_batch_history("with-conflict-a"),
+                imported_batch_history_with("taken", "taken-create", "records/1"),
+                imported_batch_history("with-conflict-b"),
+            ])
+            .await
+            .expect_err("a conflicting member refuses the batch");
+        assert!(
+            matches!(
+                refused,
+                ImportAnchorFailure::NotCommitted(AsyncStoreError::RevisionConflict { .. })
+            ),
+            "{refused:?}"
+        );
+        for absent in ["with-conflict-a", "with-conflict-b"] {
+            assert!(
+                store
+                    .load(&Subject::new("ticket", absent).expect("subject"))
+                    .await
+                    .expect("state read")
+                    .is_none(),
+                "{absent} must not survive a refused batch"
+            );
+        }
+
+        // A member the destination guard refuses: a record identity another subject already holds.
+        // The batch's blobs travel inside the group's own transaction, so a guard that refuses
+        // must leave no byte of the batch behind — not even a bound orphan blob for the member
+        // the guard never objected to. Admission runs before any blob is bound; this is the
+        // assertion that holds it there.
+        let bound_before = bound_digests(&erased, &tenant).await;
+        let refused = operation
+            .import_anchors(vec![
+                imported_batch_history("with-guard-a"),
+                imported_batch_history_with("stolen", "taken-create", "records/0"),
+            ])
+            .await
+            .expect_err("the destination guard refuses the batch");
+        assert!(
+            matches!(
+                refused,
+                ImportAnchorFailure::NotCommitted(AsyncStoreError::RecordConflict { .. })
+            ),
+            "{refused:?}"
+        );
+        assert!(
+            store
+                .load(&Subject::new("ticket", "with-guard-a").expect("subject"))
+                .await
+                .expect("state read")
+                .is_none(),
+            "a guard refusal rolls the whole group back"
+        );
+        assert_eq!(
+            bound_digests(&erased, &tenant).await,
+            bound_before,
+            "a refused batch binds no blob"
+        );
+
+        // The only subject the destination holds is the one imported alone.
+        assert_eq!(
+            store
+                .complete_snapshot(&authority.logical_scope)
+                .await
+                .expect("snapshot")
+                .histories
+                .len(),
+            1
+        );
+    });
+}
+
+#[cfg(feature = "file")]
+#[test]
+fn a_batch_naming_one_subject_twice_is_refused_before_any_write() {
+    block_on(async {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let (erased, authority, _) =
+            provisioned_file_destination(directory.path(), "duplicate").await;
+        let store = EventlogRecordedStore::open(erased, authority.clone(), LIMITS)
+            .await
+            .expect("bound store");
+        let operation = store.operation(context("duplicate-run"));
+
+        let before = store.calls().captures;
+        let refused = operation
+            .import_anchors(vec![
+                imported_batch_history("twice"),
+                imported_batch_history("other"),
+                imported_batch_history("twice"),
+            ])
+            .await
+            .expect_err("one subject cannot be imported twice in one group");
+        assert!(
+            matches!(
+                refused,
+                ImportAnchorFailure::NotCommitted(AsyncStoreError::InvalidInput(_))
+            ),
+            "{refused:?}"
+        );
+        assert_eq!(
+            store.calls().captures,
+            before,
+            "an input the adapter can refuse on its own does no provider work"
+        );
+        assert!(
+            store
+                .complete_snapshot(&authority.logical_scope)
+                .await
+                .expect("snapshot")
+                .histories
+                .is_empty()
+        );
+    });
+}
+
+#[cfg(feature = "file")]
+#[test]
+fn an_empty_batch_reaches_no_provider() {
+    block_on(async {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let (erased, authority, _) = provisioned_file_destination(directory.path(), "empty").await;
+        let store = EventlogRecordedStore::open(erased, authority, LIMITS)
+            .await
+            .expect("bound store");
+        let operation = store.operation(context("empty-run"));
+        let before = store.calls().captures;
+        assert!(
+            operation
+                .import_anchors(Vec::new())
+                .await
+                .expect("an empty batch settles")
+                .is_empty()
+        );
+        assert_eq!(store.calls().captures, before, "empty batches do no IO");
     });
 }

@@ -162,6 +162,11 @@ pub trait AsyncImportedAnchorWriter: Send + Sync {
         &'a self,
         history: SubjectHistory,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>>;
+
+    fn import_anchors<'a>(
+        &'a self,
+        histories: Vec<SubjectHistory>,
+    ) -> BoxFuture<'a, Result<Vec<ImportAnchorOutcome>, ImportAnchorFailure>>;
 }
 
 pub struct ImportAnchorOutcome {
@@ -287,6 +292,62 @@ stream/version/global position and reference content. Exact retries and semantic
 that original ID. Never preallocate an ID or extend NewEvent to satisfy a nonexistent input field
 (`EL/crates/eventlog-core/src/lib.rs:184-188,557-565`; `atomic_group.rs:82-89`). Tests must compare
 the original returned ID with retry/recovered anchor coordinates while preserving unchanged input.
+
+### One capture and one group for a batch
+
+`import_anchors` establishes every boundary of one batch in a single atomic append group. A
+migration importing N subjects otherwise pays 2N complete tenant captures, and a capture
+re-verifies every blob digest of the whole authority — so the cost of importing a store grows with
+the square of its size. Measured on a copy of the real ESS planning store on 2026-09-21, one
+`apply` is 7,810 imports at `t(k) = 115 + 0.992·k` ms, or about 8.5 hours.
+
+The batch changes what is *read*, never what is *written*:
+
+1. Prepare every member exactly as the singular path prepares its one — same pure validation, same
+   record blobs and blob keys, same anchor wrapper, same encoded anchor bytes and anchor digest.
+   Both paths run the same code, which is what makes the bytes the same bytes. A batch naming one
+   subject twice is refused as `InvalidInput` before any provider call, because one group holds at
+   most one `Expected::NoStream` append per stream and the singular path's per-call capture is what
+   would otherwise settle the second mention against the first. An empty batch settles without
+   reaching the provider.
+2. Take **one** capture and settle every member against it, with the same replay and conflict rules
+   the singular path applies to its own capture. Members the destination already holds under
+   exactly these bytes are reported `replayed: true` and are not appended. If none remain, the
+   batch is finished at one capture.
+3. Freeze **one** `AppendGroup` carrying one `er.import_anchor` append per remaining member, in
+   the caller's order, each with the exact `NewEvent` name, schema version, body and
+   `Expected::NoStream` the singular path freezes, and commit it through
+   `AtomicEventStore::append_group_guarded_with_blobs` with every member's record blobs and anchor
+   blob — in the order the singular path uploads them — so the whole batch costs the one
+   durability barrier the group already commits rather than one barrier per blob. Content
+   addressing makes the bytes and the keys identical to the per-blob path; only the number of
+   times the provider waits for the disk changes. The
+   idempotency key is `K("er.eventlog.import-batch-command-key/1", C({authority,subjects}))` and
+   the request hash is `K("er.eventlog.import-batch-request/1", C([anchor_digest…]))`. Command
+   metadata is Eventlog's own command bookkeeping and appears in no anchor, blob key or receipt, so
+   a batch's differing keys do not change what the destination retains.
+4. One `ImportGuard` locks the binding row once and then, per member in the group's order, that
+   member's global record keys in the selected total order and its subject key — the same checks
+   the singular guard performs, and for a one-member group the same order. Any refusal refuses the
+   whole group, so a batch commits completely or not at all. Admission runs before any blob the
+   provider binds, so a refused batch leaves no byte of itself behind — not even a bound orphan
+   blob for a member the guard never objected to. This is stronger than the singular path, which
+   uploads its blobs before it appends and may leave those orphans; both are admissible, because
+   an unreferenced content-addressed blob is non-authority and binds nothing, but only the batch
+   is held to the stronger statement, by
+   `a_refused_member_leaves_no_part_of_the_batch_committed`.
+5. Take **one** post-capture and verify every member's anchor bytes and returned `PhysicalRef`
+   before returning one outcome per input, in the input's order.
+
+`UnknownCommit`, `Conflict` and `IdempotencyMismatch` resolve against semantic authority exactly as
+above, over the whole set: every member's anchor present is a replay, the first member absent is
+the typed conflict, and unsettled authority is `Uncertain`. The group is atomic, so its members
+share one outcome and an uncertain batch names its first pending subject; settling that subject
+settles the rest.
+
+`StoreCalls`, returned by `EventlogRecordedStore::calls()`, counts the captures a handle has taken.
+It exists so a caller can assert this fixed cost, which no wall-clock assertion can do on a loaded
+machine.
 
 ### Retry and unknown-response recovery
 
