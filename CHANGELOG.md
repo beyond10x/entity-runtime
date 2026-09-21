@@ -40,7 +40,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   instead of being refused into a second append. A batch refuses before it writes when committing
   it would put the destination past the `CaptureLimits` its own handle reads it back with, as
   `AsyncStoreError::BatchExceedsReadBounds`, so a caller can divide the work to bounds it chose
-  rather than discover them afterwards. When a batch is blocked by a subject another writer holds,
+  rather than discover them afterwards. That variant is a **breaking addition for exhaustive
+  matchers**: `AsyncStoreError` is not `#[non_exhaustive]`, so in Rust's terms adding to it is a
+  semver-major change, and a `match` over it without a wildcard arm stops compiling. No consumer
+  names the type today — measured across the aep, aep-service, atlas and bench checkouts — which is
+  why it was taken rather than deferred, and is a fact about today rather than a guarantee. When a batch is blocked by a subject another writer holds,
   the refusal names that subject and the revision it is actually at. The singular entry points are
   unchanged.
   `EventlogRecordedStore::calls()` reports the captures a handle has taken, so a caller can assert
