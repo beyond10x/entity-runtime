@@ -19,10 +19,10 @@ entity-core = { path = "../entity-core", version = "0.18.1" }
 entity-store = { path = "../entity-store", version = "0.18.1" }
 entity-executor = { path = "../entity-executor", version = "0.18.1", optional = true }
 entity-query = { path = "../entity-query", version = "0.18.1", optional = true }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "db608cd4152e6a2370e8ef0e3a562d7a829cf34a" }
-eventlog-file = { git = "https://github.com/beyond10x/eventlog", rev = "db608cd4152e6a2370e8ef0e3a562d7a829cf34a", optional = true }
-eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", rev = "db608cd4152e6a2370e8ef0e3a562d7a829cf34a", optional = true }
-eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "db608cd4152e6a2370e8ef0e3a562d7a829cf34a", optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "76aad5e3790e302e6c7f348a4fe4d9229cd17bce" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", rev = "76aad5e3790e302e6c7f348a4fe4d9229cd17bce", optional = true }
+eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", rev = "76aad5e3790e302e6c7f348a4fe4d9229cd17bce", optional = true }
+eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "76aad5e3790e302e6c7f348a4fe4d9229cd17bce", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"

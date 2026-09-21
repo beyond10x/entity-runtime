@@ -76,7 +76,7 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 - Every crate that depends on the Eventlog providers — `entity-eventlog`, `entity-sqlite`,
   `entity-postgres` and `entity-cli` — pins them to
-  `db608cd4152e6a2370e8ef0e3a562d7a829cf34a`, which verifies history and blobs once per open and
+  `76aad5e3790e302e6c7f348a4fe4d9229cd17bce`, which verifies history and blobs once per open and
   re-checks only what a transaction changed, and which proves on every resume that the committed
   prefix is still the one it verified — a committed frame damaged in place after `open` refuses
   without altering the history, as it did before the once-per-open change.
