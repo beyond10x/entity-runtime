@@ -26,6 +26,7 @@ use eventlog_core::{
     AppendGroup, AtomicEventStore, CaptureError, CaptureLimits, CommandMeta,
     ConsistentTenantCapture, EventLogError, EventStore, Expected, Guard, InlineProjectionAdmin,
     NewEvent, ProjectionStore, RecordedEvent, StreamAppend, StreamId, TenantCapture, TenantId,
+    UNAVAILABLE,
 };
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -1935,6 +1936,7 @@ impl EventlogOperationStore<'_> {
             members: vec![ImportGuardMember {
                 subject: history.subject.clone(),
                 record_ids: prepared.record_ids.clone(),
+                anchor_digest: prepared.anchor_digest.clone(),
             }],
             slot: slot.clone(),
         });
@@ -2134,6 +2136,7 @@ impl EventlogOperationStore<'_> {
             members.push(ImportGuardMember {
                 subject: item.subject.clone(),
                 record_ids: item.record_ids.clone(),
+                anchor_digest: item.anchor_digest.clone(),
             });
         }
         // Every blob the group binds, in the order the singular path uploads them — the record
@@ -2167,12 +2170,28 @@ impl EventlogOperationStore<'_> {
             subject: pending[0].subject.clone(),
             cause,
         };
-        let deduplicated = match self
+        // The provider may not implement guarded blob-bearing groups at all. The port's default
+        // says so and fails closed — it writes nothing, commits nothing, and refuses with
+        // `UNAVAILABLE` — precisely so that a caller holding a trait object is never silently
+        // given the weaker guarantee under the stronger name. Taking the slow path is this
+        // caller's decision to make, and it makes it here: every blob on its own path, then the
+        // same guarded group. Same bytes, same keys, same guard, same receipts; what is lost is
+        // only the single durability barrier, which is what the provider was unable to offer.
+        let attempted = self
             .store
             .backend
-            .append_group_guarded_with_blobs(&group, guard, &blobs)
-            .await
-        {
+            .append_group_guarded_with_blobs(&group, guard.clone(), &blobs)
+            .await;
+        let attempted = match attempted {
+            Err(EventLogError::Invalid(ref detail)) if detail == UNAVAILABLE => {
+                for (key, value) in &blobs {
+                    self.upload(key, value).await?;
+                }
+                self.store.backend.append_group_guarded(&group, guard).await
+            }
+            settled => settled,
+        };
+        let deduplicated = match attempted {
             Ok(result) => {
                 if validate_group_result(&result, pending.len()).is_err() {
                     return Err(uncertain(ImportAnchorUncertainty::RecoveryUnavailable));
@@ -2270,6 +2289,9 @@ impl EventlogOperationStore<'_> {
 struct ImportGuardMember {
     subject: Subject,
     record_ids: Vec<String>,
+    /// The digest of the anchor this member is submitting, which is how the guard tells a row
+    /// this very group already wrote from a row somebody else owns.
+    anchor_digest: String,
 }
 
 struct ImportGuard {
@@ -2311,22 +2333,45 @@ impl Guard for ImportGuard {
                 for id in &member.record_ids {
                     let key = record_key(&self.authority, id)
                         .map_err(|error| EventLogError::Invalid(error.to_string()))?;
-                    if records.insert(key, id).is_some() {
+                    if records
+                        .insert(key, (id, member.anchor_digest.as_str()))
+                        .is_some()
+                    {
                         return self.refuse(AsyncStoreError::RecordConflict {
                             record_id: id.clone(),
                         });
                     }
                 }
             }
-            for (key, record_id) in &records {
-                if store
+            // A row this group already wrote is not somebody else's. A batch-bearing retry is
+            // admitted again — the port runs admission before it answers from the command it
+            // recorded, so that replaying a committed key cannot be used to ask whether a digest
+            // is bound — which means this guard is handed a group it has already admitted and
+            // committed. Refusing "occupied" without asking *by what* would refuse exactly the
+            // retry idempotency exists to serve, and the caller's only way forward would be a new
+            // command key: every member appended a second time, into a log that has no delete.
+            //
+            // The anchor digest is what distinguishes the two. It is a content hash over the
+            // anchor bytes, which carry the authority and the subject, so a row naming this
+            // member's digest was written by an anchor byte-identical to the one being submitted.
+            // Anything else — another anchor, or a subject that is not imported at all — is
+            // genuinely another writer's and is still refused.
+            for (key, (record_id, anchor_digest)) in &records {
+                if let Some(row) = store
                     .get_for_update(record_spec(), &self.tenant, key)
                     .await?
-                    .is_some()
                 {
-                    return self.refuse(AsyncStoreError::RecordConflict {
-                        record_id: (*record_id).clone(),
-                    });
+                    let body = tagged_body(&row, "er.eventlog.record-index/1")?;
+                    if body
+                        .get("entry")
+                        .and_then(|entry| entry.get("anchor_blob"))
+                        .and_then(Value::as_str)
+                        != Some(*anchor_digest)
+                    {
+                        return self.refuse(AsyncStoreError::RecordConflict {
+                            record_id: (*record_id).clone(),
+                        });
+                    }
                 }
             }
 
@@ -2334,20 +2379,27 @@ impl Guard for ImportGuard {
             for member in &self.members {
                 let key = subject_key(&self.authority, &member.subject)
                     .map_err(|error| EventLogError::Invalid(error.to_string()))?;
-                subjects.insert(key, &member.subject);
+                subjects.insert(key, (&member.subject, member.anchor_digest.as_str()));
             }
-            for (key, subject) in &subjects {
+            for (key, (subject, anchor_digest)) in &subjects {
                 if let Some(row) = store
                     .get_for_update(subject_spec(), &self.tenant, key)
                     .await?
                 {
                     let body = tagged_body(&row, "er.eventlog.subject-index/1")?;
-                    let found = body.get("revision").and_then(Value::as_u64);
-                    return self.refuse(AsyncStoreError::RevisionConflict {
-                        subject: (*subject).clone(),
-                        expected: Expect::Absent,
-                        found,
-                    });
+                    if body
+                        .get("origin")
+                        .and_then(|origin| origin.get("anchor_blob"))
+                        .and_then(Value::as_str)
+                        != Some(*anchor_digest)
+                    {
+                        let found = body.get("revision").and_then(Value::as_u64);
+                        return self.refuse(AsyncStoreError::RevisionConflict {
+                            subject: (*subject).clone(),
+                            expected: Expect::Absent,
+                            found,
+                        });
+                    }
                 }
             }
             Ok(())

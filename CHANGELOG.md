@@ -31,10 +31,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   Those refusals are made from the batch's own capture, before any blob is uploaded, on every
   provider. On a provider that binds a group's blobs inside the group's transaction — of the three
   shipped here, the File provider — the batch also pays one durability barrier for the whole batch
-  instead of one per blob, and any refusal leaves no bound blob behind; on the others the blobs are
-  uploaded first, as the singular path uploads them, and a refusal can leave them as non-authority
-  orphans. The singular entry points are unchanged. `EventlogRecordedStore::calls()` reports the
-  captures a handle has taken, so a caller can assert that fixed cost.
+  instead of one per blob, and any refusal leaves no bound blob behind. A provider that does not
+  implement that refuses it outright, having written nothing, and the batch then takes the same
+  slow path the singular import takes: every blob on its own, then the same guarded group, with
+  the same bytes, keys and receipts and only the single barrier lost. A retry that carries its
+  batch is admitted a second time, so the destination guard now refuses an occupied record or
+  subject only after checking which anchor occupies it — a retry of a batch's own commit settles
+  instead of being refused into a second append. The singular entry points are unchanged.
+  `EventlogRecordedStore::calls()` reports the captures a handle has taken, so a caller can assert
+  that fixed cost.
 - Eventlog-backed File, SQLite and PostgreSQL facades preserve complete recorded receipts,
   retries, observations, queries and atomic groups behind explicit open/provision authority. The
   retained legacy stores gain read-only typed acquisition for explicit out-of-place import; the

@@ -332,7 +332,15 @@ The batch changes what is *read*, never what is *written*:
    blob — in the order the singular path uploads them — so the whole batch costs the one
    durability barrier the group already commits rather than one barrier per blob. Content
    addressing makes the bytes and the keys identical to the per-blob path; only the number of
-   times the provider waits for the disk changes. The
+   times the provider waits for the disk changes.
+
+   A provider that does not implement that method refuses it, by the port's default, with
+   `EventLogError::Invalid(eventlog_core::UNAVAILABLE)`, having written and committed nothing —
+   the default fails closed rather than quietly giving the weaker guarantee under the stronger
+   name. On that refusal this adapter takes the slow path itself: every blob through
+   `EventStore::put_blob`, then the same group through `append_group_guarded`, with the same
+   bytes, keys, guard and receipts. Only the single barrier is lost, which is what the provider
+   was unable to offer. The constant is matched, not its text. The
    idempotency key is `K("er.eventlog.import-batch-command-key/1", C({authority,subjects}))` and
    the request hash is `K("er.eventlog.import-batch-request/1", C([anchor_digest…]))`. Command
    metadata is Eventlog's own command bookkeeping and appears in no anchor, blob key or receipt, so
@@ -343,6 +351,18 @@ The batch changes what is *read*, never what is *written*:
    than from the order the caller listed its members in, so two overlapping batches take the same
    locks in the same sequence whoever assembled them. Any refusal refuses the whole group, so a
    batch commits completely or not at all.
+
+   **The guard is idempotent over its own commit, and that is a requirement rather than a
+   courtesy.** A retry that carries a batch is admitted again — the port runs admission before it
+   answers from the command it recorded, so that replaying a committed key cannot be used to ask
+   whether a digest is bound — so this guard can be handed a group it has already admitted and
+   committed. It therefore refuses an occupied record or subject row only after asking *by what*
+   it is occupied: the row carries the `anchor_blob` of the anchor that wrote it, and a row naming
+   this member's own anchor digest was written by bytes identical to the ones being submitted.
+   Anything else is another writer's and is still refused. Reading "occupied" alone would refuse
+   the retry idempotency exists to serve, and the caller's only way forward would be a new command
+   key — which appends every member of the batch a second time, into a log that has no delete
+   (`a_batch_bearing_retry_is_admitted_over_the_commit_it_already_made`).
 
    **What a refused batch leaves behind depends on the provider, and the claim is exactly this.**
    On a provider that *overrides* `AtomicEventStore::append_group_guarded_with_blobs` — of the
