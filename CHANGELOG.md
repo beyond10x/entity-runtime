@@ -18,19 +18,23 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Added
 
-- `AsyncImportedAnchorWriter::import_anchors` (and `import_source_anchors`) establish a batch of
-  imported boundaries in one atomic append group, from one capture and one post-capture, instead of
-  the two complete tenant captures each singular `import_anchor` takes. A capture re-verifies every
-  blob digest of the whole authority, so importing a store cost time proportional to the square of
-  its size; on a copy of the real ESS planning store one `apply` is 7,810 imports at
-  `t(k) = 115 + 0.992·k` ms. The anchors, blob keys and receipts a batch writes are byte-identical
-  to the ones the same histories written one at a time write, into the same subject streams; a
-  batch commits completely or not at all, and a batch naming one subject twice is refused before
-  any provider call. The batch binds its blobs inside the group's own transaction, so it pays the
-  one durability barrier the group already commits instead of one per blob, and a refused batch
-  leaves no bound blob behind. The singular entry points are unchanged.
-  `EventlogRecordedStore::calls()` reports the captures a handle has taken, so a caller can assert
-  that fixed cost.
+- `AsyncImportedAnchorWriter::import_anchors` establishes a batch of imported boundaries in one
+  atomic append group, from one capture and one post-capture, instead of the two complete tenant
+  captures each singular `import_anchor` takes. A capture re-verifies every blob digest of the
+  whole authority, so importing a store cost time proportional to the square of its size; on a copy
+  of the real ESS planning store one `apply` is 7,810 imports at `t(k) = 115 + 0.992·k` ms. The
+  anchors, blob keys and receipts a batch writes are byte-identical to the ones the same histories
+  written one at a time write, into the same subject streams, and a batch commits completely or not
+  at all. A subject named twice in one batch settles the second mention as the exact replay two
+  singular calls settle it as; two mentions carrying different anchors are refused before any
+  provider call, as is a record identity the destination already holds or that two members share.
+  Those refusals are made from the batch's own capture, before any blob is uploaded, on every
+  provider. On a provider that binds a group's blobs inside the group's transaction — of the three
+  shipped here, the File provider — the batch also pays one durability barrier for the whole batch
+  instead of one per blob, and any refusal leaves no bound blob behind; on the others the blobs are
+  uploaded first, as the singular path uploads them, and a refusal can leave them as non-authority
+  orphans. The singular entry points are unchanged. `EventlogRecordedStore::calls()` reports the
+  captures a handle has taken, so a caller can assert that fixed cost.
 - Eventlog-backed File, SQLite and PostgreSQL facades preserve complete recorded receipts,
   retries, observations, queries and atomic groups behind explicit open/provision authority. The
   retained legacy stores gain read-only typed acquisition for explicit out-of-place import; the

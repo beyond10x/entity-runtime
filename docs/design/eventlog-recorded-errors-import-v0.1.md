@@ -305,11 +305,22 @@ The batch changes what is *read*, never what is *written*:
 
 1. Prepare every member exactly as the singular path prepares its one — same pure validation, same
    record blobs and blob keys, same anchor wrapper, same encoded anchor bytes and anchor digest.
-   Both paths run the same code, which is what makes the bytes the same bytes. A batch naming one
-   subject twice is refused as `InvalidInput` before any provider call, because one group holds at
-   most one `Expected::NoStream` append per stream and the singular path's per-call capture is what
-   would otherwise settle the second mention against the first. An empty batch settles without
-   reaching the provider.
+   Both paths run the same code, which is what makes the bytes the same bytes. One group holds at
+   most one `Expected::NoStream` append per stream, so a subject named twice cannot be appended
+   twice — but the second mention is settled, not refused, when it carries the same bytes: N
+   singular calls settle an exact repeat against the destination the first call just wrote and
+   report it `replayed: true`, and the batch agrees by settling it against the first mention. A
+   second mention carrying *different* bytes is two boundaries claiming one subject, which no
+   destination can hold, and is refused as `InvalidInput` before any provider call. An empty batch
+   settles without reaching the provider.
+
+   A record identity the destination already answers for, or one that two members of the batch
+   share, is refused here too — from the capture step 2 takes, before any blob is uploaded. The
+   guard in step 4 remains the authority against a concurrent writer, but it cannot answer the
+   second of those at all: it runs once, before entries, so a member's own record key is not in the
+   store when a later member is checked, and the collision would otherwise fall through to the
+   inline projector as a `ProviderIntegrity` about an authority that never changed. N singular
+   calls report `RecordConflict`, and so does this.
 2. Take **one** capture and settle every member against it, with the same replay and conflict rules
    the singular path applies to its own capture. Members the destination already holds under
    exactly these bytes are reported `replayed: true` and are not appended. If none remain, the
@@ -328,14 +339,26 @@ The batch changes what is *read*, never what is *written*:
    a batch's differing keys do not change what the destination retains.
 4. One `ImportGuard` locks the binding row once and then, per member in the group's order, that
    member's global record keys in the selected total order and its subject key — the same checks
-   the singular guard performs, and for a one-member group the same order. Any refusal refuses the
-   whole group, so a batch commits completely or not at all. Admission runs before any blob the
-   provider binds, so a refused batch leaves no byte of itself behind — not even a bound orphan
-   blob for a member the guard never objected to. This is stronger than the singular path, which
-   uploads its blobs before it appends and may leave those orphans; both are admissible, because
-   an unreferenced content-addressed blob is non-authority and binds nothing, but only the batch
-   is held to the stronger statement, by
-   `a_refused_member_leaves_no_part_of_the_batch_committed`.
+   the singular guard performs. It takes them in one order derived from the keys themselves rather
+   than from the order the caller listed its members in, so two overlapping batches take the same
+   locks in the same sequence whoever assembled them. Any refusal refuses the whole group, so a
+   batch commits completely or not at all.
+
+   **What a refused batch leaves behind depends on the provider, and the claim is exactly this.**
+   On a provider that *overrides* `AtomicEventStore::append_group_guarded_with_blobs` — of the
+   three this crate has a feature for, only `eventlog-file` — admission runs before any blob is
+   bound, so a refused batch leaves no byte of itself behind, not even a bound orphan blob for a
+   member the guard never objected to
+   (`a_refused_member_leaves_no_part_of_the_batch_committed`). On a provider that takes the port's
+   default, the default is the singular sequence — every blob uploaded on its own path, then the
+   guarded group — and a refusal can leave those blobs bound as orphans, exactly as the singular
+   `import_anchor` can. Both are admissible: an unreferenced content-addressed blob is
+   non-authority and binds nothing.
+
+   What holds on *every* provider is narrower and is the part worth relying on: the refusals this
+   adapter can see from its own capture — a record identity already taken, one shared by two
+   members, a subject already answered for — are made in step 1 and 2, before a single blob is
+   uploaded. `import_batch_blob_binding.rs` holds that on SQLite, which takes the default.
 5. Take **one** post-capture and verify every member's anchor bytes and returned `PhysicalRef`
    before returning one outcome per input, in the input's order.
 

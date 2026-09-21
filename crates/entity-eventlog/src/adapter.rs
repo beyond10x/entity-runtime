@@ -1745,7 +1745,7 @@ impl AsyncImportedAnchorWriter for EventlogOperationStore<'_> {
         &'a self,
         histories: Vec<SubjectHistory>,
     ) -> BoxFuture<'a, Result<Vec<ImportAnchorOutcome>, ImportAnchorFailure>> {
-        Box::pin(async move { self.import_batch_inner(histories, None).await })
+        Box::pin(async move { self.import_batch_inner(histories).await })
     }
 }
 
@@ -1773,22 +1773,6 @@ impl EventlogOperationStore<'_> {
         history: SubjectHistory,
     ) -> Result<ImportAnchorOutcome, ImportAnchorFailure> {
         self.import_inner(history, Some(source_id)).await
-    }
-
-    /// Imports a batch of legacy boundaries bound to one acquisition source.
-    ///
-    /// The batch equivalent of [`EventlogOperationStore::import_source_anchor`], with the
-    /// atomicity and single-capture cost described on
-    /// [`AsyncImportedAnchorWriter::import_anchors`].
-    ///
-    /// # Errors
-    /// The first member this adapter or the destination guard refuses, with nothing committed.
-    pub async fn import_source_anchors(
-        &self,
-        source_id: String,
-        histories: Vec<SubjectHistory>,
-    ) -> Result<Vec<ImportAnchorOutcome>, ImportAnchorFailure> {
-        self.import_batch_inner(histories, Some(source_id)).await
     }
 
     fn prepare_import(
@@ -2017,29 +2001,50 @@ impl EventlogOperationStore<'_> {
         }
     }
 
+    /// Imports a batch of unbound legacy boundaries.
+    ///
+    /// There is deliberately no source-bound batch. `prepare_import` already takes the source, so
+    /// one would be a line of plumbing — but it would be a line no caller reaches and no case
+    /// covers, and the encoding it selects (`er.eventlog.import-anchor/2`) would go out under a
+    /// batch's name having never been written by one.
     async fn import_batch_inner(
         &self,
         histories: Vec<SubjectHistory>,
-        source_id: Option<String>,
     ) -> Result<Vec<ImportAnchorOutcome>, ImportAnchorFailure> {
         if histories.is_empty() {
             return Ok(Vec::new());
         }
-        // One append group holds at most one `Expected::NoStream` append per subject stream, and
-        // the singular path's per-call capture is what would otherwise settle the second mention
-        // of a subject against the first. Refusing the input is definite and commits nothing;
-        // silently collapsing it would make the batch disagree with N singular calls.
-        let mut named = BTreeSet::new();
         let mut prepared = Vec::with_capacity(histories.len());
         for history in &histories {
-            if !named.insert(history.subject.clone()) {
-                return Err(ImportAnchorFailure::NotCommitted(
-                    AsyncStoreError::InvalidInput(
-                        "one import batch may name each subject only once".into(),
-                    ),
-                ));
+            prepared.push(self.prepare_import(history, None)?);
+        }
+
+        // A subject named more than once in one batch. One group holds at most one
+        // `Expected::NoStream` append per stream, so the second mention cannot be a second
+        // append — but it need not be a refusal either. N singular calls settle an exact repeat
+        // against the destination the first call just wrote, and report it `replayed: true`; the
+        // batch agrees by settling it against the first mention instead. A second mention whose
+        // bytes differ is a different boundary claiming one subject, which no destination can
+        // hold and which the adapter can refuse without asking one.
+        let mut first_mention: BTreeMap<Subject, usize> = BTreeMap::new();
+        let mut repeats = vec![false; prepared.len()];
+        for index in 0..prepared.len() {
+            match first_mention.get(&prepared[index].subject) {
+                Some(&first) => {
+                    if prepared[first].anchor_bytes != prepared[index].anchor_bytes {
+                        return Err(ImportAnchorFailure::NotCommitted(
+                            AsyncStoreError::InvalidInput(
+                                "one import batch names a subject twice with different anchors"
+                                    .into(),
+                            ),
+                        ));
+                    }
+                    repeats[index] = true;
+                }
+                None => {
+                    first_mention.insert(prepared[index].subject.clone(), index);
+                }
             }
-            prepared.push(self.prepare_import(history, source_id.as_deref())?);
         }
 
         let model = self
@@ -2048,9 +2053,38 @@ impl EventlogOperationStore<'_> {
             .await
             .map_err(ImportAnchorFailure::NotCommitted)?;
         let mut already = Vec::with_capacity(prepared.len());
-        for item in &prepared {
-            already.push(Self::settled_against(&model, item)?);
+        for (index, item) in prepared.iter().enumerate() {
+            already.push(repeats[index] || Self::settled_against(&model, item)?);
         }
+        // A record identity the destination already answers for, refused from the capture this
+        // batch already holds rather than from the destination guard. The guard remains the
+        // authority — it runs in the append's own transaction, against concurrent writers — but
+        // reaching it costs every blob of the batch an upload first, and on a provider that does
+        // not bind blobs inside the group that upload is what leaves orphans behind a refusal.
+        // Refusing here spends nothing and leaves nothing.
+        //
+        // The same refusal covers a record identity two members of one batch share. The guard
+        // cannot see that one: it runs once, before entries, so a member's own record key is not
+        // in the store yet when a later member is checked, and the collision would fall through
+        // to the inline projector as a `ProviderIntegrity` about an authority that never changed.
+        // N singular calls report `RecordConflict`, because each commits before the next is
+        // admitted. Holding every member's record identities in one set here reports the same.
+        let mut claimed: BTreeSet<&str> = BTreeSet::new();
+        for (item, settled) in prepared.iter().zip(&already) {
+            if *settled {
+                continue;
+            }
+            for record_id in &item.record_ids {
+                if model.records.contains_key(record_id) || !claimed.insert(record_id.as_str()) {
+                    return Err(ImportAnchorFailure::NotCommitted(
+                        AsyncStoreError::RecordConflict {
+                            record_id: record_id.clone(),
+                        },
+                    ));
+                }
+            }
+        }
+        drop(claimed);
         drop(model);
         let pending: Vec<&PreparedImport> = prepared
             .iter()
@@ -2192,6 +2226,13 @@ impl EventlogOperationStore<'_> {
             Err(EventLogError::GuardRefused { code }) => {
                 return Err(Self::guard_failure(&slot, &code));
             }
+            // One call carried this batch's blobs and its group, and its error does not say which
+            // half failed, so every one of them is mapped as an append. `EventStore::put_blob`
+            // documents exactly one variant — `Invalid` — and `map_put_error` and
+            // `map_append_error` produce the same value for it, so no blob fault the port
+            // promises reaches the caller as something the blob path would not have said. The
+            // variants where the two mappings differ are pinned by
+            // `the_blob_and_append_mappings_agree_on_the_only_variant_put_blob_documents`.
             Err(error) => {
                 return Err(ImportAnchorFailure::NotCommitted(map_append_error(error)));
             }
@@ -2256,39 +2297,54 @@ impl Guard for ImportGuard {
                 return self.refuse(integrity("binding row authority changed"));
             }
 
+            // Every member's keys in one order derived from the keys themselves, not from the
+            // order the caller happened to list its members in. Two batches that overlap take
+            // the same locks in the same sequence whoever assembled them, so they cannot hold
+            // each other's next lock. A per-member loop in caller order gives that sequence away
+            // to the caller.
+            //
+            // The set is also what answers a record identity two members share: the guard sees
+            // each member's keys before any of this group's entries exist, so the store cannot
+            // report the collision and the set has to.
+            let mut records = BTreeMap::new();
             for member in &self.members {
-                let mut records = member
-                    .record_ids
-                    .iter()
-                    .map(|id| {
-                        record_key(&self.authority, id)
-                            .map(|key| (key, id))
-                            .map_err(|error| EventLogError::Invalid(error.to_string()))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                records.sort_by(|left, right| left.0.as_bytes().cmp(right.0.as_bytes()));
-                for (key, record_id) in records {
-                    if store
-                        .get_for_update(record_spec(), &self.tenant, &key)
-                        .await?
-                        .is_some()
-                    {
+                for id in &member.record_ids {
+                    let key = record_key(&self.authority, id)
+                        .map_err(|error| EventLogError::Invalid(error.to_string()))?;
+                    if records.insert(key, id).is_some() {
                         return self.refuse(AsyncStoreError::RecordConflict {
-                            record_id: record_id.clone(),
+                            record_id: id.clone(),
                         });
                     }
                 }
+            }
+            for (key, record_id) in &records {
+                if store
+                    .get_for_update(record_spec(), &self.tenant, key)
+                    .await?
+                    .is_some()
+                {
+                    return self.refuse(AsyncStoreError::RecordConflict {
+                        record_id: (*record_id).clone(),
+                    });
+                }
+            }
 
-                let subject_key = subject_key(&self.authority, &member.subject)
+            let mut subjects = BTreeMap::new();
+            for member in &self.members {
+                let key = subject_key(&self.authority, &member.subject)
                     .map_err(|error| EventLogError::Invalid(error.to_string()))?;
+                subjects.insert(key, &member.subject);
+            }
+            for (key, subject) in &subjects {
                 if let Some(row) = store
-                    .get_for_update(subject_spec(), &self.tenant, &subject_key)
+                    .get_for_update(subject_spec(), &self.tenant, key)
                     .await?
                 {
                     let body = tagged_body(&row, "er.eventlog.subject-index/1")?;
                     let found = body.get("revision").and_then(Value::as_u64);
                     return self.refuse(AsyncStoreError::RevisionConflict {
-                        subject: member.subject.clone(),
+                        subject: (*subject).clone(),
                         expected: Expect::Absent,
                         found,
                     });
@@ -2886,6 +2942,38 @@ mod tests {
 
     fn subject() -> Subject {
         Subject::new("ticket", "fault-matrix").expect("subject")
+    }
+
+    /// `import_anchors` hands its blobs and its group to one port call, so a failure does not say
+    /// which half produced it and every error of that call is mapped as an append. That is only
+    /// sound while the blob half cannot produce a variant the two mappings disagree about.
+    /// `EventStore::put_blob` documents exactly one — `Invalid`, for a digest that is not the
+    /// bytes — and on that one the mappings are the same value.
+    ///
+    /// They are not the same value on others, which is why this is pinned rather than assumed:
+    /// a later `put_blob` that returns `Overloaded`, `Deadline`, `NotFound` or
+    /// `CausationDepthExceeded` would be reported as something `map_put_error` would not have
+    /// said, and the first sign of it would be a caller matching on the wrong variant.
+    #[test]
+    fn the_blob_and_append_mappings_agree_on_the_only_variant_put_blob_documents() {
+        assert_eq!(
+            map_put_error(EventLogError::Invalid("digest is not the bytes".into())),
+            map_append_error(EventLogError::Invalid("digest is not the bytes".into())),
+            "a blob fault routed as an append must reach the caller unchanged"
+        );
+
+        for divergent in [
+            EventLogError::Overloaded,
+            EventLogError::Deadline { operation: "put" },
+            EventLogError::NotFound,
+            EventLogError::CausationDepthExceeded { depth: 9, limit: 8 },
+        ] {
+            assert_ne!(
+                map_put_error(divergent.clone()),
+                map_append_error(divergent.clone()),
+                "{divergent:?} maps differently, so it must stay outside what put_blob promises"
+            );
+        }
     }
 
     #[test]

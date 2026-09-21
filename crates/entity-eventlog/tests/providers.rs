@@ -945,7 +945,7 @@ fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
     }
 }
 
-#[cfg(feature = "file")]
+#[cfg(any(feature = "file", feature = "sqlite"))]
 fn imported_batch_history_with(label: &str, record_id: &str, locator: &str) -> SubjectHistory {
     let registry = registry();
     let decision = Runtime::new(&registry)
@@ -973,7 +973,7 @@ fn imported_batch_history_with(label: &str, record_id: &str, locator: &str) -> S
     }
 }
 
-#[cfg(feature = "file")]
+#[cfg(any(feature = "file", feature = "sqlite"))]
 fn imported_batch_history(label: &str) -> SubjectHistory {
     imported_batch_history_with(label, &format!("{label}-create"), "records/0")
 }
@@ -1294,7 +1294,7 @@ fn a_refused_member_leaves_no_part_of_the_batch_committed() {
 
 #[cfg(feature = "file")]
 #[test]
-fn a_batch_naming_one_subject_twice_is_refused_before_any_write() {
+fn a_batch_naming_one_subject_twice_with_different_anchors_is_refused_before_any_write() {
     block_on(async {
         let directory = tempfile::tempdir().expect("temporary directory");
         let (erased, authority, _) =
@@ -1304,15 +1304,19 @@ fn a_batch_naming_one_subject_twice_is_refused_before_any_write() {
             .expect("bound store");
         let operation = store.operation(context("duplicate-run"));
 
+        // Two mentions of one subject carrying the same bytes settle as an exact repeat, which is
+        // what N singular calls do — `import_batch_record_identity.rs` holds that. Two mentions
+        // carrying *different* bytes are two different boundaries claiming one subject. No
+        // destination can hold both, so the adapter refuses without asking one.
         let before = store.calls().captures;
         let refused = operation
             .import_anchors(vec![
                 imported_batch_history("twice"),
                 imported_batch_history("other"),
-                imported_batch_history("twice"),
+                imported_batch_history_with("twice", "twice-create", "records/1"),
             ])
             .await
-            .expect_err("one subject cannot be imported twice in one group");
+            .expect_err("one subject cannot carry two different anchors in one group");
         assert!(
             matches!(
                 refused,
@@ -1355,5 +1359,95 @@ fn an_empty_batch_reaches_no_provider() {
                 .is_empty()
         );
         assert_eq!(store.calls().captures, before, "empty batches do no IO");
+    });
+}
+
+/// A batch that *commits* on a provider taking the port's default blob path.
+///
+/// Every other `import_anchors` case either runs on the File provider, which overrides
+/// `AtomicEventStore::append_group_guarded_with_blobs`, or — like
+/// `import_batch_blob_binding.rs` — only exercises a batch the adapter refuses before it calls
+/// the port at all. Neither notices if the default stops carrying a batch to the destination.
+///
+/// The default is the one thing under this call that this repository does not own. When it
+/// changes, a batch import on SQLite and PostgreSQL either keeps working or stops dead, and
+/// without this case it stops dead quietly: the byte-identity case is File-only and would stay
+/// green. This is the alarm.
+#[cfg(feature = "sqlite")]
+#[test]
+fn a_batch_import_commits_through_the_port_default_on_the_sqlite_provider() {
+    block_on(async {
+        let tenant = TenantId::new("import-batch-sqlite-commit").expect("valid tenant");
+        let backend = Arc::new(
+            eventlog_sqlite::SqliteEventStore::in_memory("import_batch_commit")
+                .await
+                .expect("SQLite memory provider"),
+        );
+        let stream_identity = backend
+            .stream_identity(&tenant)
+            .await
+            .expect("tenant identity");
+        let projector = Arc::new(ErRecordedProjector::new());
+        backend
+            .create_projections(projector.clone())
+            .await
+            .expect("projection admission");
+        backend
+            .attach_inline_existing(projector)
+            .await
+            .expect("projection attachment");
+        let authority = Authority {
+            logical_scope: "import-batch-sqlite-commit-scope".into(),
+            tenant: tenant.as_str().to_owned(),
+            stream_identity,
+        };
+        let erased: Arc<dyn EventlogBackend> = backend;
+        EventlogBindingProvisioner::new(erased.clone(), LIMITS)
+            .provision_binding(authority.clone(), context("sqlite-commit"))
+            .await
+            .expect("binding provisioned");
+        let store = EventlogRecordedStore::open(erased, authority.clone(), LIMITS)
+            .await
+            .expect("bound store");
+        let operation = store.operation(context("sqlite-commit-run"));
+
+        let histories: Vec<SubjectHistory> = (0..3)
+            .map(|ordinal| imported_batch_history(&format!("sqlite-batch-{ordinal}")))
+            .collect();
+        let before = store.calls().captures;
+        let outcomes = operation
+            .import_anchors(histories.clone())
+            .await
+            .expect("the batch commits through whatever blob path the provider offers");
+
+        assert_eq!(outcomes.len(), 3);
+        assert!(
+            outcomes.iter().all(|outcome| !outcome.replayed),
+            "three fresh boundaries are not replays: {outcomes:?}"
+        );
+        assert_eq!(
+            store.calls().captures - before,
+            2,
+            "the fixed cost does not depend on which blob path the provider takes"
+        );
+        assert_eq!(
+            store
+                .complete_snapshot(&authority.logical_scope)
+                .await
+                .expect("snapshot")
+                .histories
+                .len(),
+            3
+        );
+        // Every anchor is the one the singular path would recognise as its own.
+        for history in &histories {
+            assert!(
+                operation
+                    .import_anchor(history.clone())
+                    .await
+                    .expect("singular replay of a batched anchor")
+                    .replayed
+            );
+        }
     });
 }
