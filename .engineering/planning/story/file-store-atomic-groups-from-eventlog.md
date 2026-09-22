@@ -2,7 +2,7 @@
 format: aep.planning-md/1
 id: story:file-store-atomic-groups-from-eventlog
 kind: story
-status: draft
+status: implemented
 title: All-or-nothing batches across subject documents in File Store
 summary: Close the File Store single-document atomicity limit, reusing eventlog's crates/eventlog-file atomic groups; gated on the Atlas ADR that decides whether entity-store providers sit on eventlog.
 refs:
@@ -12,7 +12,8 @@ refs:
   reference: crates/eventlog-file
 relations:
 - informed_by: story:replay-from-events
-revision: 4
+- serves: vision:O2
+revision: 10
 ---
 ## Problem
 
@@ -84,3 +85,42 @@ This artifact is the existing Entity Runtime owner for the later FileStore facad
 adoption; do not create a duplicate owner. It remains `draft` because the qualified asynchronous ER
 Eventlog adapter, explicit compatibility bridge and remaining Eventlog provider proof are not yet
 complete. ADR acceptance records direction, not a shipped dependency or readiness evidence.
+
+## Complete candidate implementation assignment
+
+## Complete candidate implementation assignment
+
+The separately scoped full facade/import and existing FileStore author assignment is now dispatched to operation_fulfillment_correction after that worker CLOSED the original SDK M6 author contract. Managed tree ~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-provider-facades-20260916 begins at exact7fd93ef43d4a91c460c7305f9e3be90d7b0a4c11; worker lease codex-provider-facades-20260916. Root alone writes canonical AEP and integrates. Full fixed contract: ~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/remaining-provider-facades-contract.md.
+
+Source/design work can proceed independently of provider qualification. Initial design docs/design/eventlog-provider-facades-and-legacy-imports.md resolves dependency direction and retains explicit legacy acquisition; final compatibility must prove usable File/SQLite/PostgreSQL recorded facades and actual CLI/shell routing, complete history/identity/query/receipt/uncertainty behavior, caller-selected PostgreSQL authority, exact imports and File competing-process/crash atomicity. Full original actualPG/minima/strict/docs/site gates and one complete report end the assignment; no narrower facade-only handoff. Original adapter reviews stay closed and denied administration work remains excluded.
+
+Implementation qualification and lifecycle advancement remain subject to the existing adapter/provider acceptance dependency; no completion claim from this assignment. One worker owns both stories to avoid source overlap. Source-only initially while native correction owns heavy2 and M3 bounded1; root allocates compilation after capacity check.
+
+## Complete author acceptance and candidate freeze
+
+Complete author contract closed. The exact 27-path candidate is 5df62103b129ef482f9fdafc3cb3f7c194c7b942 over 7fd93ef43d4a91c460c7305f9e3be90d7b0a4c11, with Eventlog caller-authority candidate 088c27b5df9745c68d8a2240dbb2038998b03efe.
+
+The full task check with actual PostgreSQL and all runtime features passed on unchanged source; independent pure Rust 1.85 checks and feature-enabled Rust 1.91 consumer acceptance passed. The owned disposable database was removed and absence verified. Source manifest SHA256 35ea43b37650bbd6d2d5245504acfdfad9e9401253ba1e01c5331fdc45bd09c6; evidence manifest SHA256 9bc785cd09214cf54892ff9adf71c1a1250397b2b0b12fa94cc19ba10233f81b. Root rehashed every manifest entry, froze exact source, and verified signed common evidence.
+
+The complete report and freeze receipt are retained in the ESS evolution root handoff under waves/0007-er-eventlog-adapter/remaining-provider-facades/. Independent whole source examination and qualified integration remain open. Administration review and four provider-native stages are separate existing blockers; consumer acceptance does not supersede them. No real cutover or publication occurred. The author assignment is closed; root owns original source-review dispatch and integration.
+
+## Complete local integration acceptance
+
+# M2 runtime adapter, facades and explicit imports — accepted locally
+
+2026-09-18T23:11Z. Implemented / verified / integrated = yes / yes / yes. Root committed the final qualified dependency selection on the existing `integrate/ess-evolution-er-20260915` branch as `8b1757365f628338cf697f53deb9ce76acd25a99`, parent `13b8a1faddcbd368ca636606efa9e4927a9221c8`. Provider is qualified Eventlog `f802eb8b01b44ba04a93394b20f0c07391f7757a`. Integration checkout is clean; all five final manifest/lock hashes in `source.sha256` match after commit. No path override, other dependency update or provisional CPU patch was adopted.
+
+## Acceptance evidence
+
+| Approved existing obligation | Acceptance retained |
+| --- | --- |
+| Complete asynchronous recorded adapter and explicit synchronous bridge; records, receipts, retry, conflict, fault recovery, binding and service composition | `task-check.log` / `task-check.exit`: full `task check` exited zero, including all-feature entity-eventlog tests and strict Clippy on Rust1.91; File/SQLite and real PostgreSQL provider, bridge, fault and service composition tests executed. Original adapter source reviews and accepted corrections remain closed. |
+| Compatible SQLite/PostgreSQL facades and explicit legacy acquisition/import, caller-owned transport and complete receipts | `facades.log` / `facades.exit`: Rust1.91 all-feature entity-postgres/entity-sqlite acceptance exited zero. PostgreSQL migration/app URLs and CA were exported from the owned live TLS fixture, including the separately required migration URL; no unavailable-fixture branch substitutes for acceptance. |
+| File facade, multi-subject atomicity, imports and existing-only ordinary open | Full entity-eventlog all-feature gate above includes facade and native-provider acceptance. Original facade source examinations and final-open correction are accepted; their independent regressions are retained unchanged. Provider's newly closed native group crash matrices supply the original private-stage gap evidence. |
+| Independent pure library minimum | `pure-minimum.log` / `.exit`: Rust1.85 locked/offline workspace build excluding entity-eventlog exited zero. |
+| Common source checks and integrated source identity | `common-check.exit` and `common-verify.exit` zero; signed `common-receipt.json`. Commit changed only four manifests and Cargo.lock; post-commit hashes equal the verified source. |
+| Changed adopter documentation | No website source changed in this final pin selection. Earlier accepted facade/open correction includes its successful site gate; unchanged evidence retained in `../final-open-correction/coordinator-acceptance.json`. No redundant site prerequisite added. |
+
+All original M2 source reviews are CLOSED; no third examination or reset. Provider acceptance is linked in `../native-qualification-20260918/integration.md`. Final local integration closes the existing adapter, facade/import and FileStore atomic-group product outcome, not merely an author assignment. No release/publication, live-store migration, downstream SDK/Connectors qualification or final ESS accounting acceptance is claimed.
+
+Next ordered outcome is existing M3 public WriterControl and migration command integration. The confirmed local operator-controlled writer model supplies design facts; actual stop/drain/no-restart custody must still be established before any real store activation.
