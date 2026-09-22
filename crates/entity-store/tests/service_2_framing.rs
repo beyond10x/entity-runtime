@@ -106,10 +106,15 @@ fn service_2_uses_literal_record_3_and_request_3_framing() {
     assert!(read_record_in_domain("er.record/2", &record).is_err());
     assert!(read_record_in_domain("er.request/2", &request).is_err());
     let record_literal = include_bytes!("fixtures/service_2_record_3.json");
-    assert_eq!(
-        record.as_slice(),
-        record_literal.strip_suffix(b"\n").unwrap_or(record_literal)
-    );
+    // The fixture's trailing newline is the file's, not the vector's, and a checkout that
+    // converted it wrote two bytes rather than one. `.gitattributes` keeps this file out of that
+    // conversion; stripping both forms means a checkout that ignored it is still a comparison of
+    // the record and not of the platform.
+    let record_literal = record_literal
+        .strip_suffix(b"\r\n")
+        .or_else(|| record_literal.strip_suffix(b"\n"))
+        .unwrap_or(record_literal);
+    assert_eq!(record.as_slice(), record_literal);
     assert_eq!(
         request,
         br#"["er.request/3",{"arguments":{"bound":{"note":"present"},"fixed":"fixed"},"definition_version":1,"kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"r-3","recorded_at":"2026-09-16T00:00:00Z"},"subject":["probe-service/2","p-3"]}]"#
