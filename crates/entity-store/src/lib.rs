@@ -49,14 +49,17 @@ use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod asynchronous;
 pub mod conformance;
 pub mod envelope;
 pub mod file;
+pub mod legacy;
 pub mod memory;
 pub mod projection;
 
 pub use envelope::{Envelope, EnvelopeError, Recording};
 pub use file::{migrate_file_store_v1, FileMigrationReport, FileStore};
+pub use legacy::{LegacyStoreSnapshot, LegacyStoreSource};
 pub use memory::MemoryStore;
 pub use projection::{project, Grouping, Projections};
 
@@ -315,6 +318,28 @@ impl RecordedCommit {
         {
             return Err(StoreError::Backend(
                 "recorded decision does not describe its resulting instance".to_owned(),
+            ));
+        }
+        if record
+            .removed
+            .iter()
+            .any(|field| record.changed.contains_key(field))
+        {
+            return Err(StoreError::Backend(
+                "recorded decision names one field in both changed and removed".to_owned(),
+            ));
+        }
+        if record.definition.is_some()
+            && record.events.iter().any(|event| {
+                event.removed != record.removed
+                    || event
+                        .removed
+                        .iter()
+                        .any(|field| event.changed.contains_key(field))
+            })
+        {
+            return Err(StoreError::Backend(
+                "recorded decision event removal evidence disagrees with its decision".to_owned(),
             ));
         }
         Ok(())

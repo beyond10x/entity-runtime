@@ -74,7 +74,10 @@
 //!
 //! # Evaluation order of an operation
 //!
-//! 1. the instance's `(entity, version)` must match the definition;
+//! Twelve steps under `kernel/1`, in the order the code checks them:
+//!
+//! 0. the instance's `(entity, version)` must match the definition;
+//! 1. the instance must carry a state the definition declares;
 //! 2. the operation must exist;
 //! 3. arguments are defaulted, then validated against the operation's argument schema;
 //! 4. a transition is selected from the instance's current lifecycle state;
@@ -88,6 +91,18 @@
 //!
 //! A refusal at any step returns the typed error and nothing else: the caller's instance is never
 //! touched and no partial event list escapes.
+//!
+//! A `service/1` definition ([`Semantics::Service1`]) inserts four steps into that list —
+//! branch selection, a refusing branch's return, the identity mirror and the declared response —
+//! and [`decide`] carries the whole numbered sixteen. Renumbering steps 5 to 15 of that list
+//! against this one recovers these twelve unchanged.
+//!
+//! # Two document rule sets, one evaluation path
+//!
+//! `kernel/1` is `service/1` with one implicit branch. A `kernel/1` definition gets the evaluation
+//! it gets today, refusal variant for refusal variant, and serializes to the bytes it serializes to
+//! today; every key and every operator this crate adds beyond it is refused in a `kernel/1`
+//! definition by [`DefinitionError::SemanticsKeyNotAvailable`].
 //!
 //! # Rules answer with three values, not two
 //!
@@ -105,8 +120,10 @@
 
 mod definition;
 mod error;
+pub mod identity;
 mod number;
 pub use number::compare as compare_numbers;
+mod observed;
 mod registry;
 mod replay;
 mod runtime;
@@ -115,16 +132,23 @@ mod truth;
 mod validation;
 
 pub use definition::{
-    Condition, CreateDefinition, DeclaredDefault, EntityDefinition, EventDefinition,
-    FieldDefinition, FieldKind, LifecycleDefinition, ObjectSchema, OneOrMany, OperationDefinition,
-    RuleDefinition, TransitionDefinition, CONDITION_OPERATORS,
+    Cardinality, CompareOp, Comparison, Condition, CreateDefinition, DeclaredDefault,
+    EntityDefinition, EventDefinition, FieldDefinition, FieldKind, IdentityDefinition,
+    LifecycleDefinition, MapKey, NumberObservation, ObjectSchema, OneOrMany, OperationDefinition,
+    OperationFieldAction, OperationFieldActions, OperationFieldRequirement, OutcomeDefinition,
+    OutcomeEffect, PresentArgument, ProjectionDefinition, Quantifier, RefusalDefinition,
+    RelationDefinition, RelationKind, RuleDefinition, Semantics, TransitionDefinition,
+    CONDITION_OPERATORS, MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
 };
 pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
+pub use observed::Observed;
 pub use registry::{Registry, ValidatedDefinition};
 pub use replay::{rehydrate, replay};
 pub use runtime::{
-    create, execute, normalize_arguments, Decision, DecisionCommand, DecisionRecord, DomainEvent,
-    EntityInstance, Runtime,
+    create, create_derived, decide, decide_before_load, decide_create, decide_create_derived,
+    execute, normalize_arguments, scale_compare, Decision, DecisionCommand, DecisionEffect,
+    DecisionRecord, DomainEvent, EntityInstance, Evaluation, LoadedDecision, PreloadDecision,
+    PreparedOperation, PreparedOutcome, PreparedSubject, Refusal, Runtime,
 };
 pub use truth::Truth;
 

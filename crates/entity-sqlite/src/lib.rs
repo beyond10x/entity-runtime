@@ -36,15 +36,167 @@
 use std::path::Path;
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
+#[cfg(feature = "eventlog-facade")]
+use entity_eventlog::{
+    sync::{
+        BridgeConfig, BridgeStartError, CallWait, EventlogRecordedStoreOwner,
+        EventlogRecordedStoreProvisioner, ProvisionAuthority, ShutdownMode, ShutdownOutcome,
+    },
+    Authority, EventlogOperationContext, RecordedProviderFacade,
+};
+#[cfg(feature = "eventlog-facade")]
+use entity_query::{DocumentPage, DocumentQuery, DocumentQueryProvider, QueryError};
 use entity_store::{
+    asynchronous::{
+        HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
+        LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
+    },
     check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
-    RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
+    LegacyStoreSnapshot, LegacyStoreSource, RecordedCommit, RecordedObservation, StateProvider,
+    Store, StoreError,
 };
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
 /// A [`Store`] over one SQLite database.
 pub struct SqliteStore {
     connection: Connection,
+}
+
+/// Eventlog-backed SQLite facade with complete recorded receipts and atomic groups.
+#[cfg(feature = "eventlog-facade")]
+#[derive(Debug)]
+pub struct EventlogSqliteStore {
+    facade: RecordedProviderFacade,
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl EventlogSqliteStore {
+    /// Opens an already provisioned SQLite Eventlog authority.
+    ///
+    /// # Errors
+    ///
+    /// Worker/runtime construction or exact authority verification failure.
+    pub fn open(
+        path: impl Into<String>,
+        prefix: impl Into<String>,
+        registry: entity_core::Registry,
+        authority: Authority,
+        limits: eventlog_core::CaptureLimits,
+        config: BridgeConfig,
+    ) -> Result<Self, BridgeStartError> {
+        let facade = RecordedProviderFacade::start(
+            registry,
+            EventlogRecordedStoreOwner::Sqlite {
+                path: path.into(),
+                prefix: prefix.into(),
+                authority,
+                limits,
+            },
+            config,
+        )?;
+        Ok(Self { facade })
+    }
+
+    /// Explicitly creates projections and binds a SQLite Eventlog authority before opening it.
+    ///
+    /// # Errors
+    ///
+    /// Native preparation, binding conflict/uncertainty, or open verification failure.
+    pub fn provision(
+        path: impl Into<String>,
+        prefix: impl Into<String>,
+        registry: entity_core::Registry,
+        authority: ProvisionAuthority,
+        context: EventlogOperationContext,
+        limits: eventlog_core::CaptureLimits,
+        config: BridgeConfig,
+    ) -> Result<Self, BridgeStartError> {
+        let facade = RecordedProviderFacade::provision(
+            registry,
+            EventlogRecordedStoreProvisioner::Sqlite {
+                path: path.into(),
+                prefix: prefix.into(),
+                authority,
+                limits,
+            },
+            context,
+            config,
+        )?;
+        Ok(Self { facade })
+    }
+
+    /// Explicitly provisions an in-memory SQLite Eventlog authority.
+    ///
+    /// # Errors
+    ///
+    /// Native preparation, binding conflict/uncertainty, or open verification failure.
+    pub fn provision_memory(
+        prefix: impl Into<String>,
+        registry: entity_core::Registry,
+        authority: ProvisionAuthority,
+        context: EventlogOperationContext,
+        limits: eventlog_core::CaptureLimits,
+        config: BridgeConfig,
+    ) -> Result<Self, BridgeStartError> {
+        let facade = RecordedProviderFacade::provision(
+            registry,
+            EventlogRecordedStoreProvisioner::SqliteMemory {
+                prefix: prefix.into(),
+                authority,
+                limits,
+            },
+            context,
+            config,
+        )?;
+        Ok(Self { facade })
+    }
+
+    /// The complete receipt-preserving facade.
+    #[must_use]
+    pub const fn recorded(&self) -> &RecordedProviderFacade {
+        &self.facade
+    }
+
+    /// Closes admission and reports actual native retirement.
+    pub fn shutdown(&mut self, mode: ShutdownMode, wait: CallWait) -> ShutdownOutcome {
+        self.facade.shutdown(mode, wait)
+    }
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl StateProvider for EventlogSqliteStore {
+    fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
+        self.facade.load(entity, id)
+    }
+
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        self.facade.ids(entity)
+    }
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl EventProvider for EventlogSqliteStore {
+    fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
+        self.facade.events(entity, id)
+    }
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl HistoryProvider for EventlogSqliteStore {
+    fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
+        self.facade.records(entity, id)
+    }
+
+    fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
+        self.facade.observations(entity, id)
+    }
+}
+
+#[cfg(feature = "eventlog-facade")]
+impl DocumentQueryProvider for EventlogSqliteStore {
+    fn query_documents(&self, query: &DocumentQuery) -> Result<DocumentPage, QueryError> {
+        self.facade.query_documents(query)
+    }
 }
 
 /// Turns a driver or serialisation failure into a backend error saying what it was doing.
@@ -474,5 +626,206 @@ impl AtomicBatchStore for SqliteStore {
         transaction
             .commit()
             .map_err(|error| backend("committing", &error))
+    }
+}
+
+impl LegacyStoreSource for SqliteStore {
+    fn acquire_legacy(&mut self, source_id: &str) -> Result<LegacyStoreSnapshot, StoreError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| backend("beginning legacy acquisition", &error))?;
+        let mut instances = transaction
+            .prepare(
+                "SELECT coordinates.entity, coordinates.id, instances.revision, instances.document
+                 FROM (
+                     SELECT entity, id FROM instances
+                     UNION SELECT entity, id FROM events
+                     UNION SELECT entity, id FROM history
+                     UNION SELECT entity, id FROM legacy_origins
+                 ) AS coordinates
+                 LEFT JOIN instances USING (entity, id)
+                 ORDER BY coordinates.entity, coordinates.id",
+            )
+            .map_err(|error| backend("preparing legacy instance acquisition", &error))?;
+        let rows = instances
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .map_err(|error| backend("acquiring legacy instances", &error))?;
+        let coordinates = rows
+            .map(|row| row.map_err(|error| backend("reading a legacy instance", &error)))
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(instances);
+
+        let mut histories = Vec::with_capacity(coordinates.len());
+        for (entity, id, stored_revision, document) in coordinates {
+            let (Some(stored_revision), Some(document)) = (stored_revision, document) else {
+                return Err(StoreError::Backend(format!(
+                    "legacy SQLite evidence at {entity:?}/{id:?} has no terminal instance"
+                )));
+            };
+            let instance: EntityInstance = serde_json::from_str(&document)
+                .map_err(|error| backend("parsing a legacy instance", &error))?;
+            if instance.entity != entity
+                || instance.id != id
+                || revision_from_sql(stored_revision)? != instance.revision
+            {
+                return Err(StoreError::Backend(format!(
+                    "legacy SQLite instance row {entity:?}/{id:?} substitutes its identity or revision"
+                )));
+            }
+            let legacy_origin = transaction
+                .query_row(
+                    "SELECT revision FROM legacy_origins WHERE entity = ?1 AND id = ?2",
+                    params![entity, id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()
+                .map_err(|error| backend("acquiring a legacy origin", &error))?
+                .map(revision_from_sql)
+                .transpose()?;
+            if legacy_origin.is_some_and(|revision| revision > instance.revision) {
+                return Err(StoreError::Backend(format!(
+                    "legacy SQLite origin for {entity:?}/{id:?} is later than terminal revision {}",
+                    instance.revision
+                )));
+            }
+            let has_bare_events = transaction
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM events WHERE entity = ?1 AND id = ?2)",
+                    params![entity, id],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(|error| backend("checking legacy event evidence", &error))?;
+            let mut history_statement = transaction
+                .prepare(
+                    "SELECT position, kind, record_id, document FROM history \
+                     WHERE entity = ?1 AND id = ?2 ORDER BY position",
+                )
+                .map_err(|error| backend("preparing legacy history acquisition", &error))?;
+            let history_rows = history_statement
+                .query_map(params![entity, id], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })
+                .map_err(|error| backend("acquiring legacy history", &error))?;
+            let history_rows = history_rows
+                .map(|row| row.map_err(|error| backend("reading legacy history", &error)))
+                .collect::<Result<Vec<_>, _>>()?;
+            drop(history_statement);
+            let mut evidence = Vec::new();
+            let mut decision_position = 0_u64;
+            let mut observation_position = 0_u64;
+            for (position, kind, record_id, document) in history_rows {
+                let position = u64::try_from(position).map_err(|_| {
+                    StoreError::Backend("legacy SQLite history has a negative position".to_owned())
+                })?;
+                let (entry, per_kind_position) = match kind.as_str() {
+                    "decision" => {
+                        let envelope: Envelope<DecisionRecord> = serde_json::from_str(&document)
+                            .map_err(|error| backend("parsing a legacy decision", &error))?;
+                        if envelope.record_id != record_id {
+                            return Err(StoreError::Backend(format!(
+                                "legacy SQLite decision at {entity:?}/{id:?}/{position} substitutes record identity"
+                            )));
+                        }
+                        let position = decision_position;
+                        decision_position = decision_position.checked_add(1).ok_or_else(|| {
+                            StoreError::Backend(
+                                "legacy SQLite decision position exhausted".to_owned(),
+                            )
+                        })?;
+                        (
+                            RecordedEntry::Decision(RecordedCommit {
+                                instance: envelope.record.result.clone(),
+                                envelope,
+                            }),
+                            position,
+                        )
+                    }
+                    "observation" => {
+                        let observation: RecordedObservation = serde_json::from_str(&document)
+                            .map_err(|error| backend("parsing a legacy observation", &error))?;
+                        if observation.envelope.record_id != record_id {
+                            return Err(StoreError::Backend(format!(
+                                "legacy SQLite observation at {entity:?}/{id:?}/{position} substitutes record identity"
+                            )));
+                        }
+                        let position = observation_position;
+                        observation_position =
+                            observation_position.checked_add(1).ok_or_else(|| {
+                                StoreError::Backend(
+                                    "legacy SQLite observation position exhausted".to_owned(),
+                                )
+                            })?;
+                        (RecordedEntry::Observation(observation), position)
+                    }
+                    other => {
+                        return Err(StoreError::Backend(format!(
+                            "legacy SQLite history has unknown kind {other:?}"
+                        )));
+                    }
+                };
+                evidence.push(LegacyEvidence::Envelope(
+                    ImportedRecordEvidence::new(
+                        entry,
+                        source_id,
+                        format!("history/{entity}/{id}/{position}"),
+                        if has_bare_events {
+                            KnownLegacyOrder::PerKind(per_kind_position)
+                        } else {
+                            KnownLegacyOrder::Subject(position)
+                        },
+                    )
+                    .map_err(|error| StoreError::Backend(error.to_string()))?,
+                ));
+            }
+            let mut event_statement = transaction
+                .prepare(
+                    "SELECT document FROM events WHERE entity = ?1 AND id = ?2 \
+                     ORDER BY revision, position",
+                )
+                .map_err(|error| backend("preparing legacy event acquisition", &error))?;
+            let event_rows = event_statement
+                .query_map(params![entity, id], |row| row.get::<_, String>(0))
+                .map_err(|error| backend("acquiring legacy events", &error))?;
+            for row in event_rows {
+                let document = row.map_err(|error| backend("reading a legacy event", &error))?;
+                evidence.push(LegacyEvidence::Event(
+                    serde_json::from_str(&document)
+                        .map_err(|error| backend("parsing a legacy event", &error))?,
+                ));
+            }
+            drop(event_statement);
+            histories.push(SubjectHistory {
+                subject: Subject::new(entity, id)
+                    .map_err(|error| StoreError::Backend(error.to_string()))?,
+                origin: HistoryOrigin::Imported(LegacyAnchor {
+                    instance,
+                    completeness: LegacyCompleteness::CompleteSubject,
+                    order: if has_bare_events {
+                        LegacyOrderDeclaration::PerKindOnly
+                    } else {
+                        LegacyOrderDeclaration::Subject
+                    },
+                    evidence,
+                }),
+                records: Vec::new(),
+            });
+        }
+        transaction
+            .commit()
+            .map_err(|error| backend("ending legacy acquisition", &error))?;
+        LegacyStoreSnapshot::new(source_id, histories)
     }
 }

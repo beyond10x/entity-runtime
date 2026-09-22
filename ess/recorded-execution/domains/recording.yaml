@@ -1,0 +1,165 @@
+domain: entity.recording
+summary: Typed coordinates of the accepted asynchronous recorded storage contract.
+
+# Authored decisions: docs/design/recorded-execution-v0.1.md, ESS typed coordinate model.
+# This is not a replacement schema for complete kernel records or nullable provenance.
+types:
+  - name: entity.recording.SubjectId
+    kind: newtype
+    of: String
+  - name: entity.recording.RecordId
+    kind: newtype
+    of: String
+  - name: entity.recording.BatchId
+    kind: newtype
+    of: String
+  - name: entity.recording.MemberId
+    kind: newtype
+    of: String
+  - name: entity.recording.RecordKind
+    kind: enum
+    variants: [Decision, Observation]
+  - name: entity.recording.OriginKind
+    kind: enum
+    variants: [Genesis, Imported]
+  - name: entity.recording.BatchKind
+    kind: enum
+    variants: [SingleRecord, Named]
+  - name: entity.recording.LegacyOrderKind
+    kind: enum
+    variants: [PerKind, Subject]
+  - name: entity.recording.LegacyReceiptAvailability
+    kind: enum
+    variants: [Unavailable]
+
+entities:
+  - name: entity.recording.Subject
+    identity:
+      name: subject_id
+      type: entity.recording.SubjectId
+    fields:
+      - name: entity_name
+        type: String
+      - name: instance_id
+        type: String
+      - name: revision
+        type: Integer
+      - name: origin
+        type: entity.recording.OriginKind
+      - name: anchor_revision
+        type: Optional<Integer>
+    lifecycle:
+      initial: Recorded
+      states: [Recorded]
+      terminal: [Recorded]
+
+  - name: entity.recording.StoredRecord
+    identity:
+      name: record_id
+      type: entity.recording.RecordId
+    fields:
+      - name: subject_id
+        type: entity.recording.SubjectId
+      - name: kind
+        type: entity.recording.RecordKind
+      - name: revision
+        type: Integer
+      - name: subject_position
+        type: Integer
+      - name: store_position
+        type: Integer
+    relations:
+      - name: subject
+        kind: references
+        target: entity.recording.Subject
+        cardinality: one
+        via: subject_id
+    lifecycle:
+      initial: Recorded
+      states: [Recorded]
+      terminal: [Recorded]
+
+  - name: entity.recording.BatchReceipt
+    identity:
+      name: batch_id
+      type: entity.recording.BatchId
+    fields:
+      - name: kind
+        type: entity.recording.BatchKind
+      - name: caller_key
+        type: String
+    relations:
+      - name: members
+        kind: owns
+        target: entity.recording.ReceiptMember
+        cardinality: many
+        via: batch_id
+    lifecycle:
+      initial: Recorded
+      states: [Recorded]
+      terminal: [Recorded]
+
+  # Available historical envelopes retain their IDs without new physical/batch receipts.
+  - name: entity.recording.ImportedRecordEvidence
+    identity:
+      name: record_id
+      type: entity.recording.RecordId
+    fields:
+      - name: subject_id
+        type: entity.recording.SubjectId
+      - name: kind
+        type: entity.recording.RecordKind
+      - name: revision
+        type: Integer
+      - name: source_id
+        type: String
+      - name: source_locator
+        type: String
+      - name: known_order_kind
+        type: entity.recording.LegacyOrderKind
+      - name: known_order_position
+        type: Integer
+      - name: receipt
+        type: entity.recording.LegacyReceiptAvailability
+    relations:
+      - name: subject
+        kind: references
+        target: entity.recording.Subject
+        cardinality: one
+        via: subject_id
+    lifecycle:
+      initial: Recorded
+      states: [Recorded]
+      terminal: [Recorded]
+
+  - name: entity.recording.ReceiptMember
+    identity:
+      name: member_id
+      type: entity.recording.MemberId
+    fields:
+      - name: batch_id
+        type: entity.recording.BatchId
+      - name: member_index
+        type: Integer
+      - name: record_id
+        type: entity.recording.RecordId
+      - name: subject_id
+        type: entity.recording.SubjectId
+      - name: kind
+        type: entity.recording.RecordKind
+      - name: revision
+        type: Integer
+      - name: subject_position
+        type: Integer
+      - name: store_position
+        type: Integer
+    relations:
+      - name: record
+        kind: references
+        target: entity.recording.StoredRecord
+        cardinality: one
+        via: record_id
+    lifecycle:
+      initial: Recorded
+      states: [Recorded]
+      terminal: [Recorded]

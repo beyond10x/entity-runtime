@@ -13,7 +13,16 @@ use entity_core::{
     CoreError, Decision, DefinitionErrors, EntityDefinition, EntityInstance, Registry, Runtime,
     ValidationError,
 };
+#[cfg(feature = "eventlog-providers")]
+use entity_eventlog::{
+    sync::{BridgeConfig, CallWait, ProvisionAuthority, ShutdownMode, ShutdownOutcome},
+    Authority, EventlogFileStore, EventlogOperationContext, RecordedProviderFacade,
+};
+#[cfg(feature = "eventlog-providers")]
+use entity_executor::{CreateRequest, ExecuteRequest};
 use entity_shell::{ShellError, StoredRuntime};
+#[cfg(feature = "eventlog-providers")]
+use entity_store::asynchronous::{AppendOutcome, RecordLookup, RecordedEntry, Subject};
 use entity_store::{migrate_file_store_v1, FileStore, RecordedCommit, Recording, StateProvider};
 use serde_json::{json, Value};
 use std::{
@@ -105,6 +114,10 @@ enum Command {
             requires_all = ["record_id", "recorded_at", "actor_choice"]
         )]
         store: Option<PathBuf>,
+        /// Eventlog File selection JSON; selects the recorded facade for `--store`.
+        #[cfg(feature = "eventlog-providers")]
+        #[arg(long, requires = "store")]
+        eventlog_config: Option<PathBuf>,
         /// Provenance required when the decision is stored.
         #[command(flatten)]
         recording: RecordingArgs,
@@ -131,6 +144,10 @@ enum Command {
             requires_all = ["record_id", "recorded_at", "actor_choice"]
         )]
         store: Option<PathBuf>,
+        /// Eventlog File selection JSON; selects the recorded facade for `--store`.
+        #[cfg(feature = "eventlog-providers")]
+        #[arg(long, requires = "store")]
+        eventlog_config: Option<PathBuf>,
         /// Which instance in the store to act on.
         #[arg(long, requires = "store")]
         id: Option<String>,
@@ -166,6 +183,10 @@ enum Command {
         /// The directory an earlier `create --store` wrote into.
         #[arg(long)]
         store: PathBuf,
+        /// Eventlog File selection JSON; selects the recorded facade for `--store`.
+        #[cfg(feature = "eventlog-providers")]
+        #[arg(long)]
+        eventlog_config: Option<PathBuf>,
         /// Which entity type to list.
         #[arg(long)]
         entity: String,
@@ -252,6 +273,109 @@ enum StoreCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Prepare a new recorded Eventlog File authority and print its exact reopen authority.
+    #[cfg(feature = "eventlog-providers")]
+    ProvisionEventlogFile {
+        /// Destination Eventlog File root.
+        #[arg(long)]
+        root: PathBuf,
+        /// Logical Entity Runtime scope bound to the physical provider.
+        #[arg(long)]
+        scope: String,
+        /// Eventlog tenant identity.
+        #[arg(long)]
+        tenant: String,
+        /// Optional exact pre-existing provider generation.
+        #[arg(long)]
+        expected_stream_identity: Option<String>,
+        /// Maximum events in one authoritative capture.
+        #[arg(long)]
+        max_events: u64,
+        /// Maximum blobs in one authoritative capture.
+        #[arg(long)]
+        max_blobs: u64,
+        /// Maximum projection rows in one authoritative capture.
+        #[arg(long)]
+        max_projection_rows: u64,
+        /// Maximum total payload bytes in one authoritative capture.
+        #[arg(long)]
+        max_payload_bytes: u64,
+        /// Bounded synchronous bridge queue capacity.
+        #[arg(long)]
+        queue_capacity: u16,
+        /// Caller-owned operational facts for the binding write.
+        #[command(flatten)]
+        context: Box<EventlogContextArgs>,
+    },
+}
+
+#[cfg(feature = "eventlog-providers")]
+#[derive(Args)]
+struct EventlogContextArgs {
+    /// Opaque principal for whom the operation runs.
+    #[arg(long)]
+    subject: String,
+    /// Opaque agent or service issuing the operation.
+    #[arg(long)]
+    actor: String,
+    /// Caller-stable request identity.
+    #[arg(long)]
+    request_id: String,
+    /// Caller-stable trace identity.
+    #[arg(long)]
+    trace_id: String,
+    /// Optional causing event identity.
+    #[arg(long)]
+    causation_id: Option<String>,
+    /// Bounded automation depth.
+    #[arg(long, default_value_t = 0)]
+    causation_depth: u32,
+    /// Caller-understood RFC 3339 occurrence time.
+    #[arg(long)]
+    occurred_at: String,
+}
+
+#[cfg(feature = "eventlog-providers")]
+impl TryFrom<EventlogContextArgs> for EventlogOperationContext {
+    type Error = Failure;
+
+    fn try_from(value: EventlogContextArgs) -> Result<Self, Self::Error> {
+        let occurred_at = time::OffsetDateTime::parse(
+            &value.occurred_at,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .map_err(|error| Failure::Usage(format!("invalid --occurred-at: {error}")))?;
+        Ok(Self {
+            subject: value.subject,
+            actor: value.actor,
+            request_id: value.request_id,
+            trace_id: value.trace_id,
+            causation_id: value.causation_id,
+            causation_depth: value.causation_depth,
+            occurred_at,
+        })
+    }
+}
+
+#[cfg(feature = "eventlog-providers")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EventlogFileSelection {
+    authority: Authority,
+    max_events: u64,
+    max_blobs: u64,
+    max_projection_rows: u64,
+    max_payload_bytes: u64,
+    queue_capacity: u16,
+}
+
+#[cfg(feature = "eventlog-providers")]
+struct EventlogExecuteInput {
+    subject: Subject,
+    expected_revision: Option<u64>,
+    operation: String,
+    arguments: Value,
+    recording: Recording,
 }
 
 #[derive(Args)]
@@ -473,6 +597,8 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             id,
             fields,
             store,
+            #[cfg(feature = "eventlog-providers")]
+            eventlog_config,
             recording,
             format,
         } => {
@@ -484,6 +610,24 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                 // Stored: the shared shell decides and commits as one step, so this command, MCP
                 // and a generated command all record a creation the same way.
                 (Some(root), Some(recording)) => {
+                    #[cfg(feature = "eventlog-providers")]
+                    if let Some(selection) = eventlog_config.as_deref() {
+                        let subject = Subject::new(entity.clone(), id.clone())
+                            .map_err(|error| Failure::Usage(error.to_string()))?;
+                        return eventlog_file_create(
+                            root,
+                            selection,
+                            registry,
+                            CreateRequest {
+                                subject,
+                                definition_version: version,
+                                fields: fields.clone(),
+                                recording: recording.clone(),
+                            },
+                            format,
+                            out,
+                        );
+                    }
                     let mut store = FileStore::open(root);
                     let recorded = StoredRuntime::new(&registry, &mut store)
                         .create(&entity, version, id, fields, recording)?;
@@ -508,6 +652,8 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             definition,
             instance,
             store,
+            #[cfg(feature = "eventlog-providers")]
+            eventlog_config,
             id,
             wanted_entity,
             operation,
@@ -527,6 +673,25 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                     let recording = recording
                         .into_recording(true)?
                         .expect("--store requires the recording flags");
+                    #[cfg(feature = "eventlog-providers")]
+                    if let Some(selection) = eventlog_config.as_deref() {
+                        let subject = Subject::new(entity.clone(), id.clone())
+                            .map_err(|error| Failure::Usage(error.to_string()))?;
+                        return eventlog_file_execute(
+                            root,
+                            selection,
+                            registry,
+                            EventlogExecuteInput {
+                                subject,
+                                expected_revision,
+                                operation: operation.clone(),
+                                arguments: arguments.clone(),
+                                recording: recording.clone(),
+                            },
+                            format,
+                            out,
+                        );
+                    }
                     let mut store = FileStore::open(root);
                     let mut runtime = StoredRuntime::new(&registry, &mut store);
                     // The revision the caller observed. Without `--expected-revision` it is
@@ -561,12 +726,23 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
         }
         Command::List {
             store,
+            #[cfg(feature = "eventlog-providers")]
+            eventlog_config,
             entity,
             format,
         } => {
             // A store that cannot be read is a wrong invocation — the path, most likely — and is
             // reported as one; the store answering "nothing" for a type nobody stored under is an
             // answer, printed as an empty list with exit 0.
+            #[cfg(feature = "eventlog-providers")]
+            let ids = if let Some(selection) = eventlog_config.as_deref() {
+                eventlog_file_list(&store, selection, &entity)?
+            } else {
+                FileStore::open(&store)
+                    .ids(&entity)
+                    .map_err(|error| Failure::Usage(error.to_string()))?
+            };
+            #[cfg(not(feature = "eventlog-providers"))]
             let ids = FileStore::open(&store)
                 .ids(&entity)
                 .map_err(|error| Failure::Usage(error.to_string()))?;
@@ -652,9 +828,284 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                     .map_err(io_failure)
                 }
             }
+            #[cfg(feature = "eventlog-providers")]
+            StoreCommand::ProvisionEventlogFile {
+                root,
+                scope,
+                tenant,
+                expected_stream_identity,
+                max_events,
+                max_blobs,
+                max_projection_rows,
+                max_payload_bytes,
+                queue_capacity,
+                context,
+            } => provision_eventlog_file(
+                out,
+                &root,
+                ProvisionAuthority {
+                    logical_scope: scope,
+                    tenant,
+                    expected_stream_identity,
+                },
+                eventlog_limits(
+                    max_events,
+                    max_blobs,
+                    max_projection_rows,
+                    max_payload_bytes,
+                )?,
+                bridge_config(queue_capacity)?,
+                (*context).try_into()?,
+            ),
         },
         Command::Skill { out: path, force } => render_skill(out, path.as_deref(), force),
     }
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn eventlog_failure(detail: impl Into<String>) -> Failure {
+    Failure::StoreRefused {
+        kind: "eventlog_provider",
+        detail: detail.into(),
+    }
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn bridge_config(capacity: u16) -> Result<BridgeConfig, Failure> {
+    Ok(BridgeConfig {
+        queue_capacity: std::num::NonZeroU16::new(capacity)
+            .ok_or_else(|| Failure::Usage("Eventlog queue capacity must be nonzero".to_owned()))?,
+    })
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn eventlog_limits(
+    max_events: u64,
+    max_blobs: u64,
+    max_projection_rows: u64,
+    max_payload_bytes: u64,
+) -> Result<eventlog_core::CaptureLimits, Failure> {
+    if [
+        max_events,
+        max_blobs,
+        max_projection_rows,
+        max_payload_bytes,
+    ]
+    .contains(&0)
+    {
+        return Err(Failure::Usage(
+            "every Eventlog capture limit must be nonzero".to_owned(),
+        ));
+    }
+    Ok(eventlog_core::CaptureLimits {
+        max_events,
+        max_blobs,
+        max_projection_rows,
+        max_payload_bytes,
+    })
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn load_eventlog_selection(path: &Path) -> Result<EventlogFileSelection, Failure> {
+    let bytes = fs::read(path)
+        .map_err(|error| Failure::Usage(format!("cannot read {}: {error}", path.display())))?;
+    serde_json::from_slice(&bytes)
+        .map_err(|error| Failure::Usage(format!("invalid {}: {error}", path.display())))
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn with_eventlog_file<T>(
+    root: &Path,
+    selection_path: &Path,
+    registry: Registry,
+    operation: impl FnOnce(&EventlogFileStore) -> Result<T, Failure>,
+) -> Result<T, Failure> {
+    let selection = load_eventlog_selection(selection_path)?;
+    let limits = eventlog_limits(
+        selection.max_events,
+        selection.max_blobs,
+        selection.max_projection_rows,
+        selection.max_payload_bytes,
+    )?;
+    let bridge = bridge_config(selection.queue_capacity)?;
+    let mut store = EventlogFileStore::open(root, registry, selection.authority, limits, bridge)
+        .map_err(|error| eventlog_failure(format!("Eventlog File open failed: {error:?}")))?;
+    let result = operation(&store);
+    let shutdown = store.shutdown(ShutdownMode::Drain, CallWait::Forever);
+    if result.is_ok() && shutdown != (ShutdownOutcome::Joined { provider: Ok(()) }) {
+        return Err(eventlog_failure(format!(
+            "Eventlog File shutdown did not settle: {shutdown:?}"
+        )));
+    }
+    result
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn context_for(
+    subject: &Subject,
+    recording: &Recording,
+) -> Result<EventlogOperationContext, Failure> {
+    let occurred_at = time::OffsetDateTime::parse(
+        &recording.recorded_at,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .map_err(|error| Failure::Usage(format!("invalid --recorded-at: {error}")))?;
+    Ok(EventlogOperationContext {
+        subject: format!(
+            "entity:{}:{}{}",
+            subject.entity.len(),
+            subject.entity,
+            subject.id
+        ),
+        actor: recording
+            .actor
+            .clone()
+            .unwrap_or_else(|| "entity-cli".to_owned()),
+        request_id: recording.record_id.clone(),
+        trace_id: recording
+            .correlation
+            .clone()
+            .unwrap_or_else(|| recording.record_id.clone()),
+        causation_id: recording.causation.clone(),
+        causation_depth: 0,
+        occurred_at,
+    })
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn accepted_commit(
+    facade: &RecordedProviderFacade,
+    record_id: &str,
+    outcome: AppendOutcome,
+) -> Result<RecordedCommit, Failure> {
+    if !matches!(outcome, AppendOutcome::Committed { .. }) {
+        return Err(eventlog_failure(
+            "executor returned historical or empty evidence for a recorded command",
+        ));
+    }
+    let lookup = facade
+        .lookup_record(record_id, CallWait::Forever)
+        .map_err(|error| eventlog_failure(format!("record lookup failed: {error:?}")))?;
+    let Some(RecordLookup::Committed(stored)) = lookup else {
+        return Err(eventlog_failure(
+            "committed command has no committed original-record lookup",
+        ));
+    };
+    let RecordedEntry::Decision(commit) = stored.entry else {
+        return Err(eventlog_failure(
+            "command record lookup returned an observation",
+        ));
+    };
+    Ok(commit)
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn eventlog_file_create(
+    root: &Path,
+    selection: &Path,
+    registry: Registry,
+    request: CreateRequest,
+    format: Format,
+    out: &mut impl Write,
+) -> Result<(), Failure> {
+    let context = context_for(&request.subject, &request.recording)?;
+    let record_id = request.recording.record_id.clone();
+    with_eventlog_file(root, selection, registry, |store| {
+        let outcome = store
+            .recorded()
+            .create(context, request, CallWait::Forever)
+            .map_err(|error| eventlog_failure(format!("create failed: {error:?}")))?;
+        let commit = accepted_commit(store.recorded(), &record_id, outcome)?;
+        write_recorded(out, &commit, format)
+    })
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn eventlog_file_execute(
+    root: &Path,
+    selection: &Path,
+    registry: Registry,
+    input: EventlogExecuteInput,
+    format: Format,
+    out: &mut impl Write,
+) -> Result<(), Failure> {
+    let context = context_for(&input.subject, &input.recording)?;
+    let record_id = input.recording.record_id.clone();
+    with_eventlog_file(root, selection, registry, |store| {
+        let expected_revision = match input.expected_revision {
+            Some(revision) => revision,
+            None => {
+                store
+                    .recorded()
+                    .load(&input.subject.entity, &input.subject.id)
+                    .map_err(|error| eventlog_failure(error.to_string()))?
+                    .ok_or_else(|| eventlog_failure("Eventlog subject does not exist"))?
+                    .revision
+            }
+        };
+        let outcome = store
+            .recorded()
+            .execute(
+                context,
+                ExecuteRequest {
+                    subject: input.subject,
+                    expected_revision,
+                    operation: input.operation,
+                    arguments: input.arguments,
+                    fulfillments: Default::default(),
+                    recording: input.recording,
+                },
+                CallWait::Forever,
+            )
+            .map_err(|error| eventlog_failure(format!("execute failed: {error:?}")))?;
+        let commit = accepted_commit(store.recorded(), &record_id, outcome)?;
+        write_recorded(out, &commit, format)
+    })
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn eventlog_file_list(root: &Path, selection: &Path, entity: &str) -> Result<Vec<String>, Failure> {
+    with_eventlog_file(root, selection, Registry::new(), |store| {
+        store
+            .ids(entity)
+            .map_err(|error| eventlog_failure(error.to_string()))
+    })
+}
+
+#[cfg(feature = "eventlog-providers")]
+fn provision_eventlog_file(
+    out: &mut impl Write,
+    root: &Path,
+    authority: ProvisionAuthority,
+    limits: eventlog_core::CaptureLimits,
+    bridge: BridgeConfig,
+    context: EventlogOperationContext,
+) -> Result<(), Failure> {
+    let mut store =
+        EventlogFileStore::provision(root, Registry::new(), authority, context, limits, bridge)
+            .map_err(|error| {
+                eventlog_failure(format!("Eventlog File provision failed: {error:?}"))
+            })?;
+    let selection = EventlogFileSelection {
+        authority: store.recorded().authority().clone(),
+        max_events: limits.max_events,
+        max_blobs: limits.max_blobs,
+        max_projection_rows: limits.max_projection_rows,
+        max_payload_bytes: limits.max_payload_bytes,
+        queue_capacity: bridge.queue_capacity.get(),
+    };
+    let shutdown = store.shutdown(ShutdownMode::Drain, CallWait::Forever);
+    if shutdown != (ShutdownOutcome::Joined { provider: Ok(()) }) {
+        return Err(eventlog_failure(format!(
+            "Eventlog File provisioned but shutdown did not settle: {shutdown:?}"
+        )));
+    }
+    writeln!(
+        out,
+        "{}",
+        serde_json::to_string_pretty(&selection).expect("selection serializes")
+    )
+    .map_err(io_failure)
 }
 
 const ENTITY_SKILL: &str = include_str!("../assets/entity-skill.md");
@@ -1838,10 +2289,62 @@ fn refusal(error: &CoreError) -> Value {
             "expected": { "entity": expected_entity, "version": expected_version },
             "actual": { "entity": actual_entity, "version": actual_version }
         }),
+        CoreError::SubjectMismatch {
+            entity,
+            expected_id,
+            actual_id,
+        } => json!({
+            "entity": entity,
+            "expected_id": expected_id,
+            "actual_id": actual_id
+        }),
         CoreError::Template {
             expression,
             message,
         } => json!({ "expression": expression, "reason": message }),
+        CoreError::Refused {
+            outcome,
+            error,
+            message,
+        } => json!({ "outcome": outcome, "error": error, "reason": message }),
+        CoreError::NoOutcomeSelected { operation } => json!({ "operation": operation }),
+        CoreError::OutcomeUnobservable {
+            operation,
+            outcome,
+            unresolved,
+        } => json!({ "operation": operation, "outcome": outcome, "unresolved": unresolved }),
+        CoreError::UnspecifiedMoveSource {
+            operation,
+            outcome,
+            state,
+            from,
+        } => json!({
+            "operation": operation, "outcome": outcome, "state": state, "from": from
+        }),
+        CoreError::IdentityMismatch { field, id, value } => {
+            json!({ "field": field, "id": id, "address": value })
+        }
+        CoreError::CreationIdentityUnavailable { entity, detail } => {
+            json!({ "entity": entity, "reason": detail })
+        }
+        CoreError::FulfillmentRequired {
+            operation,
+            outcome,
+            fields,
+        } => json!({ "operation": operation, "outcome": outcome, "fields": fields }),
+        CoreError::FulfillmentKeysMismatch {
+            operation,
+            outcome,
+            missing,
+            extra,
+        } => json!({
+            "operation": operation, "outcome": outcome, "missing": missing, "extra": extra
+        }),
+        CoreError::RequiredFieldRemoval {
+            operation,
+            outcome,
+            field,
+        } => json!({ "operation": operation, "outcome": outcome, "field": field }),
         // Every defect, not the first: a caller fixing a definition from this output should not
         // have to run the command once per fault.
         CoreError::Definition(errors) => json!({

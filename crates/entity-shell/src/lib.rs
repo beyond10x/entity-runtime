@@ -207,6 +207,7 @@ where
                                 == entity_core::DecisionCommand::Execute {
                                     operation: operation.to_owned(),
                                     arguments: args,
+                                    fulfillments: Default::default(),
                                 }
                             && recording.seal(record.clone()).ok()? == envelope,
                     )

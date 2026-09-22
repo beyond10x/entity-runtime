@@ -132,11 +132,136 @@ impl Registry {
                 }
             }
         }
+        defects.extend(self.declared_relation_defects());
         if defects.is_empty() {
             Ok(())
         } else {
             Err(DefinitionErrors::new(defects))
         }
+    }
+
+    /// The half of a declared relation only the whole registry can answer.
+    ///
+    /// For an `owns` relation the carrying document is **not** the one the author is reading — the
+    /// carrier field lives on the target, "because that is where an owner's identity lives on the
+    /// thing it owns" — so the check belongs here rather than on the declaring definition. The
+    /// second claimant of a field and the second owner of an entity are reported in name order, so
+    /// one registry assembled from ten files reports the same pair every time.
+    fn declared_relation_defects(&self) -> Vec<DefinitionError> {
+        let mut defects = Vec::new();
+        // Which definition claims to own each entity, and which relation of it first did.
+        let mut owners: BTreeMap<&str, (&str, &str)> = BTreeMap::new();
+        // Which relation claims each (entity, field) carrier.
+        let mut carriers: BTreeMap<(&str, &str), (&str, &str)> = BTreeMap::new();
+
+        for definition in self.iter() {
+            for (name, relation) in &definition.relations {
+                let Some(target) = self.latest(&relation.target) else {
+                    defects.push(DefinitionError::RelationTargetMissing {
+                        entity: definition.entity.clone(),
+                        relation: name.clone(),
+                        target: relation.target.clone(),
+                    });
+                    continue;
+                };
+                if relation.kind == crate::RelationKind::References {
+                    // The declaring definition answered the half it can see — that a `many` carrier
+                    // is a required array — but the kind § 8.1's rows admit is the **target's
+                    // identity kind**, and only the whole registry holds the target. So the kind on
+                    // both `references` rows is answered here, beside the exclusive claim on the
+                    // field.
+                    claim(
+                        &mut carriers,
+                        &mut defects,
+                        &definition.entity,
+                        &relation.via,
+                        name,
+                    );
+                    defects.extend(references_carrier_defects(
+                        definition, target, name, relation,
+                    ));
+                    continue;
+                }
+
+                if let Some((owner, first)) = owners.get(target.entity.as_str()) {
+                    defects.push(DefinitionError::RelationSecondOwner {
+                        target: target.entity.clone(),
+                        owner: (*owner).to_owned(),
+                        other: definition.entity.clone(),
+                    });
+                    let _ = first;
+                } else {
+                    owners.insert(&target.entity, (&definition.entity, name));
+                }
+                claim(
+                    &mut carriers,
+                    &mut defects,
+                    &target.entity,
+                    &relation.via,
+                    name,
+                );
+
+                // The carrier lives on the target, is typed as the **source's** identity kind, and
+                // is required whatever the cardinality says: `cardinality` says how many of the
+                // target there are and says nothing about that field.
+                let Some(field) = target.schema.fields.get(&relation.via) else {
+                    defects.push(DefinitionError::RelationCarrierWrong {
+                        entity: definition.entity.clone(),
+                        relation: name.clone(),
+                        via: relation.via.clone(),
+                        detail: format!("'{}' declares no such field", target.entity),
+                    });
+                    continue;
+                };
+                if !field.required {
+                    defects.push(DefinitionError::RelationCarrierOptionality {
+                        relation: name.clone(),
+                        via: relation.via.clone(),
+                    });
+                }
+                // `carried_types` returns `vec![source.identity.type_ref.clone()]` for `(Owns, _)`,
+                // with no `List` wrapper on either cardinality
+                // (`ESS/crates/specify/ess-domain/src/entity.rs:1392,1398`). So the carrier is the
+                // owner's identity, **once**, and `cardinality` introduces nothing here. That is a
+                // statement about the cardinality and not about the identity's own type: an
+                // identity may itself be a list or a composite, and then the carrier is that same
+                // shape, once. Refusing every array carrier would refuse exactly that case.
+                let owner_identity = definition
+                    .identity
+                    .as_ref()
+                    .and_then(|identity| definition.schema.fields.get(identity.field.as_str()));
+                match owner_identity {
+                    Some(declared) if !same_carried_kind(field, declared) => {
+                        defects.push(DefinitionError::RelationCarrierWrong {
+                            entity: definition.entity.clone(),
+                            relation: name.clone(),
+                            via: relation.via.clone(),
+                            detail: owns_carrier_detail(field, declared),
+                        });
+                    }
+                    Some(_) => {}
+                    // A definition that declares no logical identity offers no kind to compare
+                    // against, so the only thing still knowable about the carrier is the
+                    // cardinality rule above, and that is what is kept.
+                    None => {
+                        if field.kind == crate::FieldKind::Array {
+                            defects.push(DefinitionError::RelationCarrierWrong {
+                                entity: definition.entity.clone(),
+                                relation: name.clone(),
+                                via: relation.via.clone(),
+                                detail: OWNS_CARRIER_IS_ONE_VALUE.to_owned(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        defects
+    }
+
+    /// The highest registered version of `entity`, which is the document a relation target names.
+    fn latest(&self, entity: &str) -> Option<&ValidatedDefinition> {
+        self.definitions.get(entity)?.values().next_back()
     }
 
     /// The definition registered under `(entity, version)`, if any.
@@ -165,5 +290,162 @@ impl Registry {
     /// Whether no definition is registered.
     pub fn is_empty(&self) -> bool {
         self.definitions.values().all(BTreeMap::is_empty)
+    }
+}
+
+/// What an `owns` carrier is refused for when it is an array and the owner's identity is not.
+///
+/// Kept verbatim because it is the sentence the example itself uses about `cardinality`, and
+/// because it is the one refusal that survives when no identity is declared to compare against.
+const OWNS_CARRIER_IS_ONE_VALUE: &str = "it is an array field, and an owner's identity is one \
+                                         value whether the owner has one of these or a thousand";
+
+/// Why one `owns` carrier is not the owner's identity.
+///
+/// The array case keeps its own sentence, because *an array where a single value belongs* is the
+/// cardinality mistake and reads nothing like a kind mismatch.
+fn owns_carrier_detail(
+    field: &crate::FieldDefinition,
+    declared: &crate::FieldDefinition,
+) -> String {
+    if field.kind == crate::FieldKind::Array && declared.kind != crate::FieldKind::Array {
+        return OWNS_CARRIER_IS_ONE_VALUE.to_owned();
+    }
+    format!(
+        "it carries {}, and the owner's identity is {}",
+        describe_carried_kind(field),
+        describe_carried_kind(declared)
+    )
+}
+
+/// Whether one field carries the same **kind** as an identity field, descending through an array's
+/// element kind and through nothing else.
+///
+/// ESS compares the carrier against the whole `TypeRef` — `accepted.contains(&field.type_ref)`
+/// (`ESS/crates/specify/ess-domain/src/entity.rs:1267-1268`) — and `TypeRef::List(Box<TypeRef>)`
+/// nests (`ESS/crates/specify/ess-domain/src/types.rs:126-137`), so a `List<T>` identity and a
+/// `List<List<T>>` `references`/`many` carrier are two different types all the way down. Reproducing
+/// that needs the element kind at every array level; comparing an `object`'s properties, a `map`'s
+/// key and value or an `enum`'s values would be a structural comparison § 8.1 does not state, and
+/// is not done here.
+fn same_carried_kind(carrier: &crate::FieldDefinition, identity: &crate::FieldDefinition) -> bool {
+    if carrier.kind != identity.kind {
+        return false;
+    }
+    if carrier.kind != crate::FieldKind::Array {
+        return true;
+    }
+    match (carrier.items.as_deref(), identity.items.as_deref()) {
+        (Some(carried), Some(declared)) => same_carried_kind(carried, declared),
+        // `EntityDefinition::validate` refuses an array that declares no `items`, so a registered
+        // field never reaches this arm; a missing element kind is not read as *matching*.
+        _ => false,
+    }
+}
+
+/// How one carried kind reads in a refusal: `string`, `array of integer`,
+/// `array of array of string` — one phrase per level, so a nested list reads as one.
+fn describe_carried_kind(field: &crate::FieldDefinition) -> String {
+    if field.kind != crate::FieldKind::Array {
+        return field.kind.to_string();
+    }
+    match field.items.as_deref() {
+        Some(items) => format!("array of {}", describe_carried_kind(items)),
+        None => "array with no declared element kind".to_owned(),
+    }
+}
+
+/// The half of a `references` carrier only the whole registry can answer: its declared kind is the
+/// **target's** identity kind, and on the `many` row that is the array's element kind.
+///
+/// § 8.1's three rows all type the carrier by the *related* entity's identity field, so the check
+/// is one rule read three times rather than one test per fixture: the `owns` row compares the
+/// source's identity kind against the field on the target, above; these two compare the target's
+/// identity kind against the field on the declaring definition. A target that declares no logical
+/// identity has no kind to compare against, which is the position the `owns` row is already in.
+fn references_carrier_defects(
+    definition: &ValidatedDefinition,
+    target: &ValidatedDefinition,
+    name: &str,
+    relation: &crate::RelationDefinition,
+) -> Vec<DefinitionError> {
+    let Some(identity) = &target.identity else {
+        return Vec::new();
+    };
+    let Some(expected) = target.schema.fields.get(identity.field.as_str()) else {
+        return Vec::new();
+    };
+    // An absent carrier is `RelationViaUnknown`, which the declaring definition already reported.
+    let Some(field) = definition.schema.fields.get(&relation.via) else {
+        return Vec::new();
+    };
+    let wrong = |expected_detail: String, found: String| {
+        vec![DefinitionError::RelationViaWrongShape {
+            relation: name.to_owned(),
+            via: relation.via.clone(),
+            expected: format!(
+                "a carrier of {expected_detail}, derived from the target's identity field {}.{}",
+                target.entity, identity.field
+            ),
+            found: format!("a carrier of {found}"),
+        }]
+    };
+    match relation.cardinality {
+        // `carried_types` offers `target.identity.type_ref` and `Optional<it>` and nothing else
+        // (`ESS/crates/specify/ess-domain/src/entity.rs:1399-1402`), so the carrier is the target's
+        // identity shape whatever that shape is — including a list identity, which is carried by a
+        // list. Optionality is the declaring definition's `required` and is admitted either way.
+        crate::Cardinality::One => {
+            if same_carried_kind(field, expected) {
+                Vec::new()
+            } else {
+                wrong(
+                    describe_carried_kind(expected),
+                    describe_carried_kind(field),
+                )
+            }
+        }
+        // `List<target.identity.type_ref>` (`:1403-1405`), so the outer array is the cardinality and
+        // its element is the whole identity shape: a `List<T>` identity is carried by an array of
+        // arrays, and one array of `T` is a different type.
+        crate::Cardinality::Many => {
+            // A carrier that is not an array is already `RelationViaWrongShape` from the declaring
+            // definition, which is where the row's *outer* shape is answerable without the target.
+            if field.kind != crate::FieldKind::Array {
+                return Vec::new();
+            }
+            if field
+                .items
+                .as_deref()
+                .is_some_and(|items| same_carried_kind(items, expected))
+            {
+                return Vec::new();
+            }
+            wrong(
+                format!("array of {}", describe_carried_kind(expected)),
+                describe_carried_kind(field),
+            )
+        }
+    }
+}
+
+/// Records one relation's claim on one field, reporting the second claimant by name.
+fn claim<'a>(
+    carriers: &mut BTreeMap<(&'a str, &'a str), (&'a str, &'a str)>,
+    defects: &mut Vec<DefinitionError>,
+    entity: &'a str,
+    field: &'a str,
+    relation: &'a str,
+) {
+    match carriers.get(&(entity, field)) {
+        Some((_, first)) => defects.push(DefinitionError::RelationFieldClaimedTwice {
+            entity: entity.to_owned(),
+            field: field.to_owned(),
+            relation: (*first).to_owned(),
+            other: relation.to_owned(),
+        }),
+        None => {
+            carriers.insert((entity, field), (entity, relation));
+        }
     }
 }

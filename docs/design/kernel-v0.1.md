@@ -342,8 +342,8 @@ error, never a `null` written into an event somebody will later read as a fact (
 An operation runs in exactly this order (R-70), and a refusal at any step returns before the next:
 
 ```text
- 0. instance carries a state the definition declares        UnknownState
- 1. instance (entity, version) matches the definition      EntityMismatch
+ 0. instance (entity, version) matches the definition       EntityMismatch
+ 1. instance carries a state the definition declares        UnknownState
  2. operation exists                                        OperationNotFound
  3. arguments: defaults, then validation                    Validation
  4. transition selected from the current state              InvalidTransition
@@ -356,12 +356,39 @@ An operation runs in exactly this order (R-70), and a refusal at any step return
 11. Decision { instance, events }
 ```
 
-Steps 1 and 2 are the identity checks: an instance created under another definition, an
-operation the definition does not declare, or a type nobody registered are refused by name
-(R-45). The order is part of the contract, not an implementation detail: `InvalidTransition` before
-`PreconditionFailed` means "you cannot do that from here" is never masked by "and also your total
-is zero", and invariants after `set` means the state a rule judges is the state that would be
-stored.
+Steps 0 to 2 are the identity checks: an instance created under another definition, an instance
+claiming a state the definition does not declare, an operation the definition does not declare, or
+a type nobody registered are refused by name (R-45). **Steps 0 and 1 are numbered in the order
+`ensure_instance_matches` checks them** — the type before the state — which earlier revisions of
+this page had the other way round; the code's order is the contract and
+`the_kernel_checks_entity_mismatch_before_unknown_state_and_both_documents_say_so` pins it against
+this page so neither can drift back. The rest of the order is part of the contract too, not an
+implementation detail: `InvalidTransition` before `PreconditionFailed` means "you cannot do that
+from here" is never masked by "and also your total is zero", and invariants after `set` means the
+state a rule judges is the state that would be stored.
+
+### The `service/1` insertions
+
+A definition read under `semantics: service/1` runs **sixteen** steps, numbered 0 to 15. Four are
+inserted into the twelve above — branch selection (4), a refusing branch's return (6), the identity
+mirror (11) and the declared response (14) — and nothing else moves; renumbering steps 5 to 15 of
+that list against the legacy column recovers these twelve unchanged.
+[`docs/design/service-semantics-v0.1.md`](service-semantics-v0.1.md) § 4.2 is the whole list and the
+mapping. A `kernel/1` definition keeps this order and its refusal names exactly.
+
+The requirements that order and the rest of the `service/1` rules add:
+
+| id | what it holds |
+|---|---|
+| R-140 | The `service/1` opt-in, its byte preservation and its refusal of every added key in a `kernel/1` definition. |
+| R-141 | The sixteen-step order, branch selection, state admissibility and the named run-time refusals. |
+| R-142 | Named outcomes: refusals as typed results, the declared response, the creation effect and the update effect. |
+| R-143 | The logical typed identity, its total per-kind storage address and the mirror step. |
+| R-144 | Declared relations, their carriers and which layer enforces which claim. |
+| R-145 | The `map`, `union` and `binary64` field kinds. |
+| R-146 | `source-number/1`: how a `service/1` predicate reads a stored number, and that the token is stored unchanged. |
+| R-147 | The scale context text comparison is answered inside. |
+| R-148 | `compare`, `truthy`, `for_all`/`for_any` and the two collection address forms. |
 
 ## 7. Outputs and refusals
 
@@ -565,7 +592,7 @@ in a further crate that depends on `entity-core` and never the other way round.
   changelog line. What may *not* change with it is the line § 3.5 draws: a kind whose validation
   needs to read another instance is a kind this kernel cannot have.
 
-What may not: the eleven-step order, the two rule scopes, the refusal-changes-nothing property, the
+What may not: the twelve-step order, the two rule scopes, the refusal-changes-nothing property, the
 absence of IO, and the absence of `$now`.
 
 ## 13. What the 0.1.0 review changed

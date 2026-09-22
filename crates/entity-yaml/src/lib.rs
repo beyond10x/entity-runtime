@@ -125,6 +125,21 @@ impl<'de> Visitor<'de> for NoDuplicatesVisitor {
         Ok(())
     }
 
+    // An integer past the `u64` span is offered as an `i128`/`u128`, not as a float. Serde's
+    // default implementation of these two answers `invalid_type`, so this pass refused every
+    // definition carrying an exact numeric literal that big — and it refused it with
+    // `expecting`'s own *"unambiguous YAML"*, which names nothing the author can act on. Accepting
+    // the scalar here consumes no value and converts nothing: the second pass reads the same
+    // digits into a `serde_json::Number` that keeps them, so one authored literal is one value
+    // whichever front door reads it, which is what § 10.2.1's literal door is for.
+    fn visit_i128<E>(self, _: i128) -> Result<Self::Value, E> {
+        Ok(())
+    }
+
+    fn visit_u128<E>(self, _: u128) -> Result<Self::Value, E> {
+        Ok(())
+    }
+
     fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E> {
         Ok(())
     }

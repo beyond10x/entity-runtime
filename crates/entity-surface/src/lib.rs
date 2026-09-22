@@ -342,6 +342,48 @@ fn field_schema(field: &FieldDefinition) -> Value {
                 out.insert("x-entity-ref".into(), Value::String(entity.clone()));
             }
         }
+        // A JSON object whose keys are checked by their spelling and whose values are one declared
+        // shape. The key spelling is published beside it, because a reader that only saw
+        // `additionalProperties` would not know a key is checked at all.
+        FieldKind::Map => {
+            set_type(&mut out, "object");
+            if let Some(items) = &field.items {
+                out.insert("additionalProperties".into(), field_schema(items));
+            }
+            if let Some(key) = field.key {
+                out.insert("x-key".into(), Value::String(key.as_str().to_owned()));
+            }
+        }
+        // Adjacent tagging, reproduced: the variant label under the tag key, the payload under the
+        // derived content key, one branch per declared variant.
+        FieldKind::Union => {
+            let tag = field.tag.clone().unwrap_or_default();
+            let content = if tag == "value" { "content" } else { "value" };
+            let branches: Vec<Value> = field
+                .variants
+                .iter()
+                .map(|(label, variant)| {
+                    let mut required = vec![Value::String(tag.clone())];
+                    if variant.required {
+                        required.push(Value::String(content.to_owned()));
+                    }
+                    json!({
+                        "type": "object",
+                        "properties": {
+                            tag.clone(): { "const": label },
+                            content: field_schema(variant),
+                        },
+                        "required": required,
+                        "additionalProperties": false,
+                    })
+                })
+                .collect();
+            out.insert("oneOf".into(), Value::Array(branches));
+        }
+        FieldKind::Binary64 => {
+            set_type(&mut out, "number");
+            out.insert("format".into(), Value::String("double".into()));
+        }
     }
     if let Some(min) = field.min_length {
         out.insert("minLength".into(), json!(min));

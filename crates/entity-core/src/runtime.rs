@@ -1,14 +1,17 @@
 //! The kernel: the only code that produces a [`Decision`].
 
 use crate::{
-    validation::{apply_defaults, validate_object},
-    Condition, CoreError, EntityDefinition, EventDefinition, Registry, RuleDefinition, Truth,
-    ValidatedDefinition,
+    observed::Observed,
+    validation::{apply_defaults, validate_field_value, validate_object_under},
+    CompareOp, Comparison, Condition, CoreError, EntityDefinition, EventDefinition, FieldKind,
+    ObjectSchema, OperationDefinition, OperationFieldAction, OperationFieldActions,
+    OperationFieldRequirement, OutcomeDefinition, OutcomeEffect, PresentArgument, Quantifier,
+    RefusalDefinition, Registry, RuleDefinition, Truth, ValidatedDefinition,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// One instance of an entity type: which definition it was created under, its identity, where it
 /// is in its lifecycle, how many times it has changed, and its fields.
@@ -79,6 +82,10 @@ pub struct DomainEvent {
     /// notification, not a record.
     pub changed: Map<String, Value>,
 
+    /// Entity fields physically removed by this decision, disjoint from [`changed`](Self::changed).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub removed: BTreeSet<String>,
+
     /// The arguments the operation was decided on — what the rules read when they permitted it —
     /// verbatim, after defaults and schema validation. On a creation event, the creation's fields.
     ///
@@ -99,8 +106,16 @@ pub struct DomainEvent {
 pub enum DecisionCommand {
     /// Creation from caller-supplied fields, after defaults and canonicalization.
     Create {
-        /// The normalized creation fields.
+        /// The normalized creation fields — what the instance became.
         fields: Map<String, Value>,
+        /// The creation command's input, and what re-selects the branch on replay. Empty for a
+        /// `kernel/1` creation, whose input *is* its fields.
+        ///
+        /// The two are redundant by construction and cannot drift: [`replay`](crate::replay)
+        /// recomputes the whole decision and byte-compares the record, so a record whose `fields`
+        /// are not what its `arguments` produce is refused.
+        #[serde(default, skip_serializing_if = "Map::is_empty")]
+        arguments: Map<String, Value>,
     },
     /// One named operation with its validated/defaulted arguments.
     Execute {
@@ -108,6 +123,9 @@ pub enum DecisionCommand {
         operation: String,
         /// The normalized arguments.
         arguments: Map<String, Value>,
+        /// The exact post-load actions supplied for a `service/3` branch.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        fulfillments: BTreeMap<String, OperationFieldAction>,
     },
     /// Material imported without enough original command data for genesis replay.
     LegacyImport,
@@ -138,8 +156,304 @@ pub struct DecisionRecord {
     pub result: EntityInstance,
     /// Every field whose value changed.
     pub changed: Map<String, Value>,
+    /// Entity fields physically removed by this decision, disjoint from [`changed`](Self::changed).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub removed: BTreeSet<String>,
     /// Ordered domain facts emitted by this one decision.
     pub events: Vec<DomainEvent>,
+    /// The named branch the kernel selected. `None` where the branch was the implicit one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
+    /// What the selected branch did. `None` where the branch was the implicit one.
+    ///
+    /// Written into the record rather than inferred from `from_state == to_state`, because a
+    /// definition may legitimately declare a self-transition and an update is not one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect: Option<DecisionEffect>,
+    /// The declared response the selected branch determined. `None` where the branch was the
+    /// implicit one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response: Option<Map<String, Value>>,
+}
+
+/// What a decision did to the instance.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionEffect {
+    /// The instance came into being.
+    Created,
+    /// It moved between declared states.
+    Moved,
+    /// It was written without leaving its state, and no self-transition was synthesized.
+    Updated,
+    /// It was accepted and nothing about it changed. Still one revision on.
+    Unchanged,
+}
+
+/// What the kernel answered: an accepted decision, or a branch that refuses by name.
+///
+/// The branch-aware result. [`create`] and [`execute`] keep their `Result<Decision, CoreError>`
+/// return and reach a refusing branch as [`CoreError::Refused`], so every existing caller compiles
+/// and behaves as it does now; both pairs share one implementation.
+///
+/// The two variants are very different sizes, and the larger one is not boxed: a decision is what
+/// the accepting path produces on every successful call, and putting it behind an allocation to
+/// even the variants out would cost that path an allocation to spare the refusing path a move.
+#[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
+pub enum Evaluation {
+    /// The command was decided.
+    Accepted(Decision),
+    /// The selected branch refuses. Nothing durable was produced.
+    Refused(Refusal),
+}
+
+impl Evaluation {
+    /// The decision, or the branch's refusal as a typed kernel error.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Refused`], carrying the branch's name and its declared error.
+    pub fn into_decision(self) -> Result<Decision, CoreError> {
+        match self {
+            Self::Accepted(decision) => Ok(decision),
+            Self::Refused(refusal) => Err(CoreError::Refused {
+                outcome: refusal.outcome,
+                error: refusal.error,
+                message: refusal.message,
+            }),
+        }
+    }
+
+    /// The decision, if the command was accepted.
+    #[must_use]
+    pub fn accepted(&self) -> Option<&Decision> {
+        match self {
+            Self::Accepted(decision) => Some(decision),
+            Self::Refused(_) => None,
+        }
+    }
+}
+
+/// A branch that refuses, and the error it refuses with.
+///
+/// Carries the error's **name**. The source determines no error field values, so the payload is a
+/// binding obligation rather than a kernel invention.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refusal {
+    /// The branch that refused.
+    pub outcome: String,
+    /// The declared error's name.
+    pub error: String,
+    /// What to say to a person, if the branch declares it.
+    pub message: Option<String>,
+}
+
+/// What the kernel can answer before a subject store is read.
+#[derive(Debug)]
+pub enum PreloadDecision<'definition> {
+    /// A named refusing branch selected without subject facts.
+    Refused(Refusal),
+    /// Subject facts are required before the kernel can finish the decision.
+    Load(PreparedOperation<'definition>),
+}
+
+/// The subject coordinate a host must load for a prepared operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreparedSubject<'prepared> {
+    entity: &'prepared str,
+    version: u32,
+    id: &'prepared str,
+}
+
+impl PreparedSubject<'_> {
+    /// The entity type to load.
+    #[must_use]
+    pub fn entity(&self) -> &str {
+        self.entity
+    }
+
+    /// The definition version to load.
+    #[must_use]
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+
+    /// The exact subject identity to load.
+    #[must_use]
+    pub fn id(&self) -> &str {
+        self.id
+    }
+}
+
+/// An opaque continuation over one validated definition and one normalized request.
+///
+/// External code cannot clone or serialize the continuation, which keeps its borrowed definition,
+/// normalized arguments, operation and identity together.
+///
+/// ```compile_fail
+/// use entity_core::PreparedOperation;
+/// fn duplicate(prepared: PreparedOperation<'_>) {
+///     let _copy = prepared.clone();
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use entity_core::PreparedOperation;
+/// fn inspect(prepared: PreparedOperation<'_>) {
+///     let PreparedOperation { operation, .. } = prepared;
+///     let _ = operation;
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use entity_core::PreparedOperation;
+/// fn serialize(prepared: PreparedOperation<'_>) {
+///     let _ = serde_json::to_value(prepared);
+/// }
+/// ```
+#[derive(Debug)]
+pub struct PreparedOperation<'definition> {
+    definition: &'definition ValidatedDefinition,
+    operation: String,
+    expected_id: String,
+    arguments: Map<String, Value>,
+}
+
+/// The post-load result of selecting one prepared operation.
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum LoadedDecision<'definition> {
+    /// Selection and evaluation completed without host field actions.
+    Complete(Evaluation),
+    /// The selected accepting branch requires exact host field actions.
+    NeedsFulfillment(PreparedOutcome<'definition>),
+}
+
+/// An opaque continuation bound to one loaded subject and one selected outcome.
+#[derive(Debug)]
+pub struct PreparedOutcome<'definition> {
+    definition: &'definition ValidatedDefinition,
+    operation: String,
+    instance: EntityInstance,
+    arguments: Map<String, Value>,
+    outcome: String,
+}
+
+impl PreparedOutcome<'_> {
+    /// The selected outcome name.
+    #[must_use]
+    pub fn outcome(&self) -> &str {
+        &self.outcome
+    }
+
+    /// The exact closed field requirements for the selected outcome.
+    #[must_use]
+    pub fn requirements(&self) -> &BTreeMap<String, OperationFieldRequirement> {
+        &self
+            .definition
+            .operations
+            .get(&self.operation)
+            .expect("prepared operation remains in its validated definition")
+            .outcomes
+            .iter()
+            .find(|outcome| outcome.name == self.outcome)
+            .expect("prepared outcome remains in its validated operation")
+            .fulfills
+    }
+
+    /// Completes the selected branch with exactly its advertised actions.
+    ///
+    /// # Errors
+    ///
+    /// Wrong, missing, or extra coordinates; invalid set values; required removal; or any later
+    /// schema, identity, invariant, event, or response refusal.
+    pub fn complete(
+        self,
+        actions: BTreeMap<String, OperationFieldAction>,
+    ) -> Result<Evaluation, CoreError> {
+        decide_with_fulfillments(
+            self.definition,
+            &self.instance,
+            &self.operation,
+            Value::Object(self.arguments),
+            Some(&actions),
+        )
+    }
+}
+
+impl<'definition> PreparedOperation<'definition> {
+    /// The exact subject the host must load.
+    #[must_use]
+    pub fn subject(&self) -> PreparedSubject<'_> {
+        PreparedSubject {
+            entity: &self.definition.entity,
+            version: self.definition.version,
+            id: &self.expected_id,
+        }
+    }
+
+    /// The normalized arguments bound into this continuation.
+    #[must_use]
+    pub fn normalized_arguments(&self) -> &Map<String, Value> {
+        &self.arguments
+    }
+
+    /// Continues the prepared operation with the exact loaded subject.
+    ///
+    /// # Errors
+    ///
+    /// Entity/version mismatch, subject mismatch and unknown state are checked in that order,
+    /// followed by the ordinary decision path's refusals.
+    pub fn continue_with(self, instance: &EntityInstance) -> Result<Evaluation, CoreError> {
+        match self.select_with(instance)? {
+            LoadedDecision::Complete(evaluation) => Ok(evaluation),
+            LoadedDecision::NeedsFulfillment(prepared) => Err(CoreError::FulfillmentRequired {
+                operation: prepared.operation.clone(),
+                outcome: prepared.outcome.clone(),
+                fields: prepared.requirements().keys().cloned().collect(),
+            }),
+        }
+    }
+
+    /// Selects the branch after loading the exact subject, without invoking any host policy.
+    ///
+    /// # Errors
+    ///
+    /// Entity/version mismatch, subject mismatch and unknown state are checked in that order,
+    /// followed by selection, state admission and preconditions.
+    pub fn select_with(
+        self,
+        instance: &EntityInstance,
+    ) -> Result<LoadedDecision<'definition>, CoreError> {
+        ensure_entity_matches(self.definition, instance)?;
+        if instance.id != self.expected_id {
+            return Err(CoreError::SubjectMismatch {
+                entity: self.definition.entity.clone(),
+                expected_id: self.expected_id,
+                actual_id: instance.id.clone(),
+            });
+        }
+        ensure_state_known(self.definition, instance)?;
+        match decide_with_fulfillments(
+            self.definition,
+            instance,
+            &self.operation,
+            Value::Object(self.arguments.clone()),
+            None,
+        ) {
+            Err(CoreError::FulfillmentRequired { outcome, .. }) => {
+                Ok(LoadedDecision::NeedsFulfillment(PreparedOutcome {
+                    definition: self.definition,
+                    operation: self.operation,
+                    instance: instance.clone(),
+                    arguments: self.arguments,
+                    outcome,
+                }))
+            }
+            result => result.map(LoadedDecision::Complete),
+        }
+    }
 }
 
 /// What the kernel decided: the instance as it is afterwards, and its durable record.
@@ -178,7 +492,11 @@ impl Decision {
             to_state: instance.lifecycle_state.clone(),
             result: instance.clone(),
             changed: instance.fields.clone(),
+            removed: BTreeSet::new(),
             events: events.clone(),
+            outcome: None,
+            effect: None,
+            response: None,
         };
         Self {
             instance,
@@ -218,6 +536,22 @@ impl<'a> Runtime<'a> {
         create(definition, id.into(), fields)
     }
 
+    /// Creates an instance whose storage identity is derived from the selected validated fields.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::EntityNotRegistered`] when no such definition is registered; otherwise
+    /// whatever [`create_derived`] returns.
+    pub fn create_derived(
+        &self,
+        entity: &str,
+        version: u32,
+        input: Value,
+    ) -> Result<Decision, CoreError> {
+        let definition = self.definition(entity, version)?;
+        create_derived(definition, input)
+    }
+
     /// Executes `operation` on `instance` with the given `arguments`.
     ///
     /// # Errors
@@ -232,6 +566,73 @@ impl<'a> Runtime<'a> {
     ) -> Result<Decision, CoreError> {
         let definition = self.definition(&instance.entity, instance.version)?;
         execute(definition, instance, operation, arguments)
+    }
+
+    /// Creates an instance, answering a refusing branch as a value rather than as an error.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::EntityNotRegistered`] when no such definition is registered; otherwise
+    /// whatever [`decide_create`] returns.
+    pub fn decide_create(
+        &self,
+        entity: &str,
+        version: u32,
+        id: impl Into<String>,
+        input: Value,
+    ) -> Result<Evaluation, CoreError> {
+        let definition = self.definition(entity, version)?;
+        decide_create(definition, id.into(), input)
+    }
+
+    /// Decides creation after deriving the address from the selected validated identity field.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::EntityNotRegistered`] when no such definition is registered; otherwise
+    /// whatever [`decide_create_derived`] returns.
+    pub fn decide_create_derived(
+        &self,
+        entity: &str,
+        version: u32,
+        input: Value,
+    ) -> Result<Evaluation, CoreError> {
+        let definition = self.definition(entity, version)?;
+        decide_create_derived(definition, input)
+    }
+
+    /// Executes an operation, answering a refusing branch as a value rather than as an error.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::EntityNotRegistered`] when the instance's `(entity, version)` is not
+    /// registered; otherwise whatever [`decide`] returns.
+    pub fn decide(
+        &self,
+        instance: &EntityInstance,
+        operation: &str,
+        arguments: Value,
+    ) -> Result<Evaluation, CoreError> {
+        let definition = self.definition(&instance.entity, instance.version)?;
+        decide(definition, instance, operation, arguments)
+    }
+
+    /// Normalizes an operation and answers every subject-independent refusing branch.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::EntityNotRegistered`] for an unknown definition; otherwise the preparation
+    /// errors documented by [`decide_before_load`].
+    pub fn decide_before_load(
+        &self,
+        entity: &str,
+        version: u32,
+        expected_id: impl Into<String>,
+        operation: &str,
+        arguments: Value,
+    ) -> Result<PreloadDecision<'_>, CoreError> {
+        let definition = self.definition(entity, version)?;
+        decide_before_load(definition, expected_id, operation, arguments)
     }
 
     fn definition(&self, entity: &str, version: u32) -> Result<&ValidatedDefinition, CoreError> {
@@ -261,17 +662,66 @@ pub fn create(
     id: String,
     fields: Value,
 ) -> Result<Decision, CoreError> {
+    decide_create(definition, id, fields)?.into_decision()
+}
+
+/// Creates an instance after deriving its address from the selected validated identity field.
+///
+/// # Errors
+///
+/// The errors documented by [`decide_create_derived`], with a selected refusal returned as
+/// [`CoreError::Refused`].
+pub fn create_derived(
+    definition: &ValidatedDefinition,
+    input: Value,
+) -> Result<Decision, CoreError> {
+    decide_create_derived(definition, input)?.into_decision()
+}
+
+/// Creates an instance under `definition`, answering a refusing branch as a value.
+///
+/// Under `kernel/1` the third argument is the creation **fields**, exactly as [`create`] has always
+/// read it. Under `service/1` it is the creation **arguments**: the caller's input, from which the
+/// selected branch's `set` produces the fields. That is the whole reason a `service/1` creation
+/// reconstructs its original request as `arguments` and not as `fields` — reconstructing it as the
+/// fields the branch produced would hand a retry a request the caller never sent.
+///
+/// A `service/1` creation that declares **no** branches is the case where the two coincide: with no
+/// branch to produce them, the input is read as the fields, and the same normalized values are
+/// recorded as the arguments. Both halves of the record then say what the caller sent, so the
+/// reconstruction, the anchored verifier, replay and a retry all read one answer.
+///
+/// # Errors
+///
+/// * [`CoreError::Validation`] — `id` is empty, the input is not an object, or a value does not
+///   satisfy its schema; every failure is listed.
+/// * [`CoreError::NoOutcomeSelected`] / [`CoreError::OutcomeUnobservable`] — no branch applies, or
+///   a branch's guard could not be answered.
+/// * [`CoreError::IdentityMismatch`] — the identity field does not mirror the storage address.
+/// * [`CoreError::InvariantViolation`] — an invariant does not hold for the new instance.
+/// * [`CoreError::Template`] — a `set`, event payload or response references something missing.
+pub fn decide_create(
+    definition: &ValidatedDefinition,
+    id: String,
+    input: Value,
+) -> Result<Evaluation, CoreError> {
     if id.trim().is_empty() {
         return Err(CoreError::Validation(vec![crate::ValidationError::new(
             "id",
             "identity cannot be empty; the kernel generates none, so the caller supplies one",
         )]));
     }
+    if definition.semantics.has_service_semantics() && !definition.create.outcomes.is_empty() {
+        return service_create(definition, Some(id), input);
+    }
 
-    let mut object = into_object(fields, "fields")?;
+    // Step 3. This creation's input *is* its fields — a `kernel/1` one always, a `service/1` one
+    // that declares no branches because there is no branch `set` to produce them.
+    let mut object = into_object(input, "fields")?;
     apply_defaults(&definition.schema, &mut object);
 
-    let validation = validate_object(&definition.schema, &object, "fields");
+    let validation =
+        validate_object_under(&definition.schema, &object, "fields", definition.semantics);
     if !validation.is_empty() {
         return Err(CoreError::Validation(validation));
     }
@@ -288,14 +738,18 @@ pub fn create(
     let empty = Map::new();
     let context = TemplateContext {
         definition,
-        id: &instance.id,
+        id: Some(&instance.id),
         args: &empty,
+        arguments_schema: None,
         old_fields: &empty,
         new_fields: &instance.fields,
         from_state: None,
         to_state: &instance.lifecycle_state,
     };
 
+    // Step 11. A `kernel/1` definition cannot declare `identity` at all, so this is a no-op there
+    // and no committed identifier moves.
+    check_identity_mirror(definition, &instance)?;
     check_invariants(definition, &context)?;
 
     let mut events = Vec::new();
@@ -307,6 +761,7 @@ pub fn create(
             &context,
             instance.revision,
             &instance.fields,
+            &BTreeSet::new(),
         )?);
     }
 
@@ -314,6 +769,17 @@ pub fn create(
         definition: Some(definition_snapshot(definition)),
         command: DecisionCommand::Create {
             fields: instance.fields.clone(),
+            // A `service/1` creation that declares no branches has no branch `set` to produce its
+            // fields, so its input **is** its fields — and those normalized values are exactly what
+            // the caller sent, which is what `er.request/2` reconstructs. Recording no arguments
+            // for it would reconstruct every such creation as the same empty request and hand a
+            // retry carrying different input a match it never earned. A `kernel/1` creation records
+            // none and keeps its bytes: `arguments` is skipped while it is empty.
+            arguments: if definition.semantics.has_service_semantics() {
+                instance.fields.clone()
+            } else {
+                Map::new()
+            },
         },
         entity: instance.entity.clone(),
         id: instance.id.clone(),
@@ -322,13 +788,215 @@ pub fn create(
         to_state: instance.lifecycle_state.clone(),
         result: instance.clone(),
         changed: instance.fields.clone(),
+        removed: BTreeSet::new(),
         events: events.clone(),
+        outcome: None,
+        effect: None,
+        response: None,
     };
-    Ok(Decision {
+    Ok(Evaluation::Accepted(Decision {
         instance,
         record,
         events,
-    })
+    }))
+}
+
+/// Creates an instance after the selected, complete fields determine its storage address.
+///
+/// This is the branch-dependent identity entrypoint. Outcome selection and assignments run once;
+/// after the selected fields validate, the existing per-kind identity function derives the
+/// address. The pre-address selector and assignment scopes carry no `$id`, so a definition with a
+/// circular `$id` dependency receives a named template error rather than a placeholder identity.
+///
+/// # Errors
+///
+/// The errors documented by [`decide_create`], plus
+/// [`CoreError::CreationIdentityUnavailable`] when the validated definition or selected fields do
+/// not provide an addressable logical identity.
+pub fn decide_create_derived(
+    definition: &ValidatedDefinition,
+    input: Value,
+) -> Result<Evaluation, CoreError> {
+    if definition.semantics.has_service_semantics() && !definition.create.outcomes.is_empty() {
+        return service_create(definition, None, input);
+    }
+
+    let mut fields = into_object(input, "fields")?;
+    apply_defaults(&definition.schema, &mut fields);
+    let errors = validate_object_under(&definition.schema, &fields, "fields", definition.semantics);
+    if !errors.is_empty() {
+        return Err(CoreError::Validation(errors));
+    }
+    let fields = canonical_object(fields);
+    let id = derive_creation_identity(definition, &fields)?;
+    decide_create(definition, id, Value::Object(fields))
+}
+
+/// The `service/1` creation: steps 3, 4, 6, 8, 9, 10, 11, 12, 13, 14 and 15 of the numbered order.
+///
+/// Steps 0, 1, 2 and 5 are omitted — there is no instance to match, no operation to find and no
+/// state to move from — and step 7 with them: a creation has no preconditions of its own.
+fn service_create(
+    definition: &ValidatedDefinition,
+    supplied_id: Option<String>,
+    input: Value,
+) -> Result<Evaluation, CoreError> {
+    // Step 3. Defaults, then validation, against the creation command's declared arguments.
+    let mut args = into_object(input, "arguments")?;
+    apply_defaults(&definition.create.arguments, &mut args);
+    let errors = validate_object_under(
+        &definition.create.arguments,
+        &args,
+        "arguments",
+        definition.semantics,
+    );
+    if !errors.is_empty() {
+        return Err(CoreError::Validation(errors));
+    }
+
+    let initial = definition.lifecycle.initial.clone();
+    let empty = Map::new();
+    // Step 4, in `CreateSelector`: at creation there is no instance, so no fields and no
+    // from-state, and the initial state is a constant of the lifecycle rather than a fact about a
+    // subject. Registration refuses a creation selector that reads either.
+    let selector_context = TemplateContext {
+        definition,
+        id: supplied_id.as_deref(),
+        args: &args,
+        arguments_schema: Some(&definition.create.arguments),
+        old_fields: &empty,
+        new_fields: &empty,
+        from_state: None,
+        to_state: &initial,
+    };
+    // The state test of step 4 applies here too, against the state step 10 will put the instance
+    // in: at creation that state is the lifecycle's `initial` and nothing else, so a branch guarded
+    // on any other state is skipped rather than selected in a state its own guard excludes.
+    let outcome = select_outcome(
+        CREATE_COMMAND,
+        &definition.create.outcomes,
+        Some(initial.as_str()),
+        &selector_context,
+    )?;
+
+    // Step 6. A refusing branch returns here: no record, no revision, no state, no events and no
+    // response.
+    if let Some(refusal) = &outcome.refuses {
+        return Ok(Evaluation::Refused(Refusal {
+            outcome: outcome.name.clone(),
+            error: refusal.error.clone(),
+            message: refusal.message.clone(),
+        }));
+    }
+
+    // Step 8, in `CreateSet`: at creation the fields are what `set` is producing, so the scope
+    // admits no `$fields` and this context carries none.
+    let set_context = TemplateContext {
+        definition,
+        id: supplied_id.as_deref(),
+        args: &args,
+        arguments_schema: Some(&definition.create.arguments),
+        old_fields: &empty,
+        new_fields: &empty,
+        from_state: None,
+        to_state: &initial,
+    };
+    let mut fields = Map::new();
+    for (field, template) in &outcome.set {
+        fields.insert(field.clone(), resolve_template(template, &set_context)?);
+    }
+    insert_present_arguments(&mut fields, &outcome.set_if_present, &args);
+    // The declared defaults fill what the branch did not write. A `kernel/1` creation defaults at
+    // step 3 because its input is its fields; a `service/1` creation's fields do not exist until
+    // the branch has run, so the same rule applies here and the result is validated below either
+    // way.
+    apply_defaults(&definition.schema, &mut fields);
+    let fields = canonical_object(fields);
+
+    // Step 9.
+    let errors = validate_object_under(&definition.schema, &fields, "fields", definition.semantics);
+    if !errors.is_empty() {
+        return Err(CoreError::Validation(errors));
+    }
+
+    let id = match supplied_id {
+        Some(id) => id,
+        None => derive_creation_identity(definition, &fields)?,
+    };
+
+    // Step 10. The state is the lifecycle's initial and the revision is 1 rather than a successor.
+    let instance = EntityInstance {
+        entity: definition.entity.clone(),
+        version: definition.version,
+        id,
+        lifecycle_state: initial,
+        revision: 1,
+        fields,
+    };
+
+    // Step 11, before the invariants, so a rule judging the instance judges one whose address and
+    // identity field already agree.
+    check_identity_mirror(definition, &instance)?;
+
+    // Steps 13 and 14 read `CreateOutcomeTemplate`: the post-`set` fields and the arguments alike,
+    // because both are published to a caller that sent the arguments and a creation may publish an
+    // argument no field stores.
+    let context = TemplateContext {
+        definition,
+        id: Some(&instance.id),
+        args: &args,
+        arguments_schema: Some(&definition.create.arguments),
+        old_fields: &empty,
+        new_fields: &instance.fields,
+        from_state: None,
+        to_state: &instance.lifecycle_state,
+    };
+
+    // Step 12.
+    check_invariants(definition, &context)?;
+
+    // Step 13. A `service/1` creation *does* have arguments, and they are what `args` records.
+    let mut events = Vec::with_capacity(outcome.emits.len());
+    for event in &outcome.emits {
+        events.push(materialize_event(
+            event,
+            &context,
+            instance.revision,
+            &args,
+            &BTreeSet::new(),
+        )?);
+    }
+
+    // Step 14, after the events, so both read one set of post-`set` fields.
+    let response = materialize_response(&outcome.responds, &outcome.responds_if_present, &context)?;
+
+    let record = DecisionRecord {
+        definition: Some(definition_snapshot(definition)),
+        command: DecisionCommand::Create {
+            fields: instance.fields.clone(),
+            arguments: args,
+        },
+        entity: instance.entity.clone(),
+        id: instance.id.clone(),
+        revision: instance.revision,
+        from_state: None,
+        to_state: instance.lifecycle_state.clone(),
+        result: instance.clone(),
+        changed: instance.fields.clone(),
+        removed: BTreeSet::new(),
+        events: events.clone(),
+        outcome: Some(outcome.name.clone()),
+        effect: Some(match outcome.effect {
+            OutcomeEffect::Creates => DecisionEffect::Created,
+            _ => DecisionEffect::Unchanged,
+        }),
+        response: Some(response),
+    };
+    Ok(Evaluation::Accepted(Decision {
+        instance,
+        record,
+        events,
+    }))
 }
 
 /// Executes `operation_name` on `instance` under `definition`.
@@ -356,8 +1024,157 @@ pub fn execute(
     operation_name: &str,
     arguments: Value,
 ) -> Result<Decision, CoreError> {
+    decide(definition, instance, operation_name, arguments)?.into_decision()
+}
+
+/// Normalizes and evaluates as much of one operation as is possible without an instance.
+///
+/// # Errors
+///
+/// Blank identity, unknown operation, invalid arguments, an unobservable known-input guard or no
+/// selected outcome. An unloaded subject is returned as [`PreloadDecision::Load`], never reported
+/// as an absent field.
+pub fn decide_before_load<'definition>(
+    definition: &'definition ValidatedDefinition,
+    expected_id: impl Into<String>,
+    operation_name: &str,
+    arguments: Value,
+) -> Result<PreloadDecision<'definition>, CoreError> {
+    let expected_id = expected_id.into();
+    if expected_id.trim().is_empty() {
+        return Err(CoreError::Validation(vec![crate::ValidationError::new(
+            "id",
+            "identity cannot be empty; the kernel generates none, so the caller supplies one",
+        )]));
+    }
+    let operation =
+        definition
+            .operations
+            .get(operation_name)
+            .ok_or_else(|| CoreError::OperationNotFound {
+                operation: operation_name.to_owned(),
+            })?;
+    let arguments = normalize_arguments(definition, operation_name, arguments)?;
+    let load = || {
+        PreloadDecision::Load(PreparedOperation {
+            definition,
+            operation: operation_name.to_owned(),
+            expected_id: expected_id.clone(),
+            arguments: arguments.clone(),
+        })
+    };
+
+    if !definition.semantics.has_service_semantics() || operation.outcomes.is_empty() {
+        return Ok(load());
+    }
+
+    let empty = Map::new();
+    let context = TemplateContext {
+        definition,
+        id: Some(&expected_id),
+        args: &arguments,
+        arguments_schema: Some(&operation.arguments),
+        old_fields: &empty,
+        new_fields: &empty,
+        from_state: None,
+        to_state: &definition.lifecycle.initial,
+    };
+    for outcome in operation
+        .outcomes
+        .iter()
+        .filter(|outcome| !outcome.wrong_state)
+    {
+        if outcome.in_state.is_some() {
+            return Ok(load());
+        }
+        let selected = match &outcome.when {
+            None => true,
+            Some(when) => {
+                let mut unobserved = Unobserved::new();
+                match evaluate_condition_before_load(when, &context, None, &mut unobserved)? {
+                    PartialTruth::NeedsSubject => return Ok(load()),
+                    PartialTruth::Known(Truth::False) => false,
+                    PartialTruth::Known(Truth::True) => true,
+                    PartialTruth::Known(Truth::Unknown) => {
+                        return Err(CoreError::OutcomeUnobservable {
+                            operation: operation_name.to_owned(),
+                            outcome: outcome.name.clone(),
+                            unresolved: unobserved.into_iter().collect(),
+                        })
+                    }
+                }
+            }
+        };
+        if !selected {
+            continue;
+        }
+        if let Some(refusal) = &outcome.refuses {
+            return Ok(PreloadDecision::Refused(Refusal {
+                outcome: outcome.name.clone(),
+                error: refusal.error.clone(),
+                message: refusal.message.clone(),
+            }));
+        }
+        return Ok(load());
+    }
+    Err(CoreError::NoOutcomeSelected {
+        operation: operation_name.to_owned(),
+    })
+}
+
+/// Executes `operation_name` on `instance`, answering a refusing branch as a value.
+///
+/// The sixteen steps, numbered 0 to 15, and a refusal at any of them returns before the next:
+///
+/// ```text
+///   0  instance (entity, version) matches the definition        EntityMismatch
+///   1  instance carries a state the definition declares         UnknownState
+///   2  operation exists                                         OperationNotFound
+///   3  arguments: defaults, then validation                     Validation
+///   4  input selection                                          NoOutcomeSelected
+///                                                               OutcomeUnobservable
+///   5  state admissibility of the selected branch               InvalidTransition
+///                                                               UnspecifiedMoveSource
+///   6  a refusing branch returns here                           Evaluation::Refused
+///   7  preconditions, against current state + arguments         PreconditionFailed
+///   8  the selected branch's set, against pre-operation fields  Template
+///   9  resulting fields validated against the schema            Validation
+///  10  next instance: state from the branch's effect, +1 rev    —
+///  11  identity mirror, when declared                           IdentityMismatch
+///  12  invariants, against the next state                       InvariantViolation
+///  13  the selected branch's events, in declaration order       Template
+///  14  the selected branch's response, in schema order          Template
+///  15  Evaluation::Accepted(Decision)                           —
+/// ```
+///
+/// A `kernel/1` operation keeps this order and its refusal names exactly. Its single implicit
+/// branch makes step 4 a no-op, makes step 5 answer `InvalidTransition` and only
+/// `InvalidTransition`, and makes steps 6, 11 and 14 absent; renumbering 5 to 15 against the legacy
+/// column recovers the twelve-step list unchanged.
+///
+/// # Errors
+///
+/// Every variant the step table names.
+pub fn decide(
+    definition: &ValidatedDefinition,
+    instance: &EntityInstance,
+    operation_name: &str,
+    arguments: Value,
+) -> Result<Evaluation, CoreError> {
+    decide_with_fulfillments(definition, instance, operation_name, arguments, None)
+}
+
+fn decide_with_fulfillments(
+    definition: &ValidatedDefinition,
+    instance: &EntityInstance,
+    operation_name: &str,
+    arguments: Value,
+    fulfillments: Option<&BTreeMap<String, OperationFieldAction>>,
+) -> Result<Evaluation, CoreError> {
+    // Steps 0 and 1, in the order the code has always checked them.
     ensure_instance_matches(definition, instance)?;
 
+    // Step 2.
     let operation =
         definition
             .operations
@@ -366,48 +1183,170 @@ pub fn execute(
                 operation: operation_name.to_owned(),
             })?;
 
+    // Step 3.
     let args = normalize_arguments(definition, operation_name, arguments)?;
-
-    let transition = operation
-        .transitions
-        .iter()
-        .find(|transition| {
-            transition
-                .from
-                .iter()
-                .any(|state| state == &instance.lifecycle_state)
-        })
-        .ok_or_else(|| CoreError::InvalidTransition {
-            operation: operation_name.to_owned(),
-            state: instance.lifecycle_state.clone(),
-        })?;
 
     // The pre-operation fields are borrowed, never copied: they are only ever read, and `set`
     // resolves every assignment against them.
     let old_fields = &instance.fields;
+    let selected = if definition.semantics.has_service_semantics() && !operation.outcomes.is_empty()
+    {
+        // Step 4, in `OutcomeSelector`. The destination state is what the selected branch's effect
+        // produces, so a selector may read neither `$state` nor `$to_state`; registration refuses
+        // one that does, which is why passing the held state here cannot be read.
+        let selector_context = TemplateContext {
+            definition,
+            id: Some(&instance.id),
+            args: &args,
+            arguments_schema: Some(&operation.arguments),
+            old_fields,
+            new_fields: old_fields,
+            from_state: Some(&instance.lifecycle_state),
+            to_state: &instance.lifecycle_state,
+        };
+        let outcome = select_outcome(
+            operation_name,
+            &operation.outcomes,
+            Some(&instance.lifecycle_state),
+            &selector_context,
+        )?;
+        // Step 5.
+        let outcome = admit_state(
+            definition,
+            operation,
+            operation_name,
+            outcome,
+            &instance.lifecycle_state,
+        )?;
+        Branch::outcome(outcome, &instance.lifecycle_state)
+    } else {
+        // Step 4 is a no-op for the implicit branch; step 5 is the transition selection, which
+        // answers `InvalidTransition` and only `InvalidTransition`.
+        let transition = operation
+            .transitions
+            .iter()
+            .find(|transition| {
+                transition
+                    .from
+                    .iter()
+                    .any(|state| state == &instance.lifecycle_state)
+            })
+            .ok_or_else(|| CoreError::InvalidTransition {
+                operation: operation_name.to_owned(),
+                state: instance.lifecycle_state.clone(),
+            })?;
+        Branch::implicit(operation, &transition.to)
+    };
+
+    // Step 6.
+    if let Some((name, refusal)) = selected.refusal() {
+        return Ok(Evaluation::Refused(Refusal {
+            outcome: name.to_owned(),
+            error: refusal.error.clone(),
+            message: refusal.message.clone(),
+        }));
+    }
 
     let context = TemplateContext {
         definition,
-        id: &instance.id,
+        id: Some(&instance.id),
         args: &args,
+        arguments_schema: Some(&operation.arguments),
         old_fields,
         new_fields: old_fields,
         from_state: Some(&instance.lifecycle_state),
-        to_state: &transition.to,
+        to_state: &selected.to_state,
     };
+    // Step 7.
     check_preconditions(operation_name, &operation.preconditions, &context)?;
 
+    // Step 8.
     let mut new_fields = canonical_object(old_fields.clone());
-    for (field, template) in &operation.set {
+    for (field, template) in selected.set {
         let value = resolve_template(template, &context)?;
         new_fields.insert(field.clone(), value);
     }
+    let mut removed = BTreeSet::new();
+    let requirements = selected.fulfills.unwrap_or(&EMPTY_FULFILLMENTS);
+    if !requirements.is_empty() {
+        let Some(actions) = fulfillments else {
+            return Err(CoreError::FulfillmentRequired {
+                operation: operation_name.to_owned(),
+                outcome: selected.name.unwrap_or_default().to_owned(),
+                fields: requirements.keys().cloned().collect(),
+            });
+        };
+        let required: BTreeSet<&str> = requirements.keys().map(String::as_str).collect();
+        let supplied: BTreeSet<&str> = actions.keys().map(String::as_str).collect();
+        let missing = required
+            .difference(&supplied)
+            .map(|name| (*name).to_owned())
+            .collect::<Vec<_>>();
+        let extra = supplied
+            .difference(&required)
+            .map(|name| (*name).to_owned())
+            .collect::<Vec<_>>();
+        if !missing.is_empty() || !extra.is_empty() {
+            return Err(CoreError::FulfillmentKeysMismatch {
+                operation: operation_name.to_owned(),
+                outcome: selected.name.unwrap_or_default().to_owned(),
+                missing,
+                extra,
+            });
+        }
+        for (field, action) in actions {
+            let requirement = &requirements[field];
+            match action {
+                OperationFieldAction::Preserve => {}
+                OperationFieldAction::Set { value } => {
+                    let target = &definition.schema.fields[field];
+                    let errors = validate_field_value(
+                        target,
+                        value,
+                        &format!("fulfillments.{field}.value"),
+                        definition.semantics,
+                    );
+                    if !errors.is_empty() {
+                        return Err(CoreError::Validation(errors));
+                    }
+                    new_fields.insert(field.clone(), canonicalize(value.clone()));
+                }
+                OperationFieldAction::Remove => {
+                    if matches!(requirement.actions, OperationFieldActions::Required) {
+                        return Err(CoreError::RequiredFieldRemoval {
+                            operation: operation_name.to_owned(),
+                            outcome: selected.name.unwrap_or_default().to_owned(),
+                            field: field.clone(),
+                        });
+                    }
+                    new_fields.remove(field);
+                    removed.insert(field.clone());
+                }
+            }
+        }
+    } else if let Some(actions) = fulfillments {
+        if !actions.is_empty() {
+            return Err(CoreError::FulfillmentKeysMismatch {
+                operation: operation_name.to_owned(),
+                outcome: selected.name.unwrap_or_default().to_owned(),
+                missing: Vec::new(),
+                extra: actions.keys().cloned().collect(),
+            });
+        }
+    }
 
-    let state_errors = validate_object(&definition.schema, &new_fields, "fields");
+    // Step 9.
+    let state_errors = validate_object_under(
+        &definition.schema,
+        &new_fields,
+        "fields",
+        definition.semantics,
+    );
     if !state_errors.is_empty() {
         return Err(CoreError::Validation(state_errors));
     }
 
+    // Step 10.
     let next_revision = instance
         .revision
         .checked_add(1)
@@ -421,27 +1360,47 @@ pub fn execute(
         entity: instance.entity.clone(),
         version: instance.version,
         id: instance.id.clone(),
-        lifecycle_state: transition.to.clone(),
+        lifecycle_state: selected.to_state.clone(),
         revision: next_revision,
         fields: new_fields,
     };
 
+    // Step 11, before the invariants.
+    check_identity_mirror(definition, &next_instance)?;
+
     let context = TemplateContext {
         definition,
-        id: &instance.id,
+        id: Some(&instance.id),
         args: &args,
+        arguments_schema: Some(&operation.arguments),
         old_fields,
         new_fields: &next_instance.fields,
         from_state: Some(&instance.lifecycle_state),
         to_state: &next_instance.lifecycle_state,
     };
 
+    // Step 12.
     check_invariants(definition, &context)?;
 
-    let mut events = Vec::with_capacity(operation.emits.len());
-    for event in &operation.emits {
-        events.push(materialize_event(event, &context, next_revision, &args)?);
+    // Step 13, in declaration order, duplicates preserved.
+    let mut events = Vec::with_capacity(selected.emits.len());
+    for event in selected.emits {
+        events.push(materialize_event(
+            event,
+            &context,
+            next_revision,
+            &args,
+            &removed,
+        )?);
     }
+
+    // Step 14, after the events, so both read one set of post-`set` fields.
+    let response = match selected.responds {
+        Some((responds, conditional)) => {
+            Some(materialize_response(responds, conditional, &context)?)
+        }
+        None => None,
+    };
 
     let changed = changed_fields(&context);
     let record = DecisionRecord {
@@ -449,6 +1408,7 @@ pub fn execute(
         command: DecisionCommand::Execute {
             operation: operation_name.to_owned(),
             arguments: args,
+            fulfillments: fulfillments.cloned().unwrap_or_default(),
         },
         entity: next_instance.entity.clone(),
         id: next_instance.id.clone(),
@@ -457,13 +1417,332 @@ pub fn execute(
         to_state: next_instance.lifecycle_state.clone(),
         result: next_instance.clone(),
         changed,
+        removed,
         events: events.clone(),
+        outcome: selected.name.map(ToOwned::to_owned),
+        effect: selected.effect,
+        response,
     };
-    Ok(Decision {
+    // Step 15.
+    Ok(Evaluation::Accepted(Decision {
         instance: next_instance,
         record,
         events,
+    }))
+}
+
+/// The name a creation's selection refusals carry, since a creation has no operation.
+const CREATE_COMMAND: &str = "create";
+
+type ResponseMembers<'a> = (
+    &'a BTreeMap<String, Value>,
+    &'a BTreeMap<String, PresentArgument>,
+);
+
+static EMPTY_FULFILLMENTS: BTreeMap<String, OperationFieldRequirement> = BTreeMap::new();
+
+/// The branch a command's evaluation selected, resolved to the five things every step after it
+/// needs.
+///
+/// `kernel/1` is `service/1` with one implicit branch, so there is one evaluation path and not two.
+struct Branch<'a> {
+    name: Option<&'a str>,
+    to_state: String,
+    set: &'a BTreeMap<String, Value>,
+    fulfills: Option<&'a BTreeMap<String, OperationFieldRequirement>>,
+    emits: &'a [EventDefinition],
+    responds: Option<ResponseMembers<'a>>,
+    effect: Option<DecisionEffect>,
+    refuses: Option<&'a RefusalDefinition>,
+}
+
+impl<'a> Branch<'a> {
+    /// The implicit branch: the transition selection a `kernel/1` operation performs, with the
+    /// operation's own `set` and `emits`.
+    fn implicit(operation: &'a OperationDefinition, to_state: &str) -> Self {
+        Self {
+            name: None,
+            to_state: to_state.to_owned(),
+            set: &operation.set,
+            fulfills: None,
+            emits: &operation.emits,
+            responds: None,
+            effect: None,
+            refuses: None,
+        }
+    }
+
+    /// A named branch. `Moves` goes to its declared state; `Updates` and `None` keep the state the
+    /// instance rests in, and no self-transition is synthesized for either.
+    fn outcome(outcome: &'a OutcomeDefinition, from_state: &str) -> Self {
+        let (to_state, effect) = match &outcome.effect {
+            OutcomeEffect::Moves { to, .. } => (to.clone(), DecisionEffect::Moved),
+            OutcomeEffect::Updates => (from_state.to_owned(), DecisionEffect::Updated),
+            OutcomeEffect::None => (from_state.to_owned(), DecisionEffect::Unchanged),
+            // Registration refuses `creates` on an operation branch.
+            OutcomeEffect::Creates => (from_state.to_owned(), DecisionEffect::Created),
+        };
+        Self {
+            name: Some(&outcome.name),
+            to_state,
+            set: &outcome.set,
+            fulfills: Some(&outcome.fulfills),
+            emits: &outcome.emits,
+            responds: Some((&outcome.responds, &outcome.responds_if_present)),
+            effect: Some(effect),
+            refuses: outcome.refuses.as_ref(),
+        }
+    }
+
+    fn refusal(&self) -> Option<(&'a str, &'a RefusalDefinition)> {
+        Some((self.name?, self.refuses?))
+    }
+}
+
+/// Step 4: which branch this input takes, in declared order.
+///
+/// Two lines, and three shapes fall out of them. For each non-`wrong_state` branch:
+///
+/// 1. **The state test.** A declared `in_state` that is not the state the command acts in **skips
+///    the branch**, and its `when` is not evaluated: a guard whose branch the held state has
+///    already excluded cannot make the command unobservable. For an operation that state is the
+///    instance's current one; for a creation it is the lifecycle's `initial`, which is the state
+///    step 10 puts the new instance in.
+/// 2. **The selector test.** The branch's selector is its `when` if it declares one and `True` if
+///    it does not — so a matching bare state guard is selected in exactly the states it names, for
+///    every admitted input, which is the source's own reading rather than a convenience.
+///
+/// The input guard is answered **before** the held state wherever a branch declares no `in_state`,
+/// which is what the source's own reference target does: a non-positive amount is refused whatever
+/// state the invoice is in.
+fn select_outcome<'a>(
+    command: &str,
+    outcomes: &'a [OutcomeDefinition],
+    state: Option<&str>,
+    context: &TemplateContext<'_>,
+) -> Result<&'a OutcomeDefinition, CoreError> {
+    for outcome in outcomes.iter().filter(|outcome| !outcome.wrong_state) {
+        if let (Some(guarded), Some(state)) = (outcome.in_state.as_deref(), state) {
+            if guarded != state {
+                continue;
+            }
+        }
+        let Some(when) = &outcome.when else {
+            return Ok(outcome);
+        };
+        let mut unobserved = Unobserved::new();
+        match evaluate_condition(when, context, None, &mut unobserved)? {
+            Truth::True => return Ok(outcome),
+            Truth::False => continue,
+            // Selection stops here and no later branch is tried. Reading an unanswerable guard as
+            // *not this branch* would hand the command to a branch its author wrote for a
+            // different fact.
+            Truth::Unknown => {
+                return Err(CoreError::OutcomeUnobservable {
+                    operation: command.to_owned(),
+                    outcome: outcome.name.clone(),
+                    unresolved: unobserved.into_iter().collect(),
+                })
+            }
+        }
+    }
+    Err(CoreError::NoOutcomeSelected {
+        operation: command.to_owned(),
     })
+}
+
+/// Every state some move of this operation starts from.
+pub(crate) fn move_sources(operation: &OperationDefinition) -> BTreeSet<String> {
+    operation
+        .outcomes
+        .iter()
+        .filter_map(|outcome| outcome.effect.move_sources())
+        .flat_map(|from| from.iter().cloned())
+        .collect()
+}
+
+/// Every state **no** move of this operation starts from — the complement, taken over the union,
+/// which is what the source's own condition means and computes.
+pub(crate) fn wrong_states(
+    definition: &EntityDefinition,
+    operation: &OperationDefinition,
+) -> BTreeSet<String> {
+    let sources = move_sources(operation);
+    definition
+        .lifecycle
+        .states
+        .iter()
+        .filter(|state| !sources.contains(*state))
+        .cloned()
+        .collect()
+}
+
+/// Step 5: whether the selected branch's move can start where the instance rests.
+fn admit_state<'a>(
+    definition: &EntityDefinition,
+    operation: &'a OperationDefinition,
+    operation_name: &str,
+    outcome: &'a OutcomeDefinition,
+    state: &str,
+) -> Result<&'a OutcomeDefinition, CoreError> {
+    let Some(from) = outcome.effect.move_sources() else {
+        return Ok(outcome);
+    };
+    if from.iter().any(|source| source == state) {
+        return Ok(outcome);
+    }
+    if wrong_states(definition, operation).contains(state) {
+        // No move of this operation starts here, so the wrong-state branch is by the source's own
+        // definition the one that answers — and where none is declared, this is exactly what
+        // `kernel/1` returns today.
+        return operation
+            .outcomes
+            .iter()
+            .find(|outcome| outcome.wrong_state)
+            .ok_or_else(|| CoreError::InvalidTransition {
+                operation: operation_name.to_owned(),
+                state: state.to_owned(),
+            });
+    }
+    // Some *other* branch of this operation moves from here, but not the one the input selected.
+    // The source neither validates this pair, nor synthesizes a scenario for it, nor runs it, nor
+    // answers it in a reference target, so it is named rather than answered.
+    Err(CoreError::UnspecifiedMoveSource {
+        operation: operation_name.to_owned(),
+        outcome: outcome.name.clone(),
+        state: state.to_owned(),
+        from: from.iter().cloned().collect(),
+    })
+}
+
+/// Step 11: the identity field and the storage address still agree.
+///
+/// A no-op for a `kernel/1` definition, which cannot declare `identity` at all.
+fn check_identity_mirror(
+    definition: &EntityDefinition,
+    instance: &EntityInstance,
+) -> Result<(), CoreError> {
+    let Some(identity) = &definition.identity else {
+        return Ok(());
+    };
+    let kind = definition
+        .schema
+        .fields
+        .get(&identity.field)
+        .map_or(FieldKind::String, |field| field.kind);
+    let value = instance.fields.get(&identity.field);
+    let derived = match value {
+        Some(value) => crate::identity::address(kind, value).map_err(|error| error.to_string()),
+        None => Err("the identity field carries no value".to_owned()),
+    };
+    match derived {
+        Ok(address) if address == instance.id => Ok(()),
+        Ok(address) => Err(CoreError::IdentityMismatch {
+            field: identity.field.clone(),
+            id: instance.id.clone(),
+            value: format!("'{address}'"),
+        }),
+        Err(detail) => Err(CoreError::IdentityMismatch {
+            field: identity.field.clone(),
+            id: instance.id.clone(),
+            value: detail,
+        }),
+    }
+}
+
+fn derive_creation_identity(
+    definition: &EntityDefinition,
+    fields: &Map<String, Value>,
+) -> Result<String, CoreError> {
+    let identity =
+        definition
+            .identity
+            .as_ref()
+            .ok_or_else(|| CoreError::CreationIdentityUnavailable {
+                entity: definition.entity.clone(),
+                detail: "the validated definition declares no logical identity field".to_owned(),
+            })?;
+    let field = definition
+        .schema
+        .fields
+        .get(&identity.field)
+        .ok_or_else(|| CoreError::CreationIdentityUnavailable {
+            entity: definition.entity.clone(),
+            detail: format!(
+                "the declared identity field '{}' is absent from the schema",
+                identity.field
+            ),
+        })?;
+    let value =
+        fields
+            .get(&identity.field)
+            .ok_or_else(|| CoreError::CreationIdentityUnavailable {
+                entity: definition.entity.clone(),
+                detail: format!(
+                    "the selected fields carry no value for '{}'",
+                    identity.field
+                ),
+            })?;
+    crate::identity::address(field.kind, value).map_err(|error| {
+        CoreError::CreationIdentityUnavailable {
+            entity: definition.entity.clone(),
+            detail: format!("identity field '{}': {error}", identity.field),
+        }
+    })
+}
+
+/// Step 14: the branch's declared response, resolved in the scope its command sits in.
+fn materialize_response(
+    responds: &BTreeMap<String, Value>,
+    responds_if_present: &BTreeMap<String, PresentArgument>,
+    context: &TemplateContext<'_>,
+) -> Result<Map<String, Value>, CoreError> {
+    let mut response = Map::new();
+    for (field, template) in responds {
+        response.insert(
+            field.clone(),
+            canonicalize(resolve_template(template, context)?),
+        );
+    }
+    insert_present_arguments(&mut response, responds_if_present, context.args);
+    Ok(response)
+}
+
+enum Presence<'value> {
+    Absent,
+    Present(&'value Value),
+}
+
+fn argument_presence<'a>(
+    arguments: &'a Map<String, Value>,
+    source: &PresentArgument,
+) -> Presence<'a> {
+    let mut segments = source.argument.split('.');
+    let Some(first) = segments.next() else {
+        return Presence::Absent;
+    };
+    let Some(mut value) = arguments.get(first) else {
+        return Presence::Absent;
+    };
+    for segment in segments {
+        let Some(next) = value.as_object().and_then(|object| object.get(segment)) else {
+            return Presence::Absent;
+        };
+        value = next;
+    }
+    Presence::Present(value)
+}
+
+fn insert_present_arguments(
+    target: &mut Map<String, Value>,
+    conditional: &BTreeMap<String, PresentArgument>,
+    arguments: &Map<String, Value>,
+) {
+    for (field, source) in conditional {
+        if let Presence::Present(value) = argument_presence(arguments, source) {
+            target.insert(field.clone(), canonicalize(value.clone()));
+        }
+    }
 }
 
 fn definition_snapshot(definition: &ValidatedDefinition) -> EntityDefinition {
@@ -489,7 +1768,12 @@ pub fn normalize_arguments(
             })?;
     let mut args = into_object(arguments, "arguments")?;
     apply_defaults(&operation.arguments, &mut args);
-    let errors = validate_object(&operation.arguments, &args, "arguments");
+    let errors = validate_object_under(
+        &operation.arguments,
+        &args,
+        "arguments",
+        definition.semantics,
+    );
     if !errors.is_empty() {
         return Err(CoreError::Validation(errors));
     }
@@ -509,7 +1793,7 @@ pub(crate) fn check_preconditions(
 ) -> Result<(), CoreError> {
     for rule in rules {
         let mut unobserved = Unobserved::new();
-        match evaluate_condition(&rule.condition, context, &mut unobserved)? {
+        match evaluate_condition(&rule.condition, context, None, &mut unobserved)? {
             Truth::True => {}
             Truth::False => {
                 return Err(CoreError::PreconditionFailed {
@@ -543,7 +1827,7 @@ pub(crate) fn check_invariants(
 ) -> Result<(), CoreError> {
     for rule in &definition.invariants {
         let mut unobserved = Unobserved::new();
-        match evaluate_condition(&rule.condition, context, &mut unobserved)? {
+        match evaluate_condition(&rule.condition, context, None, &mut unobserved)? {
             Truth::True => {}
             Truth::False => {
                 return Err(CoreError::InvariantViolation {
@@ -580,9 +1864,176 @@ pub(crate) fn check_invariants(
 /// addresses have been recorded when the answer comes back is not, and a refusal that names one
 /// missing fact out of three costs the operator three round trips. Evaluation here is pure and
 /// cannot fail partway, so there is nothing to be bought by stopping early.
+#[derive(Clone, Copy)]
+enum PartialTruth {
+    Known(Truth),
+    NeedsSubject,
+}
+
+impl PartialTruth {
+    fn and(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Known(Truth::False), _) | (_, Self::Known(Truth::False)) => {
+                Self::Known(Truth::False)
+            }
+            (Self::Known(left), Self::Known(right)) => Self::Known(left.and(right)),
+            _ => Self::NeedsSubject,
+        }
+    }
+
+    fn or(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Known(Truth::True), _) | (_, Self::Known(Truth::True)) => {
+                Self::Known(Truth::True)
+            }
+            (Self::Known(left), Self::Known(right)) => Self::Known(left.or(right)),
+            _ => Self::NeedsSubject,
+        }
+    }
+
+    fn not(self) -> Self {
+        match self {
+            Self::Known(truth) => Self::Known(truth.not()),
+            Self::NeedsSubject => Self::NeedsSubject,
+        }
+    }
+}
+
+fn evaluate_condition_before_load(
+    condition: &Condition,
+    context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
+    unobserved: &mut Unobserved,
+) -> Result<PartialTruth, CoreError> {
+    match condition {
+        Condition::All { all } => {
+            let mut result = PartialTruth::Known(Truth::True);
+            for child in all {
+                result = result.and(evaluate_condition_before_load(
+                    child, context, bindings, unobserved,
+                )?);
+            }
+            Ok(result)
+        }
+        Condition::Any { any } => {
+            let mut result = PartialTruth::Known(Truth::False);
+            for child in any {
+                result = result.or(evaluate_condition_before_load(
+                    child, context, bindings, unobserved,
+                )?);
+            }
+            Ok(result)
+        }
+        Condition::Not { not } => {
+            Ok(evaluate_condition_before_load(not, context, bindings, unobserved)?.not())
+        }
+        Condition::ForAll { for_all } => {
+            quantify_before_load(for_all, context, bindings, unobserved, Quantification::All)
+        }
+        Condition::ForAny { for_any } => {
+            quantify_before_load(for_any, context, bindings, unobserved, Quantification::Any)
+        }
+        _ if condition_needs_subject(condition, bindings) => Ok(PartialTruth::NeedsSubject),
+        _ => evaluate_condition(condition, context, bindings, unobserved).map(PartialTruth::Known),
+    }
+}
+
+fn quantify_before_load(
+    quantifier: &Quantifier,
+    context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
+    unobserved: &mut Unobserved,
+    mode: Quantification,
+) -> Result<PartialTruth, CoreError> {
+    if value_needs_subject(&quantifier.over, bindings) {
+        return Ok(PartialTruth::NeedsSubject);
+    }
+    let Some(collection) = resolve_operand(&quantifier.over, context, bindings, unobserved)? else {
+        return Ok(PartialTruth::Known(Truth::Unknown));
+    };
+    let elements: Vec<&Value> = match &collection {
+        Value::Array(values) => values.iter().collect(),
+        Value::Object(members) => members.values().collect(),
+        _ => return Ok(PartialTruth::Known(Truth::Unknown)),
+    };
+    let mut result = PartialTruth::Known(match mode {
+        Quantification::All => Truth::True,
+        Quantification::Any => Truth::False,
+    });
+    for element in elements {
+        let inner = Bindings {
+            name: &quantifier.bind,
+            value: element,
+            outer: bindings,
+        };
+        let answer =
+            evaluate_condition_before_load(&quantifier.body, context, Some(&inner), unobserved)?;
+        result = match mode {
+            Quantification::All => result.and(answer),
+            Quantification::Any => result.or(answer),
+        };
+    }
+    Ok(result)
+}
+
+fn condition_needs_subject(condition: &Condition, bindings: Option<&Bindings<'_>>) -> bool {
+    match condition {
+        Condition::Literal(_) => false,
+        Condition::All { .. }
+        | Condition::Any { .. }
+        | Condition::Not { .. }
+        | Condition::ForAll { .. }
+        | Condition::ForAny { .. } => false,
+        Condition::Exists { exists } => value_needs_subject(exists, bindings),
+        Condition::Before { before } => before
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Condition::After { after } => after
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Condition::Eq { eq } => eq.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Ne { ne } => ne.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Gt { gt } => gt.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Gte { gte } => gte.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Lt { lt } => lt.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::Lte { lte } => lte.iter().any(|value| value_needs_subject(value, bindings)),
+        Condition::In { values } => values
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Condition::Contains { contains } => contains
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Condition::Compare { compare } => {
+            value_needs_subject(&compare.left, bindings)
+                || value_needs_subject(&compare.right, bindings)
+        }
+        Condition::Truthy { truthy } => value_needs_subject(truthy, bindings),
+    }
+}
+
+fn value_needs_subject(value: &Value, bindings: Option<&Bindings<'_>>) -> bool {
+    match value {
+        Value::String(reference) if reference.starts_with('$') && !reference.starts_with("$$") => {
+            let root = reference[1..].split('.').next().unwrap_or_default();
+            if bindings.and_then(|bindings| bindings.get(root)).is_some() {
+                return false;
+            }
+            matches!(root, "fields" | "old_fields" | "from_state")
+        }
+        Value::Array(values) => values
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Value::Object(values) => values
+            .values()
+            .any(|value| value_needs_subject(value, bindings)),
+        _ => false,
+    }
+}
+
 fn evaluate_condition(
     condition: &Condition,
     context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
     unobserved: &mut Unobserved,
 ) -> Result<Truth, CoreError> {
     match condition {
@@ -590,18 +2041,47 @@ fn evaluate_condition(
         Condition::All { all } => {
             let mut result = Truth::True;
             for condition in all {
-                result = result.and(evaluate_condition(condition, context, unobserved)?);
+                result = result.and(evaluate_condition(
+                    condition, context, bindings, unobserved,
+                )?);
             }
             Ok(result)
         }
         Condition::Any { any } => {
             let mut result = Truth::False;
             for condition in any {
-                result = result.or(evaluate_condition(condition, context, unobserved)?);
+                result = result.or(evaluate_condition(
+                    condition, context, bindings, unobserved,
+                )?);
             }
             Ok(result)
         }
-        Condition::Not { not } => Ok(evaluate_condition(not, context, unobserved)?.not()),
+        Condition::Not { not } => Ok(evaluate_condition(not, context, bindings, unobserved)?.not()),
+        Condition::Compare { compare } => evaluate_compare(compare, context, bindings, unobserved),
+        Condition::Truthy { truthy } => {
+            match resolve_operand(truthy, context, bindings, unobserved)? {
+                // ESS's `is_truthy`, arm for arm.
+                Some(Value::Bool(value)) => Ok(Truth::from_bool(value)),
+                Some(Value::Number(number)) => match Observed::of_number(&number) {
+                    Some(observed) => Ok(Truth::from_bool(!observed.is_zero())),
+                    // A token the source cannot observe is not a value it can answer about.
+                    None => Ok(Truth::Unknown),
+                },
+                // "the fact is present, therefore true", with `false` as the one written exception.
+                Some(Value::String(text)) => {
+                    Ok(Truth::from_bool(!text.is_empty() && text != "false"))
+                }
+                // A list, a map, a union and a struct have no scalar spelling.
+                Some(_) => Ok(Truth::Unknown),
+                None => Ok(Truth::Unknown),
+            }
+        }
+        Condition::ForAll { for_all } => {
+            quantify(for_all, context, bindings, unobserved, Quantification::All)
+        }
+        Condition::ForAny { for_any } => {
+            quantify(for_any, context, bindings, unobserved, Quantification::Any)
+        }
         Condition::Exists { exists } => {
             // A question about the store, not about a value: the kernel holds the instance, so it
             // can always answer it. Nothing goes into `unobserved` — this operator *is* the
@@ -609,32 +2089,48 @@ fn evaluate_condition(
             // `$fields.a` beside the genuinely unreadable `$fields.b` would send whoever reads the
             // refusal after the wrong one.
             let mut answered = Unobserved::new();
-            let resolved = resolve_operand(exists, context, &mut answered)?;
+            let resolved = resolve_operand(exists, context, bindings, &mut answered)?;
             Ok(Truth::from_bool(resolved.is_some()))
         }
         Condition::Before { before } => {
-            compare_instants(before, context, unobserved, |left, right| left < right)
+            compare_instants(before, context, bindings, unobserved, |left, right| {
+                left < right
+            })
         }
         Condition::After { after } => {
-            compare_instants(after, context, unobserved, |left, right| left > right)
+            compare_instants(after, context, bindings, unobserved, |left, right| {
+                left > right
+            })
         }
-        Condition::Eq { eq } => compare_values(eq, context, unobserved, values_equal),
-        Condition::Ne { ne } => compare_values(ne, context, unobserved, |left, right| {
-            !values_equal(left, right)
+        Condition::Eq { eq } => compare_values(eq, context, bindings, unobserved, |left, right| {
+            equal_under(context, left, Some(&eq[0]), right, Some(&eq[1]))
         }),
-        Condition::Gt { gt } => compare_numbers(gt, context, unobserved, Ordering::is_gt),
-        Condition::Gte { gte } => compare_numbers(gte, context, unobserved, |order| {
+        Condition::Ne { ne } => compare_values(ne, context, bindings, unobserved, |left, right| {
+            !equal_under(context, left, Some(&ne[0]), right, Some(&ne[1]))
+        }),
+        Condition::Gt { gt } => compare_numbers(gt, context, bindings, unobserved, Ordering::is_gt),
+        Condition::Gte { gte } => compare_numbers(gte, context, bindings, unobserved, |order| {
             order.is_gt() || order.is_eq()
         }),
-        Condition::Lt { lt } => compare_numbers(lt, context, unobserved, Ordering::is_lt),
-        Condition::Lte { lte } => compare_numbers(lte, context, unobserved, |order| {
+        Condition::Lt { lt } => compare_numbers(lt, context, bindings, unobserved, Ordering::is_lt),
+        Condition::Lte { lte } => compare_numbers(lte, context, bindings, unobserved, |order| {
             order.is_lt() || order.is_eq()
         }),
         Condition::In { values } => {
-            let (needle, haystack) = resolve_pair(values, context, unobserved)?;
+            let (needle, haystack) = resolve_pair(values, context, bindings, unobserved)?;
             match (needle, haystack) {
-                (Some(needle), Some(Value::Array(values))) => Ok(Truth::from_bool(
-                    values.iter().any(|value| values_equal(value, &needle)),
+                // Each element carries its own origin: written in the definition's own list it is a
+                // literal, reached through a reference it is a wire value.
+                (Some(needle), Some(Value::Array(elements))) => Ok(Truth::from_bool(
+                    elements.iter().enumerate().any(|(index, element)| {
+                        equal_under(
+                            context,
+                            element,
+                            written_element(Some(&values[1]), index),
+                            &needle,
+                            Some(&values[0]),
+                        )
+                    }),
                 )),
                 // Both resolved, and the haystack is not a list: observed, and it does not hold.
                 (Some(_), Some(_)) => Ok(Truth::False),
@@ -642,10 +2138,18 @@ fn evaluate_condition(
             }
         }
         Condition::Contains { contains } => {
-            let (container, needle) = resolve_pair(contains, context, unobserved)?;
+            let (container, needle) = resolve_pair(contains, context, bindings, unobserved)?;
             match (container, needle) {
-                (Some(Value::Array(values)), Some(needle)) => Ok(Truth::from_bool(
-                    values.iter().any(|value| values_equal(value, &needle)),
+                (Some(Value::Array(elements)), Some(needle)) => Ok(Truth::from_bool(
+                    elements.iter().enumerate().any(|(index, element)| {
+                        equal_under(
+                            context,
+                            element,
+                            written_element(Some(&contains[0]), index),
+                            &needle,
+                            Some(&contains[1]),
+                        )
+                    }),
                 )),
                 (Some(Value::String(value)), Some(Value::String(needle))) => {
                     Ok(Truth::from_bool(value.contains(&needle)))
@@ -658,6 +2162,226 @@ fn evaluate_condition(
             }
         }
     }
+}
+
+/// Which equality `eq`, `ne`, `in` and `contains` use, with each operand's origin.
+///
+/// Under `service/1` two numbers compare through the source observation rule, because these four
+/// are what a lowering emits for the source's own equality and membership tests and a membership
+/// test that disagreed with `compare` would be a second numeric semantics inside one document.
+/// That agreement is not only about *which* rule: `compare` reads each operand through **its own**
+/// door, so equality and membership have to as well. `written` is the operand's authored spelling
+/// — the value the definition holds before anything is resolved — and `None` means there is none,
+/// which is every element of a collection a reference resolved to.
+///
+/// Under `kernel/1` every answer is the one it is today and neither spelling is consulted.
+fn equal_under(
+    context: &TemplateContext<'_>,
+    left: &Value,
+    left_written: Option<&Value>,
+    right: &Value,
+    right_written: Option<&Value>,
+) -> bool {
+    if context.definition.semantics.has_service_semantics() {
+        observed_values_equal(left, left_written, right, right_written)
+    } else {
+        values_equal(left, right)
+    }
+}
+
+/// The authored spelling of one element of an operand, where the operand was authored as a list.
+///
+/// A reference that resolved to a list has no authored spelling for its elements, so they are wire
+/// values — which is the half of § 10.2.1's membership rule that a resolved-only comparison loses.
+fn written_element(written: Option<&Value>, index: usize) -> Option<&Value> {
+    match written {
+        Some(Value::Array(values)) => values.get(index),
+        _ => None,
+    }
+}
+
+/// The same, for one member of an operand authored as a mapping.
+fn written_member<'a>(written: Option<&'a Value>, key: &str) -> Option<&'a Value> {
+    match written {
+        Some(Value::Object(values)) => values.get(key),
+        _ => None,
+    }
+}
+
+/// Which branch of a quantifier's fold is being taken.
+#[derive(Clone, Copy)]
+enum Quantification {
+    All,
+    Any,
+}
+
+/// `for_all` / `for_any`, element for element.
+///
+/// An unobserved collection is `Unknown`, never the vacuous truth an empty one gives: *nobody
+/// looked* and *there was nothing to look at* are different. Evaluation stops as soon as the fold
+/// is settled, which is not an optimisation — walking a collection whose verdict is already settled
+/// would report causes from elements nobody is waiting on.
+fn quantify(
+    quantifier: &Quantifier,
+    context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
+    unobserved: &mut Unobserved,
+    mode: Quantification,
+) -> Result<Truth, CoreError> {
+    let Some(collection) = resolve_operand(&quantifier.over, context, bindings, unobserved)? else {
+        return Ok(Truth::Unknown);
+    };
+    // An array's elements in index order; a map's **values** in canonical key order, which is the
+    // order this runtime canonicalizes an object into everywhere else. Map keys are not
+    // addressable, so a body cannot reach for one.
+    let elements: Vec<&Value> = match &collection {
+        Value::Array(values) => values.iter().collect(),
+        Value::Object(members) => members.values().collect(),
+        _ => return Ok(Truth::Unknown),
+    };
+    let mut result = match mode {
+        Quantification::All => Truth::True,
+        Quantification::Any => Truth::False,
+    };
+    for element in elements {
+        let inner = Bindings {
+            name: &quantifier.bind,
+            value: element,
+            outer: bindings,
+        };
+        let answer = evaluate_condition(&quantifier.body, context, Some(&inner), unobserved)?;
+        result = match mode {
+            Quantification::All => result.and(answer),
+            Quantification::Any => result.or(answer),
+        };
+        let settled = match mode {
+            Quantification::All => result == Truth::False,
+            Quantification::Any => result == Truth::True,
+        };
+        if settled {
+            break;
+        }
+    }
+    Ok(result)
+}
+
+/// One quantifier binder, and every binder enclosing it.
+///
+/// A binder **extends** whichever scope encloses it, and only for the duration of the body: every
+/// other address passes through untouched, which is what lets a body mix element facts with free
+/// ones. A nested `as` equal to an enclosing one is admitted and the inner one wins, because that
+/// is what the source's own rewrite does and refusing it would be narrower than the source.
+pub(crate) struct Bindings<'a> {
+    name: &'a str,
+    value: &'a Value,
+    outer: Option<&'a Bindings<'a>>,
+}
+
+impl<'a> Bindings<'a> {
+    /// The element bound to `name`, innermost first.
+    fn get(&self, name: &str) -> Option<&'a Value> {
+        if self.name == name {
+            return Some(self.value);
+        }
+        self.outer?.get(name)
+    }
+}
+
+/// `compare`: the exact three-valued scalar comparison, row for row.
+fn evaluate_compare(
+    comparison: &Comparison,
+    context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
+    unobserved: &mut Unobserved,
+) -> Result<Truth, CoreError> {
+    let left = resolve_operand(&comparison.left, context, bindings, unobserved)?;
+    let right = resolve_operand(&comparison.right, context, bindings, unobserved)?;
+    // Either operand resolving to nothing — absent, or present and null — is unevaluable.
+    let (Some(left), Some(right)) = (left, right) else {
+        return Ok(Truth::Unknown);
+    };
+    let op = comparison.op;
+    Ok(match (&left, &right) {
+        (Value::Number(left), Value::Number(right)) => {
+            // Each operand through its own door: a number reached through a reference is a wire
+            // number, an authored numeric literal is a literal. Reading both through the wire door
+            // would erase the distinction the source draws.
+            let left = observe(left, Some(&comparison.left));
+            let right = observe(right, Some(&comparison.right));
+            match (left, right) {
+                (Some(left), Some(right)) => Truth::from_bool(op.accepts(left.cmp(right))),
+                // A token the source cannot observe answers `Unknown`, and never panics.
+                _ => Truth::Unknown,
+            }
+        }
+        (Value::String(left), Value::String(right)) if op.is_ordering() => {
+            match scale_compare(&context.definition.scales, left, right) {
+                Some(order) => Truth::from_bool(op.accepts(order)),
+                // No declared scale contains both values, or two disagree.
+                None => Truth::Unknown,
+            }
+        }
+        (Value::String(left), Value::String(right)) => {
+            Truth::from_bool(op.accepts(left.cmp(right)))
+        }
+        (Value::Bool(left), Value::Bool(right)) if !op.is_ordering() => {
+            Truth::from_bool(op.accepts(left.cmp(right)))
+        }
+        // A list, a map, a union and a struct have no scalar spelling, so this is unevaluable by
+        // construction — and cross-type ordering, and same-type ordering where none exists, with it.
+        (left, right) if !is_scalar(left) || !is_scalar(right) => Truth::Unknown,
+        _ if op.is_ordering() => Truth::Unknown,
+        // Two different scalar kinds are never equal.
+        _ => Truth::from_bool(op == CompareOp::Ne),
+    })
+}
+
+/// Which door a numeric operand is read through: an authored literal is a literal, and anything
+/// reached through a reference is a wire number.
+///
+/// `written` is the authored spelling where the operand has one. `None` — and any spelling that is
+/// not itself a number — is the wire door, which is what every value a reference produced is read
+/// through.
+fn observe(value: &serde_json::Number, written: Option<&Value>) -> Option<Observed> {
+    match written {
+        Some(Value::Number(literal)) => Observed::of_literal(&literal.to_string()),
+        _ => Observed::of_number(value),
+    }
+}
+
+fn is_scalar(value: &Value) -> bool {
+    matches!(value, Value::Bool(_) | Value::Number(_) | Value::String(_))
+}
+
+/// The ordering one declared scale gives two text values, or nothing.
+///
+/// Scans every declared scale for one containing both values and answers `None` when none does
+/// **or when two disagree**. A specification that declares no scale is in the `None` case for every
+/// pair, so every `<`, `<=`, `>` and `>=` between two text values is `Unknown` — the absence of a
+/// scale is a value of the context, not a missing feature, and never `false`.
+#[must_use]
+pub fn scale_compare(
+    scales: &BTreeMap<String, Vec<String>>,
+    left: &str,
+    right: &str,
+) -> Option<Ordering> {
+    let mut answer: Option<Ordering> = None;
+    for values in scales.values() {
+        let (Some(left), Some(right)) = (
+            values.iter().position(|value| value == left),
+            values.iter().position(|value| value == right),
+        ) else {
+            continue;
+        };
+        let order = left.cmp(&right);
+        match answer {
+            None => answer = Some(order),
+            Some(previous) if previous == order => {}
+            // Two scales disagree about this pair, so the ordering is not this context's to give.
+            Some(_) => return None,
+        }
+    }
+    answer
 }
 
 /// Equality that agrees with the ordering operators.
@@ -688,13 +2412,69 @@ fn values_equal(left: &Value, right: &Value) -> bool {
     }
 }
 
+/// The same equality with its numeric leaves read under the source observation rule, **each through
+/// its own door**.
+///
+/// The doors part company on a value one of them cannot carry — an authored integer past the `u64`
+/// span keeps its scale-zero decimal through the literal door and collapses to a binary64's
+/// canonical decimal through the wire one — so reading both operands through the wire door would
+/// make `eq` answer what `compare` does not. The authored spelling travels with the operand at
+/// every depth: a literal list's third element is still a literal, and everything under a reference
+/// is a wire value.
+///
+/// Two tokens the source cannot observe fall back to comparing the tokens exactly, because
+/// answering *equal* about a pair nothing can read would be an observation nobody made.
+fn observed_values_equal(
+    left: &Value,
+    left_written: Option<&Value>,
+    right: &Value,
+    right_written: Option<&Value>,
+) -> bool {
+    match (left, right) {
+        (Value::Number(left), Value::Number(right)) => {
+            match (observe(left, left_written), observe(right, right_written)) {
+                (Some(left), Some(right)) => left.cmp(right).is_eq(),
+                _ => left == right,
+            }
+        }
+        (Value::Array(left), Value::Array(right)) => {
+            left.len() == right.len()
+                && left.iter().zip(right.iter()).enumerate().all(
+                    |(index, (left_element, right_element))| {
+                        observed_values_equal(
+                            left_element,
+                            written_element(left_written, index),
+                            right_element,
+                            written_element(right_written, index),
+                        )
+                    },
+                )
+        }
+        (Value::Object(left), Value::Object(right)) => {
+            left.len() == right.len()
+                && left.iter().all(|(key, left_member)| {
+                    right.get(key).is_some_and(|right_member| {
+                        observed_values_equal(
+                            left_member,
+                            written_member(left_written, key),
+                            right_member,
+                            written_member(right_written, key),
+                        )
+                    })
+                })
+        }
+        _ => left == right,
+    }
+}
+
 fn compare_values(
     pair: &[Value; 2],
     context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
     unobserved: &mut Unobserved,
     predicate: impl FnOnce(&Value, &Value) -> bool,
 ) -> Result<Truth, CoreError> {
-    let (left, right) = resolve_pair(pair, context, unobserved)?;
+    let (left, right) = resolve_pair(pair, context, bindings, unobserved)?;
     match (left, right) {
         (Some(left), Some(right)) => Ok(Truth::from_bool(predicate(&left, &right))),
         _ => Ok(Truth::Unknown),
@@ -710,10 +2490,11 @@ fn compare_values(
 fn compare_instants(
     pair: &[Value; 2],
     context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
     unobserved: &mut Unobserved,
     predicate: impl FnOnce(crate::timestamp::Timestamp, crate::timestamp::Timestamp) -> bool,
 ) -> Result<Truth, CoreError> {
-    let (left, right) = resolve_pair(pair, context, unobserved)?;
+    let (left, right) = resolve_pair(pair, context, bindings, unobserved)?;
     let (Some(left), Some(right)) = (left, right) else {
         return Ok(Truth::Unknown);
     };
@@ -739,10 +2520,11 @@ fn compare_instants(
 fn compare_numbers(
     pair: &[Value; 2],
     context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
     unobserved: &mut Unobserved,
     predicate: impl FnOnce(Ordering) -> bool,
 ) -> Result<Truth, CoreError> {
-    let (left, right) = resolve_pair(pair, context, unobserved)?;
+    let (left, right) = resolve_pair(pair, context, bindings, unobserved)?;
     match (left, right) {
         // Both resolved. Not being numbers is an observation about them, not an absence.
         (Some(left), Some(right)) => match (left.as_number(), right.as_number()) {
@@ -758,11 +2540,12 @@ fn compare_numbers(
 fn resolve_pair(
     pair: &[Value; 2],
     context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
     unobserved: &mut Unobserved,
 ) -> Result<(Option<Value>, Option<Value>), CoreError> {
     // Both sides, always: the left one failing to resolve must not hide the right one's address.
-    let left = resolve_operand(&pair[0], context, unobserved)?;
-    let right = resolve_operand(&pair[1], context, unobserved)?;
+    let left = resolve_operand(&pair[0], context, bindings, unobserved)?;
+    let right = resolve_operand(&pair[1], context, bindings, unobserved)?;
     Ok((left, right))
 }
 
@@ -780,6 +2563,7 @@ fn resolve_pair(
 fn resolve_operand(
     value: &Value,
     context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
     unobserved: &mut Unobserved,
 ) -> Result<Option<Value>, CoreError> {
     match value {
@@ -787,7 +2571,7 @@ fn resolve_operand(
             Ok(Some(Value::String(literal[1..].to_owned())))
         }
         Value::String(expression) if expression.starts_with('$') => {
-            match resolve_expression_optional(expression, context)? {
+            match resolve_expression_optional(expression, context, bindings)? {
                 Some(Value::Null) | None => {
                     unobserved.insert(expression.clone());
                     Ok(None)
@@ -800,7 +2584,7 @@ fn resolve_operand(
             let mut complete = true;
             for value in values {
                 // Keep going after the first gap: the addresses are the point.
-                match resolve_operand(value, context, unobserved)? {
+                match resolve_operand(value, context, bindings, unobserved)? {
                     Some(value) => resolved.push(value),
                     None => complete = false,
                 }
@@ -811,7 +2595,7 @@ fn resolve_operand(
             let mut resolved = Map::new();
             let mut complete = true;
             for (key, value) in values {
-                match resolve_operand(value, context, unobserved)? {
+                match resolve_operand(value, context, bindings, unobserved)? {
                     Some(value) => {
                         resolved.insert(key.clone(), value);
                     }
@@ -828,6 +2612,14 @@ fn ensure_instance_matches(
     definition: &EntityDefinition,
     instance: &EntityInstance,
 ) -> Result<(), CoreError> {
+    ensure_entity_matches(definition, instance)?;
+    ensure_state_known(definition, instance)
+}
+
+fn ensure_entity_matches(
+    definition: &EntityDefinition,
+    instance: &EntityInstance,
+) -> Result<(), CoreError> {
     if definition.entity != instance.entity || definition.version != instance.version {
         return Err(CoreError::EntityMismatch {
             expected_entity: definition.entity.clone(),
@@ -836,7 +2628,13 @@ fn ensure_instance_matches(
             actual_version: instance.version,
         });
     }
+    Ok(())
+}
 
+fn ensure_state_known(
+    definition: &EntityDefinition,
+    instance: &EntityInstance,
+) -> Result<(), CoreError> {
     if !definition
         .lifecycle
         .states
@@ -857,18 +2655,33 @@ fn materialize_event(
     context: &TemplateContext<'_>,
     revision: u64,
     args: &Map<String, Value>,
+    removed: &BTreeSet<String>,
 ) -> Result<DomainEvent, CoreError> {
+    let mut payload = canonicalize(resolve_template(&definition.payload, context)?);
+    if !definition.payload_if_present.is_empty() {
+        let Some(payload) = payload.as_object_mut() else {
+            return Err(CoreError::Template {
+                expression: "payload_if_present".to_owned(),
+                message: "conditional event members require an object payload".to_owned(),
+            });
+        };
+        insert_present_arguments(payload, &definition.payload_if_present, context.args);
+    }
     Ok(DomainEvent {
         entity: context.definition.entity.clone(),
         version: context.definition.version,
-        id: context.id.to_owned(),
+        id: context
+            .id
+            .ok_or_else(pre_address_identity_error)?
+            .to_owned(),
         revision,
         event_type: definition.event_type.clone(),
         from_state: context.from_state.map(ToOwned::to_owned),
         to_state: context.to_state.to_owned(),
         changed: changed_fields(context),
+        removed: removed.clone(),
         args: args.clone(),
-        payload: canonicalize(resolve_template(&definition.payload, context)?),
+        payload,
     })
 }
 
@@ -888,8 +2701,11 @@ pub(crate) fn changed_fields(context: &TemplateContext<'_>) -> Map<String, Value
 
 pub(crate) struct TemplateContext<'a> {
     pub(crate) definition: &'a EntityDefinition,
-    pub(crate) id: &'a str,
+    pub(crate) id: Option<&'a str>,
     pub(crate) args: &'a Map<String, Value>,
+    /// The schema the arguments were validated against, so a `service/1` address into an argument
+    /// collection is resolved by the kind the schema declares. `None` where there are none.
+    pub(crate) arguments_schema: Option<&'a ObjectSchema>,
     pub(crate) old_fields: &'a Map<String, Value>,
     pub(crate) new_fields: &'a Map<String, Value>,
     pub(crate) from_state: Option<&'a str>,
@@ -905,7 +2721,7 @@ pub(crate) fn resolve_template(
             Ok(Value::String(literal[1..].to_owned()))
         }
         Value::String(expression) if expression.starts_with('$') => {
-            match resolve_expression_optional(expression, context)? {
+            match resolve_expression_optional(expression, context, None)? {
                 Some(value) => Ok(value),
                 None => Err(template_error(
                     expression,
@@ -932,9 +2748,30 @@ pub(crate) fn resolve_template(
 fn resolve_expression_optional(
     expression: &str,
     context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
 ) -> Result<Option<Value>, CoreError> {
+    // A binder extends whichever scope encloses it, for the duration of its body only: `$<bind>` is
+    // the element and `$<bind>.<path>` is a path into it, while every address whose first segment is
+    // not a binder passes through untouched. An inner binder wins over an outer one of the same
+    // name, because that is what the source's own rewrite does.
+    if let Some(bindings) = bindings {
+        let (name, path) = match expression[1..].split_once('.') {
+            Some((name, path)) => (name, Some(path)),
+            None => (&expression[1..], None),
+        };
+        if let Some(element) = bindings.get(name) {
+            return Ok(match path {
+                None => Some(element.clone()),
+                Some(path) => walk(element, path, None, context.service()),
+            });
+        }
+    }
+
     match expression {
-        "$id" => Ok(Some(Value::String(context.id.to_owned()))),
+        "$id" => context
+            .id
+            .map(|id| Some(Value::String(id.to_owned())))
+            .ok_or_else(pre_address_identity_error),
         "$entity" => Ok(Some(Value::String(context.definition.entity.clone()))),
         "$version" => Ok(Some(Value::from(context.definition.version))),
         "$from_state" => Ok(context
@@ -945,15 +2782,24 @@ fn resolve_expression_optional(
         "$fields" => Ok(Some(Value::Object(context.new_fields.clone()))),
         "$old_fields" => Ok(Some(Value::Object(context.old_fields.clone()))),
         _ => {
-            for (prefix, map) in [
-                ("$args.", context.args),
-                ("$fields.", context.new_fields),
-                ("$old_fields.", context.old_fields),
+            let service = context.service();
+            for (prefix, map, schema) in [
+                ("$args.", context.args, context.arguments_schema),
+                (
+                    "$fields.",
+                    context.new_fields,
+                    Some(&context.definition.schema),
+                ),
+                (
+                    "$old_fields.",
+                    context.old_fields,
+                    Some(&context.definition.schema),
+                ),
             ] {
                 if let Some(path) = expression.strip_prefix(prefix) {
                     // Walk by reference and clone the leaf: a `$fields.x` reference used to copy
                     // every field of the instance to read one of them.
-                    return Ok(lookup(map, path).cloned());
+                    return Ok(lookup(map, path, schema, service));
                 }
             }
 
@@ -962,17 +2808,127 @@ fn resolve_expression_optional(
     }
 }
 
-fn lookup<'a>(root: &'a Map<String, Value>, path: &str) -> Option<&'a Value> {
-    let mut segments = path.split('.');
+impl TemplateContext<'_> {
+    fn service(&self) -> bool {
+        self.definition.semantics.has_service_semantics()
+    }
+}
+
+/// Resolves one path into a root map.
+///
+/// Under `kernel/1` this walks objects only, so `<collection>.count` and `<array>.<n>` resolve to
+/// nothing and every existing definition keeps the answer it has. Under `service/1` those two
+/// address forms resolve, and a declared `map`'s **keys** stay unaddressable: the only `count` a
+/// map has is its size, so `{metadata: {count: "7"}}` cannot be read as its own `count` key.
+fn lookup(
+    root: &Map<String, Value>,
+    path: &str,
+    schema: Option<&ObjectSchema>,
+    service: bool,
+) -> Option<Value> {
+    let mut segments = path.splitn(2, '.');
     let first = segments.next()?;
     if first.is_empty() {
         return None;
     }
-    let mut value = root.get(first)?;
-    for segment in segments {
-        value = value.as_object()?.get(segment)?;
+    let value = root.get(first)?;
+    let field = schema.and_then(|schema| schema.fields.get(first));
+    match segments.next() {
+        None => Some(value.clone()),
+        Some(rest) => walk(value, rest, field, service),
     }
-    Some(value)
+}
+
+/// Walks the rest of a path from one value, with the declared field it came from where there is one.
+///
+/// Recursive rather than iterative because a `service/1` collection address produces a **new**
+/// value — a count is a number nothing held — and only the leaf is cloned either way.
+fn walk(
+    value: &Value,
+    path: &str,
+    field: Option<&crate::FieldDefinition>,
+    service: bool,
+) -> Option<Value> {
+    let mut segments = path.splitn(2, '.');
+    let segment = segments.next()?;
+    let rest = segments.next();
+
+    if service {
+        if let Some((next, next_field)) = collection_address(value, field, segment) {
+            return match rest {
+                None => Some(next),
+                Some(rest) => walk(&next, rest, next_field, service),
+            };
+        }
+        // A declared map's keys are not addressable, so nothing but its size resolves.
+        if field.is_some_and(|field| field.kind == FieldKind::Map) {
+            return None;
+        }
+    }
+
+    let next = value.as_object()?.get(segment)?;
+    let next_field = field.and_then(|field| match field.kind {
+        FieldKind::Object => field.properties.get(segment),
+        // A union's payload sits under the derived content key and its type is the variant the
+        // **tag** names, which the value carries at run time.
+        FieldKind::Union => selected_variant(field, value, segment),
+        _ => None,
+    });
+    match rest {
+        None => Some(next.clone()),
+        Some(rest) => walk(next, rest, next_field, service),
+    }
+}
+
+/// The variant a union value's tag selects, where `segment` is the derived content key.
+///
+/// **The tag, not the key the payload sits under.** Looking a variant label up by the wire key
+/// loses the declaration on every union whose variants are not named after that key — no variant is
+/// called `value` — and the walk then continues untyped: a declared `map` becomes an ordinary
+/// object, so `$fields.<union>.value.count` reads the map's own `count` member instead of its size,
+/// against § 10.6's *"the only `count` a `map` has is its size"*.
+///
+/// The tag segment itself resolves to the label text and continues under no declared field, because
+/// a label is not a variant. A value whose tag is absent, is not text, or names no declared variant
+/// also continues untyped — per-kind validation refuses each of those where the value arrives.
+fn selected_variant<'a>(
+    field: &'a crate::FieldDefinition,
+    value: &Value,
+    segment: &str,
+) -> Option<&'a crate::FieldDefinition> {
+    if segment != crate::validation::content_key(field) {
+        return None;
+    }
+    let tag = field.tag.as_deref().unwrap_or("kind");
+    let label = value.as_object()?.get(tag)?.as_str()?;
+    field.variants.get(label)
+}
+
+/// The two `service/1` collection address forms, with the field the walk continues under, or
+/// `None` where neither applies.
+fn collection_address<'a>(
+    value: &Value,
+    field: Option<&'a crate::FieldDefinition>,
+    segment: &str,
+) -> Option<(Value, Option<&'a crate::FieldDefinition>)> {
+    let declared = field.map(|field| field.kind);
+    match value {
+        // A declared map's size, and nothing else it holds.
+        Value::Object(members) if declared == Some(FieldKind::Map) && segment == "count" => {
+            Some((Value::from(members.len()), None))
+        }
+        Value::Array(values) if segment == "count" => Some((Value::from(values.len()), None)),
+        // `0`, or a digit string with no leading zero.
+        Value::Array(values) => {
+            if segment != "0" && segment.starts_with('0') {
+                return None;
+            }
+            let index: usize = segment.parse().ok()?;
+            let element = values.get(index)?.clone();
+            Some((element, field.and_then(|field| field.items.as_deref())))
+        }
+        _ => None,
+    }
 }
 
 fn template_error(expression: &str, message: &str) -> CoreError {
@@ -980,6 +2936,13 @@ fn template_error(expression: &str, message: &str) -> CoreError {
         expression: expression.to_owned(),
         message: message.to_owned(),
     }
+}
+
+fn pre_address_identity_error() -> CoreError {
+    template_error(
+        "$id",
+        "the storage identity is unavailable until the selected creation fields validate; reading $id here would make address derivation circular",
+    )
 }
 
 fn into_object(value: Value, path: &str) -> Result<Map<String, Value>, CoreError> {

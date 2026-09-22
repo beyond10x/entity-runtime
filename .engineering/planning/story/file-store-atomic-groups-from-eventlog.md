@@ -6,11 +6,13 @@ status: draft
 title: All-or-nothing batches across subject documents in File Store
 summary: Close the File Store single-document atomicity limit, reusing eventlog's crates/eventlog-file atomic groups; gated on the Atlas ADR that decides whether entity-store providers sit on eventlog.
 refs:
+- provider: atlas
+  reference: architecture/adr/0050-ess-evolution-recorded-execution.md
 - provider: eventlog
   reference: crates/eventlog-file
 relations:
 - informed_by: story:replay-from-events
-revision: 2
+revision: 4
 ---
 ## Problem
 
@@ -68,3 +70,17 @@ Do not pick one here. The ADR picks one.
 
 Org-state review 2026-09-15, lane `02-er-eventlog`, finding F14 (missed-opportunity, note), at
 `eaf4309` (tag `0.18.1`).
+
+## Reconciliation after lineage composition
+
+The earlier gate and options sections record the state at
+`ba75b9728a6a41c61f2ea5b54d519adf0419c8c1` and remain as origin evidence. Atlas ADR 0050 is now
+accepted under approved plan `ess-evolution-20260915` revision 1, SHA-256
+`7579145c3de5a1c6f8088fd7fb804d29dac8903ec505048f3ce595c45023b787`. It selects the Entity Runtime
+Eventlog adapter and keeps provider-facade migrations in Entity Runtime, so the dependency-direction
+decision is no longer open and the Eventlog-backed option is the accepted direction.
+
+This artifact is the existing Entity Runtime owner for the later FileStore facade and atomic-group
+adoption; do not create a duplicate owner. It remains `draft` because the qualified asynchronous ER
+Eventlog adapter, explicit compatibility bridge and remaining Eventlog provider proof are not yet
+complete. ADR acceptance records direction, not a shipped dependency or readiness evidence.

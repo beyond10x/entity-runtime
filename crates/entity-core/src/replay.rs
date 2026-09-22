@@ -94,8 +94,8 @@ use crate::definition::OperationDefinition;
 use crate::error::CoreError;
 use crate::runtime::{
     canonical_object, canonicalize, changed_fields, check_invariants, check_preconditions, create,
-    execute, resolve_template, DecisionCommand, DecisionRecord, DomainEvent, EntityInstance,
-    TemplateContext,
+    decide_before_load, resolve_template, DecisionCommand, DecisionRecord, DomainEvent,
+    EntityInstance, LoadedDecision, PreloadDecision, TemplateContext,
 };
 use crate::validation::validate_object;
 use crate::ValidatedDefinition;
@@ -131,27 +131,58 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
             .and_then(|definition| ValidatedDefinition::new(definition).map_err(CoreError::from))?;
         let decision =
             match &record.command {
-                DecisionCommand::Create { fields } if instance.is_none() => create(
-                    &definition,
-                    record.id.clone(),
-                    serde_json::Value::Object(fields.clone()),
-                )?,
+                // A `service/1` creation is rerun from the **arguments** the caller sent, which is
+                // what re-selects its branch; a `kernel/1` creation's input is its fields and it
+                // records no arguments. The test is the definition's semantics alone — the same
+                // test the record framing and the anchored verifier use — because a `service/1`
+                // creation that declares no branches records its own input as its arguments, so
+                // there is no shape here for the three readers to disagree about. The two are
+                // redundant by construction, and the byte comparison below is what refuses a record
+                // whose fields are not what its arguments produce.
+                DecisionCommand::Create { fields, arguments } if instance.is_none() => {
+                    let input = if definition.semantics.has_service_semantics() {
+                        arguments.clone()
+                    } else {
+                        fields.clone()
+                    };
+                    create(
+                        &definition,
+                        record.id.clone(),
+                        serde_json::Value::Object(input),
+                    )?
+                }
                 DecisionCommand::Create { .. } => {
                     return Err(refuse(index, "creation may only be the first record"))
                 }
                 DecisionCommand::Execute {
                     operation,
                     arguments,
+                    fulfillments,
                 } => {
                     let before = instance.as_ref().ok_or_else(|| {
                         refuse(index, "history begins with an operation, not creation")
                     })?;
-                    execute(
+                    let prepared = match decide_before_load(
                         &definition,
-                        before,
+                        record.id.clone(),
                         operation,
                         serde_json::Value::Object(arguments.clone()),
-                    )?
+                    )? {
+                        PreloadDecision::Load(prepared) => prepared,
+                        PreloadDecision::Refused(refusal) => {
+                            return Err(CoreError::Refused {
+                                outcome: refusal.outcome,
+                                error: refusal.error,
+                                message: refusal.message,
+                            })
+                        }
+                    };
+                    match prepared.select_with(before)? {
+                        LoadedDecision::Complete(evaluation) => evaluation.into_decision()?,
+                        LoadedDecision::NeedsFulfillment(prepared) => {
+                            prepared.complete(fulfillments.clone())?.into_decision()?
+                        }
+                    }
                 }
                 DecisionCommand::LegacyImport => return Err(refuse(
                     index,
@@ -180,7 +211,8 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
 /// refused, a `changed` that is not what that operation's `set:` would have written from those
 /// arguments — on a creation event, a type the definition does not emit on creation, any creation
 /// event at all when it emits none, or a `changed` that is not its own recorded fields — fields the
-/// schema refuses, or a step the entity's invariants refuse.
+/// schema refuses, any nonempty removal evidence that legacy kernel operations cannot produce, or
+/// a step the entity's invariants refuse.
 ///
 /// [`CoreError::EntityMismatch`] when an event belongs to another definition, and
 /// [`CoreError::UnknownState`] when it names a state the definition does not have.
@@ -193,6 +225,19 @@ pub fn rehydrate(
             "events", detail,
         )]))
     };
+
+    // Refused by name, before any event is read. Event-only folding cannot see which branch ran —
+    // a `service/1` creation event's `args` are the caller's arguments and not the fields, so the
+    // `changed == args` check below was written for a shape this definition does not have — and a
+    // `service/1` definition has no legacy history to fold in the first place.
+    if definition.semantics.has_service_semantics() {
+        return refuse(format!(
+            "`{}` is read under `{}`, whose decisions name the branch that produced them; \
+             an event-only fold cannot see which branch ran, so a service history is replayed \
+             from its decision records rather than rehydrated from its events",
+            definition.entity, definition.semantics,
+        ));
+    }
 
     let Some(first) = events.first() else {
         return refuse(
@@ -260,6 +305,16 @@ pub fn rehydrate(
                     state: event.to_state.clone(),
                 });
             }
+            // Service histories were refused before the first event was read. Every event that
+            // reaches this loop is therefore legacy kernel evidence, whose operations can write
+            // fields through `set:` but have no removal action to account for this new carrier.
+            if !event.removed.is_empty() {
+                return refuse(format!(
+                    "event {at} (`{}`) carries removal evidence, but legacy kernel operations \
+                     have no action that can produce it",
+                    event.event_type
+                ));
+            }
         }
 
         // A revision is reached once and follows the one before it. A gap means events are missing,
@@ -290,6 +345,7 @@ pub fn rehydrate(
                 || event.to_state != first.to_state
                 || event.args != first.args
                 || event.changed != first.changed
+                || event.removed != first.removed
             {
                 return refuse(format!(
                     "events {index} (`{}`) and {} (`{}`) share revision {revision} but describe \
@@ -426,9 +482,17 @@ pub fn rehydrate(
         let before_fields = instance.fields.clone();
         instance.lifecycle_state = first.to_state.clone();
         instance.revision = revision;
-        for (name, value) in &first.changed {
-            instance.fields.insert(name.clone(), value.clone());
+        if first
+            .removed
+            .iter()
+            .any(|name| first.changed.contains_key(name))
+        {
+            return refuse(format!(
+                "event {index} (`{}`) carries a field in both `removed` and `changed`",
+                first.event_type
+            ));
         }
+        apply_event_changes(&mut instance.fields, &first.removed, &first.changed);
 
         // Fields before rules, per revision, in the order `execute` uses (design § 6: the fields
         // are validated at step 7 and the invariants evaluated at step 9). A field of the wrong
@@ -462,8 +526,9 @@ pub fn rehydrate(
         // invariant is allowed to see, not a narrowing of it.
         let context = TemplateContext {
             definition,
-            id: &first.id,
+            id: Some(&first.id),
             args: &empty,
+            arguments_schema: None,
             old_fields: &empty,
             new_fields: &instance.fields,
             from_state: first.from_state.as_deref(),
@@ -488,8 +553,9 @@ pub fn rehydrate(
         };
         let materialised = TemplateContext {
             definition,
-            id: &first.id,
+            id: Some(&first.id),
             args: payload_args,
+            arguments_schema: None,
             old_fields: payload_old,
             new_fields: &instance.fields,
             from_state: first.from_state.as_deref(),
@@ -527,6 +593,19 @@ pub fn rehydrate(
     }
 
     Ok(instance)
+}
+
+fn apply_event_changes(
+    fields: &mut Map<String, Value>,
+    removed: &std::collections::BTreeSet<String>,
+    changed: &Map<String, Value>,
+) {
+    for name in removed {
+        fields.remove(name);
+    }
+    for (name, value) in changed {
+        fields.insert(name.clone(), value.clone());
+    }
 }
 
 /// Every operation that could have produced this revision's events, or why none could have.
@@ -604,8 +683,9 @@ fn operations_that_would_have_produced<'a>(
         }
         let context = TemplateContext {
             definition,
-            id: &first.id,
+            id: Some(&first.id),
             args: &first.args,
+            arguments_schema: Some(&operation.arguments),
             old_fields: &before.fields,
             new_fields: &before.fields,
             from_state: Some(from),
@@ -646,8 +726,9 @@ fn operations_that_would_have_produced<'a>(
         // between two decisions rather than between two ways of describing one.
         let after = TemplateContext {
             definition,
-            id: &first.id,
+            id: Some(&first.id),
             args: &first.args,
+            arguments_schema: Some(&operation.arguments),
             old_fields: &before.fields,
             new_fields: &written,
             from_state: Some(from),
@@ -742,4 +823,30 @@ fn declares(operation: &OperationDefinition, from: &str, to: &str) -> bool {
     operation.transitions.iter().any(|transition| {
         transition.from.as_slice().iter().any(|state| state == from) && transition.to == to
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use serde_json::{json, Map};
+
+    use super::apply_event_changes;
+
+    #[test]
+    fn event_changes_delete_before_they_insert() {
+        let mut fields = Map::from_iter([
+            ("kept".to_owned(), json!("before")),
+            ("removed".to_owned(), json!("gone")),
+        ]);
+        let removed = BTreeSet::from(["removed".to_owned()]);
+        let changed = Map::from_iter([("kept".to_owned(), json!("after"))]);
+
+        apply_event_changes(&mut fields, &removed, &changed);
+
+        assert_eq!(
+            fields,
+            Map::from_iter([("kept".to_owned(), json!("after"))])
+        );
+    }
 }

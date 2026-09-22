@@ -765,6 +765,117 @@ fn a_store_carries_the_instance_from_create_to_execute() {
     );
 }
 
+#[cfg(feature = "eventlog-providers")]
+#[test]
+fn explicit_eventlog_file_selection_provisions_creates_executes_retries_and_lists() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-eventlog-file");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).expect("scratch root");
+    let definition = root.join("ticket.yaml");
+    fs::write(
+        &definition,
+        "entity: ticket\nversion: 1\nschema:\n  fields:\n    title: { type: string, required: true }\nlifecycle:\n  initial: open\n  states: [open, closed]\noperations:\n  close:\n    transitions:\n      - from: open\n        to: closed\n    emits: []\n",
+    )
+    .expect("definition");
+    let store = root.join("eventlog");
+    let provisioned = entity()
+        .args(["store", "provision-eventlog-file", "--root"])
+        .arg(&store)
+        .args([
+            "--scope",
+            "cli/eventlog-file",
+            "--tenant",
+            "cli-eventlog-file",
+            "--max-events",
+            "512",
+            "--max-blobs",
+            "2048",
+            "--max-projection-rows",
+            "2048",
+            "--max-payload-bytes",
+            "8388608",
+            "--queue-capacity",
+            "8",
+            "--subject",
+            "cli-test",
+            "--actor",
+            "entity-cli-test",
+            "--request-id",
+            "provision-cli-eventlog",
+            "--trace-id",
+            "trace-cli-eventlog",
+            "--occurred-at",
+            "2026-09-16T00:00:00Z",
+        ])
+        .output()
+        .expect("provision runs");
+    assert!(provisioned.status.success(), "{}", stderr(&provisioned));
+    let selection = root.join("eventlog-selection.json");
+    fs::write(&selection, &provisioned.stdout).expect("selection retained");
+
+    let create = entity()
+        .args(["create", "--definition"])
+        .arg(&definition)
+        .args(["--id", "one", "--fields", r#"{"title":"one"}"#, "--store"])
+        .arg(&store)
+        .args(["--eventlog-config"])
+        .arg(&selection)
+        .args([
+            "--record-id",
+            "create-one",
+            "--recorded-at",
+            "2026-09-16T00:01:00Z",
+            "--actor",
+            "cli-test",
+        ])
+        .output()
+        .expect("create runs");
+    assert!(create.status.success(), "{}", stderr(&create));
+
+    let mut close_command = entity();
+    close_command
+        .args(["execute", "--definition"])
+        .arg(&definition)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--eventlog-config"])
+        .arg(&selection)
+        .args([
+            "--id",
+            "one",
+            "--operation",
+            "close",
+            "--record-id",
+            "close-one",
+            "--recorded-at",
+            "2026-09-16T00:02:00Z",
+            "--actor",
+            "cli-test",
+        ]);
+    let closed = close_command.output().expect("execute runs");
+    assert!(closed.status.success(), "{}", stderr(&closed));
+    let retried = close_command
+        .args(["--expected-revision", "1"])
+        .output()
+        .expect("retry runs");
+    assert!(retried.status.success(), "{}", stderr(&retried));
+    assert_eq!(
+        closed.stdout, retried.stdout,
+        "retry returns original record"
+    );
+
+    let listed = entity()
+        .args(["list", "--store"])
+        .arg(&store)
+        .args(["--eventlog-config"])
+        .arg(&selection)
+        .args(["--entity", "ticket"])
+        .output()
+        .expect("list runs");
+    assert!(listed.status.success(), "{}", stderr(&listed));
+    assert_eq!(stdout(&listed), "one\n");
+}
+
 /// Creating twice under one identity is the store's refusal, not the kernel's, and says so.
 #[test]
 fn a_second_creation_of_one_identity_is_refused_by_the_store() {

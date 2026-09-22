@@ -17,8 +17,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    check, Envelope, EventProvider, Expect, HistoryProvider, RecordedCommit, RecordedObservation,
-    StateProvider, Store, StoreError,
+    asynchronous::{
+        HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
+        LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
+    },
+    check, Envelope, EventProvider, Expect, HistoryProvider, LegacyStoreSnapshot,
+    LegacyStoreSource, RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
 };
 
 const FORMAT: &str = "entity.file-store/2";
@@ -148,6 +152,23 @@ impl FileStore {
             .map_err(|e| backend("syncing epoch", &path, &e))?;
         self.epoch.store(epoch + 1, Ordering::Relaxed);
         Ok(file)
+    }
+
+    /// Coordinates a source acquisition with every FileStore writer without advancing its epoch.
+    fn read_guard(&self) -> Result<Option<fs::File>, StoreError> {
+        match self.root_state()? {
+            RootState::Missing | RootState::Empty => return Ok(None),
+            RootState::V2 => {}
+        }
+        let path = self.root.join(".entity-store-lock");
+        reject_symlink_components(&path)?;
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .open(&path)
+            .map_err(|error| backend("opening acquisition lock", &path, &error))?;
+        FileExt::lock_shared(&file)
+            .map_err(|error| backend("locking acquisition", &path, &error))?;
+        Ok(Some(file))
     }
 
     fn entity_directory(&self, entity: &str) -> PathBuf {
@@ -427,6 +448,143 @@ impl FileStore {
                 },
             );
         }
+    }
+}
+
+impl LegacyStoreSource for FileStore {
+    fn acquire_legacy(&mut self, source_id: &str) -> Result<LegacyStoreSnapshot, StoreError> {
+        let Some(_guard) = self.read_guard()? else {
+            return LegacyStoreSnapshot::new(source_id, Vec::new());
+        };
+        let subjects_root = self.root.join("subjects");
+        reject_symlink_components(&subjects_root)?;
+        let entities = match fs::read_dir(&subjects_root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return LegacyStoreSnapshot::new(source_id, Vec::new());
+            }
+            Err(error) => return Err(backend("listing", &subjects_root, &error)),
+        };
+        let mut histories = Vec::new();
+        for entity_entry in entities {
+            let entity_entry =
+                entity_entry.map_err(|error| backend("listing", &subjects_root, &error))?;
+            let entity_path = entity_entry.path();
+            reject_symlink(&entity_path)?;
+            if !entity_entry
+                .file_type()
+                .map_err(|error| backend("inspecting", &entity_path, &error))?
+                .is_dir()
+            {
+                return Err(StoreError::Backend(format!(
+                    "unexpected non-directory in File Store subjects {}",
+                    entity_path.display()
+                )));
+            }
+            let encoded_entity = entity_entry.file_name();
+            let encoded_entity = encoded_entity.to_str().ok_or_else(|| {
+                StoreError::Backend(format!(
+                    "non-UTF-8 File Store entity directory {}",
+                    entity_path.display()
+                ))
+            })?;
+            let entity = unhex(encoded_entity).map_err(|detail| {
+                StoreError::Backend(format!(
+                    "invalid File Store entity directory {}: {detail}",
+                    entity_path.display()
+                ))
+            })?;
+            let entries = fs::read_dir(&entity_path)
+                .map_err(|error| backend("listing", &entity_path, &error))?;
+            for entry in entries {
+                let entry = entry.map_err(|error| backend("listing", &entity_path, &error))?;
+                let path = entry.path();
+                reject_symlink(&path)?;
+                if !entry
+                    .file_type()
+                    .map_err(|error| backend("inspecting", &path, &error))?
+                    .is_file()
+                {
+                    return Err(StoreError::Backend(format!(
+                        "unexpected non-file in File Store subjects {}",
+                        path.display()
+                    )));
+                }
+                let name = entry.file_name();
+                let name = name.to_str().ok_or_else(|| {
+                    StoreError::Backend(format!("non-UTF-8 File Store filename {}", path.display()))
+                })?;
+                if is_temporary_subject(name) {
+                    return Err(StoreError::Backend(format!(
+                        "stale File Store publication intent {}",
+                        path.display()
+                    )));
+                }
+                let encoded_id = name.strip_suffix(".json").ok_or_else(|| {
+                    StoreError::Backend(format!("unexpected File Store file {}", path.display()))
+                })?;
+                let id = unhex(encoded_id).map_err(|detail| {
+                    StoreError::Backend(format!(
+                        "invalid File Store file {}: {detail}",
+                        path.display()
+                    ))
+                })?;
+                let stored = self.read_subject(&entity, &id)?.ok_or_else(|| {
+                    StoreError::Backend(format!(
+                        "File Store subject vanished at {}",
+                        path.display()
+                    ))
+                })?;
+                let mut evidence = Vec::new();
+                for (position, envelope) in stored.records.iter().enumerate() {
+                    let entry = RecordedEntry::Decision(RecordedCommit {
+                        instance: envelope.record.result.clone(),
+                        envelope: envelope.clone(),
+                    });
+                    evidence.push(LegacyEvidence::Envelope(
+                        ImportedRecordEvidence::new(
+                            entry,
+                            source_id,
+                            format!("subjects/{encoded_entity}/{name}#records/{position}"),
+                            KnownLegacyOrder::PerKind(u64::try_from(position).map_err(|_| {
+                                StoreError::Backend(
+                                    "File Store decision position exhausted".to_owned(),
+                                )
+                            })?),
+                        )
+                        .map_err(|error| StoreError::Backend(error.to_string()))?,
+                    ));
+                }
+                for (position, observation) in stored.observations.iter().enumerate() {
+                    evidence.push(LegacyEvidence::Envelope(
+                        ImportedRecordEvidence::new(
+                            RecordedEntry::Observation(observation.clone()),
+                            source_id,
+                            format!("subjects/{encoded_entity}/{name}#observations/{position}"),
+                            KnownLegacyOrder::PerKind(u64::try_from(position).map_err(|_| {
+                                StoreError::Backend(
+                                    "File Store observation position exhausted".to_owned(),
+                                )
+                            })?),
+                        )
+                        .map_err(|error| StoreError::Backend(error.to_string()))?,
+                    ));
+                }
+                evidence.extend(stored.events.iter().cloned().map(LegacyEvidence::Event));
+                histories.push(SubjectHistory {
+                    subject: Subject::new(entity.clone(), id)
+                        .map_err(|error| StoreError::Backend(error.to_string()))?,
+                    origin: HistoryOrigin::Imported(LegacyAnchor {
+                        instance: stored.instance,
+                        completeness: LegacyCompleteness::CompleteSubject,
+                        order: LegacyOrderDeclaration::PerKindOnly,
+                        evidence,
+                    }),
+                    records: Vec::new(),
+                });
+            }
+        }
+        LegacyStoreSnapshot::new(source_id, histories)
     }
 }
 

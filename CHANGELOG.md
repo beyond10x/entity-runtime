@@ -4,6 +4,152 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-09-22
+
+### Fixed
+
+- Eventlog-backed synchronous commands reuse one verified tenant read during each batch's
+  preflight, keeping multi-action revalidation within its caller deadline without changing
+  guarded append, fresh recovery, receipts or durable record bytes.
+- `service/1` adjacent unions admit a variant object's nested `value` or `content` member.
+  The outer tag/payload pair, exact retained bytes, and malformed-value refusals are unchanged.
+- Legacy Eventlog import binds the acquisition source identity into each persisted anchor,
+  including boundaries with no envelopes. Same-source retries recover after reopen; identical
+  histories from another source conflict. New source-bound anchor blobs use version 2; existing
+  version 1 anchors remain readable without an inferred source identity.
+
+### Added
+
+- `AsyncImportedAnchorWriter::import_anchors` establishes a batch of imported boundaries in one
+  atomic append group, from one capture and one post-capture, instead of the two complete tenant
+  captures each singular `import_anchor` takes. A capture re-verifies every blob digest of the
+  whole authority, so importing a store cost time proportional to the square of its size; on a copy
+  of the real ESS planning store one `apply` is 7,810 imports at `t(k) = 115 + 0.992·k` ms. The
+  anchors, blob keys and receipts a batch writes are byte-identical to the ones the same histories
+  written one at a time write, into the same subject streams, and a batch commits completely or not
+  at all. A subject named twice in one batch settles the second mention as the exact replay two
+  singular calls settle it as; two mentions carrying different anchors are refused before any
+  provider call, as is a record identity the destination already holds or that two members share.
+  Those refusals are made from the batch's own capture, before any blob is uploaded, on every
+  provider. On a provider that binds a group's blobs inside the group's transaction — of the three
+  shipped here, the File provider — the batch also pays one durability barrier for the whole batch
+  instead of one per blob, and any refusal leaves no bound blob behind. A provider that does not
+  implement that refuses it outright, having written nothing, and the batch then takes the same
+  slow path the singular import takes: every blob on its own, then the same guarded group, with
+  the same bytes, keys and receipts and only the single barrier lost. A retry that carries its
+  batch is admitted a second time, so the destination guard now refuses an occupied record or
+  subject only after checking which anchor occupies it — a retry of a batch's own commit settles
+  instead of being refused into a second append. A batch refuses before it writes when committing
+  it would put the destination past the `CaptureLimits` its own handle reads it back with, as
+  `AsyncStoreError::BatchExceedsReadBounds`, so a caller can divide the work to bounds it chose
+  rather than discover them afterwards. That variant is a **breaking addition for exhaustive
+  matchers**: `AsyncStoreError` is not `#[non_exhaustive]`, so in Rust's terms adding to it is a
+  semver-major change, and a `match` over it without a wildcard arm stops compiling. No consumer
+  names the type today — measured across the aep, aep-service, atlas and bench checkouts — which is
+  why it was taken rather than deferred, and is a fact about today rather than a guarantee. When a batch is blocked by a subject another writer holds,
+  the refusal names that subject and the revision it is actually at. The singular entry points are
+  unchanged.
+  `EventlogRecordedStore::calls()` reports the captures a handle has taken, so a caller can assert
+  that fixed cost.
+- Eventlog-backed File, SQLite and PostgreSQL facades preserve complete recorded receipts,
+  retries, observations, queries and atomic groups behind explicit open/provision authority. The
+  retained legacy stores gain read-only typed acquisition for explicit out-of-place import; the
+  opt-in CLI Eventlog feature selects its File facade with a closed authority-and-bounds document.
+- `create_derived` and `decide_create_derived` let Entity Runtime select a creation outcome and
+  derive the storage address from that outcome's validated logical identity. Existing
+  caller-supplied creation entry points retain their behavior and bytes; both paths produce the
+  same decision, record, replay and original request when their final address agrees. A derived
+  creation explicitly refuses a circular pre-address `$id` read.
+- `service/3` operations can request typed Set, Preserve and optional Remove actions after the
+  runtime selects and validates the loaded outcome. Events, responses and replay use the same
+  resulting values; exact retries retain the actions under `er.record/4` and `er.request/4`.
+  Earlier service formats and record bytes keep their existing behavior.
+
+- Service bindings can decide input-only refusing branches before loading a subject and continue
+  subject-dependent work through an opaque, identity-bound continuation. `service/2` definitions
+  can copy one typed optional argument into creation state, event and response members while
+  preserving absence through replay and retry under `er.record/3` and `er.request/3`.
+- A definition may now opt in to a second set of document rules with `semantics: service/1`. Under
+  them a creation and an operation carry **named outcomes** — ordered branches, each with its own
+  guard, effect, `set`, `emits`, declared response and optional refusal — instead of, or beside,
+  the transitions they carry today. The kernel selects the branch; a caller never names one. New
+  entry points `decide` and `decide_create` answer a refusing branch as a value
+  (`Evaluation::Refused`); `create` and `execute` keep their signatures and reach the same branch as
+  the typed `CoreError::Refused`, so every existing caller compiles and behaves as it does now.
+- `service/1` definitions may declare a **logical identity** (`identity: { field: … }`): an ordinary
+  typed schema field, kept apart from the storage address the instance is keyed by. The address is
+  derived from it by one total function, `entity_core::identity::address`, and the kernel checks
+  that the two still agree after every branch — `IdentityMismatch` where they do not. Text-like
+  identities address as `s:` followed by their own contents, so an empty or whitespace identity is
+  admitted; numeric identities share one canonical spelling, so `1`, `1.0` and `1e0` are one
+  address and `-0.0` and `0.0` are one instance; composites address as canonical JSON.
+- `service/1` definitions may declare **relations** (`owns`/`references`, `one`/`many`, and the
+  field that carries them). `EntityDefinition::validate` checks a `references` carrier's shape and
+  optionality; `Registry::validate_all` checks its kind against the target's identity field, an
+  `owns` carrier on its target, an unregistered target, a second owner of one entity and a second
+  relation claiming one field. Whether the referenced instance exists is still the shell's.
+- Three field kinds, `service/1` only: `map` (declared key spelling, declared value shape), `union`
+  (adjacently tagged, with the content key derived from the tag) and `binary64` (a finite double
+  held as its token, so the sign of a zero survives in the bytes).
+- Four condition operators, `service/1` only: `compare` (an exact three-valued scalar comparison
+  that answers `unknown` where `gt`/`lt` answer `false` and where `eq` compares structures),
+  `truthy`, and the quantifiers `for_all` and `for_any` over an array's elements or a map's values.
+  Two new address forms come with them: `<collection>.count` and `<array>.<n>`.
+- `scales:` declares the ordered value scales text comparison is answered inside. With none
+  declared — which is every definition today — ordering two text values is `unknown`, never `false`.
+- Add runtime-neutral asynchronous complete-record storage ports, an atomic in-memory reference
+  provider, bounded history verification and an executor for exact single and named-batch retries.
+  Existing synchronous store APIs and bytes remain unchanged.
+- Add the `entity-eventlog` IO edge: complete canonical records, requests, batches and imported
+  boundaries use immutable Eventlog references with native complete-capture checks, transactional
+  indexes, explicit binding administration and a bounded dedicated-thread synchronous bridge. The
+  new crate requires Rust 1.91; the pure runtime crates remain on 1.85.
+
+### Changed
+
+- Every crate that depends on the Eventlog providers — `entity-eventlog`, `entity-sqlite`,
+  `entity-postgres` and `entity-cli` — pins them to **Eventlog 0.3.0**
+  (`ac6b1731654329d32f1e3c9cf164fefad6a5b46a`), which verifies history and blobs once per open and
+  re-checks only what a transaction changed, and which proves on every resume that the committed
+  prefix is still the one it verified — a committed frame damaged in place after `open` refuses
+  without altering the history, as it did before the once-per-open change.
+  Measured through the runtime adapter over a
+  48-record store: 48 commits cost 29.97 s and 53.22 s against 74.86 s and 65.54 s before, while a
+  read through an already-open handle is unchanged at about 240 ms — the adapter verifies every
+  blob it reads against its own domain-framed digest, so the saving a caller sees here is on the
+  write path. Stored bytes, guarded append, receipts, recovery and refusals are unchanged. The four
+  manifests name one commit, so a consumer enabling `eventlog-facade` or `eventlog-providers`
+  resolves a single `eventlog-core`.
+
+- `entity-sqlite` selects the exact bundled `rusqlite` 0.40.2 line shared with its Eventlog
+  provider, preserving the existing schema, storage semantics and Rust minimums while allowing
+  both providers in one consumer dependency graph.
+
+- A `service/1` decision's record carries `outcome`, `effect` and `response`, and its `create`
+  command carries the caller's `arguments` beside the fields they produced. Because that is a shape
+  change, such a record is framed `er.record/2` and its original request `er.request/2`; the
+  `er.batch/1` tag does not move, and each batch member carries its own record framing. A reader
+  that knows only `er.record/1` refuses an `er.record/2` document at the framing tag, by name,
+  before reading its payload. **A store holding `service/1` records must not be opened by a build
+  that predates them.**
+- Under `service/1`, a numeric predicate answers on the value the specification source would have
+  observed while the authored token is stored unchanged. In practice: `1.0000000000000000001` is
+  equal to `1` and is still stored as written; `1e-400` is falsy and is still stored as written;
+  `9007199254740993` and `9007199254740992` remain two values; and an `integer` is narrowed to the
+  source's `i64` range, so a value in the `u64` tail is now refused with its path. Equality,
+  membership and `min`/`max` answer what `compare` answers. **Nothing about `kernel/1` numbers
+  moves** — every operator and bound answers exactly what it answers today.
+- `rehydrate` refuses a `service/1` definition by name, before it reads an event: an event-only fold
+  cannot see which branch ran. Replay a `service/1` history from its decision records instead.
+- `docs/design/kernel-v0.1.md` § 6 and `AGENTS.md` invariant 8 said the evaluation order was eleven
+  steps and numbered `UnknownState` before `EntityMismatch`. The code has always checked the type
+  first and the order has always been twelve steps; both documents are corrected against the code,
+  and a test now reads them so neither can drift back. No behaviour changed.
+
+A `kernel/1` definition is untouched by all of the above: it serialises to the bytes it serialised
+to before, gets the evaluation it got before refusal variant for refusal variant, and is refused at
+registration if it carries any key, field kind or operator only `service/1` admits.
+
 ## [0.18.1] — 2026-09-10
 
 - No change to the runtime, its CLI or any refusal. The published product guide, README and
