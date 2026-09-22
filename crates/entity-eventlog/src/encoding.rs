@@ -3,13 +3,31 @@ use entity_store::{
     asynchronous::{
         AppendMember, AsyncStoreError, BatchKey, HistoryOrigin, ImportedRecordEvidence,
         KnownLegacyOrder, LegacyAnchor, LegacyCompleteness, LegacyEvidence, LegacyOrderDeclaration,
-        RecordedEntry, Subject, SubjectHistory, batch_comparison_bytes, canonical_domain_bytes,
+        RecordedEntry, Subject, SubjectHistory, canonical_domain_bytes,
         original_request_comparison_bytes, record_comparison_bytes,
     },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
+
+#[cfg(test)]
+thread_local! {
+    /// Stored bytes this file has put through a JSON parser on the current thread.
+    ///
+    /// Charged by the only function here that reaches `from_slice`, not beside it: a document this
+    /// file stops parsing stops calling [`parse_stored`] and therefore stops charging, and a
+    /// document it still parses cannot avoid the charge without naming `serde_json::from_slice`
+    /// directly — which nothing outside `parse_stored` now does.
+    pub(crate) static PARSED_BYTES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// This file's only path from stored bytes to a JSON document.
+fn parse_stored(bytes: &[u8]) -> Result<Value, AsyncStoreError> {
+    #[cfg(test)]
+    PARSED_BYTES.with(|charged| charged.set(charged.get().saturating_add(bytes.len() as u64)));
+    serde_json::from_slice(bytes).map_err(enc)
+}
 
 pub(crate) const BINDING_BLOB_DOMAIN: &str = "er.eventlog.binding-blob-key/1";
 pub(crate) const RECORD_BLOB_DOMAIN: &str = "er.eventlog.record-blob-key/1";
@@ -234,7 +252,7 @@ pub(crate) fn encode_anchor(value: &ImportAnchorWrapper) -> Result<Vec<u8>, Asyn
 }
 
 pub(crate) fn decode_anchor(bytes: &[u8]) -> Result<ImportAnchorWrapper, AsyncStoreError> {
-    let value: Value = serde_json::from_slice(bytes).map_err(enc)?;
+    let value: Value = parse_stored(bytes)?;
     if value.get(0).and_then(Value::as_str) == Some("er.eventlog.import-anchor/2") {
         decode_tagged("er.eventlog.import-anchor/2", bytes, |value| {
             let bound: SourceBoundAnchorWrapper = serde_json::from_value(value).map_err(enc)?;
@@ -287,7 +305,7 @@ fn decode_tagged<T>(
     bytes: &[u8],
     parse: impl FnOnce(Value) -> Result<T, AsyncStoreError>,
 ) -> Result<T, AsyncStoreError> {
-    let value: Value = serde_json::from_slice(bytes).map_err(enc)?;
+    let value: Value = parse_stored(bytes)?;
     let array = value
         .as_array()
         .ok_or_else(|| invalid("a canonical document is a two-element array"))?;
@@ -302,9 +320,9 @@ fn decode_tagged<T>(
     Ok(parsed)
 }
 
-pub(crate) fn decode_record(bytes: &[u8]) -> Result<RecordedEntry, AsyncStoreError> {
-    let value: Value = serde_json::from_slice(bytes).map_err(enc)?;
-    let array = value
+/// The framing check and the typed decode, over a record document however it was reached.
+fn decode_record_body(document: &Value) -> Result<RecordedEntry, AsyncStoreError> {
+    let array = document
         .as_array()
         .ok_or_else(|| invalid("record is not a tagged array"))?;
     if array.len() != 2
@@ -324,35 +342,103 @@ pub(crate) fn decode_record(bytes: &[u8]) -> Result<RecordedEntry, AsyncStoreErr
             observation: Box<entity_store::RecordedObservation>,
         },
     }
-    let entry = match serde_json::from_value(array[1].clone()).map_err(enc)? {
-        Tagged::Decision { commit } => RecordedEntry::Decision(*commit),
-        Tagged::Observation { observation } => RecordedEntry::Observation(*observation),
-    };
+    Ok(
+        match serde_json::from_value(array[1].clone()).map_err(enc)? {
+            Tagged::Decision { commit } => RecordedEntry::Decision(*commit),
+            Tagged::Observation { observation } => RecordedEntry::Observation(*observation),
+        },
+    )
+}
+
+pub(crate) fn decode_record(bytes: &[u8]) -> Result<RecordedEntry, AsyncStoreError> {
+    let value: Value = parse_stored(bytes)?;
+    let entry = decode_record_body(&value)?;
     if record_comparison_bytes(&entry)? != bytes {
         return Err(invalid("record bytes do not reproduce the complete record"));
     }
     Ok(entry)
 }
 
+/// The expectation exactly as `batch_comparison_bytes` writes one.
+///
+/// Rebuilt and compared because `deny_unknown_fields` does **not** cover an internally tagged
+/// **unit** variant: `{"kind":"absent","surplus":1}` deserialises to `Expect::Absent` and writes
+/// back without the surplus field, so a canonical document can still be a batch that is not its own
+/// rendering. Measured, not assumed — deleting this comparison was tried and
+/// `the_batch_key_expectation_and_member_wires_admit_exactly_one_shape_each` refused to agree.
+fn expectation_value(expect: Expect) -> Value {
+    match expect {
+        Expect::Absent => serde_json::json!({"kind": "absent"}),
+        Expect::Revision(revision) => serde_json::json!({"kind": "revision", "revision": revision}),
+    }
+}
+
+/// One record, decoded from the document that already holds it.
+///
+/// [`decode_record`] takes bytes, so a batch member had to be rendered back to text and parsed a
+/// second time to reach it — a second full decode of every record in the largest blob this store
+/// binds. The property established is the same one and against the same canonical form: the
+/// document reproduces the complete record it decoded to.
+fn decode_record_document(document: &Value) -> Result<RecordedEntry, AsyncStoreError> {
+    let entry = decode_record_body(document)?;
+    if record_comparison_bytes(&entry)? != serde_json::to_vec(document).map_err(enc)? {
+        return Err(invalid("record bytes do not reproduce the complete record"));
+    }
+    Ok(entry)
+}
+
+/// One committed batch, decoding each member record exactly once.
+///
+/// This used to end with `batch_comparison_bytes(&key, &decoded) != bytes` — the whole document
+/// rebuilt from the decoded members and compared byte for byte — and to reach those members it
+/// rendered each one back to text and parsed it again. **That comparison was proving two separate
+/// things, and only one of them needed the second decode.**
+///
+/// * **The stored bytes are their own canonical rendering.** Checked here in one pass over the tree
+///   that was just parsed, which covers the member records too — the part the second decode was
+///   doing. It is not cosmetic: these bytes are the batch blob's digest preimage and the material a
+///   retry is compared against, so two renderings of one batch are two batches that never
+///   deduplicate.
+/// * **Each member reproduces the record it decoded to.** Canonicality cannot see this, because the
+///   round trip through the typed record is lossy in at least two documented places —
+///   `EntityInstance` carries no `deny_unknown_fields`, and `DecisionRecord::removed` is
+///   `skip_serializing_if` — so a perfectly canonical document can still decode to something that
+///   does not write back to it. Checked per member against the same canonical form as before.
+///
+/// The old comparison also covered the batch key, the expectation and the member envelope by
+/// rebuilding all three. Which of those still need rebuilding was measured, not argued, and the
+/// answer was not the obvious one: the **key** does not, because `BatchKeyWire` is an untagged pair
+/// of two-element tuples and every other shape fails `from_value`; the member **envelope** does
+/// not, because `Member` is a struct with `deny_unknown_fields`; the **expectation** does, because
+/// `deny_unknown_fields` does not cover an internally tagged *unit* variant, so
+/// `{"kind":"absent","surplus":1}` decodes and writes back without the surplus.
+/// `the_batch_key_expectation_and_member_wires_admit_exactly_one_shape_each` in `adapter.rs` holds
+/// the first two to that, so widening one of them fails there rather than quietly needing a
+/// rebuild back.
 pub(crate) fn decode_batch(bytes: &[u8]) -> Result<(BatchKey, Vec<AppendMember>), AsyncStoreError> {
-    let value: Value = serde_json::from_slice(bytes).map_err(enc)?;
-    let array = value
-        .as_array()
-        .ok_or_else(|| invalid("batch is not a tagged array"))?;
+    let value: Value = parse_stored(bytes)?;
+    if serde_json::to_vec(&value).map_err(enc)? != bytes {
+        return Err(invalid("batch bytes are not canonical"));
+    }
+    let Value::Array(mut array) = value else {
+        return Err(invalid("batch is not a tagged array"));
+    };
     if array.len() != 3 || array[0].as_str() != Some("er.batch/1") {
         return Err(invalid("batch framing is unknown"));
     }
-    let key: BatchKeyWire = serde_json::from_value(array[1].clone()).map_err(enc)?;
-    let key: BatchKey = key.into();
-    let members = array[2]
-        .as_array()
-        .ok_or_else(|| invalid("batch members are not an array"))?;
+    let Some(Value::Array(members)) = array.pop() else {
+        return Err(invalid("batch members are not an array"));
+    };
+    let stored_key = array.pop().expect("a three-element array");
+    let key: BatchKey = serde_json::from_value::<BatchKeyWire>(stored_key)
+        .map_err(enc)?
+        .into();
     let mut decoded = Vec::with_capacity(members.len());
-    for value in members {
+    for member in members {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Member {
-            expect: ExpectWire,
+            expect: Value,
             record: Value,
         }
         #[derive(Deserialize)]
@@ -361,21 +447,17 @@ pub(crate) fn decode_batch(bytes: &[u8]) -> Result<(BatchKey, Vec<AppendMember>)
             Absent,
             Revision { revision: u64 },
         }
-        let member: Member = serde_json::from_value(value.clone()).map_err(enc)?;
-        let record_bytes = serde_json::to_vec(&member.record).map_err(enc)?;
-        let entry = decode_record(&record_bytes)?;
-        let expect = match member.expect {
+        let Member { expect, record } = serde_json::from_value(member).map_err(enc)?;
+        let expectation = match serde_json::from_value::<ExpectWire>(expect.clone()).map_err(enc)? {
             ExpectWire::Absent => Expect::Absent,
             ExpectWire::Revision { revision } => Expect::Revision(revision),
         };
-        decoded.push(AppendMember::new(
-            expect,
-            entry.clone(),
-            original_request_comparison_bytes(&entry)?,
-        ));
-    }
-    if batch_comparison_bytes(&key, &decoded)? != bytes {
-        return Err(invalid("batch bytes are not canonical"));
+        if expectation_value(expectation) != expect {
+            return Err(invalid("batch bytes are not canonical"));
+        }
+        let entry = decode_record_document(&record)?;
+        let request_bytes = original_request_comparison_bytes(&entry)?;
+        decoded.push(AppendMember::new(expectation, entry, request_bytes));
     }
     Ok((key, decoded))
 }

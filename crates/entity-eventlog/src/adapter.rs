@@ -4094,6 +4094,204 @@ mod seeded_open {
         }
     }
 
+    /// One committed single-member batch, exactly as `append_inner` writes one.
+    /// One named mutation of a parsed batch document.
+    type Tamper = (&'static str, Box<dyn Fn(&mut Value)>);
+
+    fn one_member_batch() -> (BatchKey, AppendMember, Vec<u8>) {
+        let entry = recorded(0, 512);
+        let key = BatchKey::SingleRecord("record-000000".to_owned());
+        let request_bytes =
+            original_request_comparison_bytes(&entry).expect("request comparison bytes");
+        let member = AppendMember::new(Expect::Absent, entry, request_bytes);
+        let bytes = batch_comparison_bytes(&key, std::slice::from_ref(&member))
+            .expect("batch comparison bytes");
+        (key, member, bytes)
+    }
+
+    fn parsed<T>(work: impl FnOnce() -> T) -> (T, u64) {
+        crate::encoding::PARSED_BYTES.with(|charged| charged.set(0));
+        let value = work();
+        (value, crate::encoding::PARSED_BYTES.with(Cell::get))
+    }
+
+    /// The defect this round exists for, stated as a ratio rather than a duration.
+    ///
+    /// A batch document repeats each member record verbatim, so parsing the batch has already read
+    /// every record in it. `decode_batch` then rendered each member back to bytes and parsed those
+    /// bytes again, which is a second full decode of the largest thing in the store.
+    #[test]
+    fn a_batch_is_parsed_once_rather_than_once_for_every_member_as_well() {
+        let (key, _, bytes) = one_member_batch();
+        let ((decoded_key, members), read) =
+            parsed(|| decode_batch(&bytes).expect("batch decodes"));
+        assert_eq!(decoded_key, key);
+        assert_eq!(members.len(), 1);
+        assert_eq!(
+            read,
+            bytes.len() as u64,
+            "decoding a {}-byte batch read {read} bytes of stored document",
+            bytes.len()
+        );
+    }
+
+    /// What the deleted re-serialisation proved about the bytes, kept and named.
+    ///
+    /// `batch_comparison_bytes(key, decoded) == bytes` was the only check that the stored batch is
+    /// the canonical rendering of the batch it parses to — and canonical is not cosmetic here: the
+    /// bytes are the blob's digest preimage and the material a retry is compared against, so two
+    /// renderings of one batch are two batches that never deduplicate. These are the inputs it
+    /// caught, including the one **inside a member record**, which is the part the second decode
+    /// was doing.
+    #[test]
+    fn a_batch_whose_stored_bytes_are_not_their_own_canonical_rendering_is_refused() {
+        let (_, _, bytes) = one_member_batch();
+        let member_record = bytes
+            .windows(10)
+            .position(|window| window == br#""record":["#)
+            .expect("the member names its record");
+        for (what, at) in [
+            ("the document", 1usize),
+            ("a member record", member_record + 10),
+        ] {
+            let mut slack = bytes.clone();
+            slack.insert(at, b' ');
+            assert!(
+                matches!(
+                    decode_batch(&slack),
+                    Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
+                        if detail == "batch bytes are not canonical"
+                ),
+                "a space in {what} left the batch admitted: {:?}",
+                decode_batch(&slack).err()
+            );
+        }
+    }
+
+    /// What the deleted re-serialisation proved about the *members*, which canonicality cannot see.
+    ///
+    /// Both of these are perfectly canonical JSON — sorted keys, no slack — and both decode. They
+    /// are still not the record they claim to be, because the round trip through the typed record
+    /// is lossy in two documented places: `EntityInstance` carries no `deny_unknown_fields`, so a
+    /// field added to an instance is read and dropped; and `DecisionRecord::removed` is
+    /// `skip_serializing_if = "BTreeSet::is_empty"`, so an explicit empty one is read and not
+    /// written back. This is the half of the old comparison that is **not** redundant, and it is
+    /// why this round replaced it rather than deleting it.
+    #[test]
+    fn a_batch_member_that_does_not_reproduce_its_own_record_is_refused() {
+        let (_, _, bytes) = one_member_batch();
+        for (what, mutate) in [
+            (
+                "a field added to the recorded instance",
+                Box::new(|record: &mut Value| {
+                    record["commit"]["instance"]["surplus"] = json!(1);
+                }) as Box<dyn Fn(&mut Value)>,
+            ),
+            (
+                "an explicit empty removed set",
+                Box::new(|record: &mut Value| {
+                    record["commit"]["envelope"]["record"]["removed"] = json!([]);
+                }),
+            ),
+        ] {
+            let mut document: Value = serde_json::from_slice(&bytes).expect("batch parses");
+            mutate(&mut document[2][0]["record"][1]);
+            let restored = serde_json::to_vec(&document).expect("batch re-encodes");
+            assert!(
+                matches!(
+                    decode_batch(&restored),
+                    Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
+                        if detail == "record bytes do not reproduce the complete record"
+                ),
+                "{what} left the batch admitted: {:?}",
+                decode_batch(&restored).err()
+            );
+        }
+    }
+
+    /// The member expectation is rebuilt and compared, and this is the input that makes it earn it.
+    ///
+    /// `ExpectWire` is internally tagged with `deny_unknown_fields`, which looks like it settles
+    /// the question and does not: serde does not apply `deny_unknown_fields` to an internally
+    /// tagged **unit** variant, so `{"kind":"absent","surplus":1}` decodes to `Expect::Absent` and
+    /// writes back without the surplus field. The document is perfectly canonical, so the
+    /// document-wide check cannot see it; it is still a batch whose bytes are not the rendering of
+    /// the batch they decode to, which is the thing the old rebuild-and-compare refused.
+    #[test]
+    fn a_member_expectation_carrying_a_field_of_its_own_is_refused() {
+        let (_, _, bytes) = one_member_batch();
+        let mut document: Value = serde_json::from_slice(&bytes).expect("batch parses");
+        document[2][0]["expect"]["surplus"] = json!(1);
+        let restored = serde_json::to_vec(&document).expect("batch re-encodes");
+        assert_eq!(
+            serde_json::to_vec(&serde_json::from_slice::<Value>(&restored).expect("parses"))
+                .expect("re-encodes"),
+            restored,
+            "the input must be canonical, or it proves nothing the document-wide check does not"
+        );
+        assert!(
+            matches!(
+                decode_batch(&restored),
+                Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
+                    if detail == "batch bytes are not canonical"
+            ),
+            "a surplus field on an expectation left the batch admitted: {:?}",
+            decode_batch(&restored).err()
+        );
+    }
+
+    /// The two parts of the removed rebuild-and-compare that need no replacement, and why.
+    ///
+    /// The old check rebuilt the whole batch document — bytes, key, expectation, member envelope
+    /// and record — and compared it to the stored bytes. Three of those five have a replacement
+    /// above. The batch key and the member envelope need none: each admits exactly one document per
+    /// value, and every other shape fails `from_value` before a comparison could run. That is
+    /// measured here rather than argued — the expectation was assumed to belong in this list and
+    /// did not, which is why it has a case of its own — and it is what a later widening of one of
+    /// these types would have to walk past: `#[serde(other)]`, a dropped `deny_unknown_fields` or a
+    /// third variant would make the rebuild necessary again, and would fail here first.
+    #[test]
+    fn the_batch_key_expectation_and_member_wires_admit_exactly_one_shape_each() {
+        let (_, _, bytes) = one_member_batch();
+        let refused: Vec<Tamper> = vec![
+            (
+                "a batch key of three elements",
+                Box::new(|d: &mut Value| d[1] = json!(["single_record", "record-000000", "extra"])),
+            ),
+            (
+                "a batch key naming an unknown tag",
+                Box::new(|d: &mut Value| d[1] = json!(["other", "record-000000"])),
+            ),
+            (
+                "an expectation whose revision is not an integer",
+                Box::new(|d: &mut Value| {
+                    d[2][0]["expect"] = json!({"kind":"revision","revision":1.0});
+                }),
+            ),
+            (
+                "a member envelope carrying a third field",
+                Box::new(|d: &mut Value| d[2][0]["surplus"] = json!(1)),
+            ),
+        ];
+        for (what, mutate) in refused {
+            let mut document: Value = serde_json::from_slice(&bytes).expect("batch parses");
+            mutate(&mut document);
+            let restored = serde_json::to_vec(&document).expect("batch re-encodes");
+            assert!(
+                matches!(decode_batch(&restored), Err(AsyncStoreError::Encoding(_))),
+                "{what} was not refused by the wire type itself: {:?}",
+                decode_batch(&restored).err()
+            );
+        }
+        // And the one shape each does admit still decodes, so the refusals above are about the
+        // shape and not about the fixture being unreadable.
+        let mut document: Value = serde_json::from_slice(&bytes).expect("batch parses");
+        document[2][0]["expect"] = json!({"kind":"revision","revision":1});
+        let restored = serde_json::to_vec(&document).expect("batch re-encodes");
+        let (_, members) = decode_batch(&restored).expect("the admitted shape decodes");
+        assert_eq!(members[0].expect, Expect::Revision(1));
+    }
+
     /// The measurement. Asks for nothing unless `ENTITY_EVENTLOG_SEEDED_OPEN_RECORDS` is set.
     #[test]
     fn seeded_open_measurement() {
