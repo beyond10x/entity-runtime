@@ -4,6 +4,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Documentation
+
+- Refresh the guide for 0.19.0, explain service semantics and Eventlog-backed storage boundaries,
+  and prepare exact-commit project-site build artifacts while retaining the existing site checks.
+
 ## [0.19.0] — 2026-09-22
 
 ### Fixed

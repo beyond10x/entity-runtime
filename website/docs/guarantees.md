@@ -6,7 +6,7 @@ description: The properties Entity Runtime enforces, the responsibilities it lea
 
 # Guarantees and limits
 
-These are the guarantees of the 0.18.1 runtime. Its API remains in development; definition
+These are the guarantees of the 0.19.0 runtime. Its API remains in development; definition
 versions, runtime releases, and storage formats are separate compatibility boundaries.
 The [system model](./system-model) identifies the source and coverage of each contract.
 
@@ -52,7 +52,8 @@ distinct from an absent entity.
 - Complete recorded decisions carry caller-supplied provenance.
 - Record IDs are idempotent only for identical bytes.
 - Replay reruns complete decisions and compares their evidence.
-- Memory, SQLite, and PostgreSQL support all-or-nothing ordered batches.
+- Memory, SQLite, PostgreSQL and the Eventlog-backed facades support all-or-nothing ordered batches.
+  Retained `FileStore` commits one subject at a time; Eventlog File supports atomic groups.
 - Hybrid authority and failure policy have no default somebody forgot to choose.
 
 ## Trusted-shell responsibilities
@@ -80,8 +81,9 @@ Entity Runtime is not:
 - a side-effect executor; or
 - a guarantee that model-supplied facts are true.
 
-The `entity-remote` crate supplies a transport-neutral protocol, not an HTTP stack. The CLI uses the
-File Store; SQLite and PostgreSQL are library integrations. Optional document queries exist in `entity-query`, with Memory Store and PostgreSQL
+The `entity-remote` crate supplies a transport-neutral protocol, not an HTTP stack. The default CLI
+uses the retained File Store; an `eventlog-providers` build can explicitly select Eventlog File.
+SQLite and PostgreSQL are library integrations. Optional document queries exist in `entity-query`, with Memory Store and PostgreSQL
 implementations; they are not a general search service. Definition migration between arbitrary
 versions, search/blob providers, and an `explain` command are not shipped capabilities.
 There is no whole-system ESS specification or ESS importer in this runtime.

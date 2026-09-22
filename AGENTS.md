@@ -249,8 +249,9 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 `website/` is a Docusaurus source corpus with a human-facing product guide under `website/docs/`.
 It does **not** render or link the repository-root `docs/` tree: requirements, designs, plans and
 reviews are the engineering record, not adopter documentation. The unified Website publishes the
-canonical guide at <https://beyond10x.github.io/docs/entity-runtime/>; the project URL is only its
-generated redirect façade. `.github/workflows/pages.yml` retains the required `Build Docusaurus`
+guide at <https://beyond10x.github.io/docs/entity-runtime/>; the project site at
+<https://beyond10x.github.io/entity-runtime/> publishes this repository's own build.
+`.github/workflows/pages.yml` retains the required `Build Docusaurus`
 context, type check, link gate and image-format guard, but has no Pages deployment authority.
 `onBrokenLinks: 'throw'` means a dangling link in `website/docs/` fails that build. Public pages link
 one another, releases and source examples; they do not route a reader into `.engineering/`,

@@ -29,8 +29,13 @@ npm run build      # onBrokenLinks: throw — a dangling link fails the build
 Before publishing, also search `website/` for links into root `docs/`, `.engineering/`, requirements,
 designs, plans, roadmaps, or reviews. Those are useful repository records, not public navigation.
 
-The site is deliberately not a step of `task check`, which reaches no network; it is gated by
-`.github/workflows/pages.yml` on every push and pull request, and deployed from `main`.
+The site is deliberately not a step of `task check`; its dependency installation reaches the
+network. `.github/workflows/pages.yml` retains the type, link and image-format checks on pull
+requests and main pushes. A successful main push uploads `b10x-project-site` with hidden files
+and the exact source declaration. The Atlas-generated site caller delegates publication to the
+pinned Website publisher at `/entity-runtime/`. The passive bundle also feeds
+`/docs/entity-runtime/`. A failed build or publication leaves the previous site available.
+Rollback is a reviewed revert followed by a new successful build.
 
 ## Dependency overrides
 

@@ -59,6 +59,9 @@ than refused.
 
 ## Provider guide
 
+The table below describes the retained providers. Version 0.19.0 also supplies Eventlog-backed
+facades; they are explicit alternatives with their own provisioning and import boundaries.
+
 | Provider | Best for | Important boundary |
 |---|---|---|
 | `MemoryStore` | tests and process-local experiments | nothing survives the process |
@@ -68,8 +71,21 @@ than refused.
 | `RemoteStore` | using a store behind an application-owned transport | this crate defines a versioned JSON protocol, not an HTTP client |
 | `Hybrid` | explicit local/remote authority and offline behavior | authority, read path, unreachable behavior, and divergence behavior have no defaults |
 
-The CLI's `--store` flag uses `FileStore`. SQLite, PostgreSQL, Remote, and Hybrid are Rust library
-integrations; the command does not pretend a filesystem path is a database connection.
+The default CLI's `--store` flag uses `FileStore`. A build with `eventlog-providers` can select
+the Eventlog File facade with `--eventlog-config`, a closed authority-and-bounds JSON document.
+That configuration selects existing authority; it is not implicit provisioning. SQLite,
+PostgreSQL, Remote and Hybrid remain explicit Rust library integrations.
+
+### Eventlog-backed providers
+
+`entity-eventlog` supplies the recorded storage edge and File facade.
+`entity-sqlite` and `entity-postgres` expose their facades under `eventlog-facade`.
+These paths preserve complete recorded receipts and native atomic groups. They need Rust 1.91;
+the pure runtime crates retain Rust 1.85.
+
+Keep open, provision and legacy import as separate host operations.
+[Service semantics and recorded execution](service-semantics.md) explains the record formats,
+exact retry contract, imported anchors and bounded batch import.
 
 `MemoryStore`, `SqliteStore`, and `PostgresStore` also implement `AtomicBatchStore` for ordered,
 multi-subject batches that commit completely or roll back completely. File Store atomicity is per

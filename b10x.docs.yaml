@@ -55,6 +55,8 @@ surfaces:
     url: https://github.com/beyond10x/entity-runtime
   source:
     assets:
+      exclude:
+      - static/examples/refund/**
       include:
       - static/**/*
     documents:

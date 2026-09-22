@@ -11,7 +11,10 @@ kernel. It can execute an adopter's entity model and derive interfaces from it. 
 is implemented as authored Rust types, traits, and functions; this repository has no whole-system
 ESS specification from which those subsystems are generated.
 
-This chapter describes the [0.18.1 release](https://github.com/beyond10x/entity-runtime/releases/tag/0.18.1).
+This chapter describes the [0.19.0 release](https://github.com/beyond10x/entity-runtime/releases/tag/0.19.0).
+For its newer outcome and persistence paths, read
+[service semantics and recorded execution](guide/service-semantics.md). References below to
+File Store mean the retained `FileStore`; Eventlog File is a separate provider with atomic groups.
 The public API remains in development. An entity's `version: 1` is its definition version,
 independent of the runtime release and File Store format.
 
@@ -136,9 +139,9 @@ flowchart TB
 
 The generated surfaces shipped in 0.16.0. The 0.17.7 release fixes their retry and schema behavior.
 Neither release converted the top-level CLI into an ESS-generated implementation. The
-[CLI source](https://github.com/beyond10x/entity-runtime/blob/0.18.1/crates/entity-cli/src/main.rs)
+[CLI source](https://github.com/beyond10x/entity-runtime/blob/0.19.0/crates/entity-cli/src/main.rs)
 contains both its handwritten command enum and its domain-CLI generator;
-the [shared shell](https://github.com/beyond10x/entity-runtime/blob/0.18.1/crates/entity-shell/src/lib.rs)
+the [shared shell](https://github.com/beyond10x/entity-runtime/blob/0.19.0/crates/entity-shell/src/lib.rs)
 owns the generated/MCP stored-operation sequence.
 
 ## Relationship to ESS

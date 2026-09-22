@@ -7,11 +7,10 @@ description: A deterministic authority for lifecycle-governed state changes prop
 
 # Let agents propose. Let deterministic rules decide.
 
-An AI agent is good at interpreting a request and choosing what to try. It should not be the final
-authority on whether durable state may change.
+Entity Runtime evaluates proposed state changes against a definition. People, services and agents
+request named operations; the deterministic kernel returns a decision or a typed refusal.
 
-Entity Runtime puts a small, deterministic decision boundary between a proposal and the systems
-that keep or act on it. You declare an entity type as data:
+You declare an entity type as data:
 
 - which fields it carries;
 - which lifecycle states exist;
@@ -76,7 +75,9 @@ pulling IO into the kernel.
 
 ## Model coverage and release status
 
-This guide targets [0.18.1](https://github.com/beyond10x/entity-runtime/releases/tag/0.18.1).
+This guide targets [0.19.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.19.0).
+Start with the [release highlights](releases.md) and
+[service semantics through service/3](guide/service-semantics.md).
 The API remains in development. Entity definitions drive execution and generated domain interfaces;
 the runtime itself has authored Rust subsystem contracts, not a whole-system ESS specification.
 The [system model and derivation map](/docs/system-model) shows command, event, provider, and query

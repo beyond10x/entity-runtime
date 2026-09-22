@@ -18,8 +18,10 @@ the application around it.
 [Read the product guide](https://beyond10x.github.io/docs/entity-runtime/) or
 [download a release](https://github.com/beyond10x/entity-runtime/releases).
 
-The guide targets [0.18.1](https://github.com/beyond10x/entity-runtime/releases/tag/0.18.1);
-the API remains in development. Start with the
+The guide targets [0.19.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.19.0);
+see the [release highlights](website/docs/releases.md) and
+[service semantics through service/3](website/docs/guide/service-semantics.md).
+The API remains in development. Start with the
 [refund quickstart](https://beyond10x.github.io/docs/entity-runtime/guide/getting-started/) or
 [system model and derivation](https://beyond10x.github.io/docs/entity-runtime/system-model/).
 
@@ -250,7 +252,9 @@ unchecked parsed document. On refusal, the caller still owns the unchanged prior
 
 `entity-core` depends only on `serde` and `serde_json`. Provider interfaces and every IO concern
 live outside it. `MemoryStore`, `SqliteStore`, and `PostgresStore` support all-or-nothing ordered
-batches; File Store atomicity is limited to one subject document.
+batches; retained File Store atomicity is limited to one subject document.
+The Eventlog-backed File, SQLite and PostgreSQL facades add complete recorded receipts and atomic
+groups through explicit open/provision authority. They do not implicitly migrate a legacy store.
 
 ## Guarantees and limits
 
