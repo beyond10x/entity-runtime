@@ -121,7 +121,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315 # 1.91.0
+      # The sha is the action's `1.91.0` branch, and the branch is what selects the toolchain:
+      # this job was pinned to the `1.85.0` sha the MSRV job uses, which ignores the `toolchain`
+      # input below, so a job named for 1.91 installed 1.85 and refused `entity-eventlog`'s own
+      # `rust-version = "1.91"`. It had never run — the job arrived on an unpushed branch.
+      - uses: dtolnay/rust-toolchain@8d8cc9a8e0d47b64af669de71110e76860d6afbd # 1.91.0
         with:
           toolchain: 1.91.0
           components: clippy
