@@ -22,13 +22,13 @@ eventlog-facade = [
 ]
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.18.1" }
-entity-eventlog = { path = "../entity-eventlog", version = "0.18.1", features = ["sync-bridge", "postgres"], optional = true }
-entity-executor = { path = "../entity-executor", version = "0.18.1", optional = true }
-entity-store = { path = "../entity-store", version = "0.18.1" }
-entity-query = { path = "../entity-query", version = "0.18.1" }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "ed6960d01f70cf4d49b143bb9c8e7d9f56a19650", optional = true }
-eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "ed6960d01f70cf4d49b143bb9c8e7d9f56a19650", optional = true }
+entity-core = { path = "../entity-core", version = "0.19.0" }
+entity-eventlog = { path = "../entity-eventlog", version = "0.19.0", features = ["sync-bridge", "postgres"], optional = true }
+entity-executor = { path = "../entity-executor", version = "0.19.0", optional = true }
+entity-store = { path = "../entity-store", version = "0.19.0" }
+entity-query = { path = "../entity-query", version = "0.19.0" }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "ac6b1731654329d32f1e3c9cf164fefad6a5b46a", optional = true }
+eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "ac6b1731654329d32f1e3c9cf164fefad6a5b46a", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 # The fifth direct third-party crate in this workspace, and the first that talks to a server. The

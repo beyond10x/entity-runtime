@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-09-22
+
 ### Fixed
 
 - Eventlog-backed synchronous commands reuse one verified tenant read during each batch's
@@ -106,8 +108,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 ### Changed
 
 - Every crate that depends on the Eventlog providers — `entity-eventlog`, `entity-sqlite`,
-  `entity-postgres` and `entity-cli` — pins them to
-  `76aad5e3790e302e6c7f348a4fe4d9229cd17bce`, which verifies history and blobs once per open and
+  `entity-postgres` and `entity-cli` — pins them to **Eventlog 0.3.0**
+  (`ac6b1731654329d32f1e3c9cf164fefad6a5b46a`), which verifies history and blobs once per open and
   re-checks only what a transaction changed, and which proves on every resume that the committed
   prefix is still the one it verified — a committed frame damaged in place after `open` refuses
   without altering the history, as it did before the once-per-open change.

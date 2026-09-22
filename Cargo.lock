@@ -196,6 +196,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "cfg_aliases"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
+
+[[package]]
 name = "chacha20"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -398,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "entity-cli"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "clap",
  "entity-core",
@@ -419,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "entity-core"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "scan-support",
  "serde",
@@ -428,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "entity-eventlog"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "entity-executor",
@@ -448,7 +454,7 @@ dependencies = [
 
 [[package]]
 name = "entity-executor"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -457,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "entity-graph"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "scan-support",
@@ -466,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "entity-mcp"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "entity-shell",
@@ -478,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "entity-postgres"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "entity-eventlog",
@@ -499,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "entity-query"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -509,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "entity-remote"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -519,7 +525,7 @@ dependencies = [
 
 [[package]]
 name = "entity-shell"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -528,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "entity-sqlite"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "entity-eventlog",
@@ -543,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "entity-store"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "fs2",
@@ -553,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "entity-surface"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "entity-graph",
@@ -564,14 +570,14 @@ dependencies = [
 
 [[package]]
 name = "entity-xtask"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "entity-yaml"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "entity-core",
  "serde",
@@ -597,8 +603,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-core"
-version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=ed6960d01f70cf4d49b143bb9c8e7d9f56a19650#ed6960d01f70cf4d49b143bb9c8e7d9f56a19650"
+version = "0.3.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=ac6b1731654329d32f1e3c9cf164fefad6a5b46a#ac6b1731654329d32f1e3c9cf164fefad6a5b46a"
 dependencies = [
  "serde",
  "serde_json",
@@ -610,8 +616,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-file"
-version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=ed6960d01f70cf4d49b143bb9c8e7d9f56a19650#ed6960d01f70cf4d49b143bb9c8e7d9f56a19650"
+version = "0.3.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=ac6b1731654329d32f1e3c9cf164fefad6a5b46a#ac6b1731654329d32f1e3c9cf164fefad6a5b46a"
 dependencies = [
  "eventlog-core",
  "serde",
@@ -623,8 +629,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-postgres"
-version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=ed6960d01f70cf4d49b143bb9c8e7d9f56a19650#ed6960d01f70cf4d49b143bb9c8e7d9f56a19650"
+version = "0.3.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=ac6b1731654329d32f1e3c9cf164fefad6a5b46a#ac6b1731654329d32f1e3c9cf164fefad6a5b46a"
 dependencies = [
  "eventlog-core",
  "rustls",
@@ -640,10 +646,11 @@ dependencies = [
 
 [[package]]
 name = "eventlog-sqlite"
-version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=ed6960d01f70cf4d49b143bb9c8e7d9f56a19650#ed6960d01f70cf4d49b143bb9c8e7d9f56a19650"
+version = "0.3.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=ac6b1731654329d32f1e3c9cf164fefad6a5b46a#ac6b1731654329d32f1e3c9cf164fefad6a5b46a"
 dependencies = [
  "eventlog-core",
+ "nix",
  "rusqlite",
  "serde_json",
  "time",
@@ -1192,6 +1199,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "num"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1646,7 +1665,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "scan-support"
-version = "0.18.1"
+version = "0.19.0"
 
 [[package]]
 name = "scopeguard"
