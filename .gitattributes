@@ -1,0 +1,5 @@
+# These fixtures are compared byte for byte by `crates/entity-store/tests/service_2_framing.rs`.
+# Git's end-of-line conversion is not a formatting preference here: on a Windows checkout it
+# appends a carriage return the comparison then reports as a one-byte difference, which is how
+# 0.19.0's Windows release build failed while every Linux and macOS build passed.
+crates/entity-store/tests/fixtures/** -text
