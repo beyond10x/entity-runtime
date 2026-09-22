@@ -2,11 +2,11 @@
 format: aep.planning-md/1
 id: task:refresh-project-documentation
 kind: task
-status: draft
+status: active
 title: Refresh released documentation and automatic project publication
 relations:
 - serves: vision:O2
-revision: 2
+revision: 5
 ---
 ## Context
 
@@ -39,3 +39,12 @@ The refund quickstart ran against the checksummed 0.19.0 release binary: agent a
 with large_refunds_need_a_human; the stored human approval reached revision 3 with RefundApproved.
 The passive manifest excludes ignored generated refund examples; the standalone build retains them.
 Generated caller installation and live verification remain pending.
+
+## Publication boundary
+
+Local publication with Gates 0.1.6 refuses the existing PR 23 merge:
+`pull request head did not incorporate its merge basis`. The PR head and merge have the same
+Git tree (5fd1a3fc2e53765b8c8c5555a5ab25fcd32edead), and GitHub records b10x-bot[bot] as merger.
+The full source gate, site build and released 0.19.0 refund fixture passed. No hook was bypassed.
+Caller activation and live verification remain pending. The operator was asked whether a separate
+Gates correction and release may extend the explicit no-software-release scope.
