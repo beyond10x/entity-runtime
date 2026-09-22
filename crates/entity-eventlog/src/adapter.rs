@@ -14,12 +14,12 @@ use entity_executor::{BatchAction, ExecutionError, Executor};
 use entity_store::{
     Expect,
     asynchronous::{
-        AppendMember, AppendOutcome, AppendRequest, AsyncRecordedReader, AsyncRecordedWriter,
-        AsyncStateReader, AsyncStoreError, BatchKey, BatchReceipt, BoxFuture, CommitReceipt,
-        CompleteStoreSnapshot, HistoryOrigin, RecordLookup, RecordPosition, RecordReceipt,
-        StoreCoverage, StoredBatch, StoredRecord, Subject, SubjectAssurance, SubjectHistory,
-        SubjectSnapshot, WriteFailure, batch_comparison_bytes, original_request_comparison_bytes,
-        record_comparison_bytes, validate_entry_against_state, verify_subject_history,
+        AppendOutcome, AppendRequest, AsyncRecordedReader, AsyncRecordedWriter, AsyncStateReader,
+        AsyncStoreError, BatchKey, BatchReceipt, BoxFuture, CommitReceipt, CompleteStoreSnapshot,
+        HistoryOrigin, RecordLookup, RecordPosition, RecordReceipt, StoreCoverage, StoredBatch,
+        StoredRecord, Subject, SubjectAssurance, SubjectHistory, SubjectSnapshot, WriteFailure,
+        batch_comparison_bytes, original_request_comparison_bytes, record_comparison_bytes,
+        validate_entry_against_state, verify_subject_history,
     },
 };
 use eventlog_core::{
@@ -37,7 +37,7 @@ use crate::{
         EvidenceWire, PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, RecordedEntryWrapper,
         SubjectWire, anchor_from_history, decode_anchor, decode_batch, decode_binding,
         decode_entry, decode_record, encode_anchor, encode_binding, encode_entry,
-        encode_source_anchor, framed_key, history_from_anchor, key_for_value,
+        encode_source_anchor, history_from_anchor, key_for_value,
     },
     projection::{
         PROJECTOR_NAME, batch_key as physical_batch_key, batch_spec, binding_spec, physical,
@@ -45,6 +45,24 @@ use crate::{
         tagged_body,
     },
 };
+
+#[cfg(test)]
+thread_local! {
+    /// Blob bytes this file has put through SHA-256 on the current thread.
+    ///
+    /// Charged by the only function in this file that can reach the hash, not beside it: a change
+    /// that stops hashing a blob stops calling [`framed_key`] and therefore stops charging, and a
+    /// change that keeps hashing cannot avoid the charge without importing
+    /// `crate::encoding::framed_key` again by name. That is why the direct import was removed.
+    static HASHED_BYTES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// This file's only path to [`crate::encoding::framed_key`].
+fn framed_key(domain: &str, bytes: &[u8]) -> Result<String, AsyncStoreError> {
+    #[cfg(test)]
+    HASHED_BYTES.with(|charged| charged.set(charged.get().saturating_add(bytes.len() as u64)));
+    crate::encoding::framed_key(domain, bytes)
+}
 
 /// Eventlog capabilities required by the adapter, available as one object-safe backend.
 pub trait EventlogBackend:
@@ -1644,7 +1662,11 @@ fn captured_binding_authority(
             ));
         }
         let digest = reference_digest(event)?;
-        let bytes = get_bound_blob(&blobs, digest, BINDING_BLOB_DOMAIN)?;
+        let bytes = BoundBlobs::new(&blobs).get(
+            digest,
+            BINDING_BLOB_DOMAIN,
+            "referenced blob is missing",
+        )?;
         let authority = decode_binding(bytes)?;
         if found.replace(authority).is_some() {
             return Err(integrity("more than one binding event exists"));
@@ -2549,6 +2571,17 @@ struct CaptureHeld {
     digests: BTreeSet<String>,
 }
 
+/// The blob digests one record's projection row repeats.
+///
+/// Held because the capture already admitted them. Recomputing one from the bytes it names is a
+/// second SHA-256 that can only agree with the first: the digest *is* the bytes' identity, and the
+/// bytes reached this model by being checked against it.
+struct RecordBlobDigests {
+    record: String,
+    /// Absent for an imported record, which binds no request blob.
+    request: Option<String>,
+}
+
 #[derive(Default)]
 struct CapturedModel {
     held: CaptureHeld,
@@ -2560,19 +2593,91 @@ struct CapturedModel {
     batches: BTreeMap<BatchKey, StoredBatch>,
     anchors: BTreeMap<Subject, Vec<u8>>,
     anchor_physical: BTreeMap<Subject, PhysicalRef>,
+    binding_blob_digest: Option<String>,
+    record_blob_digests: BTreeMap<String, RecordBlobDigests>,
+    batch_blob_digests: BTreeMap<BatchKey, String>,
+    anchor_blob_digests: BTreeMap<Subject, String>,
 }
 
 struct PendingRecord {
     wrapper: RecordedEntryWrapper,
     entry: entity_store::asynchronous::RecordedEntry,
+    /// The record blob exactly as it was bound. `decode_record` has already held it against the
+    /// entry it decoded, so re-encoding the entry to obtain these bytes produces the same bytes at
+    /// the cost of encoding every record in the store a second time.
+    record_bytes: Vec<u8>,
     request_bytes: Vec<u8>,
-    batch_bytes: Vec<u8>,
     event: RecordedEvent,
+}
+
+/// One capture's bound content, hashed at most once per blob.
+///
+/// A committed authority names one digest from several places: the reference event, the wrapper
+/// that binds a record's record, request and batch blobs, once more per batch member for the batch
+/// blob a group shares, and once per projection row that repeats it. Each of those was a fresh
+/// SHA-256 over the same bytes, so a seeded open hashed 3.4x its own captured bytes before a caller
+/// had read anything.
+struct BoundBlobs<'a> {
+    blobs: &'a BTreeMap<String, Vec<u8>>,
+    admitted: BTreeMap<&'a str, &'static str>,
+}
+
+impl<'a> BoundBlobs<'a> {
+    fn new(blobs: &'a BTreeMap<String, Vec<u8>>) -> Self {
+        Self {
+            blobs,
+            admitted: BTreeMap::new(),
+        }
+    }
+
+    /// The bytes bound under `digest`, verified against `domain` exactly once.
+    ///
+    /// The second and later reads are not unverified: they are the same bytes, still owned by this
+    /// capture, whose digest this function already computed and compared. Only one domain can
+    /// match a given digest — `framed_key` frames the domain into the hash — so a later reference
+    /// naming a different domain is exactly the mismatch a second hash would have reported.
+    fn get(
+        &mut self,
+        digest: &str,
+        domain: &'static str,
+        missing: &'static str,
+    ) -> Result<&'a [u8], AsyncStoreError> {
+        let (key, bytes) = self
+            .blobs
+            .get_key_value(digest)
+            .ok_or_else(|| integrity(missing))?;
+        match self.admitted.get(key.as_str()).copied() {
+            Some(admitted) if admitted == domain => Ok(bytes),
+            Some(_) => Err(integrity("blob digest/domain mismatch")),
+            None => {
+                verify_digest(domain, digest, bytes)?;
+                self.admitted.insert(key.as_str(), domain);
+                Ok(bytes)
+            }
+        }
+    }
 }
 
 fn build_model(
     authority: &Authority,
+    mut capture: TenantCapture,
+) -> Result<CapturedModel, AsyncStoreError> {
+    let projections = std::mem::take(&mut capture.projections);
+    let rows = projections
+        .iter()
+        .map(|projection| projection.rows.len() as u64)
+        .sum();
+    let model = build_model_events(authority, capture, rows)?;
+    validate_projection_sets(authority, &projections, &model)?;
+    Ok(model)
+}
+
+/// The authoritative model of one capture's events and blobs, before its materialized rows are
+/// held against it.
+fn build_model_events(
+    authority: &Authority,
     capture: TenantCapture,
+    rows: u64,
 ) -> Result<CapturedModel, AsyncStoreError> {
     let blobs: BTreeMap<String, Vec<u8>> = capture
         .blobs
@@ -2583,27 +2688,23 @@ fn build_model(
         held: CaptureHeld {
             events: capture.events.len() as u64,
             blobs: blobs.len() as u64,
-            rows: capture
-                .projections
-                .iter()
-                .map(|projection| projection.rows.len() as u64)
-                .sum(),
+            rows,
             digests: blobs.keys().cloned().collect(),
         },
         ..CapturedModel::default()
     };
+    let mut bound = BoundBlobs::new(&blobs);
+    const MISSING_REFERENCE: &str = "authority event references a missing blob";
+    const MISSING_BOUND: &str = "referenced blob is missing";
     let mut pending = Vec::new();
     for event in &capture.events {
         if event.is_redacted() || event.schema_version != 1 {
             return Err(integrity("redacted or unknown-version authority event"));
         }
         let digest = reference_digest(event)?;
-        let bytes = blobs
-            .get(digest)
-            .ok_or_else(|| integrity("authority event references a missing blob"))?;
         match event.name.as_str() {
             "er.binding" => {
-                verify_digest(BINDING_BLOB_DOMAIN, digest, bytes)?;
+                let bytes = bound.get(digest, BINDING_BLOB_DOMAIN, MISSING_REFERENCE)?;
                 let found = decode_binding(bytes)?;
                 if found != *authority
                     || event.stream_type != "er.binding"
@@ -2614,9 +2715,10 @@ fn build_model(
                     return Err(integrity("binding authority is duplicated or inconsistent"));
                 }
                 model.binding = Some(physical(event));
+                model.binding_blob_digest = Some(digest.to_owned());
             }
             "er.recorded_entry" => {
-                verify_digest(ENTRY_BLOB_DOMAIN, digest, bytes)?;
+                let bytes = bound.get(digest, ENTRY_BLOB_DOMAIN, MISSING_REFERENCE)?;
                 let wrapper = decode_entry(bytes)?;
                 require_authority(authority, &wrapper.authority)?;
                 let subject: Subject = wrapper.subject.clone().into();
@@ -2625,50 +2727,53 @@ fn build_model(
                 {
                     return Err(integrity("record reference is in another stream"));
                 }
-                let record_bytes =
-                    get_bound_blob(&blobs, &wrapper.record_blob, RECORD_BLOB_DOMAIN)?;
-                let entry = decode_record(record_bytes)?;
+                let record_bytes = bound
+                    .get(&wrapper.record_blob, RECORD_BLOB_DOMAIN, MISSING_BOUND)?
+                    .to_vec();
+                let entry = decode_record(&record_bytes)?;
                 if entry.subject() != subject {
                     return Err(integrity("record wrapper substitutes its subject"));
                 }
-                let request_bytes =
-                    get_bound_blob(&blobs, &wrapper.request_blob, REQUEST_BLOB_DOMAIN)?.to_vec();
+                let request_bytes = bound
+                    .get(&wrapper.request_blob, REQUEST_BLOB_DOMAIN, MISSING_BOUND)?
+                    .to_vec();
                 if original_request_comparison_bytes(&entry)? != request_bytes {
                     return Err(integrity("request blob differs from record"));
                 }
-                let batch_bytes =
-                    get_bound_blob(&blobs, &wrapper.batch_blob, BATCH_BLOB_DOMAIN)?.to_vec();
+                // Admitted here so that a batch blob a group shares is hashed once for the group
+                // rather than once for each of its members.
+                bound.get(&wrapper.batch_blob, BATCH_BLOB_DOMAIN, MISSING_BOUND)?;
                 pending.push(PendingRecord {
                     wrapper,
                     entry,
+                    record_bytes,
                     request_bytes,
-                    batch_bytes,
                     event: event.clone(),
                 });
             }
-            "er.import_anchor" => {
-                build_import(authority, event, bytes, digest, &blobs, &mut model)?
-            }
+            "er.import_anchor" => build_import(authority, event, digest, &mut bound, &mut model)?,
             _ => return Err(integrity("unknown event exists in the bound ER tenant")),
         }
     }
     if model.binding.is_none() && !capture.events.is_empty() {
         return Err(integrity("authoritative events exist without a binding"));
     }
-    build_committed(pending, &mut model)?;
-    validate_projection_sets(authority, &capture.projections, &model)?;
+    build_committed(pending, &mut bound, &mut model)?;
     Ok(model)
 }
 
 fn build_import(
     authority: &Authority,
     event: &RecordedEvent,
-    bytes: &[u8],
     digest: &str,
-    blobs: &BTreeMap<String, Vec<u8>>,
+    bound: &mut BoundBlobs<'_>,
     model: &mut CapturedModel,
 ) -> Result<(), AsyncStoreError> {
-    verify_digest(ANCHOR_BLOB_DOMAIN, digest, bytes)?;
+    let bytes = bound.get(
+        digest,
+        ANCHOR_BLOB_DOMAIN,
+        "authority event references a missing blob",
+    )?;
     let wrapper = decode_anchor(bytes)?;
     require_authority(authority, &wrapper.authority)?;
     let subject: Subject = wrapper.subject.clone().into();
@@ -2680,18 +2785,21 @@ fn build_import(
     if model.histories.contains_key(&subject) {
         return Err(corrupt(&subject, "a subject has more than one origin"));
     }
-    let record_bytes = wrapper
-        .evidence
-        .iter()
-        .filter_map(|item| match item {
-            EvidenceWire::Envelope { record_blob, .. } => {
-                Some(get_bound_blob(blobs, record_blob, RECORD_BLOB_DOMAIN).map(Vec::from))
-            }
-            _ => None,
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut record_bytes = Vec::new();
+    let mut evidence_blobs = Vec::new();
+    for item in &wrapper.evidence {
+        if let EvidenceWire::Envelope { record_blob, .. } = item {
+            record_bytes.push(Vec::from(bound.get(
+                record_blob,
+                RECORD_BLOB_DOMAIN,
+                "referenced blob is missing",
+            )?));
+            evidence_blobs.push(record_blob.clone());
+        }
+    }
     let history = history_from_anchor(&wrapper, &record_bytes)?;
     if let HistoryOrigin::Imported(anchor) = &history.origin {
+        let mut envelope = 0usize;
         for evidence in &anchor.evidence {
             if let entity_store::asynchronous::LegacyEvidence::Envelope(saved) = evidence {
                 let record_id = saved.entry.record_id().to_owned();
@@ -2702,6 +2810,20 @@ fn build_import(
                 {
                     return Err(corrupt(&subject, "global imported record identity repeats"));
                 }
+                // `history_from_anchor` has already held each envelope against the record blob at
+                // the same position, so the digest this capture admitted is this record's.
+                let record = evidence_blobs
+                    .get(envelope)
+                    .ok_or_else(|| integrity("imported evidence has no admitted record blob"))?
+                    .clone();
+                model.record_blob_digests.insert(
+                    record_id.clone(),
+                    RecordBlobDigests {
+                        record,
+                        request: None,
+                    },
+                );
+                envelope += 1;
                 model.record_physical.insert(record_id, physical(event));
             }
         }
@@ -2711,6 +2833,9 @@ fn build_import(
     }
     model.anchors.insert(subject.clone(), bytes.to_vec());
     model
+        .anchor_blob_digests
+        .insert(subject.clone(), digest.to_owned());
+    model
         .anchor_physical
         .insert(subject.clone(), physical(event));
     model.histories.insert(subject, history);
@@ -2719,6 +2844,7 @@ fn build_import(
 
 fn build_committed(
     pending: Vec<PendingRecord>,
+    bound: &mut BoundBlobs<'_>,
     model: &mut CapturedModel,
 ) -> Result<(), AsyncStoreError> {
     let mut grouped: BTreeMap<BatchKey, Vec<PendingRecord>> = BTreeMap::new();
@@ -2730,7 +2856,12 @@ fn build_committed(
     }
     for (key, mut group) in grouped {
         group.sort_by_key(|record| record.wrapper.member_index);
-        let (decoded_key, members) = decode_batch(&group[0].batch_bytes)?;
+        let batch_blob = group[0].wrapper.batch_blob.clone();
+        // Already admitted in `build_model_events`, so this is the bytes, not another hash of them.
+        let batch_bytes = bound
+            .get(&batch_blob, BATCH_BLOB_DOMAIN, "referenced blob is missing")?
+            .to_vec();
+        let (decoded_key, members) = decode_batch(&batch_bytes)?;
         if decoded_key != key || group.len() != members.len() {
             return Err(integrity("batch references are incomplete"));
         }
@@ -2764,13 +2895,23 @@ fn build_committed(
                 batch_key: key.clone(),
                 member_index: index_u64,
             };
+            model.record_blob_digests.insert(
+                receipt.record_id.clone(),
+                RecordBlobDigests {
+                    record: record.wrapper.record_blob.clone(),
+                    request: Some(record.wrapper.request_blob.clone()),
+                },
+            );
             let saved = StoredRecord {
                 entry: record.entry,
                 position,
                 receipt: receipt.clone(),
                 expect: member.expect,
                 request_bytes: record.request_bytes,
-                record_bytes: get_record_bytes(&member.entry)?,
+                // The bound record blob. `decode_record` held it against the entry it produced and
+                // that entry was just held against this batch member, so re-encoding the member
+                // here would encode every record in the store a second time to obtain these bytes.
+                record_bytes: record.record_bytes,
             };
             if model
                 .records
@@ -2806,6 +2947,7 @@ fn build_committed(
                 members: stored.iter().map(|r| r.receipt.clone()).collect(),
             }),
         };
+        model.batch_blob_digests.insert(key.clone(), batch_blob);
         if model
             .batches
             .insert(
@@ -2813,7 +2955,9 @@ fn build_committed(
                 StoredBatch {
                     key,
                     records: stored,
-                    comparison_bytes: group_batch_bytes(&members, &decoded_key)?,
+                    // `decode_batch` refuses bytes that are not `batch_comparison_bytes` of what it
+                    // decoded, so the bound blob is the comparison material already.
+                    comparison_bytes: batch_bytes,
                     receipt,
                 },
             )
@@ -2843,15 +2987,6 @@ fn build_committed(
         model.terminals.insert(history.subject.clone(), terminal);
     }
     Ok(())
-}
-
-fn group_batch_bytes(members: &[AppendMember], key: &BatchKey) -> Result<Vec<u8>, AsyncStoreError> {
-    batch_comparison_bytes(key, members)
-}
-fn get_record_bytes(
-    entry: &entity_store::asynchronous::RecordedEntry,
-) -> Result<Vec<u8>, AsyncStoreError> {
-    record_comparison_bytes(entry)
 }
 
 fn validate_projection_sets(
@@ -2888,12 +3023,15 @@ fn expected_projection_rows(
 ) -> Result<[BTreeMap<String, Value>; 4], AsyncStoreError> {
     let mut binding = BTreeMap::new();
     if let Some(physical) = &model.binding {
-        let bytes = encode_binding(authority)?;
+        let digest = model
+            .binding_blob_digest
+            .as_ref()
+            .ok_or_else(|| integrity("binding has no admitted blob digest"))?;
         binding.insert(
             "singleton".to_owned(),
             json!(["er.eventlog.binding-index/1", {
                 "authority":authority,
-                "binding_blob":framed_key(BINDING_BLOB_DOMAIN, &bytes)?,
+                "binding_blob":digest,
                 "physical":physical,
             }]),
         );
@@ -2905,12 +3043,19 @@ fn expected_projection_rows(
             .record_physical
             .get(record_id)
             .ok_or_else(|| integrity("record has no authoritative physical reference"))?;
+        // The digests this capture admitted for this record. A row names the same digest the
+        // capture verified, so hashing the bytes again here would only re-derive it.
+        let digests = model
+            .record_blob_digests
+            .get(record_id)
+            .ok_or_else(|| integrity("record has no admitted blob digests"))?;
         let row = match lookup {
             RecordLookup::Committed(saved) => {
-                let batch = model
-                    .batches
-                    .get(&saved.receipt.batch_key)
-                    .ok_or_else(|| integrity("committed record has no authoritative batch"))?;
+                // The row no longer reads the batch's bytes, but a committed record whose batch
+                // this model does not hold is still the refusal it always was.
+                if !model.batches.contains_key(&saved.receipt.batch_key) {
+                    return Err(integrity("committed record has no authoritative batch"));
+                }
                 json!(["er.eventlog.record-index/1", {"entry": {
                     "kind":"committed", "authority":authority, "record_id":record_id,
                     "subject":SubjectWire::from(&saved.entry.subject()),
@@ -2918,16 +3063,18 @@ fn expected_projection_rows(
                     "revision":saved.entry.revision(),
                     "batch_key":crate::encoding::BatchKeyWire::from(&saved.receipt.batch_key),
                     "member_index":saved.receipt.member_index,
-                    "record_blob":framed_key(RECORD_BLOB_DOMAIN, &saved.record_bytes)?,
-                    "request_blob":framed_key(REQUEST_BLOB_DOMAIN, &saved.request_bytes)?,
-                    "batch_blob":framed_key(BATCH_BLOB_DOMAIN, &batch.comparison_bytes)?,
+                    "record_blob":digests.record,
+                    "request_blob":digests.request.as_ref()
+                        .ok_or_else(|| integrity("committed record has no admitted request blob"))?,
+                    "batch_blob":model.batch_blob_digests.get(&saved.receipt.batch_key)
+                        .ok_or_else(|| integrity("committed record has no admitted batch blob"))?,
                     "physical":physical,
                 }}])
             }
             RecordLookup::Imported(saved) => {
                 let subject = saved.entry.subject();
                 let anchor = model
-                    .anchors
+                    .anchor_blob_digests
                     .get(&subject)
                     .ok_or_else(|| integrity("imported record has no authoritative anchor"))?;
                 json!(["er.eventlog.record-index/1", {"entry": {
@@ -2935,9 +3082,9 @@ fn expected_projection_rows(
                     "subject":SubjectWire::from(&subject),
                     "record_kind":record_kind_name(saved.entry.kind()),
                     "revision":saved.entry.revision(),
-                    "anchor_blob":framed_key(ANCHOR_BLOB_DOMAIN, anchor)?,
+                    "anchor_blob":anchor,
                     "evidence_index":imported_evidence_index(model, &subject, record_id)?,
-                    "record_blob":framed_key(RECORD_BLOB_DOMAIN, &record_comparison_bytes(&saved.entry)?)?,
+                    "record_blob":digests.record,
                     "anchor_physical":physical,
                 }}])
             }
@@ -2953,6 +3100,10 @@ fn expected_projection_rows(
                 .record_physical
                 .get(saved.entry.record_id())
                 .ok_or_else(|| integrity("batch member has no physical reference"))?;
+            let digests = model
+                .record_blob_digests
+                .get(saved.entry.record_id())
+                .ok_or_else(|| integrity("batch member has no admitted blob digests"))?;
             members.push(json!({
                 "member_index":saved.receipt.member_index,
                 "record_id":saved.entry.record_id(),
@@ -2960,8 +3111,9 @@ fn expected_projection_rows(
                 "subject":SubjectWire::from(&saved.entry.subject()),
                 "record_kind":record_kind_name(saved.entry.kind()),
                 "revision":saved.entry.revision(),
-                "record_blob":framed_key(RECORD_BLOB_DOMAIN, &saved.record_bytes)?,
-                "request_blob":framed_key(REQUEST_BLOB_DOMAIN, &saved.request_bytes)?,
+                "record_blob":digests.record,
+                "request_blob":digests.request.as_ref()
+                    .ok_or_else(|| integrity("batch member has no admitted request blob"))?,
                 "physical":physical,
             }));
         }
@@ -2970,7 +3122,8 @@ fn expected_projection_rows(
             json!(["er.eventlog.batch-index/1", {
                 "authority":authority,
                 "batch_key":crate::encoding::BatchKeyWire::from(key),
-                "batch_blob":framed_key(BATCH_BLOB_DOMAIN, &batch.comparison_bytes)?,
+                "batch_blob":model.batch_blob_digests.get(key)
+                    .ok_or_else(|| integrity("batch has no admitted batch blob"))?,
                 "members":members,
             }]),
         );
@@ -2982,12 +3135,12 @@ fn expected_projection_rows(
             .terminals
             .get(subject)
             .ok_or_else(|| integrity("subject has no terminal state"))?;
-        let anchor = model.anchors.get(subject);
+        let anchor = model.anchor_blob_digests.get(subject);
         let anchor_physical = model.anchor_physical.get(subject);
         let origin = match (&history.origin, anchor, anchor_physical) {
             (HistoryOrigin::Genesis, None, None) => json!({"kind":"genesis"}),
-            (HistoryOrigin::Imported(_), Some(bytes), Some(physical)) => json!({
-                "kind":"imported", "anchor_blob":framed_key(ANCHOR_BLOB_DOMAIN, bytes)?,
+            (HistoryOrigin::Imported(_), Some(digest), Some(physical)) => json!({
+                "kind":"imported", "anchor_blob":digest,
                 "anchor_physical":physical,
             }),
             _ => {
@@ -3003,9 +3156,12 @@ fn expected_projection_rows(
             )
         });
         let state_source = if let Some(saved) = last_decision {
-            json!({"kind":"decision", "record_blob":framed_key(RECORD_BLOB_DOMAIN, &saved.record_bytes)?})
-        } else if let Some(bytes) = anchor {
-            json!({"kind":"anchor", "anchor_blob":framed_key(ANCHOR_BLOB_DOMAIN, bytes)?})
+            json!({"kind":"decision", "record_blob":model.record_blob_digests
+                .get(saved.entry.record_id())
+                .ok_or_else(|| integrity("subject head has no admitted record blob"))?
+                .record})
+        } else if let Some(digest) = anchor {
+            json!({"kind":"anchor", "anchor_blob":digest})
         } else {
             return Err(integrity("subject has no authoritative state source"));
         };
@@ -3072,17 +3228,6 @@ fn verify_digest(domain: &str, digest: &str, bytes: &[u8]) -> Result<(), AsyncSt
     } else {
         Err(integrity("blob digest/domain mismatch"))
     }
-}
-fn get_bound_blob<'a>(
-    blobs: &'a BTreeMap<String, Vec<u8>>,
-    digest: &str,
-    domain: &str,
-) -> Result<&'a [u8], AsyncStoreError> {
-    let bytes = blobs
-        .get(digest)
-        .ok_or_else(|| integrity("referenced blob is missing"))?;
-    verify_digest(domain, digest, bytes)?;
-    Ok(bytes)
 }
 fn require_authority(expected: &Authority, found: &Authority) -> Result<(), AsyncStoreError> {
     if expected == found {
@@ -3276,4 +3421,785 @@ mod tests {
             );
         }
     }
+}
+
+/// The cost of one seeded open, and the verifications that cost pays for.
+///
+/// `build_model` is the whole of a capture that is not the provider read, and it is measured here
+/// against a capture this module builds itself rather than against a provider: a hand-built
+/// [`TenantCapture`] is deterministic to the byte — a file store mints `stream_identity` and every
+/// `event_id` from `new_event_id()` — which is what lets the model be pinned by digest at all.
+#[cfg(test)]
+mod seeded_open {
+    use std::{cell::Cell, time::Instant};
+
+    use entity_core::{Registry, Runtime};
+    use entity_store::{
+        Recording,
+        asynchronous::{AppendMember, RecordedEntry},
+    };
+    use eventlog_core::{CapturedBlob, CapturedProjection};
+    use sha2::{Digest, Sha256};
+
+    use super::*;
+
+    const TENANT: &str = "seeded-open-fixture";
+
+    /// Records a gate run builds when nothing asks for the measured shape.
+    ///
+    /// The guards below are about *ratios* and *refusals*, both of which hold at any size, so the
+    /// gate pays for eight records and the measurement asks for the real one by environment.
+    const GATE_RECORDS: usize = 8;
+
+    /// The largest blob a gate run builds. The real store's is 5.9 MB; carrying that into every
+    /// gate would buy one more data point and cost every run thirty seconds.
+    const GATE_MAX_BODY: usize = 64 * 1024;
+
+    fn authority() -> Authority {
+        Authority {
+            logical_scope: "seeded-open-fixture-scope".to_owned(),
+            tenant: TENANT.to_owned(),
+            stream_identity: "seeded-open-fixture-identity".to_owned(),
+        }
+    }
+
+    fn registry() -> Registry {
+        let definition = serde_json::from_value(json!({
+            "entity": "ticket",
+            "version": 1,
+            "schema": { "fields": { "body": { "type": "string", "required": true } } },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "operations": {
+                "touch": {
+                    "transitions": [{ "from": "open", "to": "open" }],
+                    "arguments": { "fields": {} },
+                    "emits": []
+                }
+            }
+        }))
+        .expect("definition parses");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("definition validates");
+        registry
+    }
+
+    /// Deterministic heavy-tailed payload lengths.
+    ///
+    /// A real planning store's blobs are skewed — median 2,268 B, mean 9,526 B, max 5.9 MB — and a
+    /// uniform fixture would hide exactly the per-byte costs this unit is about. One record binds
+    /// four blobs whose sizes are a fixed multiple of its payload, so the payloads are lognormal
+    /// about the median that *produces* that blob median, with the one extreme member placed
+    /// explicitly; at 1,953 records the multiset lands on the store's own three statistics. The
+    /// generator is a fixed-seed xorshift, so the fixture and the pinned model digest below are
+    /// reproducible.
+    fn body_lengths(records: usize, max_body: usize) -> Vec<usize> {
+        let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = || {
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            f64::from(u32::try_from(state >> 32).expect("shifted to 32 bits")) / 4_294_967_296.0
+        };
+        let mut lengths = Vec::with_capacity(records);
+        for _ in 0..records {
+            let normal: f64 = (0..12).map(|_| next()).sum::<f64>() - 6.0;
+            let length = (1127.0 * (1.412 * normal).exp()) as usize;
+            lengths.push(length.max(16));
+        }
+        if let Some(first) = lengths.first_mut() {
+            *first = max_body;
+        }
+        lengths
+    }
+
+    fn recording(record_id: &str) -> Recording {
+        Recording {
+            record_id: record_id.to_owned(),
+            recorded_at: "2026-09-22T00:00:00Z".to_owned(),
+            correlation: Some("seeded-open-fixture".to_owned()),
+            causation: None,
+            actor: None,
+        }
+    }
+
+    fn recorded(index: usize, body_len: usize) -> RecordedEntry {
+        let registry = registry();
+        let decision = Runtime::new(&registry)
+            .create(
+                "ticket",
+                1,
+                format!("subject-{index:06}"),
+                json!({ "body": "x".repeat(body_len) }),
+            )
+            .expect("creation decision");
+        RecordedEntry::Decision(
+            entity_store::RecordedCommit::new(decision, &recording(&format!("record-{index:06}")))
+                .expect("recorded commit"),
+        )
+    }
+
+    fn event(
+        tenant: &TenantId,
+        global_seq: u64,
+        stream_type: &str,
+        stream_id: &str,
+        name: &str,
+        digest: &str,
+    ) -> RecordedEvent {
+        RecordedEvent {
+            global_seq,
+            tenant: tenant.clone(),
+            stream_type: stream_type.to_owned(),
+            stream_id: stream_id.to_owned(),
+            version: 1,
+            event_id: format!("event-{global_seq:08}"),
+            name: name.to_owned(),
+            schema_version: 1,
+            occurred_at: OffsetDateTime::UNIX_EPOCH,
+            recorded_at: OffsetDateTime::UNIX_EPOCH,
+            subject: "seeded-open".to_owned(),
+            actor: "seeded-open".to_owned(),
+            request_id: format!("request-{global_seq:08}"),
+            trace_id: format!("trace-{global_seq:08}"),
+            causation_id: None,
+            causation_depth: 0,
+            redacted_at: None,
+            data: json!({ "blob": digest }),
+        }
+    }
+
+    /// One binding and `records` committed single-record entries, exactly as `append_inner` binds
+    /// them: a batch blob, a record blob, a request blob and an entry wrapper blob per record.
+    fn fixture(records: usize, max_body: usize) -> (Authority, TenantCapture) {
+        let authority = authority();
+        let tenant = TenantId::new(TENANT.to_owned()).expect("fixture tenant");
+        let mut blobs: Vec<CapturedBlob> = Vec::new();
+        let mut events: Vec<RecordedEvent> = Vec::new();
+
+        let binding_bytes = encode_binding(&authority).expect("binding encodes");
+        let binding_digest =
+            framed_key(BINDING_BLOB_DOMAIN, &binding_bytes).expect("binding digest");
+        events.push(event(
+            &tenant,
+            1,
+            "er.binding",
+            "singleton",
+            "er.binding",
+            &binding_digest,
+        ));
+        blobs.push(CapturedBlob {
+            digest: binding_digest,
+            bytes: binding_bytes,
+        });
+
+        for (index, body_len) in body_lengths(records, max_body).into_iter().enumerate() {
+            let entry = recorded(index, body_len);
+            let subject = entry.subject();
+            let key = BatchKey::SingleRecord(format!("record-{index:06}"));
+            let request_bytes =
+                original_request_comparison_bytes(&entry).expect("request comparison bytes");
+            let member = AppendMember::new(Expect::Absent, entry.clone(), request_bytes.clone());
+            let batch_bytes = batch_comparison_bytes(&key, std::slice::from_ref(&member))
+                .expect("batch comparison bytes");
+            let record_bytes = record_comparison_bytes(&entry).expect("record comparison bytes");
+            let batch_blob = framed_key(BATCH_BLOB_DOMAIN, &batch_bytes).expect("batch digest");
+            let record_blob = framed_key(RECORD_BLOB_DOMAIN, &record_bytes).expect("record digest");
+            let request_blob =
+                framed_key(REQUEST_BLOB_DOMAIN, &request_bytes).expect("request digest");
+            let wrapper = RecordedEntryWrapper {
+                authority: authority.clone(),
+                batch_blob: batch_blob.clone(),
+                batch_key: crate::encoding::BatchKeyWire::from(&key),
+                member_index: 0,
+                record_blob: record_blob.clone(),
+                request_blob: request_blob.clone(),
+                subject: SubjectWire::from(&subject),
+            };
+            let wrapper_bytes = encode_entry(&wrapper).expect("wrapper encodes");
+            let wrapper_digest =
+                framed_key(ENTRY_BLOB_DOMAIN, &wrapper_bytes).expect("wrapper digest");
+            let stream_id = subject_stream_id(&authority, &subject).expect("subject stream");
+            events.push(event(
+                &tenant,
+                u64::try_from(index).expect("fixture index") + 2,
+                "er.subject",
+                &stream_id,
+                "er.recorded_entry",
+                &wrapper_digest,
+            ));
+            for (digest, bytes) in [
+                (batch_blob, batch_bytes),
+                (record_blob, record_bytes),
+                (request_blob, request_bytes),
+                (wrapper_digest, wrapper_bytes),
+            ] {
+                blobs.push(CapturedBlob { digest, bytes });
+            }
+        }
+        blobs.sort_by(|left, right| left.digest.as_bytes().cmp(right.digest.as_bytes()));
+
+        let unvalidated = TenantCapture {
+            tenant: tenant.clone(),
+            stream_identity: authority.stream_identity.clone(),
+            events: events.clone(),
+            blobs: blobs.clone(),
+            projections: Vec::new(),
+        };
+        // The rows are derived from the model, which makes `validate_projection_sets` cost what it
+        // costs on a real capture but proves nothing about the rows: a row naming the wrong digest
+        // would agree with itself here. Row correctness is pinned by the provider-backed cases in
+        // `tests/providers.rs`, which read what the inline projector actually wrote, and that was
+        // measured — swapping `record_blob` for `request_blob` in the record row leaves this module
+        // green and turns three of those red.
+        let model = build_model_events(&authority, unvalidated, 0).expect("fixture model");
+        let rows = expected_projection_rows(&authority, &model).expect("fixture projection rows");
+        let projections: Vec<CapturedProjection> = projection_specs()
+            .iter()
+            .copied()
+            .zip(rows)
+            .map(|(specification, rows)| CapturedProjection {
+                specification,
+                rows: rows.into_iter().collect(),
+            })
+            .collect();
+        let capture = TenantCapture {
+            tenant,
+            stream_identity: authority.stream_identity.clone(),
+            events,
+            blobs,
+            projections,
+        };
+        (authority, capture)
+    }
+
+    /// One binding and `subjects` import anchors, each carrying **two** evidence envelopes.
+    ///
+    /// Two, not one, because the digest an imported record's row names is now taken from the
+    /// envelope at that record's own position instead of from a fresh hash. Every imported case in
+    /// this crate's suite anchors exactly one envelope, so taking the first envelope for every
+    /// record passes all of them — measured, not assumed.
+    fn imported_fixture(subjects: usize) -> (Authority, TenantCapture) {
+        let authority = authority();
+        let tenant = TenantId::new(TENANT.to_owned()).expect("fixture tenant");
+        let registry = registry();
+        let mut blobs: Vec<CapturedBlob> = Vec::new();
+        let mut events: Vec<RecordedEvent> = Vec::new();
+
+        let binding_bytes = encode_binding(&authority).expect("binding encodes");
+        let binding_digest =
+            framed_key(BINDING_BLOB_DOMAIN, &binding_bytes).expect("binding digest");
+        events.push(event(
+            &tenant,
+            1,
+            "er.binding",
+            "singleton",
+            "er.binding",
+            &binding_digest,
+        ));
+        blobs.push(CapturedBlob {
+            digest: binding_digest,
+            bytes: binding_bytes,
+        });
+
+        for index in 0..subjects {
+            let runtime = Runtime::new(&registry);
+            let created = runtime
+                .create(
+                    "ticket",
+                    1,
+                    format!("imported-{index:06}"),
+                    json!({"body":"first"}),
+                )
+                .expect("creation decision");
+            let first = entity_store::RecordedCommit::new(
+                created,
+                &recording(&format!("imported-{index:06}-create")),
+            )
+            .expect("first record");
+            let touched = runtime
+                .execute(&first.instance, "touch", json!({}))
+                .expect("execution decision");
+            let second = entity_store::RecordedCommit::new(
+                touched,
+                &recording(&format!("imported-{index:06}-touch")),
+            )
+            .expect("second record");
+            let terminal = second.instance.clone();
+            let history = SubjectHistory {
+                subject: Subject::new("ticket", format!("imported-{index:06}"))
+                    .expect("imported subject"),
+                origin: HistoryOrigin::Imported(entity_store::asynchronous::LegacyAnchor {
+                    instance: terminal,
+                    completeness:
+                        entity_store::asynchronous::LegacyCompleteness::AvailableEvidenceOnly,
+                    order: entity_store::asynchronous::LegacyOrderDeclaration::PerKindOnly,
+                    evidence: vec![
+                        envelope(RecordedEntry::Decision(first), 0),
+                        envelope(RecordedEntry::Decision(second), 1),
+                    ],
+                }),
+                records: Vec::new(),
+            };
+            let mut record_blobs = Vec::new();
+            let HistoryOrigin::Imported(anchor) = &history.origin else {
+                unreachable!("the fixture just built an imported origin")
+            };
+            for evidence in &anchor.evidence {
+                if let entity_store::asynchronous::LegacyEvidence::Envelope(saved) = evidence {
+                    let bytes = record_comparison_bytes(&saved.entry).expect("record bytes");
+                    let digest = framed_key(RECORD_BLOB_DOMAIN, &bytes).expect("record digest");
+                    record_blobs.push(digest.clone());
+                    blobs.push(CapturedBlob { digest, bytes });
+                }
+            }
+            let wrapper = anchor_from_history(authority.clone(), &history, &record_blobs)
+                .expect("anchor wrapper");
+            let anchor_bytes = encode_anchor(&wrapper).expect("anchor encodes");
+            let anchor_digest =
+                framed_key(ANCHOR_BLOB_DOMAIN, &anchor_bytes).expect("anchor digest");
+            let stream_id =
+                subject_stream_id(&authority, &history.subject).expect("subject stream");
+            events.push(event(
+                &tenant,
+                u64::try_from(index).expect("fixture index") + 2,
+                "er.subject",
+                &stream_id,
+                "er.import_anchor",
+                &anchor_digest,
+            ));
+            blobs.push(CapturedBlob {
+                digest: anchor_digest,
+                bytes: anchor_bytes,
+            });
+        }
+        blobs.sort_by(|left, right| left.digest.as_bytes().cmp(right.digest.as_bytes()));
+
+        let model = build_model_events(
+            &authority,
+            TenantCapture {
+                tenant: tenant.clone(),
+                stream_identity: authority.stream_identity.clone(),
+                events: events.clone(),
+                blobs: blobs.clone(),
+                projections: Vec::new(),
+            },
+            0,
+        )
+        .expect("imported fixture model");
+        let rows = expected_projection_rows(&authority, &model).expect("fixture projection rows");
+        let projections: Vec<CapturedProjection> = projection_specs()
+            .iter()
+            .copied()
+            .zip(rows)
+            .map(|(specification, rows)| CapturedProjection {
+                specification,
+                rows: rows.into_iter().collect(),
+            })
+            .collect();
+        let capture = TenantCapture {
+            tenant,
+            stream_identity: authority.stream_identity.clone(),
+            events,
+            blobs,
+            projections,
+        };
+        (authority, capture)
+    }
+
+    fn envelope(entry: RecordedEntry, order: u64) -> entity_store::asynchronous::LegacyEvidence {
+        entity_store::asynchronous::LegacyEvidence::Envelope(
+            entity_store::asynchronous::ImportedRecordEvidence::new(
+                entry,
+                "seeded-open-fixture".to_owned(),
+                format!("records/{order}"),
+                entity_store::asynchronous::KnownLegacyOrder::PerKind(order),
+            )
+            .expect("imported evidence"),
+        )
+    }
+
+    /// Every field of the model, rendered and hashed.
+    ///
+    /// `Debug` rather than `Serialize` because these types do not all serialize, and because a
+    /// derived `Debug` prints every field of every member: a model that differs anywhere differs
+    /// here.
+    fn model_digest(model: &CapturedModel) -> String {
+        let mut hasher = Sha256::new();
+        for part in [
+            format!("{:?}", model.binding),
+            format!(
+                "{:?}",
+                (
+                    model.held.events,
+                    model.held.blobs,
+                    model.held.rows,
+                    &model.held.digests
+                )
+            ),
+            format!("{:?}", model.histories),
+            format!("{:?}", model.terminals),
+            format!("{:?}", model.records),
+            format!("{:?}", model.record_physical),
+            format!("{:?}", model.batches),
+            format!("{:?}", model.anchors),
+            format!("{:?}", model.anchor_physical),
+        ] {
+            hasher.update(part.as_bytes());
+            hasher.update([0u8]);
+        }
+        format!("{:x}", hasher.finalize())
+    }
+
+    fn charged<T>(work: impl FnOnce() -> T) -> (T, u64) {
+        HASHED_BYTES.with(|charged| charged.set(0));
+        let value = work();
+        (value, HASHED_BYTES.with(Cell::get))
+    }
+
+    fn captured_bytes(capture: &TenantCapture) -> u64 {
+        capture
+            .blobs
+            .iter()
+            .map(|blob| blob.bytes.len() as u64)
+            .sum()
+    }
+
+    /// The defect this unit exists for, stated as a ratio rather than as a duration.
+    ///
+    /// A seeded open reads every bound blob once. `build_model` hashed each of them between three
+    /// and five times — once where the reference names it, once more for every projection row that
+    /// repeats the digest, and once per batch member for the batch blob they share — and a capture
+    /// cannot need more SHA-256 than it has bytes.
+    #[test]
+    fn a_capture_is_hashed_once_over_rather_than_several_times_over() {
+        let (authority, capture) = fixture(GATE_RECORDS, GATE_MAX_BODY);
+        let bytes = captured_bytes(&capture);
+        let (model, hashed) = charged(|| build_model(&authority, capture).expect("model builds"));
+        assert!(model.binding.is_some(), "the fixture binds its authority");
+        assert!(
+            hashed <= bytes,
+            "build_model hashed {hashed} bytes of a {bytes}-byte capture"
+        );
+    }
+
+    /// The invariant the unit is worth nothing without.
+    ///
+    /// Pinned from the verifying path at base `b652c6ca`, on a fixture that is deterministic to the
+    /// byte. Any change to what the model holds — a field dropped, a digest carried instead of
+    /// recomputed but not the same digest, a record decoded differently — moves this.
+    #[test]
+    fn the_model_is_byte_identical_to_the_verifying_path() {
+        let (authority, capture) = fixture(GATE_RECORDS, GATE_MAX_BODY);
+        let model = build_model(&authority, capture).expect("model builds");
+        assert_eq!(
+            model_digest(&model),
+            "ce4e957f73231f0beb65058ae11742893aaa0c3688781b528d87ef93f7d2539e",
+            "the model this open produces is not the model the verifying path produced"
+        );
+    }
+
+    /// Where each verification happens now, named blob by blob.
+    ///
+    /// Acceptance item 3. Nothing was moved out of the open path: every one of the six domains is
+    /// still checked inside `build_model`, and the enumeration is the point — a fix that
+    /// de-duplicated hashing by dropping one domain's check would leave that domain's blob reaching
+    /// a caller unverified, and would pass a test that only corrupted a record blob.
+    #[test]
+    fn every_bound_domain_is_still_refused_when_its_blob_is_not_its_digest() {
+        let (authority, capture) = fixture(GATE_RECORDS, GATE_MAX_BODY);
+        let domains: Vec<String> = capture
+            .blobs
+            .iter()
+            .map(|blob| {
+                for domain in [
+                    BINDING_BLOB_DOMAIN,
+                    ENTRY_BLOB_DOMAIN,
+                    RECORD_BLOB_DOMAIN,
+                    REQUEST_BLOB_DOMAIN,
+                    BATCH_BLOB_DOMAIN,
+                ] {
+                    if crate::encoding::framed_key(domain, &blob.bytes).expect("digest")
+                        == blob.digest
+                    {
+                        return domain.to_owned();
+                    }
+                }
+                panic!("fixture blob {} belongs to no domain", blob.digest);
+            })
+            .collect();
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        for (index, domain) in domains.iter().enumerate() {
+            if !seen.insert(domain.as_str()) {
+                continue;
+            }
+            let mut corrupted = capture.clone();
+            corrupted.blobs[index].bytes.push(b' ');
+            // The *refusal* is asserted, not merely that something refused. Every encoding here is
+            // canonical, so a changed byte also fails to decode: a test that accepts any error
+            // passes with the digest check deleted, which is how this one was first written and
+            // how deleting `verify_digest` survived its own mutation.
+            assert!(
+                matches!(
+                    build_model(&authority, corrupted),
+                    Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
+                        if detail == "blob digest/domain mismatch"
+                ),
+                "a {domain} blob whose bytes are not its digest was not refused as one"
+            );
+        }
+        assert_eq!(
+            seen.len(),
+            5,
+            "the fixture must exercise every domain a committed authority binds: {seen:?}"
+        );
+    }
+
+    /// The one arm of the single-hash admission that no other case reaches.
+    ///
+    /// A digest is now hashed once and remembered under the domain it was admitted for. A later
+    /// reference naming a different domain is refused from that memory rather than from a second
+    /// hash — the domain is framed into the hash, so only one domain can ever match a digest — and
+    /// this pins that the refusal is still made.
+    #[test]
+    fn a_blob_named_under_two_domains_is_refused_without_being_hashed_twice() {
+        let (authority, mut capture) = fixture(GATE_RECORDS, GATE_MAX_BODY);
+        let reference = capture
+            .events
+            .iter()
+            .find(|event| event.name == "er.recorded_entry")
+            .map(|event| reference_digest(event).expect("entry reference").to_owned())
+            .expect("the fixture commits records");
+        let index = capture
+            .blobs
+            .iter()
+            .position(|blob| blob.digest == reference)
+            .expect("the entry wrapper is bound");
+        let mut wrapper = decode_entry(&capture.blobs[index].bytes).expect("wrapper decodes");
+        // One wrapper claims its record blob is also its request blob.
+        wrapper.request_blob = wrapper.record_blob.clone();
+        let bytes = encode_entry(&wrapper).expect("wrapper re-encodes");
+        let digest = crate::encoding::framed_key(ENTRY_BLOB_DOMAIN, &bytes).expect("digest");
+        capture.blobs[index] = CapturedBlob {
+            digest: digest.clone(),
+            bytes,
+        };
+        for event in &mut capture.events {
+            if reference_digest(event).is_ok_and(|found| found == reference) {
+                event.data = json!({ "blob": digest });
+            }
+        }
+        assert!(
+            matches!(
+                build_model(&authority, capture),
+                Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
+                    if detail == "blob digest/domain mismatch"
+            ),
+            "a blob bound under one domain was admitted under another"
+        );
+    }
+
+    /// Every digest this model carries instead of recomputing is the digest of what it carries.
+    ///
+    /// The class, checked rather than listed. `build_model` stopped hashing the same bytes three
+    /// and four times over by carrying forward the digest the capture admitted, and each place that
+    /// stopped hashing is now a place that trusts a carried string. This walks the model and hashes
+    /// every one of them exactly as the verifying path did, on both fixtures — committed records
+    /// and imported anchors with two envelopes each — so a digest carried from the wrong place
+    /// fails here without anyone having to think of the row it would have corrupted.
+    #[test]
+    fn every_carried_digest_is_the_digest_of_the_bytes_the_model_holds() {
+        for (label, (authority, capture)) in [
+            ("committed", fixture(GATE_RECORDS, GATE_MAX_BODY)),
+            ("imported", imported_fixture(GATE_RECORDS)),
+        ] {
+            let model = build_model(&authority, capture).expect("model builds");
+            let binding = crate::encoding::framed_key(
+                BINDING_BLOB_DOMAIN,
+                &encode_binding(&authority).expect("binding encodes"),
+            )
+            .expect("binding digest");
+            assert_eq!(
+                model.binding_blob_digest.as_deref(),
+                Some(binding.as_str()),
+                "{label}: the binding digest is not the binding's"
+            );
+            let mut committed = 0usize;
+            let mut imported = 0usize;
+            for (record_id, lookup) in &model.records {
+                let carried = model
+                    .record_blob_digests
+                    .get(record_id)
+                    .unwrap_or_else(|| panic!("{label}: {record_id} carries no digests"));
+                let (record_bytes, request) = match lookup {
+                    RecordLookup::Committed(saved) => {
+                        committed += 1;
+                        (
+                            saved.record_bytes.clone(),
+                            Some(saved.request_bytes.clone()),
+                        )
+                    }
+                    RecordLookup::Imported(saved) => {
+                        imported += 1;
+                        (
+                            record_comparison_bytes(&saved.entry).expect("record bytes"),
+                            None,
+                        )
+                    }
+                };
+                assert_eq!(
+                    carried.record,
+                    crate::encoding::framed_key(RECORD_BLOB_DOMAIN, &record_bytes)
+                        .expect("record digest"),
+                    "{label}: {record_id} carries another record's blob digest"
+                );
+                assert_eq!(
+                    carried.request,
+                    request.map(
+                        |bytes| crate::encoding::framed_key(REQUEST_BLOB_DOMAIN, &bytes)
+                            .expect("request digest")
+                    ),
+                    "{label}: {record_id} carries another request's blob digest"
+                );
+            }
+            for (key, batch) in &model.batches {
+                assert_eq!(
+                    model.batch_blob_digests.get(key),
+                    Some(
+                        &crate::encoding::framed_key(BATCH_BLOB_DOMAIN, &batch.comparison_bytes)
+                            .expect("batch digest")
+                    ),
+                    "{label}: a batch carries another batch's blob digest"
+                );
+            }
+            for (subject, bytes) in &model.anchors {
+                assert_eq!(
+                    model.anchor_blob_digests.get(subject),
+                    Some(
+                        &crate::encoding::framed_key(ANCHOR_BLOB_DOMAIN, bytes)
+                            .expect("anchor digest")
+                    ),
+                    "{label}: a subject carries another anchor's blob digest"
+                );
+            }
+            match label {
+                "committed" => assert!(
+                    committed == GATE_RECORDS && imported == 0 && !model.batches.is_empty(),
+                    "the committed fixture must reach the committed arms: {committed}/{imported}"
+                ),
+                _ => assert!(
+                    imported == GATE_RECORDS * 2 && committed == 0 && !model.anchors.is_empty(),
+                    "the imported fixture must anchor two envelopes each: {committed}/{imported}"
+                ),
+            }
+        }
+    }
+
+    /// The measurement. Asks for nothing unless `ENTITY_EVENTLOG_SEEDED_OPEN_RECORDS` is set.
+    #[test]
+    fn seeded_open_measurement() {
+        let Ok(records) = std::env::var("ENTITY_EVENTLOG_SEEDED_OPEN_RECORDS") else {
+            return;
+        };
+        let records: usize = records.parse().expect("record count");
+        let built = Instant::now();
+        let (authority, capture) = fixture(records, 1_475_000);
+        let mut sizes: Vec<usize> = capture.blobs.iter().map(|blob| blob.bytes.len()).collect();
+        sizes.sort_unstable();
+        let total: usize = sizes.iter().sum();
+        println!(
+            "fixture: {} events, {} blobs, {total} bytes, median {}, mean {}, max {}, built in {:?}",
+            capture.events.len(),
+            sizes.len(),
+            sizes[sizes.len() / 2],
+            total / sizes.len(),
+            sizes[sizes.len() - 1],
+            built.elapsed()
+        );
+        let bytes = captured_bytes(&capture);
+        let mut digests = Vec::new();
+        for run in 1..=3 {
+            let capture = capture.clone();
+            let start = Instant::now();
+            let (model, hashed) =
+                charged(|| build_model(&authority, capture).expect("model builds"));
+            let elapsed = start.elapsed();
+            // Digested outside the timed region, and only when asked: rendering the whole model
+            // through `Debug` costs more than building it, so a profile of a run that digests is a
+            // profile of the harness. One run establishes the digest, another the symbols.
+            if std::env::var_os("ENTITY_EVENTLOG_SEEDED_OPEN_DIGEST").is_some() {
+                digests.push(model_digest(&model));
+            } else {
+                drop(model);
+            }
+            println!(
+                "run {run}: build_model {elapsed:?}, hashed {hashed} of {bytes} captured bytes \
+                 ({:.2}x)",
+                hashed as f64 / bytes as f64,
+            );
+        }
+        println!("model digests: {digests:?}");
+        provider_capture(&capture);
+    }
+
+    /// The other half of a seeded open, measured here rather than divided out of something else.
+    ///
+    /// The provider reads and SHA-256s every bound blob inside `capture_tenant`
+    /// (`eventlog-file/src/capture.rs`, `read_blob`), which is what a seeded open pays before
+    /// `build_model` is entered at all. The tenant's identity and its blobs are written; its 1,954
+    /// events and four projections are not, so this is the blob half of the capture and is named
+    /// as such rather than as the whole of it.
+    #[cfg(feature = "file")]
+    fn provider_capture(capture: &TenantCapture) {
+        if std::env::var_os("ENTITY_EVENTLOG_SEEDED_OPEN_PROVIDER").is_none() {
+            return;
+        }
+        let directory = tempfile::tempdir().expect("capture fixture directory");
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("measurement runtime")
+            .block_on(async {
+                let store = eventlog_file::FileEventStore::open(directory.path())
+                    .await
+                    .expect("file store");
+                let tenant = capture.tenant.clone();
+                store
+                    .stream_identity(&tenant)
+                    .await
+                    .expect("tenant identity");
+                let written = Instant::now();
+                for blob in &capture.blobs {
+                    store
+                        .put_blob(&tenant, &blob.digest, &blob.bytes)
+                        .await
+                        .expect("blob bound");
+                }
+                println!(
+                    "provider: {} blobs bound in {:?}",
+                    capture.blobs.len(),
+                    written.elapsed()
+                );
+                let limits = CaptureLimits {
+                    max_events: 1_000_000,
+                    max_blobs: 1_000_000,
+                    max_projection_rows: 1_000_000,
+                    max_payload_bytes: 1 << 34,
+                };
+                for run in 1..=3 {
+                    let start = Instant::now();
+                    let observed = store
+                        .capture_tenant(&tenant, &[], limits)
+                        .await
+                        .expect("tenant captured");
+                    println!(
+                        "provider run {run}: capture_tenant {:?} for {} blobs",
+                        start.elapsed(),
+                        observed.blobs.len()
+                    );
+                }
+            });
+    }
+
+    #[cfg(not(feature = "file"))]
+    fn provider_capture(_: &TenantCapture) {}
 }
