@@ -598,7 +598,7 @@ dependencies = [
 [[package]]
 name = "eventlog-core"
 version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=7fbd37cf8c6d914670554fde358207b1d612a982#7fbd37cf8c6d914670554fde358207b1d612a982"
+source = "git+https://github.com/beyond10x/eventlog?rev=ed6960d01f70cf4d49b143bb9c8e7d9f56a19650#ed6960d01f70cf4d49b143bb9c8e7d9f56a19650"
 dependencies = [
  "serde",
  "serde_json",
@@ -611,7 +611,7 @@ dependencies = [
 [[package]]
 name = "eventlog-file"
 version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=7fbd37cf8c6d914670554fde358207b1d612a982#7fbd37cf8c6d914670554fde358207b1d612a982"
+source = "git+https://github.com/beyond10x/eventlog?rev=ed6960d01f70cf4d49b143bb9c8e7d9f56a19650#ed6960d01f70cf4d49b143bb9c8e7d9f56a19650"
 dependencies = [
  "eventlog-core",
  "serde",
@@ -624,7 +624,7 @@ dependencies = [
 [[package]]
 name = "eventlog-postgres"
 version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=7fbd37cf8c6d914670554fde358207b1d612a982#7fbd37cf8c6d914670554fde358207b1d612a982"
+source = "git+https://github.com/beyond10x/eventlog?rev=ed6960d01f70cf4d49b143bb9c8e7d9f56a19650#ed6960d01f70cf4d49b143bb9c8e7d9f56a19650"
 dependencies = [
  "eventlog-core",
  "rustls",
@@ -641,7 +641,7 @@ dependencies = [
 [[package]]
 name = "eventlog-sqlite"
 version = "0.2.1"
-source = "git+https://github.com/beyond10x/eventlog?rev=7fbd37cf8c6d914670554fde358207b1d612a982#7fbd37cf8c6d914670554fde358207b1d612a982"
+source = "git+https://github.com/beyond10x/eventlog?rev=ed6960d01f70cf4d49b143bb9c8e7d9f56a19650#ed6960d01f70cf4d49b143bb9c8e7d9f56a19650"
 dependencies = [
  "eventlog-core",
  "rusqlite",
