@@ -8,5 +8,4 @@ __pycache__/
 *.swp
 .~lock.*#
 .engineering/.aep-planning-writer*.lock
-.engineering/migrations/*/recovery/
-.engineering/migrations/*/stage/
+.engineering/migrations/
