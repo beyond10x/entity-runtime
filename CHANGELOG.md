@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-09-23
+
 ### Fixed
 
 - An Eventlog store handle builds its verified model once per head instead of once per call.
