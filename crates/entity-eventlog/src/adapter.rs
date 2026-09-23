@@ -19,7 +19,7 @@ use entity_store::{
         HistoryOrigin, RecordLookup, RecordPosition, RecordReceipt, StoreCoverage, StoredBatch,
         StoredRecord, Subject, SubjectAssurance, SubjectHistory, SubjectSnapshot, WriteFailure,
         batch_comparison_bytes, original_request_comparison_bytes, record_comparison_bytes,
-        validate_entry_against_state, verify_subject_history,
+        validate_entry_against_state, verify_subject_history, verify_subject_history_extension,
     },
 };
 use eventlog_core::{
@@ -207,8 +207,9 @@ mod batch_read_tests {
             .expect("four authored decisions commit");
         assert_eq!(
             captures(&store) - before,
-            4,
-            "one preflight, append recovery, heads, postcommit verification"
+            3,
+            "one preflight, one append recovery whose capture also supplies the heads, one \
+             postcommit verification"
         );
         let before = captures(&store);
         let replay = store
@@ -235,7 +236,7 @@ mod batch_read_tests {
             .expect("second batch commits");
         assert_eq!(
             captures(&store) - before,
-            4,
+            3,
             "second call takes its own preflight"
         );
 
@@ -273,7 +274,7 @@ mod batch_read_tests {
             )
             .await
             .expect("fresh call sees created subject");
-        assert_eq!(captures(&store) - before, 4);
+        assert_eq!(captures(&store) - before, 3);
     }
 
     #[tokio::test]
@@ -352,7 +353,7 @@ mod batch_read_tests {
         assert!(recovered.replayed());
         assert_eq!(
             captures(&store) - before,
-            5,
+            4,
             "preflight, guarded write path, postcommit check and fresh recovery"
         );
         let committed = store
@@ -361,6 +362,357 @@ mod batch_read_tests {
             .expect("fresh authoritative lookup")
             .expect("committed batch");
         assert_eq!(recovered.receipt(), Some(&committed.receipt));
+    }
+
+    fn spent(before: StoreCalls, after: StoreCalls) -> StoreCalls {
+        StoreCalls {
+            captures: after.captures - before.captures,
+            model_builds: after.model_builds - before.model_builds,
+            model_advances: after.model_advances - before.model_advances,
+            records_decoded: after.records_decoded - before.records_decoded,
+        }
+    }
+
+    async fn seed(store: &EventlogRecordedStore, registry: &Registry, count: usize) {
+        let actions: Vec<_> = (0..count)
+            .map(|i| create(&format!("seed-{i}"), &format!("seed-record-{i}")))
+            .collect();
+        store
+            .operation(context("seed"))
+            .execute_batch(registry, BatchKey::Named("seed".into()), actions)
+            .await
+            .expect("seed batch commits");
+    }
+
+    /// A read of an authority whose head has not moved is answered from the model this handle
+    /// already verified. Each read still takes its own capture — that is what proves the head has
+    /// not moved, and what a tampered capture is refused from — but a capture that is exactly the
+    /// verified one is not decoded, hashed and replayed a second time.
+    #[tokio::test]
+    async fn reads_of_an_unmoved_head_reuse_the_model_the_handle_already_verified() {
+        let store = store().await;
+        let registry = registry();
+        seed(&store, &registry, 3).await;
+        let subject = Subject::new("ticket", "seed-0").expect("subject");
+        let before = store.calls();
+        assert!(store.load(&subject).await.expect("load").is_some());
+        assert!(
+            store
+                .lookup_record("seed-record-1")
+                .await
+                .expect("lookup")
+                .is_some()
+        );
+        assert!(
+            store
+                .lookup_batch(&BatchKey::Named("seed".into()))
+                .await
+                .expect("batch")
+                .is_some()
+        );
+        assert_eq!(
+            store
+                .history(&subject)
+                .await
+                .expect("history")
+                .records
+                .len(),
+            1
+        );
+        assert_eq!(
+            store
+                .complete_snapshot("batch-read-scope")
+                .await
+                .expect("snapshot")
+                .histories
+                .len(),
+            3
+        );
+        assert_eq!(
+            spent(before, store.calls()),
+            StoreCalls {
+                captures: 5,
+                model_builds: 0,
+                model_advances: 0,
+                records_decoded: 0,
+            },
+            "five reads of one unmoved head: five captures, and not one model rebuilt"
+        );
+    }
+
+    /// A decision this handle commits advances the verified model by the records it appended,
+    /// and nothing else is decoded again — the bound is one record per decision, not the store.
+    #[tokio::test]
+    async fn a_decision_this_handle_commits_advances_its_model_by_its_own_records_only() {
+        let store = store().await;
+        let registry = registry();
+        seed(&store, &registry, 4).await;
+        for index in 0..3 {
+            let before = store.calls();
+            store
+                .operation(context(&format!("touch-{index}")))
+                .execute_batch(
+                    &registry,
+                    BatchKey::SingleRecord(format!("touch-{index}")),
+                    vec![touch(&format!("seed-{index}"), &format!("touch-{index}"))],
+                )
+                .await
+                .expect("the decision commits");
+            assert_eq!(
+                spent(before, store.calls()),
+                StoreCalls {
+                    captures: 3,
+                    model_builds: 0,
+                    model_advances: 1,
+                    records_decoded: 1,
+                },
+                "decision {index}: preflight, append recovery and post-commit captures, one \
+                 advance by the one record it appended"
+            );
+        }
+        // What the advanced handle answers is what a handle that built everything answers.
+        let fresh = EventlogRecordedStore::open(
+            Arc::clone(&store.backend),
+            store.authority.clone(),
+            LIMITS,
+        )
+        .await
+        .expect("a second handle opens");
+        assert_eq!(fresh.calls().model_builds, 1, "open builds the whole model");
+        assert_eq!(
+            store
+                .complete_snapshot("batch-read-scope")
+                .await
+                .expect("advanced snapshot"),
+            fresh
+                .complete_snapshot("batch-read-scope")
+                .await
+                .expect("whole-build snapshot")
+        );
+        for index in 0..3 {
+            let key = BatchKey::SingleRecord(format!("touch-{index}"));
+            assert_eq!(
+                store.lookup_batch(&key).await.expect("advanced batch"),
+                fresh.lookup_batch(&key).await.expect("whole-build batch")
+            );
+        }
+    }
+
+    /// A head this handle did not produce is never answered from this handle's model: the next
+    /// call builds the whole model again and sees what the other writer committed.
+    #[tokio::test]
+    async fn a_head_another_writer_moved_forces_a_whole_build_that_sees_it() {
+        let ours = store().await;
+        let theirs =
+            EventlogRecordedStore::open(Arc::clone(&ours.backend), ours.authority.clone(), LIMITS)
+                .await
+                .expect("the other writer's handle opens");
+        let registry = registry();
+        let foreign = Subject::new("ticket", "foreign").expect("subject");
+        assert!(ours.load(&foreign).await.expect("load").is_none());
+        let before = ours.calls();
+        assert!(ours.load(&foreign).await.expect("load").is_none());
+        assert_eq!(
+            spent(before, ours.calls()).model_builds,
+            0,
+            "an unmoved head is not rebuilt"
+        );
+
+        theirs
+            .operation(context("foreign-create"))
+            .execute_batch(
+                &registry,
+                BatchKey::SingleRecord("foreign-create".into()),
+                vec![create("foreign", "foreign-create")],
+            )
+            .await
+            .expect("the other writer commits");
+        let before = ours.calls();
+        let seen = ours
+            .load(&foreign)
+            .await
+            .expect("load")
+            .expect("the other writer's subject is seen");
+        assert_eq!(seen.revision, 1);
+        assert_eq!(
+            spent(before, ours.calls()),
+            StoreCalls {
+                captures: 1,
+                model_builds: 1,
+                model_advances: 0,
+                records_decoded: 1,
+            },
+            "a foreign head is a whole build, never an advance"
+        );
+
+        // Our next decision is decided on the other writer's state, and theirs then sees ours.
+        ours.operation(context("foreign-touch"))
+            .execute_batch(
+                &registry,
+                BatchKey::SingleRecord("foreign-touch".into()),
+                vec![touch("foreign", "foreign-touch")],
+            )
+            .await
+            .expect("a decision on the foreign subject commits");
+        let before = theirs.calls();
+        assert_eq!(
+            theirs
+                .load(&foreign)
+                .await
+                .expect("load")
+                .expect("subject")
+                .revision,
+            2
+        );
+        assert_eq!(spent(before, theirs.calls()).model_builds, 1);
+    }
+
+    /// A definition of `fields` optional fields, so every decision record carries a large one.
+    fn large_registry(fields: usize) -> Registry {
+        let mut schema = serde_json::Map::new();
+        schema.insert(
+            "title".into(),
+            json!({ "type": "string", "required": true }),
+        );
+        for index in 0..fields {
+            schema.insert(
+                format!("field_{index:06}_carrying_a_long_declared_name"),
+                json!({ "type": "string", "max_length": 64 }),
+            );
+        }
+        let definition = serde_json::from_value(json!({
+            "entity": "ticket",
+            "version": 1,
+            "schema": { "fields": schema },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "operations": {
+                "touch": {
+                    "transitions": [{ "from": "open", "to": "open" }],
+                    "arguments": { "fields": {} },
+                    "emits": []
+                }
+            }
+        }))
+        .expect("large definition parses");
+        let mut registry = Registry::new();
+        registry
+            .register(definition)
+            .expect("large definition validates");
+        registry
+    }
+
+    fn measured_number(name: &str, default: usize) -> usize {
+        std::env::var(name).map_or(default, |value| value.parse().expect("a count"))
+    }
+
+    /// The measurement for the model-cost unit: N sequential decisions on a seeded store whose
+    /// every record carries a large definition. Asks for nothing unless
+    /// `ENTITY_EVENTLOG_DECISION_RECORDS` is set.
+    #[tokio::test]
+    async fn sequential_decisions_measurement() {
+        let Ok(records) = std::env::var("ENTITY_EVENTLOG_DECISION_RECORDS") else {
+            return;
+        };
+        let records: usize = records.parse().expect("record count");
+        let fields = measured_number("ENTITY_EVENTLOG_DECISION_FIELDS", 4_000);
+        let decisions = measured_number("ENTITY_EVENTLOG_DECISIONS", 5);
+        let chunk = measured_number("ENTITY_EVENTLOG_DECISION_SEED_BATCH", 100);
+        let limits = CaptureLimits {
+            max_events: 1_000_000,
+            max_blobs: 1_000_000,
+            max_projection_rows: 1_000_000,
+            max_payload_bytes: 1 << 36,
+        };
+        let registry = large_registry(fields);
+        let backend = Arc::new(
+            eventlog_sqlite::SqliteEventStore::in_memory("decision_measurement")
+                .await
+                .expect("SQLite provider"),
+        );
+        let tenant = TenantId::new("decision-measurement").expect("tenant");
+        let stream_identity = backend.stream_identity(&tenant).await.expect("generation");
+        let projector = Arc::new(crate::ErRecordedProjector::new());
+        backend
+            .create_projections(projector.clone())
+            .await
+            .expect("projection admission");
+        backend
+            .attach_inline_existing(projector)
+            .await
+            .expect("projection attachment");
+        let authority = Authority {
+            logical_scope: "decision-measurement-scope".into(),
+            tenant: tenant.as_str().into(),
+            stream_identity,
+        };
+        let erased: Arc<dyn EventlogBackend> = backend;
+        EventlogBindingProvisioner::new(erased.clone(), limits)
+            .provision_binding(authority.clone(), context("binding"))
+            .await
+            .expect("binding");
+        let store = EventlogRecordedStore::open(erased, authority, limits)
+            .await
+            .expect("bound store");
+        let seeding = std::time::Instant::now();
+        let mut seeded = 0;
+        while seeded < records {
+            let end = (seeded + chunk).min(records);
+            let actions: Vec<_> = (seeded..end)
+                .map(|i| create(&format!("seed-{i:06}"), &format!("seed-record-{i:06}")))
+                .collect();
+            store
+                .operation(context(&format!("seed-{seeded}")))
+                .execute_batch(
+                    &registry,
+                    BatchKey::Named(format!("seed-{seeded}")),
+                    actions,
+                )
+                .await
+                .expect("seed batch commits");
+            seeded = end;
+        }
+        let record = store
+            .lookup_record("seed-record-000000")
+            .await
+            .expect("seed lookup")
+            .expect("seeded record");
+        let RecordLookup::Committed(saved) = record else {
+            panic!("seeded record is committed")
+        };
+        println!(
+            "seeded {records} records ({fields} fields, record blob {} bytes) in {:?}",
+            saved.record_bytes.len(),
+            seeding.elapsed()
+        );
+        let mut elapsed = Vec::with_capacity(decisions);
+        for index in 0..decisions {
+            let before = store.calls();
+            let start = std::time::Instant::now();
+            store
+                .operation(context(&format!("decision-{index}")))
+                .execute_batch(
+                    &registry,
+                    BatchKey::SingleRecord(format!("decision-{index}")),
+                    vec![touch(
+                        &format!("seed-{index:06}"),
+                        &format!("decision-{index}"),
+                    )],
+                )
+                .await
+                .expect("measured decision commits");
+            let took = start.elapsed();
+            elapsed.push(took);
+            println!(
+                "decision {index}: {took:?}; calls before {before:?}, after {:?}",
+                store.calls()
+            );
+        }
+        elapsed.sort();
+        println!(
+            "decisions: {decisions}, median {:?}, total {:?}",
+            elapsed[elapsed.len() / 2],
+            elapsed.iter().sum::<std::time::Duration>()
+        );
     }
 }
 
@@ -411,16 +763,22 @@ impl EventlogOperationContext {
     }
 }
 
-/// What one store handle has actually asked its provider for.
+/// What one store handle has actually asked its provider for, and verified from its answers.
 ///
-/// A capture verifies every blob digest of the whole authority, so its cost grows with the store.
-/// A caller proving that a batch costs a fixed number of them — rather than a number that grows
-/// with the batch — reads this counter, because no assertion about wall clock can say the same
-/// thing on a machine under load.
+/// A capture verifies every blob digest of the whole authority, so its cost grows with the store,
+/// and so does a whole model build from one. A caller proving that a batch costs a fixed number of
+/// them — rather than a number that grows with the batch or the store — reads these counters,
+/// because no assertion about wall clock can say the same thing on a machine under load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct StoreCalls {
     /// Complete authoritative tenant captures taken through this handle.
     pub captures: usize,
+    /// Verified models built from a whole capture: every event, blob, history and row checked.
+    pub model_builds: usize,
+    /// Verified models advanced by only the events this handle itself committed.
+    pub model_advances: usize,
+    /// Complete records decoded and re-encoded to their canonical bytes while verifying.
+    pub records_decoded: usize,
 }
 
 /// Bound, non-initializing Eventlog implementation of complete recorded reads.
@@ -430,6 +788,24 @@ pub struct EventlogRecordedStore {
     tenant: TenantId,
     limits: CaptureLimits,
     native_captures: AtomicUsize,
+    model_builds: AtomicUsize,
+    model_advances: AtomicUsize,
+    records_decoded: AtomicUsize,
+    /// The last capture this handle verified, and the model it verified it into.
+    verified: Mutex<Option<Verified>>,
+    /// Events this handle's own committed appends returned, not yet folded into `verified`.
+    own_events: Mutex<BTreeSet<String>>,
+}
+
+/// One verified capture and the model built from it.
+///
+/// The capture is kept whole — events, every bound blob's bytes and every projection row — because
+/// it is the key the model is reused under: a later capture reuses this model only if it is this
+/// capture exactly, and is advanced from it only if it is this capture plus events this handle
+/// itself appended. Anything else, including one changed byte, is built again from nothing.
+struct Verified {
+    capture: TenantCapture,
+    model: Arc<CapturedModel>,
 }
 
 impl std::fmt::Debug for EventlogRecordedStore {
@@ -454,6 +830,9 @@ impl EventlogRecordedStore {
     pub fn calls(&self) -> StoreCalls {
         StoreCalls {
             captures: self.native_captures.load(Ordering::Relaxed),
+            model_builds: self.model_builds.load(Ordering::Relaxed),
+            model_advances: self.model_advances.load(Ordering::Relaxed),
+            records_decoded: self.records_decoded.load(Ordering::Relaxed),
         }
     }
 
@@ -477,6 +856,11 @@ impl EventlogRecordedStore {
             tenant,
             limits,
             native_captures: AtomicUsize::new(0),
+            model_builds: AtomicUsize::new(0),
+            model_advances: AtomicUsize::new(0),
+            records_decoded: AtomicUsize::new(0),
+            verified: Mutex::new(None),
+            own_events: Mutex::new(BTreeSet::new()),
         };
         let model = store.capture_model().await?;
         if model.binding.is_none() {
@@ -525,8 +909,125 @@ impl EventlogRecordedStore {
         Ok(capture)
     }
 
-    async fn capture_model(&self) -> Result<CapturedModel, AsyncStoreError> {
-        build_model(&self.authority, self.capture().await?)
+    /// One fresh verified capture, and the model of exactly what it observed.
+    ///
+    /// Every call still asks the provider for a complete capture: that is the only evidence of
+    /// where the head is, and the observation a tampered, truncated or substituted authority is
+    /// refused from. What is no longer repeated is turning an observation already verified back
+    /// into the same model. A capture equal to the verified one reuses its model; a capture that
+    /// is the verified one plus events this handle's own appends returned is advanced by exactly
+    /// those events; every other capture is built and verified whole, as before.
+    async fn capture_model(&self) -> Result<Arc<CapturedModel>, AsyncStoreError> {
+        let capture = self.capture().await?;
+        self.model_of(capture)
+    }
+
+    fn model_of(&self, capture: TenantCapture) -> Result<Arc<CapturedModel>, AsyncStoreError> {
+        let previous = {
+            let mut verified = self
+                .verified
+                .lock()
+                .map_err(|_| integrity("verified model lock poisoned"))?;
+            if let Some(held) = verified.as_ref()
+                && held.capture == capture
+            {
+                return Ok(Arc::clone(&held.model));
+            }
+            verified.take()
+        };
+        if let Some(previous) = previous
+            && let Some(from) = self.appended_by_this_handle(&previous.capture, &capture)
+        {
+            let mut model = Arc::try_unwrap(previous.model).unwrap_or_else(|shared| {
+                // A reader still holds the verified model. Advancing a copy costs a clone of the
+                // model, which is still not a decode, hash or replay of a single record.
+                (*shared).clone()
+            });
+            model.decoded = 0;
+            if advance_model(&self.authority, &mut model, &capture, from).is_ok() {
+                self.model_advances.fetch_add(1, Ordering::Relaxed);
+                self.records_decoded
+                    .fetch_add(model.decoded, Ordering::Relaxed);
+                self.forget_own(&capture.events[from..]);
+                return Ok(self.install(capture, model));
+            }
+            // An advance that refuses is not the answer: the whole build below is, so a refusal
+            // reaches the caller exactly as the verifying path words it.
+        }
+        let model = build_model(&self.authority, &capture)?;
+        self.model_builds.fetch_add(1, Ordering::Relaxed);
+        self.records_decoded
+            .fetch_add(model.decoded, Ordering::Relaxed);
+        Ok(self.install(capture, model))
+    }
+
+    fn install(&self, capture: TenantCapture, model: CapturedModel) -> Arc<CapturedModel> {
+        let model = Arc::new(model);
+        if let Ok(mut verified) = self.verified.lock() {
+            *verified = Some(Verified {
+                capture,
+                model: Arc::clone(&model),
+            });
+        }
+        model
+    }
+
+    /// Where `current` continues `verified` with events only this handle appended, if it does.
+    ///
+    /// The verified prefix must be byte-identical — every event and every blob it bound — so the
+    /// part of the model built from it is the part a whole build would build from it again.
+    /// Projection rows are not compared here: the advance holds every row against the advanced
+    /// model, exactly as a whole build does.
+    fn appended_by_this_handle(
+        &self,
+        verified: &TenantCapture,
+        current: &TenantCapture,
+    ) -> Option<usize> {
+        let from = verified.events.len();
+        if current.tenant != verified.tenant
+            || current.stream_identity != verified.stream_identity
+            || current.events.len() < from
+            || current.events[..from] != verified.events[..]
+        {
+            return None;
+        }
+        let own = self.own_events.lock().ok()?;
+        if !current.events[from..]
+            .iter()
+            .all(|event| own.contains(&event.event_id))
+        {
+            return None;
+        }
+        drop(own);
+        let bound: BTreeMap<&str, &[u8]> = current
+            .blobs
+            .iter()
+            .map(|blob| (blob.digest.as_str(), blob.bytes.as_slice()))
+            .collect();
+        verified
+            .blobs
+            .iter()
+            .all(|blob| bound.get(blob.digest.as_str()) == Some(&blob.bytes.as_slice()))
+            .then_some(from)
+    }
+
+    /// Records the events one of this handle's own committed appends returned.
+    fn remember_own(&self, result: &eventlog_core::AppendGroupResult) {
+        if let Ok(mut own) = self.own_events.lock() {
+            for append in &result.appends {
+                for event in &append.events {
+                    own.insert(event.event_id.clone());
+                }
+            }
+        }
+    }
+
+    fn forget_own(&self, events: &[RecordedEvent]) {
+        if let Ok(mut own) = self.own_events.lock() {
+            for event in events {
+                own.remove(&event.event_id);
+            }
+        }
     }
 }
 
@@ -562,7 +1063,7 @@ impl<'a> BatchReadStore<'a> {
         if let Some(model) = self.model.lock().expect("batch read lock").as_ref() {
             return Ok(Arc::clone(model));
         }
-        let captured = Arc::new(self.operation.store.capture_model().await?);
+        let captured = self.operation.store.capture_model().await?;
         let mut slot = self.model.lock().expect("batch read lock");
         Ok(Arc::clone(slot.get_or_insert(captured)))
     }
@@ -699,14 +1200,17 @@ impl AsyncRecordedReader for EventlogRecordedStore {
             let model = self.capture_model().await?;
             let histories = model
                 .histories
-                .into_iter()
+                .iter()
                 .map(|(subject, history)| {
                     let terminal = model
                         .terminals
-                        .get(&subject)
+                        .get(subject)
                         .cloned()
                         .ok_or_else(|| integrity("subject history has no terminal state"))?;
-                    Ok(SubjectSnapshot { history, terminal })
+                    Ok(SubjectSnapshot {
+                        history: history.clone(),
+                        terminal,
+                    })
                 })
                 .collect::<Result<Vec<_>, AsyncStoreError>>()?;
             Ok(CompleteStoreSnapshot {
@@ -783,12 +1287,36 @@ impl EventlogOperationStore<'_> {
         let Some(key) = request.key.clone() else {
             return Ok(AppendOutcome::Empty);
         };
-        if let Some(outcome) = recover_append(self.store, &key, &request)
+        let model = self
+            .store
+            .capture_model()
             .await
-            .map_err(WriteFailure::NotCommitted)?
+            .map_err(WriteFailure::NotCommitted)?;
+        if let Some(outcome) =
+            recover_from(&model, &key, &request).map_err(WriteFailure::NotCommitted)?
         {
             return Ok(outcome);
         }
+        // The expected heads come from the capture recovery just verified. Uploading this call's
+        // blobs moves no head, and a head another writer moves in the meantime is refused by the
+        // provider's expected-version check and the guard, exactly as one moved after a second
+        // capture here would have been.
+        let mut heads: BTreeMap<Subject, Option<u64>> = BTreeMap::new();
+        for member in &request.members {
+            heads.entry(member.entry.subject()).or_insert_with(|| {
+                model
+                    .histories
+                    .get(&member.entry.subject())
+                    .and_then(|h| h.records.last().map(|r| r.position.subject))
+                    .or_else(|| {
+                        model.histories.get(&member.entry.subject()).and_then(|h| {
+                            matches!(h.origin, HistoryOrigin::Imported(_)).then_some(1)
+                        })
+                    })
+            });
+        }
+        // Released before the commit, so the post-commit verification advances the model in place.
+        drop(model);
         let batch_bytes =
             batch_comparison_bytes(&key, &request.members).map_err(WriteFailure::NotCommitted)?;
         let batch_digest =
@@ -858,25 +1386,6 @@ impl EventlogOperationStore<'_> {
                 .await
                 .map_err(|e| WriteFailure::NotCommitted(map_put_error(e)))?;
         }
-        let model = self
-            .store
-            .capture_model()
-            .await
-            .map_err(WriteFailure::NotCommitted)?;
-        let mut heads: BTreeMap<Subject, Option<u64>> = BTreeMap::new();
-        for member in &request.members {
-            heads.entry(member.entry.subject()).or_insert_with(|| {
-                model
-                    .histories
-                    .get(&member.entry.subject())
-                    .and_then(|h| h.records.last().map(|r| r.position.subject))
-                    .or_else(|| {
-                        model.histories.get(&member.entry.subject()).and_then(|h| {
-                            matches!(h.origin, HistoryOrigin::Imported(_)).then_some(1)
-                        })
-                    })
-            });
-        }
         let mut appends = Vec::with_capacity(wrappers.len());
         for ((_, _, wrapper_digest, _, _), member) in wrappers.iter().zip(&request.members) {
             let subject = member.entry.subject();
@@ -926,6 +1435,7 @@ impl EventlogOperationStore<'_> {
                         cause: "Eventlog reported a commit with an invalid result shape".into(),
                     });
                 }
+                self.store.remember_own(&result);
                 committed_outcome(self.store, &key, false, &result)
                     .await
                     .map_err(|_| {
@@ -1013,6 +1523,15 @@ async fn recover_append(
     request: &AppendRequest,
 ) -> Result<Option<AppendOutcome>, AsyncStoreError> {
     let model = store.capture_model().await?;
+    recover_from(&model, key, request)
+}
+
+/// What a verified model already says about this request: committed, conflicting, or absent.
+fn recover_from(
+    model: &CapturedModel,
+    key: &BatchKey,
+    request: &AppendRequest,
+) -> Result<Option<AppendOutcome>, AsyncStoreError> {
     if let Some(batch) = model.batches.get(key) {
         let expected = batch_comparison_bytes(key, &request.members)?;
         if batch.comparison_bytes == expected {
@@ -1605,7 +2124,7 @@ impl EventlogBindingProvisioner {
             captured_binding_authority(&capture).map_err(ProvisionBindingFailure::NotCommitted)?;
         let Some(observed) = observed else {
             let model =
-                build_model(&authority, capture).map_err(ProvisionBindingFailure::NotCommitted)?;
+                build_model(&authority, &capture).map_err(ProvisionBindingFailure::NotCommitted)?;
             debug_assert!(model.binding.is_none());
             return Ok(None);
         };
@@ -1617,7 +2136,7 @@ impl EventlogBindingProvisioner {
             )));
         }
         let model =
-            build_model(&observed, capture).map_err(ProvisionBindingFailure::NotCommitted)?;
+            build_model(&observed, &capture).map_err(ProvisionBindingFailure::NotCommitted)?;
         let physical = model.binding.ok_or_else(|| {
             ProvisionBindingFailure::NotCommitted(integrity(
                 "binding authority has no physical event",
@@ -1640,11 +2159,7 @@ impl EventlogBindingProvisioner {
 fn captured_binding_authority(
     capture: &TenantCapture,
 ) -> Result<Option<Authority>, AsyncStoreError> {
-    let blobs: BTreeMap<String, Vec<u8>> = capture
-        .blobs
-        .iter()
-        .map(|blob| (blob.digest.clone(), blob.bytes.clone()))
-        .collect();
+    let blobs = capture_blobs(capture);
     let mut found = None;
     for event in &capture.events {
         if event.name != "er.binding" {
@@ -1987,6 +2502,7 @@ impl EventlogOperationStore<'_> {
                         cause: ImportAnchorUncertainty::RecoveryUnavailable,
                     });
                 }
+                self.store.remember_own(&result);
                 let returned = physical(&result.appends[0].events[0]);
                 match self.store.capture_model().await {
                     Ok(model)
@@ -2088,7 +2604,7 @@ impl EventlogOperationStore<'_> {
             }
         }
 
-        let mut model = self
+        let model = self
             .store
             .capture_model()
             .await
@@ -2126,7 +2642,7 @@ impl EventlogOperationStore<'_> {
             }
         }
         drop(claimed);
-        let held = std::mem::take(&mut model.held);
+        let held = model.held.clone();
         drop(model);
         let pending: Vec<&PreparedImport> = prepared
             .iter()
@@ -2290,6 +2806,7 @@ impl EventlogOperationStore<'_> {
                 if validate_group_result(&result, pending.len()).is_err() {
                     return Err(uncertain(ImportAnchorUncertainty::RecoveryUnavailable));
                 }
+                self.store.remember_own(&result);
                 let returned: Vec<PhysicalRef> = result
                     .appends
                     .iter()
@@ -2562,7 +3079,7 @@ impl ImportGuard {
 /// every event, blob and projection row of the whole authority on every capture, which is the
 /// per-capture cost over the whole store that batching exists to remove. The three counts are
 /// free — they are vector lengths — and are exact.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct CaptureHeld {
     events: u64,
     blobs: u64,
@@ -2576,13 +3093,14 @@ struct CaptureHeld {
 /// Held because the capture already admitted them. Recomputing one from the bytes it names is a
 /// second SHA-256 that can only agree with the first: the digest *is* the bytes' identity, and the
 /// bytes reached this model by being checked against it.
+#[derive(Clone)]
 struct RecordBlobDigests {
     record: String,
     /// Absent for an imported record, which binds no request blob.
     request: Option<String>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct CapturedModel {
     held: CaptureHeld,
     binding: Option<PhysicalRef>,
@@ -2597,6 +3115,8 @@ struct CapturedModel {
     record_blob_digests: BTreeMap<String, RecordBlobDigests>,
     batch_blob_digests: BTreeMap<BatchKey, String>,
     anchor_blob_digests: BTreeMap<Subject, String>,
+    /// Complete records this model's construction decoded, each a full canonical re-encoding.
+    decoded: usize,
 }
 
 struct PendingRecord {
@@ -2618,12 +3138,12 @@ struct PendingRecord {
 /// SHA-256 over the same bytes, so a seeded open hashed 3.4x its own captured bytes before a caller
 /// had read anything.
 struct BoundBlobs<'a> {
-    blobs: &'a BTreeMap<String, Vec<u8>>,
+    blobs: &'a BTreeMap<&'a str, &'a [u8]>,
     admitted: BTreeMap<&'a str, &'static str>,
 }
 
 impl<'a> BoundBlobs<'a> {
-    fn new(blobs: &'a BTreeMap<String, Vec<u8>>) -> Self {
+    fn new(blobs: &'a BTreeMap<&'a str, &'a [u8]>) -> Self {
         Self {
             blobs,
             admitted: BTreeMap::new(),
@@ -2645,30 +3165,52 @@ impl<'a> BoundBlobs<'a> {
         let (key, bytes) = self
             .blobs
             .get_key_value(digest)
+            .map(|(key, bytes)| (*key, *bytes))
             .ok_or_else(|| integrity(missing))?;
-        match self.admitted.get(key.as_str()).copied() {
+        match self.admitted.get(key).copied() {
             Some(admitted) if admitted == domain => Ok(bytes),
             Some(_) => Err(integrity("blob digest/domain mismatch")),
             None => {
                 verify_digest(domain, digest, bytes)?;
-                self.admitted.insert(key.as_str(), domain);
+                self.admitted.insert(key, domain);
                 Ok(bytes)
             }
         }
     }
 }
 
-fn build_model(
-    authority: &Authority,
-    mut capture: TenantCapture,
-) -> Result<CapturedModel, AsyncStoreError> {
-    let projections = std::mem::take(&mut capture.projections);
-    let rows = projections
+/// Every blob one capture binds, by digest, borrowed from the capture rather than copied out.
+fn capture_blobs(capture: &TenantCapture) -> BTreeMap<&str, &[u8]> {
+    capture
+        .blobs
+        .iter()
+        .map(|blob| (blob.digest.as_str(), blob.bytes.as_slice()))
+        .collect()
+}
+
+fn capture_held(capture: &TenantCapture, blobs: &BTreeMap<&str, &[u8]>, rows: u64) -> CaptureHeld {
+    CaptureHeld {
+        events: capture.events.len() as u64,
+        blobs: blobs.len() as u64,
+        rows,
+        digests: blobs.keys().map(|digest| (*digest).to_owned()).collect(),
+    }
+}
+
+fn projection_rows(capture: &TenantCapture) -> u64 {
+    capture
+        .projections
         .iter()
         .map(|projection| projection.rows.len() as u64)
-        .sum();
-    let model = build_model_events(authority, capture, rows)?;
-    validate_projection_sets(authority, &projections, &model)?;
+        .sum()
+}
+
+fn build_model(
+    authority: &Authority,
+    capture: &TenantCapture,
+) -> Result<CapturedModel, AsyncStoreError> {
+    let model = build_model_events(authority, capture, projection_rows(capture))?;
+    validate_projection_sets(authority, &capture.projections, &model)?;
     Ok(model)
 }
 
@@ -2676,84 +3218,18 @@ fn build_model(
 /// held against it.
 fn build_model_events(
     authority: &Authority,
-    capture: TenantCapture,
+    capture: &TenantCapture,
     rows: u64,
 ) -> Result<CapturedModel, AsyncStoreError> {
-    let blobs: BTreeMap<String, Vec<u8>> = capture
-        .blobs
-        .into_iter()
-        .map(|blob| (blob.digest, blob.bytes))
-        .collect();
+    let blobs = capture_blobs(capture);
     let mut model = CapturedModel {
-        held: CaptureHeld {
-            events: capture.events.len() as u64,
-            blobs: blobs.len() as u64,
-            rows,
-            digests: blobs.keys().cloned().collect(),
-        },
+        held: capture_held(capture, &blobs, rows),
         ..CapturedModel::default()
     };
     let mut bound = BoundBlobs::new(&blobs);
-    const MISSING_REFERENCE: &str = "authority event references a missing blob";
-    const MISSING_BOUND: &str = "referenced blob is missing";
     let mut pending = Vec::new();
     for event in &capture.events {
-        if event.is_redacted() || event.schema_version != 1 {
-            return Err(integrity("redacted or unknown-version authority event"));
-        }
-        let digest = reference_digest(event)?;
-        match event.name.as_str() {
-            "er.binding" => {
-                let bytes = bound.get(digest, BINDING_BLOB_DOMAIN, MISSING_REFERENCE)?;
-                let found = decode_binding(bytes)?;
-                if found != *authority
-                    || event.stream_type != "er.binding"
-                    || event.stream_id != "singleton"
-                    || event.version != 1
-                    || model.binding.is_some()
-                {
-                    return Err(integrity("binding authority is duplicated or inconsistent"));
-                }
-                model.binding = Some(physical(event));
-                model.binding_blob_digest = Some(digest.to_owned());
-            }
-            "er.recorded_entry" => {
-                let bytes = bound.get(digest, ENTRY_BLOB_DOMAIN, MISSING_REFERENCE)?;
-                let wrapper = decode_entry(bytes)?;
-                require_authority(authority, &wrapper.authority)?;
-                let subject: Subject = wrapper.subject.clone().into();
-                if event.stream_type != "er.subject"
-                    || event.stream_id != subject_stream_id(authority, &subject)?
-                {
-                    return Err(integrity("record reference is in another stream"));
-                }
-                let record_bytes = bound
-                    .get(&wrapper.record_blob, RECORD_BLOB_DOMAIN, MISSING_BOUND)?
-                    .to_vec();
-                let entry = decode_record(&record_bytes)?;
-                if entry.subject() != subject {
-                    return Err(integrity("record wrapper substitutes its subject"));
-                }
-                let request_bytes = bound
-                    .get(&wrapper.request_blob, REQUEST_BLOB_DOMAIN, MISSING_BOUND)?
-                    .to_vec();
-                if original_request_comparison_bytes(&entry)? != request_bytes {
-                    return Err(integrity("request blob differs from record"));
-                }
-                // Admitted here so that a batch blob a group shares is hashed once for the group
-                // rather than once for each of its members.
-                bound.get(&wrapper.batch_blob, BATCH_BLOB_DOMAIN, MISSING_BOUND)?;
-                pending.push(PendingRecord {
-                    wrapper,
-                    entry,
-                    record_bytes,
-                    request_bytes,
-                    event: event.clone(),
-                });
-            }
-            "er.import_anchor" => build_import(authority, event, digest, &mut bound, &mut model)?,
-            _ => return Err(integrity("unknown event exists in the bound ER tenant")),
-        }
+        admit_event(authority, event, &mut bound, &mut model, &mut pending)?;
     }
     if model.binding.is_none() && !capture.events.is_empty() {
         return Err(integrity("authoritative events exist without a binding"));
@@ -2762,13 +3238,144 @@ fn build_model_events(
     Ok(model)
 }
 
+/// Advances a model verified from a capture's first `from` events by the events after them.
+///
+/// The caller has established that `capture` begins with exactly the events, and binds exactly
+/// the blobs, the model was verified from, so the part of a whole build that would read them
+/// would build what the model already holds. Every event after them is admitted by the code a
+/// whole build admits it with; every subject they touch is verified from the state its verified
+/// history reached, or from its origin where it has none; and every projection row of the capture
+/// is held against the whole advanced model, as a whole build holds them.
+fn advance_model(
+    authority: &Authority,
+    model: &mut CapturedModel,
+    capture: &TenantCapture,
+    from: usize,
+) -> Result<(), AsyncStoreError> {
+    let blobs = capture_blobs(capture);
+    model.held = capture_held(capture, &blobs, projection_rows(capture));
+    let mut bound = BoundBlobs::new(&blobs);
+    let mut pending = Vec::new();
+    let mut imported = BTreeSet::new();
+    for event in &capture.events[from..] {
+        if let Some(subject) = admit_event(authority, event, &mut bound, model, &mut pending)? {
+            imported.insert(subject);
+        }
+    }
+    if model.binding.is_none() && !capture.events.is_empty() {
+        return Err(integrity("authoritative events exist without a binding"));
+    }
+    let mut prior: BTreeMap<Subject, Option<(usize, EntityInstance)>> = BTreeMap::new();
+    for subject in imported {
+        prior.insert(subject, None);
+    }
+    for record in &pending {
+        let subject = record.entry.subject();
+        if prior.contains_key(&subject) {
+            continue;
+        }
+        let verified = model
+            .histories
+            .get(&subject)
+            .map(|history| history.records.len())
+            .zip(model.terminals.get(&subject).cloned());
+        prior.insert(subject, verified);
+    }
+    insert_committed(pending, &mut bound, model)?;
+    for (subject, verified) in prior {
+        let history = model
+            .histories
+            .get_mut(&subject)
+            .ok_or_else(|| integrity("an advanced subject has no history"))?;
+        let terminal = settle_history(
+            history,
+            verified.as_ref().map(|(records, state)| (*records, state)),
+        )?;
+        model.terminals.insert(subject, terminal);
+    }
+    validate_projection_sets(authority, &capture.projections, model)
+}
+
+/// Admits one authority event, deferring a recorded entry to `pending` for its batch.
+///
+/// Returns the subject an import anchor established, which has no verified history to extend.
+fn admit_event(
+    authority: &Authority,
+    event: &RecordedEvent,
+    bound: &mut BoundBlobs<'_>,
+    model: &mut CapturedModel,
+    pending: &mut Vec<PendingRecord>,
+) -> Result<Option<Subject>, AsyncStoreError> {
+    const MISSING_REFERENCE: &str = "authority event references a missing blob";
+    const MISSING_BOUND: &str = "referenced blob is missing";
+    if event.is_redacted() || event.schema_version != 1 {
+        return Err(integrity("redacted or unknown-version authority event"));
+    }
+    let digest = reference_digest(event)?;
+    match event.name.as_str() {
+        "er.binding" => {
+            let bytes = bound.get(digest, BINDING_BLOB_DOMAIN, MISSING_REFERENCE)?;
+            let found = decode_binding(bytes)?;
+            if found != *authority
+                || event.stream_type != "er.binding"
+                || event.stream_id != "singleton"
+                || event.version != 1
+                || model.binding.is_some()
+            {
+                return Err(integrity("binding authority is duplicated or inconsistent"));
+            }
+            model.binding = Some(physical(event));
+            model.binding_blob_digest = Some(digest.to_owned());
+            Ok(None)
+        }
+        "er.recorded_entry" => {
+            let bytes = bound.get(digest, ENTRY_BLOB_DOMAIN, MISSING_REFERENCE)?;
+            let wrapper = decode_entry(bytes)?;
+            require_authority(authority, &wrapper.authority)?;
+            let subject: Subject = wrapper.subject.clone().into();
+            if event.stream_type != "er.subject"
+                || event.stream_id != subject_stream_id(authority, &subject)?
+            {
+                return Err(integrity("record reference is in another stream"));
+            }
+            let record_bytes = bound
+                .get(&wrapper.record_blob, RECORD_BLOB_DOMAIN, MISSING_BOUND)?
+                .to_vec();
+            let entry = decode_record(&record_bytes)?;
+            model.decoded += 1;
+            if entry.subject() != subject {
+                return Err(integrity("record wrapper substitutes its subject"));
+            }
+            let request_bytes = bound
+                .get(&wrapper.request_blob, REQUEST_BLOB_DOMAIN, MISSING_BOUND)?
+                .to_vec();
+            if original_request_comparison_bytes(&entry)? != request_bytes {
+                return Err(integrity("request blob differs from record"));
+            }
+            // Admitted here so that a batch blob a group shares is hashed once for the group
+            // rather than once for each of its members.
+            bound.get(&wrapper.batch_blob, BATCH_BLOB_DOMAIN, MISSING_BOUND)?;
+            pending.push(PendingRecord {
+                wrapper,
+                entry,
+                record_bytes,
+                request_bytes,
+                event: event.clone(),
+            });
+            Ok(None)
+        }
+        "er.import_anchor" => build_import(authority, event, digest, bound, model).map(Some),
+        _ => Err(integrity("unknown event exists in the bound ER tenant")),
+    }
+}
+
 fn build_import(
     authority: &Authority,
     event: &RecordedEvent,
     digest: &str,
     bound: &mut BoundBlobs<'_>,
     model: &mut CapturedModel,
-) -> Result<(), AsyncStoreError> {
+) -> Result<Subject, AsyncStoreError> {
     let bytes = bound.get(
         digest,
         ANCHOR_BLOB_DOMAIN,
@@ -2798,6 +3405,7 @@ fn build_import(
         }
     }
     let history = history_from_anchor(&wrapper, &record_bytes)?;
+    model.decoded += record_bytes.len();
     if let HistoryOrigin::Imported(anchor) = &history.origin {
         let mut envelope = 0usize;
         for evidence in &anchor.evidence {
@@ -2838,11 +3446,11 @@ fn build_import(
     model
         .anchor_physical
         .insert(subject.clone(), physical(event));
-    model.histories.insert(subject, history);
-    Ok(())
+    model.histories.insert(subject.clone(), history);
+    Ok(subject)
 }
 
-fn build_committed(
+fn insert_committed(
     pending: Vec<PendingRecord>,
     bound: &mut BoundBlobs<'_>,
     model: &mut CapturedModel,
@@ -2966,27 +3574,64 @@ fn build_committed(
             return Err(AsyncStoreError::BatchConflict { key: decoded_key });
         }
     }
+    Ok(())
+}
+
+fn build_committed(
+    pending: Vec<PendingRecord>,
+    bound: &mut BoundBlobs<'_>,
+    model: &mut CapturedModel,
+) -> Result<(), AsyncStoreError> {
+    insert_committed(pending, bound, model)?;
     for history in model.histories.values_mut() {
-        history.records.sort_by_key(|record| record.position.store);
-        let terminal = history
-            .records
-            .iter()
-            .rev()
-            .find_map(|record| match &record.entry {
-                entity_store::asynchronous::RecordedEntry::Decision(commit) => {
-                    Some(commit.instance.clone())
-                }
-                entity_store::asynchronous::RecordedEntry::Observation(_) => None,
-            })
-            .or_else(|| match &history.origin {
-                HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
-                HistoryOrigin::Genesis => None,
-            })
-            .ok_or_else(|| corrupt(&history.subject, "history has no state-producing record"))?;
-        verify_subject_history(history, &terminal)?;
+        let terminal = settle_history(history, None)?;
         model.terminals.insert(history.subject.clone(), terminal);
     }
     Ok(())
+}
+
+/// Orders one subject's history, derives its terminal state and verifies the history reaches it.
+///
+/// `verified` names a prefix already verified to reach a state — the records the subject held
+/// before an advance appended to it, and the terminal they reached. It is used only when the
+/// appended records all follow that prefix in store order, so ordering the history leaves the
+/// prefix where it was; otherwise, or without one, the whole history is verified from its origin.
+fn settle_history(
+    history: &mut SubjectHistory,
+    verified: Option<(usize, &EntityInstance)>,
+) -> Result<EntityInstance, AsyncStoreError> {
+    let extension = verified.filter(|(records, _)| {
+        *records > 0
+            && *records <= history.records.len()
+            && history.records[*records..]
+                .iter()
+                .all(|record| record.position.store > history.records[*records - 1].position.store)
+    });
+    history.records.sort_by_key(|record| record.position.store);
+    let terminal = history
+        .records
+        .iter()
+        .rev()
+        .find_map(|record| match &record.entry {
+            entity_store::asynchronous::RecordedEntry::Decision(commit) => {
+                Some(commit.instance.clone())
+            }
+            entity_store::asynchronous::RecordedEntry::Observation(_) => None,
+        })
+        .or_else(|| match &history.origin {
+            HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
+            HistoryOrigin::Genesis => None,
+        })
+        .ok_or_else(|| corrupt(&history.subject, "history has no state-producing record"))?;
+    match extension {
+        Some((records, state)) => {
+            verify_subject_history_extension(history, records, state, &terminal)?;
+        }
+        None => {
+            verify_subject_history(history, &terminal)?;
+        }
+    }
+    Ok(terminal)
 }
 
 fn validate_projection_sets(
@@ -3651,7 +4296,7 @@ mod seeded_open {
         // `tests/providers.rs`, which read what the inline projector actually wrote, and that was
         // measured — swapping `record_blob` for `request_blob` in the record row leaves this module
         // green and turns three of those red.
-        let model = build_model_events(&authority, unvalidated, 0).expect("fixture model");
+        let model = build_model_events(&authority, &unvalidated, 0).expect("fixture model");
         let rows = expected_projection_rows(&authority, &model).expect("fixture projection rows");
         let projections: Vec<CapturedProjection> = projection_specs()
             .iter()
@@ -3776,7 +4421,7 @@ mod seeded_open {
 
         let model = build_model_events(
             &authority,
-            TenantCapture {
+            &TenantCapture {
                 tenant: tenant.clone(),
                 stream_identity: authority.stream_identity.clone(),
                 events: events.clone(),
@@ -3874,7 +4519,7 @@ mod seeded_open {
     fn a_capture_is_hashed_once_over_rather_than_several_times_over() {
         let (authority, capture) = fixture(GATE_RECORDS, GATE_MAX_BODY);
         let bytes = captured_bytes(&capture);
-        let (model, hashed) = charged(|| build_model(&authority, capture).expect("model builds"));
+        let (model, hashed) = charged(|| build_model(&authority, &capture).expect("model builds"));
         assert!(model.binding.is_some(), "the fixture binds its authority");
         assert!(
             hashed <= bytes,
@@ -3890,12 +4535,219 @@ mod seeded_open {
     #[test]
     fn the_model_is_byte_identical_to_the_verifying_path() {
         let (authority, capture) = fixture(GATE_RECORDS, GATE_MAX_BODY);
-        let model = build_model(&authority, capture).expect("model builds");
+        let model = build_model(&authority, &capture).expect("model builds");
         assert_eq!(
             model_digest(&model),
             "ce4e957f73231f0beb65058ae11742893aaa0c3688781b528d87ef93f7d2539e",
             "the model this open produces is not the model the verifying path produced"
         );
+    }
+
+    /// A capture of `whole`'s first `events` events, binding every blob `whole` binds — orphans
+    /// are part of a real capture too — with the projection rows those events produce.
+    fn prefix_of(authority: &Authority, whole: &TenantCapture, events: usize) -> TenantCapture {
+        let mut prefix = TenantCapture {
+            events: whole.events[..events].to_vec(),
+            projections: Vec::new(),
+            ..whole.clone()
+        };
+        let model = build_model_events(authority, &prefix, 0).expect("prefix model");
+        let rows = expected_projection_rows(authority, &model).expect("prefix rows");
+        prefix.projections = projection_specs()
+            .iter()
+            .copied()
+            .zip(rows)
+            .map(|(specification, rows)| CapturedProjection {
+                specification,
+                rows: rows.into_iter().collect(),
+            })
+            .collect();
+        prefix
+    }
+
+    /// The advance is worth nothing unless it lands where a whole build lands.
+    ///
+    /// Both fixtures, split at every event: the model verified from the prefix and advanced by the
+    /// rest must be the whole build's model field for field, and must have decoded only the
+    /// records the advanced events carry.
+    #[test]
+    fn a_model_advanced_by_appended_events_is_the_model_a_whole_build_produces() {
+        for (label, (authority, whole)) in [
+            ("committed", fixture(GATE_RECORDS, GATE_MAX_BODY)),
+            ("imported", imported_fixture(GATE_RECORDS)),
+        ] {
+            let built = build_model(&authority, &whole).expect("whole build");
+            for from in 1..=whole.events.len() {
+                let prefix = prefix_of(&authority, &whole, from);
+                let mut advanced = build_model(&authority, &prefix).expect("prefix build");
+                let decoded_before = advanced.decoded;
+                advanced.decoded = 0;
+                advance_model(&authority, &mut advanced, &whole, from).expect("advance");
+                assert_eq!(
+                    model_digest(&advanced),
+                    model_digest(&built),
+                    "{label}: advancing from event {from} is not the whole build"
+                );
+                assert_eq!(
+                    decoded_before + advanced.decoded,
+                    built.decoded,
+                    "{label}: advancing from event {from} decoded a record twice or not at all"
+                );
+            }
+        }
+    }
+
+    /// Binds one committed single-record entry the way `append_inner` binds it.
+    fn push_record(
+        authority: &Authority,
+        capture: &mut TenantCapture,
+        entry: RecordedEntry,
+        expect: Expect,
+        version: u64,
+    ) {
+        let subject = entry.subject();
+        let key = BatchKey::SingleRecord(entry.record_id().to_owned());
+        let request_bytes = original_request_comparison_bytes(&entry).expect("request bytes");
+        let member = AppendMember::new(expect, entry.clone(), request_bytes.clone());
+        let batch_bytes =
+            batch_comparison_bytes(&key, std::slice::from_ref(&member)).expect("batch bytes");
+        let record_bytes = record_comparison_bytes(&entry).expect("record bytes");
+        let batch_blob = framed_key(BATCH_BLOB_DOMAIN, &batch_bytes).expect("batch digest");
+        let record_blob = framed_key(RECORD_BLOB_DOMAIN, &record_bytes).expect("record digest");
+        let request_blob = framed_key(REQUEST_BLOB_DOMAIN, &request_bytes).expect("request digest");
+        let wrapper = RecordedEntryWrapper {
+            authority: authority.clone(),
+            batch_blob: batch_blob.clone(),
+            batch_key: crate::encoding::BatchKeyWire::from(&key),
+            member_index: 0,
+            record_blob: record_blob.clone(),
+            request_blob: request_blob.clone(),
+            subject: SubjectWire::from(&subject),
+        };
+        let wrapper_bytes = encode_entry(&wrapper).expect("wrapper encodes");
+        let wrapper_digest = framed_key(ENTRY_BLOB_DOMAIN, &wrapper_bytes).expect("wrapper digest");
+        let stream_id = subject_stream_id(authority, &subject).expect("subject stream");
+        let global_seq = capture
+            .events
+            .last()
+            .map_or(1, |event| event.global_seq + 1);
+        let mut recorded = event(
+            &capture.tenant,
+            global_seq,
+            "er.subject",
+            &stream_id,
+            "er.recorded_entry",
+            &wrapper_digest,
+        );
+        recorded.version = version;
+        capture.events.push(recorded);
+        for (digest, bytes) in [
+            (batch_blob, batch_bytes),
+            (record_blob, record_bytes),
+            (request_blob, request_bytes),
+            (wrapper_digest, wrapper_bytes),
+        ] {
+            capture.blobs.push(CapturedBlob { digest, bytes });
+        }
+        capture
+            .blobs
+            .sort_by(|left, right| left.digest.as_bytes().cmp(right.digest.as_bytes()));
+        capture
+            .blobs
+            .dedup_by(|left, right| left.digest == right.digest);
+    }
+
+    /// A subject created in the verified prefix and moved on by the advanced suffix, so the
+    /// advance verifies that subject from its verified state rather than from its origin — and a
+    /// suffix record that does not follow that state is refused by the advance as by a whole build.
+    #[test]
+    fn an_advanced_subject_is_verified_from_its_verified_state_and_refused_where_it_breaks() {
+        let authority = authority();
+        let (_, base) = fixture(1, 64);
+        let registry = registry();
+        let created = match &base.events[..] {
+            [_, record] => {
+                let digest = reference_digest(record).expect("reference");
+                let blob = base
+                    .blobs
+                    .iter()
+                    .find(|blob| blob.digest == digest)
+                    .expect("wrapper bound");
+                let wrapper = decode_entry(&blob.bytes).expect("wrapper");
+                let record = base
+                    .blobs
+                    .iter()
+                    .find(|blob| blob.digest == wrapper.record_blob)
+                    .expect("record bound");
+                decode_record(&record.bytes).expect("record")
+            }
+            _ => panic!("one binding and one record"),
+        };
+        let RecordedEntry::Decision(commit) = &created else {
+            panic!("the fixture creates")
+        };
+        let touched = Runtime::new(&registry)
+            .execute(&commit.instance, "touch", json!({}))
+            .expect("touch decides");
+        let touch = RecordedEntry::Decision(
+            entity_store::RecordedCommit::new(touched, &recording("record-touch"))
+                .expect("touch commit"),
+        );
+        let prefix = prefix_of(&authority, &base, base.events.len());
+        for (label, expect, sound) in [
+            ("sound", Expect::Revision(1), true),
+            (
+                "an expectation its predecessor does not meet",
+                Expect::Absent,
+                false,
+            ),
+        ] {
+            let mut whole = TenantCapture {
+                projections: Vec::new(),
+                ..base.clone()
+            };
+            push_record(&authority, &mut whole, touch.clone(), expect, 2);
+            let whole = if sound {
+                prefix_of(&authority, &whole, whole.events.len())
+            } else {
+                // The rows a sound capture would carry: the refusal must come from the history.
+                let mut sound_whole = TenantCapture {
+                    projections: Vec::new(),
+                    ..base.clone()
+                };
+                push_record(
+                    &authority,
+                    &mut sound_whole,
+                    touch.clone(),
+                    Expect::Revision(1),
+                    2,
+                );
+                whole.projections =
+                    prefix_of(&authority, &sound_whole, sound_whole.events.len()).projections;
+                whole
+            };
+            let mut advanced = build_model(&authority, &prefix).expect("prefix build");
+            let outcome = advance_model(&authority, &mut advanced, &whole, prefix.events.len());
+            let built = build_model(&authority, &whole);
+            if sound {
+                outcome.expect("sound advance");
+                assert_eq!(
+                    model_digest(&advanced),
+                    model_digest(&built.expect("sound whole build")),
+                    "{label}: the advance is not the whole build"
+                );
+            } else {
+                assert!(
+                    matches!(built, Err(AsyncStoreError::CorruptHistory { .. })),
+                    "{label}: the whole build is the reference and must refuse: {:?}",
+                    built.as_ref().err()
+                );
+                assert!(
+                    matches!(outcome, Err(AsyncStoreError::CorruptHistory { .. })),
+                    "{label}: the advance admitted it: {outcome:?}"
+                );
+            }
+        }
     }
 
     /// Where each verification happens now, named blob by blob.
@@ -3940,7 +4792,7 @@ mod seeded_open {
             // how deleting `verify_digest` survived its own mutation.
             assert!(
                 matches!(
-                    build_model(&authority, corrupted),
+                    build_model(&authority, &corrupted),
                     Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
                         if detail == "blob digest/domain mismatch"
                 ),
@@ -3990,7 +4842,7 @@ mod seeded_open {
         }
         assert!(
             matches!(
-                build_model(&authority, capture),
+                build_model(&authority, &capture),
                 Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
                     if detail == "blob digest/domain mismatch"
             ),
@@ -4012,7 +4864,7 @@ mod seeded_open {
             ("committed", fixture(GATE_RECORDS, GATE_MAX_BODY)),
             ("imported", imported_fixture(GATE_RECORDS)),
         ] {
-            let model = build_model(&authority, capture).expect("model builds");
+            let model = build_model(&authority, &capture).expect("model builds");
             let binding = crate::encoding::framed_key(
                 BINDING_BLOB_DOMAIN,
                 &encode_binding(&authority).expect("binding encodes"),
@@ -4319,7 +5171,7 @@ mod seeded_open {
             let capture = capture.clone();
             let start = Instant::now();
             let (model, hashed) =
-                charged(|| build_model(&authority, capture).expect("model builds"));
+                charged(|| build_model(&authority, &capture).expect("model builds"));
             let elapsed = start.elapsed();
             // Digested outside the timed region, and only when asked: rendering the whole model
             // through `Debug` costs more than building it, so a profile of a run that digests is a

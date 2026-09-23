@@ -15,10 +15,10 @@ sqlite = ["dep:eventlog-sqlite"]
 postgres = ["dep:eventlog-postgres"]
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.19.0" }
-entity-store = { path = "../entity-store", version = "0.19.0" }
-entity-executor = { path = "../entity-executor", version = "0.19.0", optional = true }
-entity-query = { path = "../entity-query", version = "0.19.0", optional = true }
+entity-core = { path = "../entity-core", version = "0.20.0" }
+entity-store = { path = "../entity-store", version = "0.20.0" }
+entity-executor = { path = "../entity-executor", version = "0.20.0", optional = true }
+entity-query = { path = "../entity-query", version = "0.20.0", optional = true }
 eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "ac6b1731654329d32f1e3c9cf164fefad6a5b46a" }
 eventlog-file = { git = "https://github.com/beyond10x/eventlog", rev = "ac6b1731654329d32f1e3c9cf164fefad6a5b46a", optional = true }
 eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", rev = "ac6b1731654329d32f1e3c9cf164fefad6a5b46a", optional = true }

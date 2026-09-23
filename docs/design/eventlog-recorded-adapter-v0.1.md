@@ -301,6 +301,19 @@ blob. Pre-uploaded orphan blobs are not committed records; retain that distincti
 them from generic capture or fabricating receipts. Deleted/corrupt referenced content refuses.
 Redacted recorded authority cannot be repaired by merely rebuilding a projection.
 
+Every read, preflight, recovery and post-commit check takes a fresh complete capture; a handle
+does not reuse a capture across calls. What it reuses is the verification of one. The handle keeps
+the last capture it verified, whole, beside the model built from it. A later capture equal to it
+reuses that model. A later capture that is it plus only events this handle's own committed appends
+returned, over byte-identical blobs, advances the model by those events: each is admitted by the
+whole build's code, each subject they touch is verified from the state its verified history
+reached, and every projection row is held against the advanced model. Any other capture — another
+writer's head, a changed or missing blob, a changed event, a changed row — is verified whole, and
+an advance that refuses is answered by the whole build, so a refusal is worded as it always was.
+The append's recovery capture also supplies the group's expected heads: uploading blobs moves no
+head, and a head another writer moves before the group commits is refused by the provider's
+expected-version check and the guard.
+
 Capture implementation and SQL integrity acceptance are dependencies; this design supplies neither.
 All actual provider gates, concurrent writes, crash/restart/uncertain-response cases and mutation
 controls must qualify the final adapter transaction vector, not just the generic Eventlog API.
