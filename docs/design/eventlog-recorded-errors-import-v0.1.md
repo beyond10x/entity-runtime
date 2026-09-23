@@ -427,7 +427,8 @@ produced. Where the destination cannot say, the outcome is `Uncertain` and says 
 share one outcome and an uncertain batch names its first pending subject; settling that subject
 settles the rest.
 
-`StoreCalls`, returned by `EventlogRecordedStore::calls()`, counts the captures a handle has taken.
+`StoreCalls`, returned by `EventlogRecordedStore::calls()`, counts the captures a handle has taken,
+the verified models it built whole or advanced, and the records it decoded while verifying.
 It exists so a caller can assert this fixed cost, which no wall-clock assertion can do on a loaded
 machine.
 

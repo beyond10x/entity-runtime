@@ -461,15 +461,55 @@ pub fn verify_subject_history(
     history: &SubjectHistory,
     terminal: &EntityInstance,
 ) -> Result<SubjectAssurance, AsyncStoreError> {
-    history.subject.validate()?;
-    validate_imported_boundary(history)?;
-    let mut current = match &history.origin {
+    let origin = match &history.origin {
         HistoryOrigin::Genesis => None,
         HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
     };
-    let mut previous_position = None;
-    let mut ids = BTreeSet::new();
-    for record in &history.records {
+    verify_records_from(history, 0, origin, terminal)
+}
+
+/// Verifies the records a subject history gained after its first `verified` records.
+///
+/// A reader that already verified `history.records[..verified]` with [`verify_subject_history`]
+/// — or with this function — and reached `verified_state` has established every check that
+/// prefix can fail, and replaying it again would only repeat them: decoding, re-encoding and
+/// re-deciding each of its records. This runs exactly those checks on the suffix, continuing from
+/// the verified state and the last verified position, and holds the result to `terminal` as the
+/// whole verification does. The caller is responsible for the prefix being the one it verified;
+/// with `verified == 0` this is [`verify_subject_history`].
+///
+/// # Errors
+///
+/// Typed corruption for any coordinate, replay, observation, or materialization mismatch in the
+/// suffix, or a terminal the suffix does not reach.
+pub fn verify_subject_history_extension(
+    history: &SubjectHistory,
+    verified: usize,
+    verified_state: &EntityInstance,
+    terminal: &EntityInstance,
+) -> Result<SubjectAssurance, AsyncStoreError> {
+    if verified == 0 || verified > history.records.len() {
+        return verify_subject_history(history, terminal);
+    }
+    verify_records_from(history, verified, Some(verified_state.clone()), terminal)
+}
+
+fn verify_records_from(
+    history: &SubjectHistory,
+    start: usize,
+    mut current: Option<EntityInstance>,
+    terminal: &EntityInstance,
+) -> Result<SubjectAssurance, AsyncStoreError> {
+    history.subject.validate()?;
+    validate_imported_boundary(history)?;
+    let mut previous_position = start
+        .checked_sub(1)
+        .map(|last| history.records[last].position);
+    let mut ids: BTreeSet<&str> = history.records[..start]
+        .iter()
+        .map(|record| record.entry.record_id())
+        .collect();
+    for record in &history.records[start..] {
         validate_stored_coordinates(history, record, previous_position)?;
         if !ids.insert(record.entry.record_id()) {
             return Err(corrupt(

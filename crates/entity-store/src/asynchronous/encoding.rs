@@ -6,16 +6,21 @@ use crate::Recording;
 
 use super::{AppendMember, AsyncStoreError, BatchKey, RecordedEntry};
 
+/// Orders every object's keys, consuming the value rather than cloning it.
+///
+/// Every subtree is moved into its place exactly once. The encoder this replaced cloned each
+/// subtree again at every level of nesting above it, which for a record embedding a whole
+/// definition was most of the cost of verifying a store. The sort is kept although serde_json's
+/// default map is already ordered: a consumer that enables `preserve_order` unifies that feature
+/// into this crate, and the bytes must not depend on who else is in the build.
 fn canonicalize(value: Value) -> Value {
     match value {
         Value::Object(object) => {
-            let mut keys: Vec<String> = object.keys().cloned().collect();
-            keys.sort();
+            let mut entries: Vec<(String, Value)> = object.into_iter().collect();
+            entries.sort_by(|left, right| left.0.cmp(&right.0));
             let mut ordered = Map::new();
-            for key in keys {
-                if let Some(value) = object.get(&key) {
-                    ordered.insert(key, canonicalize(value.clone()));
-                }
+            for (key, value) in entries {
+                ordered.insert(key, canonicalize(value));
             }
             Value::Object(ordered)
         }
@@ -306,4 +311,142 @@ pub fn member_id(key: &BatchKey, index: u64) -> Result<String, AsyncStoreError> 
     key.validate()?;
     serde_json::to_string(&serde_json::json!([key_value(key), index]))
         .map_err(|error| AsyncStoreError::Encoding(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The canonicalization every comparison document was written with until 0.19.0, kept
+    /// verbatim as the oracle: it re-cloned each subtree once per level of nesting above it.
+    fn canonicalize_by_cloning(value: Value) -> Value {
+        match value {
+            Value::Object(object) => {
+                let mut keys: Vec<String> = object.keys().cloned().collect();
+                keys.sort();
+                let mut ordered = Map::new();
+                for key in keys {
+                    if let Some(value) = object.get(&key) {
+                        ordered.insert(key, canonicalize_by_cloning(value.clone()));
+                    }
+                }
+                Value::Object(ordered)
+            }
+            Value::Array(values) => {
+                Value::Array(values.into_iter().map(canonicalize_by_cloning).collect())
+            }
+            scalar => scalar,
+        }
+    }
+
+    fn oracle_bytes(domain: &str, value: Value) -> Vec<u8> {
+        serde_json::to_vec(&canonicalize_by_cloning(serde_json::json!([domain, value])))
+            .expect("oracle encodes")
+    }
+
+    /// A fixed-seed generator of JSON documents: nested objects and arrays, keys that differ only
+    /// in case, in length or by a non-ASCII byte, exact numbers beyond `f64`, escapes and nulls.
+    struct Corpus(u64);
+
+    impl Corpus {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+
+        fn below(&mut self, bound: u64) -> u64 {
+            self.next() % bound
+        }
+
+        fn key(&mut self) -> String {
+            const KEYS: [&str; 12] = [
+                "a",
+                "A",
+                "aa",
+                "a\u{0}",
+                "ä",
+                "z",
+                "Z",
+                "10",
+                "9",
+                "",
+                "kind",
+                "\u{1F600}",
+            ];
+            let base = KEYS[usize::try_from(self.below(KEYS.len() as u64)).expect("small")];
+            format!("{base}{}", self.below(3))
+        }
+
+        fn value(&mut self, depth: u32) -> Value {
+            let choice = if depth == 0 {
+                self.below(5)
+            } else {
+                self.below(7)
+            };
+            match choice {
+                0 => Value::Null,
+                1 => Value::Bool(self.below(2) == 0),
+                2 => serde_json::from_str(match self.below(6) {
+                    0 => "12345678901234567890123456789",
+                    1 => "-0.000000000000000000000000001",
+                    2 => "1e400",
+                    3 => "0",
+                    4 => "-7",
+                    _ => "3.141592653589793238462643383279",
+                })
+                .expect("an exact number parses"),
+                3 => Value::String(format!("s\"\\\n\u{7f}é{}", self.next())),
+                4 => Value::String(String::new()),
+                5 => Value::Array((0..self.below(4)).map(|_| self.value(depth - 1)).collect()),
+                _ => {
+                    let mut object = Map::new();
+                    for _ in 0..self.below(6) {
+                        let key = self.key();
+                        let value = self.value(depth - 1);
+                        object.insert(key, value);
+                    }
+                    Value::Object(object)
+                }
+            }
+        }
+    }
+
+    /// Canonical bytes are an interchange format: the digest preimage of every stored blob and
+    /// the material every retry is compared against. The encoder stopped re-cloning subtrees, and
+    /// this holds its output byte for byte against the encoder it replaced — on a generated
+    /// corpus, on a document nested far deeper than any record, and on the committed fixture.
+    #[test]
+    fn canonical_bytes_are_byte_identical_to_the_cloning_encoder_they_replaced() {
+        let mut corpus = Corpus(0x9e37_79b9_7f4a_7c15);
+        for case in 0..2_000 {
+            let value = corpus.value(6);
+            assert_eq!(
+                canonical_domain_bytes("er.record/1", value.clone()).expect("encodes"),
+                oracle_bytes("er.record/1", value.clone()),
+                "generated case {case} encodes differently: {value}"
+            );
+        }
+
+        let mut deep = Value::String("leaf".repeat(64));
+        for level in 0..96 {
+            let mut object = Map::new();
+            object.insert(format!("z{level}"), deep);
+            object.insert("a".into(), Value::Array(vec![Value::Null, level.into()]));
+            deep = Value::Object(object);
+        }
+        assert_eq!(
+            canonical_domain_bytes("er.batch/1", deep.clone()).expect("encodes"),
+            oracle_bytes("er.batch/1", deep)
+        );
+
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/service_2_record_3.json"))
+                .expect("fixture parses");
+        assert_eq!(
+            canonical_domain_bytes("er.record/3", fixture.clone()).expect("encodes"),
+            oracle_bytes("er.record/3", fixture)
+        );
+    }
 }

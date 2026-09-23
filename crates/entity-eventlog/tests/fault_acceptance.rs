@@ -70,6 +70,7 @@ enum CaptureFault {
     MissingRecordRow,
     TamperedBatchRow,
     DuplicateSubjectRow,
+    TamperedBlob,
 }
 
 struct FaultBackend<B> {
@@ -553,6 +554,10 @@ impl<B: EventlogBackend> ConsistentTenantCapture for FaultBackend<B> {
                 Some(CaptureFault::DuplicateSubjectRow) => {
                     let row = capture.projections[3].rows[0].clone();
                     capture.projections[3].rows.push(row);
+                }
+                Some(CaptureFault::TamperedBlob) => {
+                    let blob = capture.blobs.last_mut().expect("a bound blob");
+                    blob.bytes.push(b' ');
                 }
                 Some(CaptureFault::Error(_)) => unreachable!("returned before capture"),
             }
@@ -1213,6 +1218,65 @@ fn reads_reject_missing_tampered_and_colliding_record_indexes() {
                 store.load(&subject).await,
                 Err(entity_store::asynchronous::AsyncStoreError::ProviderIntegrity { .. })
             ));
+        }
+    });
+}
+
+/// A handle that has already verified its head still refuses every capture that is not that
+/// head: the verified model is reused only for a capture equal to the one it was built from, or
+/// advanced only past events this handle appended over byte-identical blobs. A read after a
+/// verified read and after the handle's own commit is refused exactly as a first read would be.
+#[test]
+fn a_verified_head_is_never_reused_for_a_capture_that_differs_from_it() {
+    block_on(async {
+        let fixture = fixture("verified-head-reuse").await;
+        provision(&fixture, "verified-head-reuse").await;
+        let backend: Arc<dyn EventlogBackend> = fixture.backend.clone();
+        let store = EventlogRecordedStore::open(backend, fixture.authority.clone(), LIMITS)
+            .await
+            .expect("open");
+        let subject = Subject::new("ticket", "verified-head").expect("subject");
+        store
+            .operation(context("verified-head"))
+            .append(request("verified-head"))
+            .await
+            .expect("append");
+        assert!(store.load(&subject).await.expect("verified read").is_some());
+        for (label, fault) in [
+            ("missing-blob", CaptureFault::MissingBlob),
+            ("tampered-blob", CaptureFault::TamperedBlob),
+            ("unknown-event", CaptureFault::UnknownEvent),
+            ("redacted-event", CaptureFault::RedactedEvent),
+            ("trailing-unknown-event", CaptureFault::TrailingUnknownEvent),
+            ("missing-record-row", CaptureFault::MissingRecordRow),
+            ("tampered-batch-row", CaptureFault::TamperedBatchRow),
+            ("missing-projection", CaptureFault::MissingProjection),
+        ] {
+            let before = store.calls();
+            fixture.backend.capture_fault(fault);
+            assert!(
+                matches!(
+                    store.load(&subject).await,
+                    Err(entity_store::asynchronous::AsyncStoreError::ProviderIntegrity { .. })
+                ),
+                "{label}: a capture differing from the verified head was answered"
+            );
+            assert!(
+                store
+                    .load(&subject)
+                    .await
+                    .expect("the unfaulted head")
+                    .is_some(),
+                "{label}: the unfaulted head is readable again"
+            );
+            assert_eq!(
+                (
+                    store.calls().model_builds - before.model_builds,
+                    store.calls().model_advances - before.model_advances,
+                ),
+                (1, 0),
+                "{label}: a head once refused is verified whole again, never reused"
+            );
         }
     });
 }

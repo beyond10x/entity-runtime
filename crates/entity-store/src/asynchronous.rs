@@ -19,7 +19,7 @@ pub use verify::validate_entry_against_state;
 pub(crate) use verify::validate_imported_boundary;
 pub use verify::{
     verify_complete_store, verify_imported_record, verify_store_histories, verify_subject_history,
-    verify_subject_prefix,
+    verify_subject_history_extension, verify_subject_prefix,
 };
 
 #[cfg(test)]
@@ -237,6 +237,128 @@ mod tests {
             verify_subject_history(&tampered, &terminal),
             Err(AsyncStoreError::CorruptHistory { .. })
         ));
+    }
+
+    /// Verifying only the records after a verified prefix is the whole verification of them.
+    ///
+    /// On a mixed history — creation, observation, transition — split after each prefix, the
+    /// extension agrees with the whole verification when the history is sound, and refuses as
+    /// `CorruptHistory` wherever the whole verification refuses a defect in the suffix: a crossed
+    /// store position, a repeated identity, record bytes that are not the record, an expectation
+    /// the predecessor does not meet, and a terminal the suffix does not reach.
+    #[test]
+    fn a_verified_prefix_is_extended_by_exactly_the_checks_its_suffix_would_meet() {
+        let store = MemoryRecordedStore::new();
+        let subject = Subject::new("ticket", "one").expect("subject");
+        for (key, expect, entry) in [
+            (
+                "create-one",
+                Expect::Absent,
+                RecordedEntry::Decision(creation("one", "create-one")),
+            ),
+            (
+                "observe-one",
+                Expect::Revision(1),
+                RecordedEntry::Observation(observation("one", "observe-one", json!({"n": 1}))),
+            ),
+            (
+                "close-one",
+                Expect::Revision(1),
+                RecordedEntry::Decision(closed("one", "close-one")),
+            ),
+        ] {
+            crate_test_support::block_on(AsyncRecordedWriter::append(
+                &store,
+                AppendRequest::new(
+                    BatchKey::SingleRecord(key.to_owned()),
+                    vec![member(expect, entry)],
+                )
+                .expect("valid append"),
+            ))
+            .expect("append succeeds");
+        }
+        let history = crate_test_support::block_on(AsyncRecordedReader::history(&store, &subject))
+            .expect("history");
+        let terminal = crate_test_support::block_on(AsyncStateReader::load(&store, &subject))
+            .expect("state")
+            .expect("present");
+        assert_eq!(history.records.len(), 3);
+        let RecordedEntry::Decision(created) = &history.records[0].entry else {
+            panic!("the first record creates")
+        };
+        let after_prefix = created.instance.clone();
+        let whole = verify_subject_history(&history, &terminal).expect("sound history");
+        for verified in 0..=3 {
+            let state = if verified == 3 {
+                &terminal
+            } else {
+                &after_prefix
+            };
+            assert_eq!(
+                verify_subject_history_extension(&history, verified, state, &terminal)
+                    .expect("sound extension"),
+                whole,
+                "after {verified} verified records"
+            );
+        }
+
+        type Defect = (&'static str, fn(&mut SubjectHistory));
+        let defects: [Defect; 4] = [
+            ("a crossed store position", |history| {
+                history.records[2].position.store = history.records[1].position.store;
+            }),
+            ("a repeated identity", |history| {
+                let repeated = history.records[0].entry.record_id().to_owned();
+                if let RecordedEntry::Decision(commit) = &mut history.records[2].entry {
+                    commit.envelope.record_id = repeated;
+                }
+            }),
+            ("record bytes that are not the record", |history| {
+                history.records[2].record_bytes.push(b' ');
+            }),
+            ("an expectation the predecessor does not meet", |history| {
+                history.records[2].expect = Expect::Absent;
+            }),
+        ];
+        for (what, damage) in defects {
+            let mut damaged = history.clone();
+            damage(&mut damaged);
+            assert!(
+                matches!(
+                    verify_subject_history(&damaged, &terminal),
+                    Err(AsyncStoreError::CorruptHistory { .. })
+                ),
+                "{what}: the whole verification is the reference and must refuse"
+            );
+            for verified in 1..=2 {
+                assert!(
+                    matches!(
+                        verify_subject_history_extension(
+                            &damaged,
+                            verified,
+                            &after_prefix,
+                            &terminal
+                        ),
+                        Err(AsyncStoreError::CorruptHistory { .. })
+                    ),
+                    "{what}: the extension after {verified} verified records admitted it"
+                );
+            }
+        }
+        for verified in 1..=2 {
+            assert!(
+                matches!(
+                    verify_subject_history_extension(
+                        &history,
+                        verified,
+                        &after_prefix,
+                        &after_prefix
+                    ),
+                    Err(AsyncStoreError::CorruptHistory { .. })
+                ),
+                "a terminal the suffix does not reach was admitted after {verified}"
+            );
+        }
     }
 
     #[test]

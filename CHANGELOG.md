@@ -4,6 +4,23 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Fixed
+
+- An Eventlog store handle builds its verified model once per head instead of once per call.
+  Every read, preflight, recovery and post-commit check still takes a fresh complete capture;
+  a capture identical to the one last verified reuses its model, a capture that only adds the
+  events this handle committed advances the model by those records, and any other capture —
+  another writer's head, or a changed blob, event or projection row — is verified whole as
+  before. A committed batch takes three captures instead of four: the append's recovery capture
+  also supplies the expected heads. Canonical encoding no longer clones each subtree once per
+  level of nesting. Canonical bytes, receipts and every refusal are unchanged.
+
+### Added
+
+- `StoreCalls` also counts `model_builds`, `model_advances` and `records_decoded`, and
+  `entity_store::asynchronous::verify_subject_history_extension` verifies only the records a
+  subject history gained after an already verified prefix.
+
 ## [0.19.0] — 2026-09-22
 
 ### Fixed
