@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-09-24
+
 ### Added
 
 - `entity-eventlog` feature `tree`: `EventlogRecordedStoreOwner::Tree` and
