@@ -71,7 +71,7 @@ These are source-examination results only. They do not replace runtime evidence,
 
 ## 6. Paths written outside the worktree
 
-- `~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/facades-source-review-1/report.md`
+- `home-path:sha256:a29323ff9b1eda3c06ee1d8153b21cc9ca0b2c39b40e2922fabdfa77bd0edb0a`
 
 No scratch file, log, build directory, fixture, planning artifact, or other persistent path was written outside the two assigned review trees. Worktree-manager lease state was transient manager-owned metadata and was released at close.
 

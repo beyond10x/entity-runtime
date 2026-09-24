@@ -190,7 +190,7 @@ public synchronous caller contract.
 ## Paths written outside the reviewer tree
 
 All writes are under
-`~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/source-review-2/`:
+`home-path:sha256:30d1d393f5b7a6a75c5204bce875f4088e13f81e07e8272fd42cab2a87fc6889`:
 
 - `candidate-source.sha256`, `review-inputs.sha256`, `evidence.sha256`, `bridge-sync-probe.rs`, and
   this `report.md`;

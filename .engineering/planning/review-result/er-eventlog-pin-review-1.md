@@ -11,11 +11,11 @@ revision: 2
 # Independent verification pass 1 — task:eventlog-provider-pin-verify-once
 
 ```
-unit: task:eventlog-provider-pin-verify-once — commit 4ce78c11bf357e9cf4f6ef9bd8ea45dba595a0d0, worktree ~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-er-eventlog-pin-review-1-20260921 (detached, no tracked file modified)
+unit: task:eventlog-provider-pin-verify-once — commit 4ce78c11bf357e9cf4f6ef9bd8ea45dba595a0d0, worktree home-path:sha256:60eb415d68a4744b8156d7fe1528bcc5863bb8700da085ce5b6b278dc7ad490c (detached, no tracked file modified)
 verdict: red
 cases: executed 634→640, red 1
 origin: introduced 1, pre-existing 1, undecided 1
-wrote-outside-worktree: 3 roots — ~/.cache/ess-wave-v2/er1r1/tmp/ (logs), ~/.cache/ess-wave-v2/er1r1/base/ (git archive of 8b175736 + my two test files + its own target/), and this report; full list in §7
+wrote-outside-worktree: 3 roots — home-path:sha256:b1a2fe67df113c85e07cb9a268bb84c2b38c58ffb63f6187a45c33cf4dfad95a (logs), home-path:sha256:b3c7aec534169846428b7844ace7ba246a7c9c14a4a39e376305987b7b45e152 (git archive of 8b175736 + my two test files + its own target/), and this report; full list in §7
 needs-coordinator: yes
 ```
 
@@ -27,7 +27,7 @@ caller-visible effect that does not appear when it is measured.
 ## 1. The bound — `git status --porcelain`
 
 ```console
-$ cd ~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-er-eventlog-pin-review-1-20260921
+$ cd home-path:sha256:60eb415d68a4744b8156d7fe1528bcc5863bb8700da085ce5b6b278dc7ad490c
 $ git --no-pager diff --stat
 $ git status --porcelain
 ?? crates/entity-eventlog/tests/pin_review_verify_once.rs
@@ -42,7 +42,7 @@ command was run at any point.
 ## 2. The cases I added, each run alone before any suite
 
 All six were written before anything was run, and each was run alone in the order below.
-`TMPDIR=~/.cache/ess-wave-v2/er1r1/tmp`, `CARGO_NET_OFFLINE=true`, build dir
+`TMPDIR=home-path:sha256:eb81ff65a8c9fb0f4c4c8109e5f3c0f53c7942bb857d63f61fa5878b84134906`, `CARGO_NET_OFFLINE=true`, build dir
 `<worktree>/target`, `CARGO_TARGET_DIR` never set.
 
 | case | file:line | asserts | now |
@@ -123,17 +123,17 @@ The three it names are exactly the three the implementor measured at E0308 under
 
 ### Origin, settled by running at the base and never by moving the tree
 
-`git archive 8b175736 | tar -x -C ~/.cache/ess-wave-v2/er1r1/base`, both test files copied
+`git archive 8b175736 | tar -x -C home-path:sha256:d4c28cc20df3c2861ab346ec91612c601c4bf698a771df8e07cab4671a749b66`, both test files copied
 in, nothing else changed. No `checkout`, `switch`, `stash`, `branch` or `worktree` command was run.
 
 ```console
-$ cd ~/.cache/ess-wave-v2/er1r1/base && cargo test --locked -p entity-xtask --test gate_sees_pinned_git_features
+$ cd home-path:sha256:d4c28cc20df3c2861ab346ec91612c601c4bf698a771df8e07cab4671a749b66 && cargo test --locked -p entity-xtask --test gate_sees_pinned_git_features
 thread 'the_gate_compiles_every_feature_that_binds_a_pinned_git_dependency' (2797704) panicked at crates/entity-xtask/tests/gate_sees_pinned_git_features.rs:133:5:
 … uncovered: ["entity-sqlite --features eventlog-facade", "entity-postgres --features eventlog-facade", "entity-cli --features eventlog-providers"]
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 EXIT=101
 
-$ cd ~/.cache/ess-wave-v2/er1r1/base && cargo test -p entity-eventlog --features sync-bridge,file --test pin_review_verify_once -- --nocapture
+$ cd home-path:sha256:d4c28cc20df3c2861ab346ec91612c601c4bf698a771df8e07cab4671a749b66 && cargo test -p entity-eventlog --features sync-bridge,file --test pin_review_verify_once -- --nocapture
 running 5 tests
 test an_open_facade_refuses_to_commit_onto_a_history_it_can_no_longer_validate ... ok
 test an_open_facade_does_not_serve_state_whose_committed_frame_was_damaged_after_open ... ok
@@ -299,7 +299,7 @@ The commit is 4ce78c11bf357e9cf4f6ef9bd8ea45dba595a0d0; the base compared agains
 | **what was measured** | `crates/entity-xtask/tests/gate_sees_pinned_git_features.rs:133`, exit 101, naming `entity-sqlite --features eventlog-facade`, `entity-postgres --features eventlog-facade`, `entity-cli --features eventlog-providers` |
 | **what reaches it** | `task check` and `.github/workflows/gate.yml` are the documented gate, and the state was actually reached: this unit's first implementation left one manifest at the old rev, cargo resolved two `eventlog-core` crates, those three configurations failed with E0308 — and all ten gate steps exited 0 (implementation-report §0, §3, §4) |
 | **verdict / origin** | CONFIRMED / `pre-existing` — red at 8b175736 too |
-| **the correction, named not applied** | the coordinator already holds it unapplied: `~/.cache/ess-wave-v2/er1/tmp/coordinator/check-git-rev-uniformity.py` + `Taskfile-rev-check.patch`. A `rev-check` step closes the narrow class (one URL, one rev); a step that *builds* the three configurations closes the broad one (any regression behind those features). My case asserts the broad one and goes green under either of the two, provided the built configurations appear as cargo lines in `Taskfile.yml` |
+| **the correction, named not applied** | the coordinator already holds it unapplied: `home-path:sha256:d5a568c939e758300945ef3fd6d1641b9f525e8a15e5f57b72af0e32416cd81c` + `Taskfile-rev-check.patch`. A `rev-check` step closes the narrow class (one URL, one rev); a step that *builds* the three configurations closes the broad one (any regression behind those features). My case asserts the broad one and goes green under either of the two, provided the built configurations appear as cargo lines in `Taskfile.yml` |
 
 ### F2 — the CHANGELOG entry claims a read-path benefit that does not appear
 
@@ -336,7 +336,7 @@ The commit is 4ce78c11bf357e9cf4f6ef9bd8ea45dba595a0d0; the base compared agains
 
 ## 7. Every path written outside the worktree
 
-All under the assigned scratch `~/.cache/ess-wave-v2/er1r1/`; nothing in `/tmp`.
+All under the assigned scratch `home-path:sha256:d0427c66205fe237fabfda99fe56f7c8aaf10104a8482968b3546666cc9857c7`; nothing in `/tmp`.
 
 - `tmp/case-a-head.log`, `tmp/case-b-head.log`, `tmp/case-c-head.log`, `tmp/case-d-head.log`,
   `tmp/case-e-head.log` — cases A–E run alone at 4ce78c11
@@ -376,7 +376,7 @@ the CHANGELOG's caller claim, and it is also the only case here that is slow; ke
   verdict: CONFIRMED
   origin: introduced
   message: the entry claims a caller making repeated reads against an already-open store no longer pays whole-store verification per transaction, but measured at both revisions the per-read cost is 230/245 ms at c698923 against 250/237 ms at f802eb8 — the effect the pin buys is on commits (30/53 s against 75/66 s), not on reads.
-- file: ~/beyond10x/.ess-evolution/waves/0005-aep-migration/wave-validate-v2-20260920/unit-4-er-eventlog-pin/brief-review-1.md
+- file: home-path:sha256:a9ccd830de0f4d07eb142850435ec74a20d704ce4b2533e4a63fd0f38804ce08
   line: 37
   category: judgement
   severity: note

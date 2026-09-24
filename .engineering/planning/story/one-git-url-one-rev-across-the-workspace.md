@@ -58,5 +58,5 @@ workspace, every `rev` naming one git URL names the same commit*.
   explicitly and the decision is written down; `AGENTS.md:174-179` says the two are not assumed
   identical and `gate.yml:6` omits the local-only steps on purpose.
 - No Python is added. `scripts/check-git-rev-uniformity.py`, written by the unit-4 implementor and
-  left unapplied under `~/.cache/ess-wave-v2/er1/tmp/coordinator/`, is a specification of the
+  left unapplied under `home-path:sha256:3125679774d7c786c751b0a42f8dcf8686d5ff750c04845940b3834446900330`, is a specification of the
   behaviour to port, not a file to adopt.
