@@ -11,7 +11,7 @@ kernel. It can execute an adopter's entity model and derive interfaces from it. 
 is implemented as authored Rust types, traits, and functions; this repository has no whole-system
 ESS specification from which those subsystems are generated.
 
-This chapter describes the [0.18.1 release](https://github.com/beyond10x/entity-runtime/releases/tag/0.18.1).
+This chapter describes the [0.21.0 release](https://github.com/beyond10x/entity-runtime/releases/tag/0.21.0).
 The public API remains in development. An entity's `version: 1` is its definition version,
 independent of the runtime release and File Store format.
 
@@ -134,11 +134,11 @@ flowchart TB
 | OpenAPI and AsyncAPI | Entity request shapes and inferred emitted-event payload schemas | Projection rules; an adopter must implement HTTP and event transport |
 | Entity reference and graphs | Fields, transitions, rules, events, references, and diagrams | Renderer and presentation templates |
 
-The generated surfaces shipped in 0.16.0. The 0.17.7 release fixes their retry and schema behavior.
+The generated surfaces shipped in 0.16.0, with their retry and schema fixes since 0.17.7.
 Neither release converted the top-level CLI into an ESS-generated implementation. The
-[CLI source](https://github.com/beyond10x/entity-runtime/blob/0.18.1/crates/entity-cli/src/main.rs)
+[CLI source](https://github.com/beyond10x/entity-runtime/blob/0.21.0/crates/entity-cli/src/main.rs)
 contains both its handwritten command enum and its domain-CLI generator;
-the [shared shell](https://github.com/beyond10x/entity-runtime/blob/0.18.1/crates/entity-shell/src/lib.rs)
+the [shared shell](https://github.com/beyond10x/entity-runtime/blob/0.21.0/crates/entity-shell/src/lib.rs)
 owns the generated/MCP stored-operation sequence.
 
 ## Relationship to ESS

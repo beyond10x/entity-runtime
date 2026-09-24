@@ -14,6 +14,8 @@ Entity Runtime is a workspace of narrow crates. Use only the boundary your appli
 | `entity-yaml` | YAML text to definition data; register it before execution |
 | `entity-store` | provider traits, memory/file stores, envelopes, projections, conformance suite |
 | `entity-query` | optional document containment queries and continuation cursors |
+| `entity-executor` | asynchronous execution over recorded storage ports, without selecting a runtime, clock or identifier |
+| `entity-eventlog` | complete recorded storage on Eventlog providers; features `file`, `sqlite`, `postgres`, `tree`, `sync-bridge`; Rust 1.91 |
 | `entity-sqlite` | transactional embedded provider |
 | `entity-postgres` | transactional centralized provider |
 | `entity-remote` | versioned store protocol, transport trait, and hybrid policy |
@@ -26,8 +28,8 @@ The crates are currently consumed from the tagged repository:
 
 ```toml
 [dependencies]
-entity-core = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.18.1" }
-entity-yaml = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.18.1" }
+entity-core = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.21.0" }
+entity-yaml = { git = "https://github.com/beyond10x/entity-runtime", tag = "0.21.0" }
 ```
 
 Keep all runtime crate dependencies on the same release tag. The

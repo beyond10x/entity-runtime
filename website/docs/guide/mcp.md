@@ -60,8 +60,8 @@ The subject must first have been created and submitted, as in the [quickstart](.
 This call is a trusted-host example: the model must not choose its own `actor_role` or impersonate
 `supervisor-7` through the recording fields.
 
-The result is the persisted recorded decision. In 0.17.7, repeating this exact accepted call returns
-the original revision-3 commit, even if state has since advanced. Keep the original expected
+The result is the persisted recorded decision. Since 0.17.7, repeating this exact accepted call
+returns the original revision-3 commit, even if state has since advanced. Keep the original expected
 revision, arguments, and recording metadata. Changing intent under the same record ID is a
 `record_conflict`; a new request based on a stale revision is a `revision_conflict`.
 Kernel refusals likewise carry a stable `kind`, boundary, and human detail.

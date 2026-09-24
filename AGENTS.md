@@ -22,7 +22,10 @@ A change here that moves none of these is a question for the operator, not a tas
 ## What this repository is
 
 A **library collection and a command**: `entity-core`, an IO-free deterministic kernel that
-executes entity types declared as data; provider crates outside the kernel; `entity-graph` and
+executes entity types declared as data; provider crates outside the kernel, among them
+`entity-eventlog`, which keeps complete recorded state on Eventlog providers; `entity-executor`,
+which orders asynchronous recorded-store calls around the kernel without selecting a runtime;
+`entity-query`, optional provider-neutral document queries; `entity-graph` and
 `entity-surface`, which project validated definitions; `entity-shell`, which shares
 provider-backed operations; `entity-mcp`, which serves those operations over caller-provided
 stdio; and `entity-cli`, the `entity` command that owns filesystem and process IO. It is not a
@@ -154,7 +157,8 @@ The local gate runs these steps in this order: `fmt-check` · `clippy` (`--works
 what it records, in both directions — a moved copy and an unpinned file beside it) ·
 `postgres-check` (the Postgres provider's tests
 against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they did not run) ·
-`notes-check`. Every cargo step runs `--locked`, so the gate judges the dependency
+`eventlog-runtime-check` (`entity-eventlog`'s tests and Clippy with `--all-features` on the
+`+1.91.0` toolchain) · `notes-check`. Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
 
 The local `pin-check` holds the AEP lifecycle fixture against its own `PIN.md`.
@@ -173,7 +177,9 @@ evidence when validating the composition (Atlas ADR 0046).
 
 CI's reusable `.github/workflows/gate.yml` runs format, Clippy, tests, rustdoc, examples,
 requirements and the PostgreSQL provider against its service container; both `check.yml` and
-`release.yml` call it. CI also has an MSRV job on 1.85.0. `pin-check` and
+`release.yml` call it. CI also has an MSRV job on 1.85.0, which builds the workspace except
+`entity-eventlog`, and a separate `Eventlog runtime (Rust 1.91)` job that runs
+`eventlog-runtime-check`'s commands against its own PostgreSQL service. `pin-check` and
 `notes-check` remain local-only, and the website has its own required Docusaurus build. If a local
 gate step should run in CI too, add it to both the Taskfile and `gate.yml` deliberately rather than
 assuming the two are identical.
@@ -223,7 +229,10 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 * **IO stays at named edges.** `entity-core`, `entity-yaml`, `entity-graph` and `entity-surface` are
   value-in/value-out. Store providers own only their declared storage boundary: `FileStore` and
   `SqliteStore` open caller-selected paths, `PostgresStore` connects to a caller-selected server,
-  and `RemoteStore` uses a caller-provided `Transport`. `entity-mcp` uses caller-provided readers
+  and `RemoteStore` uses a caller-provided `Transport`. The `entity-eventlog` stores open the
+  caller-selected Eventlog provider their feature names — a `file` or `tree` root, a `sqlite` path,
+  a `postgres` connection configuration — and only after an explicit provisioning call has
+  established the binding. `entity-mcp` uses caller-provided readers
   and writers. `entity-cli` reads files and stdin, invokes Cargo only for explicit Rust CLI
   generation, and prints. No library selects authority, credentials or a clock on the caller's
   behalf; if a verb needs time or identity, the shell supplies it as data.
@@ -304,7 +313,13 @@ state: propose them and wait for the operator unless the operator asked for the 
 * **Comments explain why.** Doc comments on public items say what the type is *for*, and where a
   design decision is embedded in it, why.
 * **Dependencies.** The direct third-party set is `serde`, `serde_json`, `serde_yaml_ng`, `clap`,
-  `rusqlite` in `entity-sqlite`, and `postgres` in `entity-postgres`. Provider manifests explain
+  `fs2` in `entity-store`, `rusqlite` in `entity-sqlite`, and `postgres` in `entity-postgres`.
+  `entity-eventlog` adds the Eventlog crates at one git `rev` (`eventlog-core`, and optional
+  `eventlog-file`, `eventlog-sqlite`, `eventlog-postgres`, `eventlog-tree`), `sha2`, `time` and
+  an optional `tokio`. `entity-cli` (`eventlog-providers`), `entity-sqlite` and `entity-postgres`
+  (`eventlog-facade`) name the same `rev` and `time` behind those optional features, and
+  `entity-postgres`'s adds `tokio`, `tokio-postgres`, `rustls` and `tokio-postgres-rustls`.
+  Provider manifests explain
   their feature choices. The kernel may use only `serde` and `serde_json` —
   `crates/entity-core/tests/purity.rs` fails if that changes. `serde_yaml_ng` replaced deprecated
   `serde_yaml`; the workspace manifest records why. Prefer no new dependency, and justify one in

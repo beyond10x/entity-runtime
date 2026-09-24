@@ -18,7 +18,7 @@ the application around it.
 [Read the product guide](https://beyond10x.github.io/docs/entity-runtime/) or
 [download a release](https://github.com/beyond10x/entity-runtime/releases).
 
-The guide targets [0.18.1](https://github.com/beyond10x/entity-runtime/releases/tag/0.18.1);
+The guide targets [0.21.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.21.0);
 the API remains in development. Start with the
 [refund quickstart](https://beyond10x.github.io/docs/entity-runtime/guide/getting-started/) or
 [system model and derivation](https://beyond10x.github.io/docs/entity-runtime/system-model/).
@@ -239,6 +239,8 @@ unchecked parsed document. On refusal, the caller still owns the unchanged prior
 | [`entity-yaml`](crates/entity-yaml/) | YAML text to definition data, without filesystem IO |
 | [`entity-store`](crates/entity-store/) | provider traits, memory/File Store, envelopes, projections, and conformance suites |
 | [`entity-query`](crates/entity-query/) | optional containment queries and cursor-bound document pages |
+| [`entity-executor`](crates/entity-executor/) | asynchronous execution over recorded storage ports, without selecting a runtime |
+| [`entity-eventlog`](crates/entity-eventlog/) | complete recorded storage on Eventlog providers: features `file`, `sqlite`, `postgres`, `tree`, `sync-bridge` |
 | [`entity-sqlite`](crates/entity-sqlite/) | embedded transactional persistence |
 | [`entity-postgres`](crates/entity-postgres/) | centralized transactional persistence |
 | [`entity-remote`](crates/entity-remote/) | transport-neutral remote protocol and explicit hybrid policy |
@@ -250,7 +252,8 @@ unchecked parsed document. On refusal, the caller still owns the unchanged prior
 
 `entity-core` depends only on `serde` and `serde_json`. Provider interfaces and every IO concern
 live outside it. `MemoryStore`, `SqliteStore`, and `PostgresStore` support all-or-nothing ordered
-batches; File Store atomicity is limited to one subject document.
+batches; File Store atomicity is limited to one subject document. The Eventlog stores publish each
+append, one decision or an ordered batch, as one Eventlog append group.
 
 ## Guarantees and limits
 
@@ -273,8 +276,9 @@ The full public statement is in
 
 ## Develop
 
-Requires Rust 1.85+ and [go-task](https://taskfile.dev). PostgreSQL tests run when
-`ENTITY_POSTGRES_URL` is set and print that they were skipped otherwise.
+Requires Rust 1.85+ and [go-task](https://taskfile.dev); `entity-eventlog` needs Rust 1.91, and
+`task check` runs its `eventlog-runtime-check` step on the 1.91.0 toolchain. PostgreSQL tests run
+when `ENTITY_POSTGRES_URL` is set and print that they were skipped otherwise.
 
 ```console
 task check
@@ -298,7 +302,8 @@ product handbook lives under [`website/docs/`](website/docs/).
   `entity-query`, `entity-sqlite`, `entity-postgres` and `entity-remote` — at one exact revision;
   the dependency points from it to Entity Runtime.
 - [eventlog](https://github.com/beyond10x/eventlog) provides append-only event storage.
-  Event publication is an explicit host integration, not an automatic connection from this runtime.
+  `entity-eventlog` stores recorded state on its 0.4.0 providers. Event publication is an explicit
+  host integration, not an automatic connection from this runtime.
 - The public [Ecosystem](https://beyond10x.github.io/ecosystem/) maps the broader beyond10x system.
 
 ## License

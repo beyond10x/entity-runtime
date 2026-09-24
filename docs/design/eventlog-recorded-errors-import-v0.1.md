@@ -33,6 +33,12 @@ The conclusions below use:
    checked subject and the contradiction is in that subject's origin, evidence, suffix, or global
    occurrence, it is `CorruptHistory { subject, detail }`.
 
+   *Since 0.21.0:* a history whose records carry lineage and has more than one head — two merged
+   branches both changed the subject — is `AsyncStoreError::Forked { subject, heads }`, not
+   `CorruptHistory`. Only that subject refuses; the rest of the store opens and serves, and a
+   `BatchAction::Merge` over every head joins it. Lineage verification, `Forked`, merge and
+   recorded refusals are R-156, R-157, R-158 and R-159.
+
 2. Carry typed admission refusals across the existing Eventlog `Guard` interface with an
    operation-local, one-shot typed slot plus a finite code enum. Do not parse `Display`, place
    dynamic values in the code, or expose ER policy to Eventlog.

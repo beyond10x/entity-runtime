@@ -67,19 +67,59 @@ than refused.
 | `PostgresStore` | centralized multi-process deployments | the caller opens the connection and chooses transport/TLS |
 | `RemoteStore` | using a store behind an application-owned transport | this crate defines a versioned JSON protocol, not an HTTP client |
 | `Hybrid` | explicit local/remote authority and offline behavior | authority, read path, unreachable behavior, and divergence behavior have no defaults |
+| `EventlogRecordedStore` | complete recorded history on an Eventlog provider | the provider root, database or server and the binding are provisioned explicitly before an ordinary open |
 
-The CLI's `--store` flag uses `FileStore`. SQLite, PostgreSQL, Remote, and Hybrid are Rust library
-integrations; the command does not pretend a filesystem path is a database connection.
+The CLI's `--store` flag uses `FileStore`. SQLite, PostgreSQL, Remote, Hybrid and the Eventlog
+stores are Rust library integrations; the command does not pretend a filesystem path is a database
+connection.
 
 `MemoryStore`, `SqliteStore`, and `PostgresStore` also implement `AtomicBatchStore` for ordered,
 multi-subject batches that commit completely or roll back completely. File Store atomicity is per
 subject document, not an arbitrary multi-subject transaction.
 
-File Store 0.17.7 serializes concurrent writers to one root and refreshes cached record identities
-when another writer changes the store. Upgrade every writer together: older binaries do not take
+Since 0.17.7, File Store serializes concurrent writers to one root and refreshes cached record
+identities when another writer changes the store. Upgrade every writer together: older binaries do not take
 the lock. Use a filesystem that supports advisory locks and atomic rename. Subject data is flushed
 before replacement; Unix also flushes directories, while Windows does not promise directory-entry
 persistence across power loss. Abandoned temporary subject files do not block reads or later writes.
+
+## Eventlog-backed stores
+
+`entity-eventlog` keeps complete recorded state on an
+[Eventlog](https://github.com/beyond10x/eventlog) 0.4.0 provider. It needs Rust 1.91; the rest of
+the workspace builds on 1.85. Every provider is an explicit Cargo feature:
+
+| Feature | Provider | Boundary |
+|---|---|---|
+| `file` | `eventlog-file` | a caller-selected provider root |
+| `sqlite` | `eventlog-sqlite` | a caller-selected database path and owner prefix |
+| `postgres` | `eventlog-postgres` | the caller's connection configuration and pool bounds |
+| `tree` | `eventlog-tree` | a directory of immutable event and group files that version control can merge |
+| `sync-bridge` | none | a synchronous facade over the asynchronous store and `entity-executor` |
+
+Opening and provisioning are separate calls. A provisioner prepares the provider and establishes
+the immutable binding; `EventlogRecordedStore::open` opens an already provisioned store without
+mutating provider state and refuses a missing binding or generation.
+
+Each append — one decision or an ordered batch — is published as one Eventlog append group, so a
+multi-subject batch commits completely or not at all.
+
+## Forked subjects and merge
+
+A tree store is kept in Git, so two branches can each record decisions and then be merged as
+files. When the provider keeps lineage, each `StoredRecord.lineage` carries the record's digest and
+its parents, and the history is verified branch by branch: each record is checked against the
+state its parent reached.
+
+Two branches that changed different subjects merge into one store that opens and holds both. A
+subject both branches changed has more than one head. It is reported as `AsyncStoreError::Forked`
+with those heads, instead of `CorruptHistory` for the whole store: other subjects keep serving,
+while reads and ordinary writes of the forked subject refuse.
+
+`entity_store::asynchronous::branch_heads` lists a history's heads and the state each reached.
+`BatchAction::Merge` joins them: it executes one operation on the state the chosen `first` head
+reached, at the highest revision any head reached. The append names every head, and the subject
+serves again at the next revision.
 
 ## Replay and legacy history
 
