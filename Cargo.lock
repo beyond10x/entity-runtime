@@ -444,6 +444,7 @@ dependencies = [
  "eventlog-file",
  "eventlog-postgres",
  "eventlog-sqlite",
+ "eventlog-tree",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -603,8 +604,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-core"
-version = "0.3.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=ac6b1731654329d32f1e3c9cf164fefad6a5b46a#ac6b1731654329d32f1e3c9cf164fefad6a5b46a"
+version = "0.4.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
 dependencies = [
  "serde",
  "serde_json",
@@ -616,8 +617,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-file"
-version = "0.3.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=ac6b1731654329d32f1e3c9cf164fefad6a5b46a#ac6b1731654329d32f1e3c9cf164fefad6a5b46a"
+version = "0.4.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
 dependencies = [
  "eventlog-core",
  "serde",
@@ -629,8 +630,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-postgres"
-version = "0.3.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=ac6b1731654329d32f1e3c9cf164fefad6a5b46a#ac6b1731654329d32f1e3c9cf164fefad6a5b46a"
+version = "0.4.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
 dependencies = [
  "eventlog-core",
  "rustls",
@@ -646,13 +647,26 @@ dependencies = [
 
 [[package]]
 name = "eventlog-sqlite"
-version = "0.3.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=ac6b1731654329d32f1e3c9cf164fefad6a5b46a#ac6b1731654329d32f1e3c9cf164fefad6a5b46a"
+version = "0.4.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
 dependencies = [
  "eventlog-core",
  "nix",
  "rusqlite",
  "serde_json",
+ "time",
+ "tokio",
+]
+
+[[package]]
+name = "eventlog-tree"
+version = "0.4.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
+dependencies = [
+ "eventlog-core",
+ "eventlog-sqlite",
+ "serde_json",
+ "sha2 0.10.9",
  "time",
  "tokio",
 ]

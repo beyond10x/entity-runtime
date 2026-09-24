@@ -15,8 +15,9 @@ use entity_store::{
     asynchronous::{
         batch_comparison_bytes, canonical_domain_bytes, original_request_comparison_bytes,
         request_domain, verify_imported_record, verify_subject_prefix, AppendMember, AppendOutcome,
-        AppendRequest, AsyncRecordedStore, AsyncStoreError, BatchKey, CommitReceipt, RecordLookup,
-        RecordedEntry, StoredBatch, StoredRecord, Subject, SubjectAssurance, WriteFailure,
+        AppendRequest, AsyncRecordedStore, AsyncStoreError, BatchKey, CommitReceipt, MergeBase,
+        RecordLookup, RecordedEntry, RecordedRefusal, RefusalReason, StoredBatch, StoredRecord,
+        Subject, SubjectAssurance, WriteFailure,
     },
     Expect, RecordedCommit, RecordedObservation, Recording,
 };
@@ -61,6 +62,18 @@ pub enum BatchAction {
     Execute(ExecuteRequest),
     /// Append non-state-changing evidence at an exact revision.
     Observe(RecordedObservation),
+    /// Join a subject two merged branches both changed: execute one operation on the state the
+    /// `first` head reached, at the highest revision any head reached.
+    Merge(MergeRequest),
+}
+
+/// One merge decision over a forked subject.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeRequest {
+    /// The operation, whose `expected_revision` is the highest revision any head reached.
+    pub execute: ExecuteRequest,
+    /// The digest of the head the operation is decided on.
+    pub first: String,
 }
 
 impl BatchAction {
@@ -68,6 +81,7 @@ impl BatchAction {
         match self {
             Self::Create(request) => request.subject.clone(),
             Self::Execute(request) => request.subject.clone(),
+            Self::Merge(request) => request.execute.subject.clone(),
             Self::Observe(observation) => Subject {
                 entity: observation.entity.clone(),
                 id: observation.id.clone(),
@@ -79,6 +93,7 @@ impl BatchAction {
         match self {
             Self::Create(request) => &request.recording.record_id,
             Self::Execute(request) => &request.recording.record_id,
+            Self::Merge(request) => &request.execute.recording.record_id,
             Self::Observe(observation) => &observation.envelope.record_id,
         }
     }
@@ -100,6 +115,14 @@ impl BatchAction {
                 if request.operation.trim().is_empty() {
                     return Err(ExecutionError::Store(AsyncStoreError::InvalidInput(
                         "execute requires a nonblank operation".to_owned(),
+                    )));
+                }
+            }
+            Self::Merge(request) => {
+                Self::Execute(request.execute.clone()).validate_shape()?;
+                if request.first.trim().is_empty() {
+                    return Err(ExecutionError::Store(AsyncStoreError::InvalidInput(
+                        "merge requires the head it is decided on".to_owned(),
                     )));
                 }
             }
@@ -171,13 +194,40 @@ impl From<AsyncStoreError> for ExecutionError {
 pub struct Executor<'a> {
     registry: &'a Registry,
     store: &'a dyn AsyncRecordedStore,
+    /// Where refusals are recorded, when the caller asked for them to be.
+    refusals: Option<&'a dyn entity_store::asynchronous::AsyncRefusalRecorder>,
 }
 
 impl<'a> Executor<'a> {
     /// Constructs an executor without selecting a runtime or any implicit authority.
     #[must_use]
     pub const fn new(registry: &'a Registry, store: &'a dyn AsyncRecordedStore) -> Self {
-        Self { registry, store }
+        Self::with_refusals(registry, store, None)
+    }
+
+    /// An executor that records every command it refuses, through `refusals`.
+    ///
+    /// A kernel refusal, an expectation conflict and a write to a forked subject are recorded
+    /// before the refusal is returned; malformed input is not, because it is no decision.
+    #[must_use]
+    pub const fn recording_refusals(
+        registry: &'a Registry,
+        store: &'a dyn AsyncRecordedStore,
+        refusals: &'a dyn entity_store::asynchronous::AsyncRefusalRecorder,
+    ) -> Self {
+        Self::with_refusals(registry, store, Some(refusals))
+    }
+
+    const fn with_refusals(
+        registry: &'a Registry,
+        store: &'a dyn AsyncRecordedStore,
+        refusals: Option<&'a dyn entity_store::asynchronous::AsyncRefusalRecorder>,
+    ) -> Self {
+        Self {
+            registry,
+            store,
+            refusals,
+        }
     }
 
     /// Creates and records one subject under its record-id single namespace.
@@ -252,10 +302,52 @@ impl<'a> Executor<'a> {
             return Ok(recovered);
         }
 
+        let decided = self.decide_and_append(&key, &actions).await;
+        if let (Err(error), Some(recorder)) = (&decided, self.refusals) {
+            if let Some(reason) = refusal_reason(error) {
+                let refusal = RecordedRefusal {
+                    key: key.clone(),
+                    subjects: actions.iter().map(BatchAction::subject).collect(),
+                    request: serde_json::Value::Array(actions.iter().map(action_value).collect()),
+                    recording: first_recording(&actions[0]),
+                    reason,
+                };
+                recorder
+                    .record_refusal(&refusal)
+                    .await
+                    .map_err(ExecutionError::Store)?;
+            }
+        }
+        decided
+    }
+
+    /// Decides every action on the state the store holds and appends the result as one batch.
+    async fn decide_and_append(
+        &self,
+        key: &BatchKey,
+        actions: &[BatchAction],
+    ) -> Result<AppendOutcome, ExecutionError> {
+        let key = key.clone();
         let mut overlay: BTreeMap<Subject, Option<EntityInstance>> = BTreeMap::new();
         let mut members = Vec::with_capacity(actions.len());
-        for action in &actions {
+        for action in actions {
             let subject = action.subject();
+            if let BatchAction::Merge(request) = action {
+                let merge = self.merge_base(request).await?;
+                let (expect, entry) = self.decide(
+                    &BatchAction::Execute(request.execute.clone()),
+                    Some(&merge.base),
+                )?;
+                let request_bytes = request_comparison_bytes(
+                    &BatchAction::Execute(request.execute.clone()),
+                    &entry,
+                )?;
+                if let RecordedEntry::Decision(commit) = &entry {
+                    overlay.insert(subject, Some(commit.instance.clone()));
+                }
+                members.push(AppendMember::new(expect, entry, request_bytes).merging(merge));
+                continue;
+            }
             if !overlay.contains_key(&subject) {
                 let state = self.store.load(&subject).await?;
                 overlay.insert(subject.clone(), state);
@@ -276,7 +368,7 @@ impl<'a> Executor<'a> {
         let request = AppendRequest::new(key.clone(), members)?;
         match self.store.append(request).await {
             Ok(AppendOutcome::Committed { replayed: true, .. }) => {
-                self.recover_existing(&key, &actions).await?.ok_or_else(|| {
+                self.recover_existing(&key, actions).await?.ok_or_else(|| {
                     ExecutionError::Store(AsyncStoreError::Backend(
                         "append reported replay but recovery found no committed identity"
                             .to_owned(),
@@ -285,11 +377,50 @@ impl<'a> Executor<'a> {
             }
             Ok(outcome) => Ok(outcome),
             Err(uncertain @ WriteFailure::Uncertain { .. }) => self
-                .recover_existing(&key, &actions)
+                .recover_existing(&key, actions)
                 .await?
                 .ok_or(ExecutionError::Write(uncertain)),
             Err(error) => Err(ExecutionError::Write(error)),
         }
+    }
+
+    /// The heads a merge joins and the state it is decided on, from the subject's history.
+    async fn merge_base(&self, request: &MergeRequest) -> Result<MergeBase, ExecutionError> {
+        let subject = &request.execute.subject;
+        let history = self.store.history(subject).await?;
+        let heads = entity_store::asynchronous::branch_heads(&history)?;
+        if heads.len() < 2 {
+            return Err(ExecutionError::Store(AsyncStoreError::InvalidInput(
+                "a merge names a subject that has not forked".to_owned(),
+            )));
+        }
+        let highest = heads
+            .iter()
+            .filter_map(|(_, state)| state.as_ref().map(|state| state.revision))
+            .max();
+        let Some((_, Some(first))) = heads.iter().find(|(digest, _)| *digest == request.first)
+        else {
+            return Err(ExecutionError::Store(AsyncStoreError::InvalidInput(
+                "a merge is decided on a head the subject does not have".to_owned(),
+            )));
+        };
+        if highest != Some(request.execute.expected_revision) {
+            return Err(ExecutionError::Store(AsyncStoreError::RevisionConflict {
+                subject: subject.clone(),
+                expected: Expect::Revision(request.execute.expected_revision),
+                found: highest,
+            }));
+        }
+        let mut base = first.clone();
+        base.revision = request.execute.expected_revision;
+        let mut digests: Vec<String> = heads.into_iter().map(|(digest, _)| digest).collect();
+        // The first head leads, so the store records it as the merge decision's first parent.
+        digests.retain(|digest| *digest != request.first);
+        digests.insert(0, request.first.clone());
+        Ok(MergeBase {
+            heads: digests,
+            base,
+        })
     }
 
     fn decide(
@@ -383,6 +514,9 @@ impl<'a> Executor<'a> {
                     Expect::Revision(request.expected_revision),
                     RecordedEntry::Decision(commit),
                 ))
+            }
+            BatchAction::Merge(request) => {
+                self.decide(&BatchAction::Execute(request.execute.clone()), current)
             }
             BatchAction::Observe(observation) => {
                 let subject = action.subject();
@@ -644,6 +778,9 @@ fn request_comparison_bytes(
     action: &BatchAction,
     original: &RecordedEntry,
 ) -> Result<Vec<u8>, AsyncStoreError> {
+    if let BatchAction::Merge(request) = action {
+        return request_comparison_bytes(&BatchAction::Execute(request.execute.clone()), original);
+    }
     match (action, original) {
         (BatchAction::Create(request), RecordedEntry::Decision(commit)) => {
             let definition = saved_definition(original)?;
@@ -860,5 +997,82 @@ pub mod test_support {
         let waker = Waker::from(wake);
         let mut context = Context::from_waker(&waker);
         Future::poll(future, &mut context)
+    }
+}
+
+/// The refusal a command's error records, or `None` for an error that is no decision.
+fn refusal_reason(error: &ExecutionError) -> Option<RefusalReason> {
+    let store = match error {
+        ExecutionError::Core(core) => {
+            return Some(RefusalReason::Kernel {
+                message: core.to_string(),
+            });
+        }
+        ExecutionError::Store(store) => store,
+        ExecutionError::Write(WriteFailure::NotCommitted(store)) => store,
+        _ => return None,
+    };
+    match store {
+        AsyncStoreError::RevisionConflict {
+            subject,
+            expected,
+            found,
+        } => Some(RefusalReason::Conflict {
+            subject: subject.clone(),
+            expected: match expected {
+                Expect::Absent => None,
+                Expect::Revision(revision) => Some(*revision),
+            },
+            found: *found,
+        }),
+        AsyncStoreError::Forked { subject, heads } => Some(RefusalReason::Forked {
+            subject: subject.clone(),
+            heads: heads.clone(),
+        }),
+        _ => None,
+    }
+}
+
+/// One action as the store received it, for the refusal record.
+fn action_value(action: &BatchAction) -> serde_json::Value {
+    match action {
+        BatchAction::Create(request) => serde_json::json!({
+            "kind": "create",
+            "subject": [request.subject.entity, request.subject.id],
+            "definition_version": request.definition_version,
+            "fields": request.fields,
+        }),
+        BatchAction::Execute(request) => serde_json::json!({
+            "kind": "execute",
+            "subject": [request.subject.entity, request.subject.id],
+            "expected_revision": request.expected_revision,
+            "operation": request.operation,
+            "arguments": request.arguments,
+        }),
+        BatchAction::Merge(request) => serde_json::json!({
+            "kind": "merge",
+            "first": request.first,
+            "execute": action_value(&BatchAction::Execute(request.execute.clone())),
+        }),
+        BatchAction::Observe(observation) => serde_json::json!({
+            "kind": "observe",
+            "subject": [observation.entity, observation.id],
+            "revision": observation.revision,
+        }),
+    }
+}
+
+fn first_recording(action: &BatchAction) -> entity_store::Recording {
+    match action {
+        BatchAction::Create(request) => request.recording.clone(),
+        BatchAction::Execute(request) => request.recording.clone(),
+        BatchAction::Merge(request) => request.execute.recording.clone(),
+        BatchAction::Observe(observation) => entity_store::Recording {
+            record_id: observation.envelope.record_id.clone(),
+            recorded_at: observation.envelope.recorded_at.clone(),
+            correlation: observation.envelope.correlation.clone(),
+            causation: observation.envelope.causation.clone(),
+            actor: observation.envelope.actor.clone(),
+        },
     }
 }

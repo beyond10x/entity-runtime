@@ -118,6 +118,8 @@ impl Projector for ErRecordedProjector {
                 "er.binding" => apply_binding(event, store).await,
                 "er.recorded_entry" => apply_recorded_entry(event, store).await,
                 "er.import_anchor" => apply_import_anchor(event, store).await,
+                // A refusal changes no subject, so it projects no row; the capture verifies it.
+                "er.refused_request" if event.stream_type == "er.refusal" => Ok(()),
                 _ => Err(EventLogError::Invalid(
                     "unknown event in ER-owned tenant".into(),
                 )),

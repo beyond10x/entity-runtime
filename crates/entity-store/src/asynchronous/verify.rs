@@ -465,7 +465,210 @@ pub fn verify_subject_history(
         HistoryOrigin::Genesis => None,
         HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
     };
+    if branched(history) {
+        return verify_branched(history, origin, terminal);
+    }
     verify_records_from(history, 0, origin, terminal)
+}
+
+/// Whether the history comes from a store whose records carry their lineage.
+fn branched(history: &SubjectHistory) -> bool {
+    history
+        .records
+        .iter()
+        .any(|record| record.lineage.is_some())
+}
+
+/// Each branch head of a history whose records carry their lineage, with the state it reached.
+///
+/// Heads are the records no other record follows, in digest order. A linear history has one.
+///
+/// # Errors
+///
+/// Every check [`verify_subject_history`] makes of a branched history, except that more than one
+/// head is an answer here rather than [`AsyncStoreError::Forked`].
+pub fn branch_heads(
+    history: &SubjectHistory,
+) -> Result<Vec<(String, Option<EntityInstance>)>, AsyncStoreError> {
+    let origin = match &history.origin {
+        HistoryOrigin::Genesis => None,
+        HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
+    };
+    let (states, heads) = walk_branches(history, origin)?;
+    Ok(heads
+        .into_iter()
+        .map(|head| {
+            let state = states.get(head.as_str()).cloned().flatten();
+            (head, state)
+        })
+        .collect())
+}
+
+/// Every record's resulting state by digest, and the digests no record follows.
+type BranchWalk = (BTreeMap<String, Option<EntityInstance>>, Vec<String>);
+
+/// Replays a branched history record by record on the state of each record's parents.
+///
+/// Each record is replayed on the state its first parent reached, not on the record before it in
+/// position order: two branches that each decided on one state both follow that state. A record
+/// with several parents is a merge decision. It is decided on its first parent's state at the
+/// highest revision any parent reached, so its own revision passes every branch it joins.
+fn walk_branches(
+    history: &SubjectHistory,
+    origin: Option<EntityInstance>,
+) -> Result<BranchWalk, AsyncStoreError> {
+    let subject = &history.subject;
+    subject.validate()?;
+    validate_imported_boundary(history)?;
+    let mut states: BTreeMap<String, Option<EntityInstance>> = BTreeMap::new();
+    let mut followed: BTreeSet<String> = BTreeSet::new();
+    let mut ids: BTreeSet<&str> = BTreeSet::new();
+    let mut anchor_digest: Option<String> = None;
+    let mut previous_position = None;
+    for record in &history.records {
+        validate_stored_coordinates(history, record, previous_position)?;
+        if !ids.insert(record.entry.record_id()) {
+            return Err(corrupt(
+                subject,
+                "one global record identity repeats within the subject history",
+            ));
+        }
+        let lineage = record.lineage.as_ref().ok_or_else(|| {
+            corrupt(
+                subject,
+                "a branched history holds a record that names no lineage",
+            )
+        })?;
+        let current = if lineage.parents.is_empty() {
+            origin.clone()
+        } else {
+            let mut parents = Vec::with_capacity(lineage.parents.len());
+            for parent in &lineage.parents {
+                let state = match states.get(parent.as_str()) {
+                    Some(state) => state.clone(),
+                    // An imported history's anchor is stored beside its records, not among them:
+                    // the one digest a record follows that no record carries is the anchor's.
+                    None if matches!(history.origin, HistoryOrigin::Imported(_))
+                        && anchor_digest.get_or_insert_with(|| parent.clone()) == parent =>
+                    {
+                        origin.clone()
+                    }
+                    None => {
+                        return Err(corrupt(
+                            subject,
+                            "a record follows one that is not an earlier record of its subject",
+                        ));
+                    }
+                };
+                parents.push(state);
+                followed.insert(parent.clone());
+            }
+            let highest = parents.iter().flatten().map(|state| state.revision).max();
+            let raised = |state: &Option<EntityInstance>| {
+                state.clone().map(|mut state| {
+                    if let Some(revision) = highest {
+                        state.revision = revision;
+                    }
+                    state
+                })
+            };
+            if parents.len() > 1 {
+                // A merge decision was decided on one of its heads, at the highest revision any
+                // reached. Which one is not in the lineage, whose parents a store may keep in any
+                // order, so the head it reproduces from is the one it was decided on.
+                let mut decided = None;
+                for parent in &parents {
+                    let base = raised(parent);
+                    if let Ok(next) =
+                        validate_entry_against_state(&record.entry, record.expect, base.as_ref())
+                    {
+                        decided = Some(next);
+                        break;
+                    }
+                }
+                match decided {
+                    Some(next) => {
+                        if states.insert(lineage.digest.clone(), next).is_some() {
+                            return Err(corrupt(
+                                subject,
+                                "one record digest repeats within the subject history",
+                            ));
+                        }
+                        previous_position = Some(record.position);
+                        continue;
+                    }
+                    None => raised(&parents[0]),
+                }
+            } else {
+                raised(&parents[0])
+            }
+        };
+        let next = validate_entry_against_state(&record.entry, record.expect, current.as_ref())
+            .map_err(|error| match error {
+                AsyncStoreError::CorruptHistory { .. } => error,
+                other => corrupt(
+                    subject,
+                    format!("stored entry does not follow its verified parent: {other}"),
+                ),
+            })?;
+        if states.insert(lineage.digest.clone(), next).is_some() {
+            return Err(corrupt(
+                subject,
+                "one record digest repeats within the subject history",
+            ));
+        }
+        previous_position = Some(record.position);
+    }
+    let heads = states
+        .keys()
+        .filter(|digest| !followed.contains(*digest))
+        .cloned()
+        .collect();
+    Ok((states, heads))
+}
+
+/// Verifies a history whose records name the records they follow, as a store merged under
+/// version control keeps them. A history with more than one head has forked, and has no one
+/// state until a merge joins it.
+///
+/// # Errors
+///
+/// [`AsyncStoreError::Forked`] with the heads for an unjoined fork; typed corruption for a record
+/// with no lineage, a parent that is not an earlier record of the subject, a repeated digest, and
+/// every check the linear verification makes.
+fn verify_branched(
+    history: &SubjectHistory,
+    origin: Option<EntityInstance>,
+    terminal: &EntityInstance,
+) -> Result<SubjectAssurance, AsyncStoreError> {
+    let subject = &history.subject;
+    let (states, heads) = walk_branches(history, origin.clone())?;
+    if heads.len() > 1 {
+        return Err(AsyncStoreError::Forked {
+            subject: subject.clone(),
+            heads,
+        });
+    }
+    let current = heads
+        .first()
+        .and_then(|head| states.get(head).cloned().flatten())
+        .or(origin)
+        .ok_or_else(|| corrupt(subject, "genesis history contains no creation decision"))?;
+    if current != *terminal {
+        return Err(corrupt(
+            subject,
+            "supplied terminal state differs from verified history",
+        ));
+    }
+    Ok(match &history.origin {
+        HistoryOrigin::Genesis => SubjectAssurance::VerifiedFromGenesis {
+            subject: subject.clone(),
+        },
+        HistoryOrigin::Imported(anchor) => SubjectAssurance::VerifiedAfterBoundary {
+            subject: subject.clone(),
+            anchor_revision: anchor.instance.revision,
+        },
+    })
 }
 
 /// Verifies the records a subject history gained after its first `verified` records.
@@ -488,7 +691,9 @@ pub fn verify_subject_history_extension(
     verified_state: &EntityInstance,
     terminal: &EntityInstance,
 ) -> Result<SubjectAssurance, AsyncStoreError> {
-    if verified == 0 || verified > history.records.len() {
+    // A branched history is verified whole: a merge can place a record from one branch before
+    // records a verified prefix already held, so no prefix of it is settled.
+    if verified == 0 || verified > history.records.len() || branched(history) {
         return verify_subject_history(history, terminal);
     }
     verify_records_from(history, verified, Some(verified_state.clone()), terminal)

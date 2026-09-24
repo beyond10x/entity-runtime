@@ -4,8 +4,28 @@ use entity_core::EntityInstance;
 
 use super::{
     AppendOutcome, AppendRequest, AsyncStoreError, BatchKey, CompleteStoreSnapshot, RecordLookup,
-    StoredBatch, Subject, SubjectHistory, WriteFailure,
+    RecordedRefusal, StoredBatch, Subject, SubjectHistory, WriteFailure,
 };
+
+/// A store that keeps the commands it refused.
+pub trait AsyncRefusalRecorder: Send + Sync {
+    /// Records one refusal. `true` when an identical refusal was already recorded.
+    ///
+    /// # Errors
+    ///
+    /// The refusal could not be encoded or the store refused the append.
+    fn record_refusal<'a>(
+        &'a self,
+        refusal: &'a RecordedRefusal,
+    ) -> BoxFuture<'a, Result<bool, AsyncStoreError>>;
+
+    /// Every recorded refusal, in store order.
+    ///
+    /// # Errors
+    ///
+    /// The store's history could not be read or verified.
+    fn refusals<'a>(&'a self) -> BoxFuture<'a, Result<Vec<RecordedRefusal>, AsyncStoreError>>;
+}
 
 /// An object-safe boxed future returned by asynchronous recorded-store ports.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;

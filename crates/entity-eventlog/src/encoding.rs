@@ -35,6 +35,123 @@ pub(crate) const REQUEST_BLOB_DOMAIN: &str = "er.eventlog.request-blob-key/1";
 pub(crate) const BATCH_BLOB_DOMAIN: &str = "er.eventlog.batch-blob-key/1";
 pub(crate) const ENTRY_BLOB_DOMAIN: &str = "er.eventlog.recorded-entry-blob-key/1";
 pub(crate) const ANCHOR_BLOB_DOMAIN: &str = "er.eventlog.import-anchor-blob-key/1";
+pub(crate) const REFUSAL_BLOB_DOMAIN: &str = "er.eventlog.refusal-blob-key/1";
+const REFUSAL_FORMAT: &str = "er.eventlog.refusal/1";
+
+/// A refusal's canonical bytes: the one encoding it is stored and compared in.
+pub(crate) fn encode_refusal(
+    authority: &crate::Authority,
+    refusal: &entity_store::asynchronous::RecordedRefusal,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    use entity_store::asynchronous::RefusalReason;
+    let reason = match &refusal.reason {
+        RefusalReason::Kernel { message } => {
+            serde_json::json!({ "kernel": { "message": message } })
+        }
+        RefusalReason::Conflict {
+            subject,
+            expected,
+            found,
+        } => serde_json::json!({ "conflict": {
+            "subject": SubjectWire::from(subject),
+            "expected": expected,
+            "found": found,
+        } }),
+        RefusalReason::Forked { subject, heads } => serde_json::json!({ "forked": {
+            "subject": SubjectWire::from(subject),
+            "heads": heads,
+        } }),
+    };
+    let recording = &refusal.recording;
+    canonical_domain_bytes(
+        REFUSAL_FORMAT,
+        serde_json::json!({
+            "authority": authority,
+            "key": BatchKeyWire::from(&refusal.key),
+            "subjects": refusal.subjects.iter().map(SubjectWire::from).collect::<Vec<_>>(),
+            "request": refusal.request,
+            "recording": {
+                "record_id": recording.record_id,
+                "recorded_at": recording.recorded_at,
+                "correlation": recording.correlation,
+                "causation": recording.causation,
+                "actor": recording.actor,
+            },
+            "reason": reason,
+        }),
+    )
+}
+
+/// The inverse of [`encode_refusal`], refusing bytes that are not exactly its output.
+pub(crate) fn decode_refusal(
+    bytes: &[u8],
+) -> Result<
+    (
+        crate::Authority,
+        entity_store::asynchronous::RecordedRefusal,
+    ),
+    AsyncStoreError,
+> {
+    use entity_store::asynchronous::{RecordedRefusal, RefusalReason};
+    let bad = || AsyncStoreError::Encoding("stored refusal is malformed".to_owned());
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| bad())?;
+    let pair = value
+        .as_array()
+        .filter(|pair| pair.len() == 2)
+        .ok_or_else(bad)?;
+    if pair[0] != REFUSAL_FORMAT {
+        return Err(bad());
+    }
+    let body = &pair[1];
+    let authority: crate::Authority =
+        serde_json::from_value(body["authority"].clone()).map_err(|_| bad())?;
+    let key: BatchKeyWire = serde_json::from_value(body["key"].clone()).map_err(|_| bad())?;
+    let subjects: Vec<SubjectWire> =
+        serde_json::from_value(body["subjects"].clone()).map_err(|_| bad())?;
+    let text = |value: &serde_json::Value| value.as_str().map(str::to_owned);
+    let recording = &body["recording"];
+    let recording = entity_store::Recording {
+        record_id: text(&recording["record_id"]).ok_or_else(bad)?,
+        recorded_at: text(&recording["recorded_at"]).ok_or_else(bad)?,
+        correlation: text(&recording["correlation"]),
+        causation: text(&recording["causation"]),
+        actor: text(&recording["actor"]),
+    };
+    let reason = &body["reason"];
+    let reason = if let Some(kernel) = reason.get("kernel") {
+        RefusalReason::Kernel {
+            message: text(&kernel["message"]).ok_or_else(bad)?,
+        }
+    } else if let Some(conflict) = reason.get("conflict") {
+        let subject: SubjectWire =
+            serde_json::from_value(conflict["subject"].clone()).map_err(|_| bad())?;
+        RefusalReason::Conflict {
+            subject: subject.into(),
+            expected: conflict["expected"].as_u64(),
+            found: conflict["found"].as_u64(),
+        }
+    } else if let Some(forked) = reason.get("forked") {
+        let subject: SubjectWire =
+            serde_json::from_value(forked["subject"].clone()).map_err(|_| bad())?;
+        RefusalReason::Forked {
+            subject: subject.into(),
+            heads: serde_json::from_value(forked["heads"].clone()).map_err(|_| bad())?,
+        }
+    } else {
+        return Err(bad());
+    };
+    let refusal = RecordedRefusal {
+        key: key.into(),
+        subjects: subjects.into_iter().map(Into::into).collect(),
+        request: body["request"].clone(),
+        recording,
+        reason,
+    };
+    if encode_refusal(&authority, &refusal)? != bytes {
+        return Err(bad());
+    }
+    Ok((authority, refusal))
+}
 
 /// Exact logical and physical authority selected for one adapter.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
