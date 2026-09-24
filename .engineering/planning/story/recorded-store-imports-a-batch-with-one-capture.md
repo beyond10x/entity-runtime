@@ -2,11 +2,11 @@
 format: aep.planning-md/1
 id: story:recorded-store-imports-a-batch-with-one-capture
 kind: story
-status: active
+status: implemented
 title: The recorded Eventlog store imports a batch of histories with one capture and one append group
 relations:
 - serves: vision:O2
-revision: 3
+revision: 4
 ---
 ## Outcome
 
