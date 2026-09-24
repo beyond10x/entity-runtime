@@ -112,13 +112,18 @@ its parents, and the history is verified branch by branch: each record is checke
 state its parent reached.
 
 Two branches that changed different subjects merge into one store that opens and holds both. A
-subject both branches changed has more than one head. It is reported as `AsyncStoreError::Forked`
+subject both branches changed has more than one head. Only a decision makes a head: an observation
+is evidence about the state it observed, so a branch that recorded an observation beside another
+branch's decision, or two branches that only observed one state, merge into one subject that keeps
+every observation in its history. A forked subject is reported as `AsyncStoreError::Forked`
 with those heads, instead of `CorruptHistory` for the whole store: other subjects keep serving,
 while reads and ordinary writes of the forked subject refuse.
 
-`entity_store::asynchronous::branch_heads` lists a history's heads and the state each reached.
+`entity_store::asynchronous::branch_heads` lists a history's decision heads and the state each
+reached.
 `BatchAction::Merge` joins them: it executes one operation on the state the chosen `first` head
-reached, at the highest revision any head reached. The append names every head, and the subject
+reached, at the highest revision any head reached. The append names every record no record
+follows, observations included, and the subject
 serves again at the next revision.
 
 ## Replay and legacy history

@@ -447,3 +447,380 @@ fn a_refused_command_is_recorded_once_and_changes_no_subject() {
         );
     });
 }
+
+/// A provisioned store in which `x` was created, and its authority.
+async fn store_with_x() -> (tempfile::TempDir, Authority) {
+    let base = tempfile::tempdir().expect("directory");
+    let tenant = TenantId::new("tree-branches").expect("tenant");
+    let backend = backend(base.path()).await;
+    let stream_identity = backend.stream_identity(&tenant).await.expect("identity");
+    let authority = Authority {
+        logical_scope: "scope-tree-branches".into(),
+        tenant: tenant.as_str().to_owned(),
+        stream_identity,
+    };
+    let erased: Arc<dyn EventlogBackend> = backend;
+    EventlogBindingProvisioner::new(erased, LIMITS)
+        .provision_binding(authority.clone(), context("provision"))
+        .await
+        .expect("binding provisioned");
+    record(base.path(), &authority, "x").await;
+    (base, authority)
+}
+
+/// A checkout of `base`, as a branch taken from it.
+fn branch_of(base: &Path) -> tempfile::TempDir {
+    let branch = tempfile::tempdir().expect("directory");
+    merge_into(base, branch.path());
+    branch
+}
+
+/// Record an observation of `x` at `revision` — evidence about a state, not a change to it.
+async fn observe_in(root: &Path, authority: &Authority, revision: u64, record: &str) {
+    let backend: Arc<dyn EventlogBackend> = backend(root).await;
+    let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
+        .await
+        .expect("ordinary open");
+    let registry = registry();
+    let operation = store.operation(context(record));
+    let observation = entity_store::RecordedObservation {
+        entity: "ticket".into(),
+        id: "x".into(),
+        revision,
+        envelope: Recording {
+            record_id: record.to_owned(),
+            recorded_at: "2026-09-24T00:00:00Z".into(),
+            correlation: None,
+            causation: None,
+            actor: None,
+        }
+        .seal(json!({ "evidence": record }))
+        .expect("observation envelope"),
+    };
+    Executor::new(&registry, &operation)
+        .observe(observation)
+        .await
+        .expect("an observation of the current revision");
+}
+
+/// The record ids of `x`'s history in `root`, and the state it serves.
+async fn x_in(
+    root: &Path,
+    authority: &Authority,
+) -> (
+    Vec<String>,
+    Result<Option<entity_core::EntityInstance>, entity_store::asynchronous::AsyncStoreError>,
+) {
+    use entity_store::asynchronous::AsyncStateReader;
+    let backend: Arc<dyn EventlogBackend> = backend(root).await;
+    let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
+        .await
+        .expect("the merged store opens");
+    let operation = store.operation(context("read-x"));
+    let x = Subject::new("ticket", "x").expect("subject");
+    let history = operation.history(&x).await.expect("x's history reads");
+    let ids = history
+        .records
+        .iter()
+        .map(|record| record.entry.record_id().to_owned())
+        .collect();
+    (ids, operation.load(&x).await)
+}
+
+/// `x` created, then one branch observed it and the other changed it, merged.
+async fn observed_beside_a_decision() -> (tempfile::TempDir, Authority) {
+    let (base, authority) = store_with_x().await;
+    let ours = branch_of(base.path());
+    let theirs = branch_of(base.path());
+    observe_in(ours.path(), &authority, 1, "ours-seen").await;
+    touch_in(theirs.path(), &authority, "x", "theirs-touch").await;
+    merge_into(theirs.path(), ours.path());
+    (ours, authority)
+}
+
+#[test]
+fn an_observation_on_one_branch_and_a_decision_on_the_other_do_not_fork_the_subject() {
+    block_on(async {
+        let (merged, authority) = observed_beside_a_decision().await;
+        let (ids, x) = x_in(merged.path(), &authority).await;
+        assert!(
+            matches!(x, Ok(Some(ref state)) if state.revision == 2),
+            "an observation beside a decision forked the subject or lost the decision: {x:?}"
+        );
+        for id in ["x-create", "ours-seen", "theirs-touch"] {
+            assert!(
+                ids.iter().any(|held| held == id),
+                "the merge lost {id}: the history holds {ids:?}"
+            );
+        }
+    });
+}
+
+#[test]
+fn two_branches_that_only_observed_one_revision_do_not_fork_the_subject() {
+    use entity_store::asynchronous::branch_heads;
+    block_on(async {
+        let (base, authority) = store_with_x().await;
+        let ours = branch_of(base.path());
+        let theirs = branch_of(base.path());
+        observe_in(ours.path(), &authority, 1, "ours-seen").await;
+        observe_in(theirs.path(), &authority, 1, "theirs-seen").await;
+        merge_into(theirs.path(), ours.path());
+
+        let (ids, x) = x_in(ours.path(), &authority).await;
+        assert!(
+            matches!(x, Ok(Some(ref state)) if state.revision == 1),
+            "two observations of one revision forked the subject or moved it: {x:?}"
+        );
+        assert!(
+            ids.iter().any(|id| id == "ours-seen") && ids.iter().any(|id| id == "theirs-seen"),
+            "the merge lost an observation: the history holds {ids:?}"
+        );
+        let backend: Arc<dyn EventlogBackend> = backend(ours.path()).await;
+        let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
+            .await
+            .expect("open");
+        let history = store
+            .operation(context("heads"))
+            .history(&Subject::new("ticket", "x").expect("subject"))
+            .await
+            .expect("history");
+        let heads = branch_heads(&history).expect("heads");
+        assert_eq!(
+            heads.len(),
+            1,
+            "an observation made a head of its own: {heads:?}"
+        );
+    });
+}
+
+#[test]
+fn a_decision_after_an_observation_merged_beside_a_decision_extends_the_subject() {
+    block_on(async {
+        let (merged, authority) = observed_beside_a_decision().await;
+        {
+            let backend: Arc<dyn EventlogBackend> = backend(merged.path()).await;
+            let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
+                .await
+                .expect("open");
+            let registry = registry();
+            let operation = store.operation(context("after-merge"));
+            let mut after = touch("x", "after-merge");
+            after.expected_revision = 2;
+            let outcome = Executor::new(&registry, &operation)
+                .batch(
+                    BatchKey::Named("after-merge".into()),
+                    vec![BatchAction::Execute(after)],
+                )
+                .await;
+            assert!(
+                matches!(
+                    outcome,
+                    Ok(AppendOutcome::Committed {
+                        replayed: false,
+                        ..
+                    })
+                ),
+                "an ordinary write after an observation merged beside a decision was refused: \
+                 {outcome:?}"
+            );
+        }
+        let (ids, x) = x_in(merged.path(), &authority).await;
+        assert!(
+            matches!(x, Ok(Some(ref state)) if state.revision == 3),
+            "the write after the merge did not extend the subject once reopened: {x:?}"
+        );
+        assert!(
+            ids.iter().any(|id| id == "ours-seen"),
+            "the observation was lost: {ids:?}"
+        );
+    });
+}
+
+/// `x` created, then each branch changed it and one branch also observed its own change, merged.
+async fn decided_on_both_branches_one_observed() -> (tempfile::TempDir, Authority) {
+    let (base, authority) = store_with_x().await;
+    let ours = branch_of(base.path());
+    let theirs = branch_of(base.path());
+    touch_in(ours.path(), &authority, "x", "ours-touch").await;
+    observe_in(ours.path(), &authority, 2, "ours-seen").await;
+    touch_in(theirs.path(), &authority, "x", "theirs-touch").await;
+    merge_into(theirs.path(), ours.path());
+    (ours, authority)
+}
+
+#[test]
+fn a_decision_on_each_branch_still_forks_and_its_heads_are_the_decisions() {
+    use entity_store::asynchronous::{AsyncStoreError, branch_heads};
+    block_on(async {
+        let (merged, authority) = decided_on_both_branches_one_observed().await;
+        let (_, x) = x_in(merged.path(), &authority).await;
+        assert!(
+            matches!(x, Err(AsyncStoreError::Forked { ref heads, .. }) if heads.len() == 2),
+            "a decision on each branch was served as one state: {x:?}"
+        );
+        let backend: Arc<dyn EventlogBackend> = backend(merged.path()).await;
+        let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
+            .await
+            .expect("open");
+        let history = store
+            .operation(context("heads"))
+            .history(&Subject::new("ticket", "x").expect("subject"))
+            .await
+            .expect("history");
+        let digest_of = |id: &str| {
+            history
+                .records
+                .iter()
+                .find(|record| record.entry.record_id() == id)
+                .and_then(|record| record.lineage.as_ref())
+                .map(|lineage| lineage.digest.clone())
+                .unwrap_or_else(|| panic!("{id} carries no lineage"))
+        };
+        let mut decisions = vec![digest_of("ours-touch"), digest_of("theirs-touch")];
+        decisions.sort();
+        let heads: Vec<String> = branch_heads(&history)
+            .expect("heads")
+            .into_iter()
+            .map(|(digest, _)| digest)
+            .collect();
+        assert_eq!(
+            heads, decisions,
+            "the heads of a fork are its decisions, not the observation after one"
+        );
+    });
+}
+
+#[test]
+fn an_observation_after_a_merge_decision_attaches_to_the_merge() {
+    use entity_executor::MergeRequest;
+    use entity_store::asynchronous::branch_heads;
+    block_on(async {
+        let (merged, authority) = decided_on_both_branches_one_observed().await;
+        let x = Subject::new("ticket", "x").expect("subject");
+        {
+            let backend: Arc<dyn EventlogBackend> = backend(merged.path()).await;
+            let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
+                .await
+                .expect("open");
+            let operation = store.operation(context("merge"));
+            let history = operation.history(&x).await.expect("history");
+            let heads = branch_heads(&history).expect("heads");
+            let mut execute = touch("x", "merge-x");
+            execute.expected_revision = 2;
+            let registry = registry();
+            let outcome = Executor::new(&registry, &operation)
+                .batch(
+                    BatchKey::Named("merge-x".into()),
+                    vec![BatchAction::Merge(MergeRequest {
+                        execute,
+                        first: heads[0].0.clone(),
+                    })],
+                )
+                .await;
+            assert!(
+                matches!(
+                    outcome,
+                    Ok(AppendOutcome::Committed {
+                        replayed: false,
+                        ..
+                    })
+                ),
+                "a merge over a fork whose one branch ends in an observation was refused: \
+                 {outcome:?}"
+            );
+        }
+        observe_in(merged.path(), &authority, 3, "seen-after-merge").await;
+
+        let backend: Arc<dyn EventlogBackend> = backend(merged.path()).await;
+        let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
+            .await
+            .expect("reopen");
+        let operation = store.operation(context("after"));
+        let history = operation.history(&x).await.expect("history");
+        let lineage_of = |id: &str| {
+            history
+                .records
+                .iter()
+                .find(|record| record.entry.record_id() == id)
+                .and_then(|record| record.lineage.as_deref().cloned())
+                .unwrap_or_else(|| panic!("{id} is absent or carries no lineage"))
+        };
+        let merge = lineage_of("merge-x");
+        let seen = lineage_of("seen-after-merge");
+        assert_eq!(
+            seen.parents,
+            vec![merge.digest.clone()],
+            "the observation does not follow the merge decision it observed"
+        );
+        let heads = branch_heads(&history).expect("heads");
+        assert_eq!(
+            heads.iter().map(|(digest, _)| digest).collect::<Vec<_>>(),
+            vec![&merge.digest],
+            "the merge decision is not the one head after it was observed"
+        );
+        assert!(
+            history
+                .records
+                .iter()
+                .any(|record| record.entry.record_id() == "ours-seen"),
+            "the observation before the merge was lost"
+        );
+        use entity_store::asynchronous::AsyncStateReader;
+        let state = operation.load(&x).await;
+        assert!(
+            matches!(state, Ok(Some(ref state)) if state.revision == 3),
+            "an observation moved the merged subject or forked it: {state:?}"
+        );
+    });
+}
+
+/// Touch `x` at `expected_revision` in `root`.
+async fn touch_at(root: &Path, authority: &Authority, record: &str, expected_revision: u64) {
+    let backend: Arc<dyn EventlogBackend> = backend(root).await;
+    let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
+        .await
+        .expect("ordinary open");
+    let registry = registry();
+    let operation = store.operation(context(record));
+    let mut request = touch("x", record);
+    request.expected_revision = expected_revision;
+    Executor::new(&registry, &operation)
+        .batch(
+            BatchKey::Named(record.to_owned()),
+            vec![BatchAction::Execute(request)],
+        )
+        .await
+        .expect("a touch");
+}
+
+/// A fork whose longer branch observed its own head after the other branch decided replays that
+/// observation after the other branch's lower-revision decision: the observation is newer than
+/// the subject row the replay holds. The store still opens and the subject reads as forked.
+#[test]
+fn a_fork_whose_observation_replays_after_the_other_branch_still_opens_as_forked() {
+    use entity_store::asynchronous::AsyncStoreError;
+    block_on(async {
+        let (base, authority) = store_with_x().await;
+        let ours = branch_of(base.path());
+        let theirs = branch_of(base.path());
+        touch_at(ours.path(), &authority, "ours-2", 1).await;
+        touch_at(ours.path(), &authority, "ours-3", 2).await;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        touch_at(theirs.path(), &authority, "theirs-2", 1).await;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        observe_in(ours.path(), &authority, 3, "ours-seen-3").await;
+        merge_into(theirs.path(), ours.path());
+
+        let (ids, x) = x_in(ours.path(), &authority).await;
+        assert!(
+            matches!(x, Err(AsyncStoreError::Forked { ref heads, .. }) if heads.len() == 2),
+            "a fork with an observation replayed after the other branch did not read as forked: \
+             {x:?}"
+        );
+        assert!(
+            ids.iter().any(|id| id == "ours-seen-3"),
+            "the observation was lost: {ids:?}"
+        );
+    });
+}

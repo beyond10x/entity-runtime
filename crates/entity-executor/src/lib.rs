@@ -413,10 +413,16 @@ impl<'a> Executor<'a> {
         }
         let mut base = first.clone();
         base.revision = request.execute.expected_revision;
-        let mut digests: Vec<String> = heads.into_iter().map(|(digest, _)| digest).collect();
-        // The first head leads, so the store records it as the merge decision's first parent.
-        digests.retain(|digest| *digest != request.first);
-        digests.insert(0, request.first.clone());
+        // The merge appends over every record no record follows, which is what the provider holds
+        // the stream to: a branch that observed after its last decision ends in the observation,
+        // not in the decision head the merge is decided on.
+        let mut digests = entity_store::asynchronous::branch_tips(&history);
+        // The first head leads when it is a tip, so the store records it as the merge decision's
+        // first parent. One an observation follows is not a tip, and is named by `base` alone.
+        if let Some(at) = digests.iter().position(|digest| *digest == request.first) {
+            let first = digests.remove(at);
+            digests.insert(0, first);
+        }
         Ok(MergeBase {
             heads: digests,
             base,

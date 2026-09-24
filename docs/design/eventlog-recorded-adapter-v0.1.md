@@ -301,8 +301,33 @@ blob. Pre-uploaded orphan blobs are not committed records; retain that distincti
 them from generic capture or fabricating receipts. Deleted/corrupt referenced content refuses.
 Redacted recorded authority cannot be repaired by merely rebuilding a projection.
 
-Every read, preflight, recovery and post-commit check takes a fresh complete capture; a handle
-does not reuse a capture across calls. What it reuses is the verification of one. The handle keeps
+A command reads per entity (amended for planning-on-ER unit R2, E-R2; pinned by R-151 and the
+`per_entity_reads` and `adversary_r2_per_entity_reads` tests). The `EventlogOperationStore`
+readers, the executor's batch reads and the append's preflight and post-commit check read, through
+`EventStore::read_many`, the binding stream, the streams of the subjects the command names, the
+blobs those events bind, and the index rows of its record ids, batch key and subjects. A subject an
+index row names for one of those ids or keys is read too, and so is every subject that shares a
+batch with a record read, because a batch is verified whole. The result is verified by the same
+code a complete capture is. Three things are narrower than a complete capture:
+
+- Only the index rows for the keys the command names are held to the events. A tampered row of
+  another entity is not refused by a command; the next complete read refuses it.
+- The provider's stream identity is asked only behind a present binding row. Eventlog 0.4.0 has no
+  non-minting identity call and `stream_identity` mints on a miss, so a tenant forgotten between
+  the two calls can still be given a new identity.
+- A per-entity read is several provider calls, not one snapshot. A read that does not verify is
+  taken again, and after three attempts one complete capture decides, so an honest concurrent
+  writer ends as a revision conflict or success and never as a tamper verdict.
+
+The read bound of step 4b of the errors/import companion applies to every command. A handle keeps
+the counts of its last complete capture plus what its own writes added since, and refuses a
+command with `BatchExceedsReadBounds` before any upload when the tenant would then hold more
+events, blobs or index rows than its `CaptureLimits`. Another writer's additions are counted only
+from this handle's next complete read.
+
+The store handle's own readers, `complete_snapshot`, recorded refusals, imports, binding recovery
+and the recovery after an uncertain, conflicting or reused-identity append reply still take a
+fresh complete capture per call; a handle does not reuse a capture across calls. What it reuses is the verification of one. The handle keeps
 the last capture it verified, whole, beside the model built from it. A later capture equal to it
 reuses that model. A later capture that is it plus only events this handle's own committed appends
 returned, over byte-identical blobs, advances the model by those events: each is admitted by the
@@ -310,7 +335,7 @@ whole build's code, each subject they touch is verified from the state its verif
 reached, and every projection row is held against the advanced model. Any other capture — another
 writer's head, a changed or missing blob, a changed event, a changed row — is verified whole, and
 an advance that refuses is answered by the whole build, so a refusal is worded as it always was.
-The append's recovery capture also supplies the group's expected heads: uploading blobs moves no
+The append's preflight per-entity read also supplies the group's expected heads: uploading blobs moves no
 head, and a head another writer moves before the group commits is refused by the provider's
 expected-version check and the guard.
 

@@ -481,7 +481,11 @@ fn branched(history: &SubjectHistory) -> bool {
 
 /// Each branch head of a history whose records carry their lineage, with the state it reached.
 ///
-/// Heads are the records no other record follows, in digest order. A linear history has one.
+/// A head is a decision no other decision follows, in digest order: only a record that decides a
+/// state can start or keep a branch. An observation hangs off the decision it observed and is never
+/// a head, so a history in which one branch observed a state and another decided on it, or in
+/// which two branches only observed one state, has one head. A linear history has one. An imported
+/// history whose records are all observations has the anchor's digest as its one head.
 ///
 /// # Errors
 ///
@@ -494,25 +498,59 @@ pub fn branch_heads(
         HistoryOrigin::Genesis => None,
         HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
     };
-    let (states, heads) = walk_branches(history, origin)?;
-    Ok(heads
+    let walk = walk_branches(history, origin)?;
+    Ok(walk
+        .heads
         .into_iter()
         .map(|head| {
-            let state = states.get(head.as_str()).cloned().flatten();
+            let state = walk.states.get(head.as_str()).cloned().flatten();
             (head, state)
         })
         .collect())
 }
 
-/// Every record's resulting state by digest, and the digests no record follows.
-type BranchWalk = (BTreeMap<String, Option<EntityInstance>>, Vec<String>);
-
-/// Replays a branched history record by record on the state of each record's parents.
+/// The digests of the records no other record follows, observations included, in digest order.
 ///
-/// Each record is replayed on the state its first parent reached, not on the record before it in
-/// position order: two branches that each decided on one state both follow that state. A record
-/// with several parents is a merge decision. It is decided on its first parent's state at the
-/// highest revision any parent reached, so its own revision passes every branch it joins.
+/// These are the heads a branchable provider holds the subject's stream to, which differ from
+/// [`branch_heads`] once an observation was merged beside another record: the provider extends a
+/// stream with more than one of them only by an append that names every one, even when the
+/// history has one decision head and has not forked. A history with no lineage has none.
+#[must_use]
+pub fn branch_tips(history: &SubjectHistory) -> Vec<String> {
+    let lineages = || {
+        history
+            .records
+            .iter()
+            .filter_map(|record| record.lineage.as_deref())
+    };
+    let followed: BTreeSet<&str> = lineages()
+        .flat_map(|lineage| lineage.parents.iter().map(String::as_str))
+        .collect();
+    let tips: BTreeSet<&str> = lineages()
+        .map(|lineage| lineage.digest.as_str())
+        .filter(|digest| !followed.contains(digest))
+        .collect();
+    tips.into_iter().map(str::to_owned).collect()
+}
+
+/// A branched history replayed record by record.
+struct BranchWalk {
+    /// Every record's resulting state by digest, and the imported anchor's under its digest.
+    states: BTreeMap<String, Option<EntityInstance>>,
+    /// The decisions no other decision follows, in digest order.
+    heads: Vec<String>,
+}
+
+/// Replays a branched history record by record on the state of the decisions it follows.
+///
+/// Each record is replayed on the state of the decision it follows, not on the record before it in
+/// position order: two branches that each decided on one state both follow that state. An
+/// observation is followed through to the decision it observed, so a record whose parents are
+/// that decision's observations — or that decision and an observation of an earlier one — follows
+/// that one decision. A record that follows more than one decision, none descending from another,
+/// is a merge decision. It is decided on one of their states at the highest revision any of them
+/// reached, so its own revision passes every branch it joins. An observation cannot join
+/// branches.
 fn walk_branches(
     history: &SubjectHistory,
     origin: Option<EntityInstance>,
@@ -521,7 +559,12 @@ fn walk_branches(
     subject.validate()?;
     validate_imported_boundary(history)?;
     let mut states: BTreeMap<String, Option<EntityInstance>> = BTreeMap::new();
-    let mut followed: BTreeSet<String> = BTreeSet::new();
+    // For each record, the decisions it sits on: itself for a decision, and for an observation the
+    // decision it observed. The imported anchor is a decision here, under its own digest.
+    let mut sits_on: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    // For each decision, every decision it descends from.
+    let mut ancestors: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut decisions: BTreeSet<String> = BTreeSet::new();
     let mut ids: BTreeSet<&str> = BTreeSet::new();
     let mut anchor_digest: Option<String> = None;
     let mut previous_position = None;
@@ -539,31 +582,63 @@ fn walk_branches(
                 "a branched history holds a record that names no lineage",
             )
         })?;
-        let current = if lineage.parents.is_empty() {
-            origin.clone()
-        } else {
-            let mut parents = Vec::with_capacity(lineage.parents.len());
-            for parent in &lineage.parents {
-                let state = match states.get(parent.as_str()) {
-                    Some(state) => state.clone(),
-                    // An imported history's anchor is stored beside its records, not among them:
-                    // the one digest a record follows that no record carries is the anchor's.
-                    None if matches!(history.origin, HistoryOrigin::Imported(_))
-                        && anchor_digest.get_or_insert_with(|| parent.clone()) == parent =>
-                    {
-                        origin.clone()
-                    }
-                    None => {
-                        return Err(corrupt(
-                            subject,
-                            "a record follows one that is not an earlier record of its subject",
-                        ));
-                    }
-                };
-                parents.push(state);
-                followed.insert(parent.clone());
+        let mut on: Vec<String> = Vec::new();
+        for parent in &lineage.parents {
+            let sits = match sits_on.get(parent.as_str()) {
+                Some(sits) => sits.clone(),
+                // An imported history's anchor is stored beside its records, not among them:
+                // the one digest a record follows that no record carries is the anchor's.
+                None if matches!(history.origin, HistoryOrigin::Imported(_))
+                    && anchor_digest.get_or_insert_with(|| parent.clone()) == parent =>
+                {
+                    decisions.insert(parent.clone());
+                    ancestors.entry(parent.clone()).or_default();
+                    vec![parent.clone()]
+                }
+                None => {
+                    return Err(corrupt(
+                        subject,
+                        "a record follows one that is not an earlier record of its subject",
+                    ));
+                }
+            };
+            for decision in sits {
+                if !on.contains(&decision) {
+                    on.push(decision);
+                }
             }
-            let highest = parents.iter().flatten().map(|state| state.revision).max();
+        }
+        // A decision another one this record follows descends from is not a branch it joins.
+        let on: Vec<String> = on
+            .iter()
+            .filter(|decision| {
+                !on.iter().any(|other| {
+                    other != *decision
+                        && ancestors
+                            .get(other)
+                            .is_some_and(|descends| descends.contains(*decision))
+                })
+            })
+            .cloned()
+            .collect();
+        let state_of = |decision: &String| match states.get(decision) {
+            Some(state) => state.clone(),
+            None => origin.clone(),
+        };
+        let is_decision = matches!(record.entry, RecordedEntry::Decision(_));
+        let mut merged = None;
+        let current = if on.is_empty() {
+            origin.clone()
+        } else if on.len() == 1 {
+            state_of(&on[0])
+        } else if !is_decision {
+            return Err(corrupt(
+                subject,
+                "an observation follows branches only a merge decision may join",
+            ));
+        } else {
+            let bases: Vec<Option<EntityInstance>> = on.iter().map(state_of).collect();
+            let highest = bases.iter().flatten().map(|state| state.revision).max();
             let raised = |state: &Option<EntityInstance>| {
                 state.clone().map(|mut state| {
                     if let Some(revision) = highest {
@@ -572,64 +647,62 @@ fn walk_branches(
                     state
                 })
             };
-            if parents.len() > 1 {
-                // A merge decision was decided on one of its heads, at the highest revision any
-                // reached. Which one is not in the lineage, whose parents a store may keep in any
-                // order, so the head it reproduces from is the one it was decided on.
-                let mut decided = None;
-                for parent in &parents {
-                    let base = raised(parent);
-                    if let Ok(next) =
-                        validate_entry_against_state(&record.entry, record.expect, base.as_ref())
-                    {
-                        decided = Some(next);
-                        break;
-                    }
-                }
-                match decided {
-                    Some(next) => {
-                        if states.insert(lineage.digest.clone(), next).is_some() {
-                            return Err(corrupt(
-                                subject,
-                                "one record digest repeats within the subject history",
-                            ));
-                        }
-                        previous_position = Some(record.position);
-                        continue;
-                    }
-                    None => raised(&parents[0]),
-                }
-            } else {
-                raised(&parents[0])
-            }
+            // A merge decision was decided on one of its heads, at the highest revision any
+            // reached. Which one is not in the lineage, whose parents a store may keep in any
+            // order, so the head it reproduces from is the one it was decided on.
+            merged = bases.iter().map(raised).find_map(|base| {
+                validate_entry_against_state(&record.entry, record.expect, base.as_ref()).ok()
+            });
+            raised(&bases[0])
         };
-        let next = validate_entry_against_state(&record.entry, record.expect, current.as_ref())
-            .map_err(|error| match error {
-                AsyncStoreError::CorruptHistory { .. } => error,
-                other => corrupt(
-                    subject,
-                    format!("stored entry does not follow its verified parent: {other}"),
-                ),
-            })?;
+        let next = match merged {
+            Some(next) => next,
+            None => validate_entry_against_state(&record.entry, record.expect, current.as_ref())
+                .map_err(|error| match error {
+                    AsyncStoreError::CorruptHistory { .. } => error,
+                    other => corrupt(
+                        subject,
+                        format!("stored entry does not follow its verified parent: {other}"),
+                    ),
+                })?,
+        };
         if states.insert(lineage.digest.clone(), next).is_some() {
             return Err(corrupt(
                 subject,
                 "one record digest repeats within the subject history",
             ));
         }
+        if is_decision {
+            let mut descends: BTreeSet<String> = BTreeSet::new();
+            for decision in &on {
+                descends.insert(decision.clone());
+                if let Some(further) = ancestors.get(decision) {
+                    descends.extend(further.iter().cloned());
+                }
+            }
+            ancestors.insert(lineage.digest.clone(), descends);
+            decisions.insert(lineage.digest.clone());
+            sits_on.insert(lineage.digest.clone(), vec![lineage.digest.clone()]);
+        } else {
+            sits_on.insert(lineage.digest.clone(), on);
+        }
         previous_position = Some(record.position);
     }
-    let heads = states
-        .keys()
-        .filter(|digest| !followed.contains(*digest))
+    let decided: BTreeSet<&String> = ancestors.values().flatten().collect();
+    let heads = decisions
+        .iter()
+        .filter(|decision| !decided.contains(decision))
         .cloned()
         .collect();
-    Ok((states, heads))
+    if let Some(anchor) = anchor_digest {
+        states.entry(anchor).or_insert(origin);
+    }
+    Ok(BranchWalk { states, heads })
 }
 
 /// Verifies a history whose records name the records they follow, as a store merged under
-/// version control keeps them. A history with more than one head has forked, and has no one
-/// state until a merge joins it.
+/// version control keeps them. A history with more than one decision head has forked, and has no
+/// one state until a merge joins it; observations beside a decision do not fork it.
 ///
 /// # Errors
 ///
@@ -642,7 +715,7 @@ fn verify_branched(
     terminal: &EntityInstance,
 ) -> Result<SubjectAssurance, AsyncStoreError> {
     let subject = &history.subject;
-    let (states, heads) = walk_branches(history, origin.clone())?;
+    let BranchWalk { states, heads } = walk_branches(history, origin.clone())?;
     if heads.len() > 1 {
         return Err(AsyncStoreError::Forked {
             subject: subject.clone(),

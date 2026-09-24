@@ -384,9 +384,11 @@ fn fold_subject_source(
             let revision = body["revision"]
                 .as_u64()
                 .ok_or_else(|| invalid("subject row has invalid revision"))?;
-            if entry.revision() != revision {
-                return Err(invalid("observation revision differs from subject row"));
-            }
+            // An observation never moves the row, which follows decisions. Its revision is not
+            // held to the row here: a store that merges branches replays in causal order with
+            // ties by recorded time, so an observation can replay after another branch's decision
+            // of a lower or higher revision than the one it observed. Whether it observed the
+            // decision it follows is decided by lineage verification of its history.
             Ok((
                 body["origin"].clone(),
                 body["state_source"].clone(),

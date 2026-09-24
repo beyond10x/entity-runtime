@@ -4,6 +4,52 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- `entity-eventlog`: a command reads only its own entities' streams. The readers of
+  `EventlogOperationStore`, the executor's batch reads and the append's preflight and
+  post-commit check read the binding stream, the streams of the subjects the command names, the
+  blobs those events bind and the index rows of its record ids and batch key — batched through
+  `EventStore::read_many` — instead of a complete tenant capture. A command's cost no longer
+  grows with the rest of the store.
+  - What is read is still verified: the provider's stream identity must be the bound one, every
+    blob is held to its digest, and each index row read must match the events. A mismatch is
+    refused as `ProviderIntegrity`, as before. Only the rows for the keys the command names are
+    checked; a tampered row of another entity is refused by the next complete read, not by the
+    command.
+  - A read that does not verify is taken again, and after three attempts one complete capture
+    decides. A concurrent honest writer therefore ends as a revision conflict or success, never
+    as `ProviderIntegrity`.
+  - A command on a tenant with no binding is refused before the provider's stream identity is
+    asked for, so a read of a forgotten tenant does not re-create its identity.
+  - A command that would leave the tenant holding more events, blobs or index rows than the
+    handle's `CaptureLimits` is refused with `BatchExceedsReadBounds` before anything is
+    uploaded, counted from the handle's last complete capture plus its own writes since.
+  - A subject whose index row claims a named record id or batch key is read too, and so is every
+    subject sharing a batch with a record read, because a batch is verified whole.
+  - The store handle's own readers (`EventlogRecordedStore`), `complete_snapshot`, `refusals`,
+    imports and recovery after an uncertain or conflicting provider reply still take a complete
+    capture.
+  - `StoreCalls` gains `scoped_reads`. Code that builds `StoreCalls` with a struct literal adds
+    the field.
+- An observation no longer forks a subject on a store that branches and merges (`tree`). Only a
+  decision makes a head: an observation hangs off the decision it observed. Two branches of which
+  one recorded an observation and the other a decision — a lifecycle move beside an evidence
+  record — merge into one subject at the decision's revision, and two branches that only observed
+  one revision merge into that revision. Both branches' observations stay in the history. A
+  decision on each branch still forks the subject as `AsyncStoreError::Forked`, whose `heads` now
+  name the decisions, not an observation recorded after one.
+  - `branch_heads` lists decision heads. The new `branch_tips` lists every record no record
+    follows, observations included, which is what the provider holds the stream to.
+  - A merge decision appends over those tips, so a fork one of whose branches ends in an
+    observation is joined by `BatchAction::Merge` as any other fork is. Every write of a batch to
+    a subject with several tips names them, so a batch may write such a subject more than once.
+  - A merged store whose replay puts an observation after another branch's decision of a
+    different revision opens: the subject projection no longer holds an observation's revision
+    to the row, which follows decisions.
+  - A branchable provider's refusal of an append because the stream gained heads after the
+    command was planned is `AsyncStoreError::Forked` for that subject, not `ProviderIntegrity`.
+
 ## [0.21.0] — 2026-09-24
 
 ### Added
