@@ -12,11 +12,12 @@ pub use encoding::{
 };
 pub use memory::{AppendScript, MemoryRecordedStore};
 pub use ports::{
-    AsyncRecordedReader, AsyncRecordedStore, AsyncRecordedWriter, AsyncStateReader, BoxFuture,
+    AsyncRecordedReader, AsyncRecordedStore, AsyncRecordedWriter, AsyncRefusalRecorder,
+    AsyncStateReader, BoxFuture,
 };
 pub use types::*;
-pub use verify::validate_entry_against_state;
 pub(crate) use verify::validate_imported_boundary;
+pub use verify::{branch_heads, validate_entry_against_state};
 pub use verify::{
     verify_complete_store, verify_imported_record, verify_store_histories, verify_subject_history,
     verify_subject_history_extension, verify_subject_prefix,

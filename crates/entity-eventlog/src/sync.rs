@@ -1,6 +1,6 @@
 //! Explicit synchronous facade over the asynchronous recorded adapter and executor.
 
-#[cfg(feature = "file")]
+#[cfg(any(feature = "file", feature = "tree"))]
 use std::path::PathBuf;
 use std::{
     num::NonZeroU16,
@@ -60,6 +60,16 @@ pub struct ProvisionAuthority {
 
 /// Provider construction owned by the worker thread.
 pub enum EventlogRecordedStoreOwner {
+    #[cfg(feature = "tree")]
+    /// Open one existing tree authority: immutable event and group files under version control.
+    Tree {
+        /// Existing provider root.
+        path: PathBuf,
+        /// Exact logical and physical binding.
+        authority: Authority,
+        /// Bounds for every authoritative capture.
+        limits: eventlog_core::CaptureLimits,
+    },
     #[cfg(feature = "file")]
     /// Durable file provider rooted at the selected directory.
     File {
@@ -126,6 +136,16 @@ pub enum EventlogRecordedStoreOwner {
 
 /// Explicit native preparation plus immutable binding establishment before ordinary open.
 pub enum EventlogRecordedStoreProvisioner {
+    #[cfg(feature = "tree")]
+    /// Prepare one tree authority.
+    Tree {
+        /// Destination provider root.
+        path: PathBuf,
+        /// Exact immutable ER/Eventlog binding.
+        authority: ProvisionAuthority,
+        /// Bounds for every authoritative capture.
+        limits: eventlog_core::CaptureLimits,
+    },
     #[cfg(feature = "file")]
     /// Prepare one durable File authority.
     File {
@@ -205,6 +225,8 @@ impl std::fmt::Debug for EventlogRecordedStoreProvisioner {
 }
 
 enum OwnedBackend {
+    #[cfg(feature = "tree")]
+    Tree(Arc<eventlog_tree::TreeEventStore>),
     #[cfg(feature = "file")]
     File(Arc<eventlog_file::FileEventStore>),
     #[cfg(feature = "sqlite")]
@@ -218,6 +240,8 @@ impl EventlogRecordedStoreOwner {
     #[must_use]
     pub fn authority(&self) -> &Authority {
         match self {
+            #[cfg(feature = "tree")]
+            Self::Tree { authority, .. } => authority,
             #[cfg(feature = "file")]
             Self::File { authority, .. } => authority,
             #[cfg(feature = "sqlite")]
@@ -229,6 +253,35 @@ impl EventlogRecordedStoreOwner {
 
     async fn open(self) -> Result<(EventlogRecordedStore, OwnedBackend), AsyncStoreError> {
         match self {
+            #[cfg(feature = "tree")]
+            Self::Tree {
+                path,
+                authority,
+                limits,
+            } => {
+                // Opening an existing authority never creates one: a missing store is refused, as
+                // the file provider's `open_existing` refuses it.
+                if !path.join("store.json").is_file() {
+                    return Err(store_open(eventlog_core::EventLogError::Backend(
+                        "no tree store at this path".into(),
+                    )));
+                }
+                // Registered before the replay, so the history is replayed once, not once more
+                // to attach the projector.
+                let concrete = Arc::new(
+                    eventlog_tree::TreeEventStore::open_with_inline(
+                        path,
+                        vec![Arc::new(ErRecordedProjector::new())],
+                    )
+                    .await
+                    .map_err(store_open)?,
+                );
+                let backend: Arc<dyn EventlogBackend> = concrete.clone();
+                Ok((
+                    EventlogRecordedStore::open(backend, authority, limits).await?,
+                    OwnedBackend::Tree(concrete),
+                ))
+            }
             #[cfg(feature = "file")]
             Self::File {
                 path,
@@ -359,6 +412,8 @@ impl EventlogRecordedStoreProvisioner {
     #[must_use]
     pub fn logical_scope(&self) -> &str {
         match self {
+            #[cfg(feature = "tree")]
+            Self::Tree { authority, .. } => &authority.logical_scope,
             #[cfg(feature = "file")]
             Self::File { authority, .. } => &authority.logical_scope,
             #[cfg(feature = "sqlite")]
@@ -377,6 +432,20 @@ impl EventlogRecordedStoreProvisioner {
         context: EventlogOperationContext,
     ) -> Result<(EventlogRecordedStore, OwnedBackend), BridgeStartError> {
         match self {
+            #[cfg(feature = "tree")]
+            Self::Tree {
+                path,
+                authority,
+                limits,
+            } => {
+                let concrete = Arc::new(
+                    eventlog_tree::TreeEventStore::open(path)
+                        .await
+                        .map_err(|error| BridgeStartError::Open(store_open(error)))?,
+                );
+                let store = provision_backend(concrete.clone(), authority, limits, context).await?;
+                Ok((store, OwnedBackend::Tree(concrete)))
+            }
             #[cfg(feature = "file")]
             Self::File {
                 path,
@@ -542,6 +611,11 @@ impl OwnedBackend {
         match self {
             #[cfg(feature = "postgres")]
             Self::Postgres(store) => store.shutdown().await.map_err(store_open),
+            #[cfg(feature = "tree")]
+            Self::Tree(store) => {
+                let _ = Arc::strong_count(store);
+                Ok(())
+            }
             #[cfg(feature = "file")]
             Self::File(store) => {
                 let _ = Arc::strong_count(store);

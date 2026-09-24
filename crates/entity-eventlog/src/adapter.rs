@@ -1075,7 +1075,11 @@ impl AsyncStateReader for BatchReadStore<'_> {
         &'a self,
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>> {
-        Box::pin(async move { Ok(self.model().await?.terminals.get(subject).cloned()) })
+        Box::pin(async move {
+            let model = self.model().await?;
+            refuse_forked(&model, subject)?;
+            Ok(model.terminals.get(subject).cloned())
+        })
     }
 }
 
@@ -1152,7 +1156,11 @@ impl AsyncStateReader for EventlogRecordedStore {
         &'a self,
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>> {
-        Box::pin(async move { Ok(self.capture_model().await?.terminals.get(subject).cloned()) })
+        Box::pin(async move {
+            let model = self.capture_model().await?;
+            refuse_forked(&model, subject)?;
+            Ok(model.terminals.get(subject).cloned())
+        })
     }
 }
 
@@ -1303,6 +1311,11 @@ impl EventlogOperationStore<'_> {
         // capture here would have been.
         let mut heads: BTreeMap<Subject, Option<u64>> = BTreeMap::new();
         for member in &request.members {
+            // A merge decision is the one write a forked subject admits.
+            if member.merge.is_none() {
+                refuse_forked(&model, &member.entry.subject())
+                    .map_err(WriteFailure::NotCommitted)?;
+            }
             heads.entry(member.entry.subject()).or_insert_with(|| {
                 model
                     .histories
@@ -1390,7 +1403,10 @@ impl EventlogOperationStore<'_> {
         for ((_, _, wrapper_digest, _, _), member) in wrappers.iter().zip(&request.members) {
             let subject = member.entry.subject();
             let head = heads.get_mut(&subject).expect("subject head was collected");
-            let expected = head.map_or(Expected::NoStream, Expected::Exact);
+            let expected = match &member.merge {
+                Some(merge) => Expected::Merge(eventlog_core::HeadSetDigest::of(&merge.heads)),
+                None => head.map_or(Expected::NoStream, Expected::Exact),
+            };
             *head = Some(head.unwrap_or(0).checked_add(1).ok_or_else(|| {
                 WriteFailure::NotCommitted(AsyncStoreError::PositionExhausted {
                     domain: "subject event stream".into(),
@@ -1799,10 +1815,13 @@ impl AppendGuard {
                 };
                 overlay.insert(subject.clone(), state);
             }
+            // A merge decision was decided on the state its first head reached, which is not the
+            // subject row: that row follows whichever branch the store replayed last.
+            let base = member.merge.as_ref().map(|merge| &merge.base);
             let next = validate_entry_against_state(
                 &member.entry,
                 member.expect,
-                overlay.get(&subject).and_then(Option::as_ref),
+                base.or_else(|| overlay.get(&subject).and_then(Option::as_ref)),
             )
             .map_err(GuardCheckError::Domain)?;
             overlay.insert(subject, next);
@@ -2286,6 +2305,51 @@ pub enum ImportAnchorUncertainty {
     UnknownCommit,
     /// A complete authoritative recovery observation was unavailable.
     RecoveryUnavailable,
+}
+
+impl entity_store::asynchronous::AsyncRefusalRecorder for EventlogOperationStore<'_> {
+    fn record_refusal<'a>(
+        &'a self,
+        refusal: &'a entity_store::asynchronous::RecordedRefusal,
+    ) -> BoxFuture<'a, Result<bool, AsyncStoreError>> {
+        Box::pin(async move {
+            let bytes = crate::encoding::encode_refusal(&self.store.authority, refusal)?;
+            let digest = framed_key(crate::encoding::REFUSAL_BLOB_DOMAIN, &bytes)?;
+            // One stream per distinct refusal, named by its content: a retry refused for the same
+            // reason is the same record, and one refused for another reason is another.
+            let stream = StreamId::new(self.store.tenant.clone(), "er.refusal", digest.clone())
+                .map_err(input_eventlog)?;
+            let command_key = key_for_value(
+                "er.eventlog.refusal-command-key/1",
+                json!({"authority": self.store.authority, "refusal": digest}),
+            )?;
+            let meta = self.context.meta(command_key, digest.clone())?;
+            self.store
+                .backend
+                .put_blob(&self.store.tenant, &digest, &bytes)
+                .await
+                .map_err(map_put_error)?;
+            let event = NewEvent::new("er.refused_request", 1, json!({ "blob": digest }))
+                .map_err(input_eventlog)?;
+            match self
+                .store
+                .backend
+                .append(&stream, Expected::NoStream, &[event], &meta)
+                .await
+            {
+                Ok(result) => Ok(result.deduplicated),
+                Err(EventLogError::Conflict { .. }) => Ok(true),
+                Err(error) => Err(AsyncStoreError::Backend(error.to_string())),
+            }
+        })
+    }
+
+    fn refusals<'a>(
+        &'a self,
+    ) -> BoxFuture<'a, Result<Vec<entity_store::asynchronous::RecordedRefusal>, AsyncStoreError>>
+    {
+        Box::pin(async move { Ok(self.store.capture_model().await?.refusals.clone()) })
+    }
 }
 
 impl AsyncImportedAnchorWriter for EventlogOperationStore<'_> {
@@ -3106,6 +3170,12 @@ struct CapturedModel {
     binding: Option<PhysicalRef>,
     histories: BTreeMap<Subject, SubjectHistory>,
     terminals: BTreeMap<Subject, EntityInstance>,
+    /// Subjects two merged branches both wrote, with their heads. Their history is held and
+    /// verified branch by branch, but they have no one state: reads and ordinary writes refuse
+    /// them until a merge decision joins every head.
+    forked: BTreeMap<Subject, Vec<String>>,
+    /// Commands the store received and refused, in store order.
+    refusals: Vec<entity_store::asynchronous::RecordedRefusal>,
     records: BTreeMap<String, RecordLookup>,
     record_physical: BTreeMap<String, PhysicalRef>,
     batches: BTreeMap<BatchKey, StoredBatch>,
@@ -3205,6 +3275,17 @@ fn projection_rows(capture: &TenantCapture) -> u64 {
         .sum()
 }
 
+/// A forked subject has no one state to serve or to write after.
+fn refuse_forked(model: &CapturedModel, subject: &Subject) -> Result<(), AsyncStoreError> {
+    match model.forked.get(subject) {
+        Some(heads) => Err(AsyncStoreError::Forked {
+            subject: subject.clone(),
+            heads: heads.clone(),
+        }),
+        None => Ok(()),
+    }
+}
+
 fn build_model(
     authority: &Authority,
     capture: &TenantCapture,
@@ -3290,7 +3371,8 @@ fn advance_model(
         let terminal = settle_history(
             history,
             verified.as_ref().map(|(records, state)| (*records, state)),
-        )?;
+        );
+        let terminal = settled(&mut model.forked, history, terminal)?;
         model.terminals.insert(subject, terminal);
     }
     validate_projection_sets(authority, &capture.projections, model)
@@ -3365,6 +3447,21 @@ fn admit_event(
             Ok(None)
         }
         "er.import_anchor" => build_import(authority, event, digest, bound, model).map(Some),
+        "er.refused_request" => {
+            let bytes = bound.get(
+                digest,
+                crate::encoding::REFUSAL_BLOB_DOMAIN,
+                MISSING_REFERENCE,
+            )?;
+            let (found, refusal) = crate::encoding::decode_refusal(bytes)?;
+            require_authority(authority, &found)?;
+            if event.stream_type != "er.refusal" || event.stream_id != digest || event.version != 1
+            {
+                return Err(integrity("refusal reference is in another stream"));
+            }
+            model.refusals.push(refusal);
+            Ok(None)
+        }
         _ => Err(integrity("unknown event exists in the bound ER tenant")),
     }
 }
@@ -3516,6 +3613,12 @@ fn insert_committed(
                 receipt: receipt.clone(),
                 expect: member.expect,
                 request_bytes: record.request_bytes,
+                lineage: record.event.digest.clone().map(|digest| {
+                    Box::new(entity_store::asynchronous::Lineage {
+                        digest,
+                        parents: record.event.parents.clone(),
+                    })
+                }),
                 // The bound record blob. `decode_record` held it against the entry it produced and
                 // that entry was just held against this batch member, so re-encoding the member
                 // here would encode every record in the store a second time to obtain these bytes.
@@ -3584,10 +3687,44 @@ fn build_committed(
 ) -> Result<(), AsyncStoreError> {
     insert_committed(pending, bound, model)?;
     for history in model.histories.values_mut() {
-        let terminal = settle_history(history, None)?;
+        let terminal = settle_history(history, None);
+        let terminal = settled(&mut model.forked, history, terminal)?;
         model.terminals.insert(history.subject.clone(), terminal);
     }
     Ok(())
+}
+
+/// The terminal to hold for a settled history, recording a fork rather than refusing the capture.
+///
+/// A forked subject keeps the state of its last decision in store order as its terminal: that is
+/// the row the inline projection wrote for it, and the capture's projection check holds rows to
+/// terminals. Nothing serves that state, because the subject is also listed as forked.
+fn settled(
+    forked: &mut BTreeMap<Subject, Vec<String>>,
+    history: &SubjectHistory,
+    terminal: Result<EntityInstance, AsyncStoreError>,
+) -> Result<EntityInstance, AsyncStoreError> {
+    match terminal {
+        Ok(terminal) => {
+            forked.remove(&history.subject);
+            Ok(terminal)
+        }
+        Err(AsyncStoreError::Forked { subject, heads }) => {
+            forked.insert(subject.clone(), heads);
+            history
+                .records
+                .iter()
+                .rev()
+                .find_map(|record| match &record.entry {
+                    entity_store::asynchronous::RecordedEntry::Decision(commit) => {
+                        Some(commit.instance.clone())
+                    }
+                    entity_store::asynchronous::RecordedEntry::Observation(_) => None,
+                })
+                .ok_or_else(|| corrupt(&subject, "a forked history has no state-producing record"))
+        }
+        Err(other) => Err(other),
+    }
 }
 
 /// Orders one subject's history, derives its terminal state and verifies the history reaches it.
@@ -4210,6 +4347,8 @@ mod seeded_open {
             causation_depth: 0,
             redacted_at: None,
             data: json!({ "blob": digest }),
+            digest: None,
+            parents: Vec::new(),
         }
     }
 
@@ -4470,6 +4609,10 @@ mod seeded_open {
     /// here.
     fn model_digest(model: &CapturedModel) -> String {
         let mut hasher = Sha256::new();
+        // A linear store's records carry no lineage. The field postdates the pin below, so it is
+        // left out of the text the pin covers while it is empty; a record that does carry one
+        // still changes the digest.
+        let pinned = |text: String| text.replace(", lineage: None", "");
         for part in [
             format!("{:?}", model.binding),
             format!(
@@ -4481,11 +4624,11 @@ mod seeded_open {
                     &model.held.digests
                 )
             ),
-            format!("{:?}", model.histories),
+            pinned(format!("{:?}", model.histories)),
             format!("{:?}", model.terminals),
-            format!("{:?}", model.records),
+            pinned(format!("{:?}", model.records)),
             format!("{:?}", model.record_physical),
-            format!("{:?}", model.batches),
+            pinned(format!("{:?}", model.batches)),
             format!("{:?}", model.anchors),
             format!("{:?}", model.anchor_physical),
         ] {

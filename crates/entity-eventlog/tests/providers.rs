@@ -1,5 +1,10 @@
 //! Real-provider lifecycle coverage for the recorded adapter and synchronous owner.
-#![cfg(any(feature = "file", feature = "sqlite", feature = "postgres"))]
+#![cfg(any(
+    feature = "file",
+    feature = "sqlite",
+    feature = "postgres",
+    feature = "tree"
+))]
 
 use std::sync::Arc;
 
@@ -426,6 +431,20 @@ fn file_provider_provisions_replays_opens_and_rebuilds() {
                 .expect("file provider"),
         );
         exercise_provider(backend, "file").await;
+    });
+}
+
+#[cfg(feature = "tree")]
+#[test]
+fn tree_provider_provisions_replays_opens_and_rebuilds() {
+    block_on(async {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let backend = Arc::new(
+            eventlog_tree::TreeEventStore::open(directory.path())
+                .await
+                .expect("tree provider"),
+        );
+        exercise_provider(backend, "tree").await;
     });
 }
 

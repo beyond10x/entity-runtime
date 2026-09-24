@@ -315,6 +315,21 @@ pub struct AppendMember {
     pub entry: RecordedEntry,
     /// Canonical `er.request/1` bytes used for exact retry comparison.
     pub request_bytes: Vec<u8>,
+    /// Set for a merge decision: the heads it joins and the state it was decided on.
+    pub merge: Option<MergeBase>,
+}
+
+/// What a merge decision joins, and the state it was decided on.
+///
+/// The state is the first head's, at the highest revision any head reached, so the decision's
+/// revision passes every branch it joins. A store that verifies the append holds the decision to
+/// this state; the provider holds the heads to the stream's actual heads.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MergeBase {
+    /// The digests of every head the decision joins; the first is the one it was decided on.
+    pub heads: Vec<String>,
+    /// The first head's state at the highest head revision.
+    pub base: EntityInstance,
 }
 
 impl AppendMember {
@@ -325,7 +340,15 @@ impl AppendMember {
             expect,
             entry,
             request_bytes,
+            merge: None,
         }
+    }
+
+    /// The same member as a merge decision over `merge`.
+    #[must_use]
+    pub fn merging(mut self, merge: MergeBase) -> Self {
+        self.merge = Some(merge);
+        self
     }
 }
 
@@ -429,8 +452,68 @@ pub struct StoredRecord {
     pub expect: Expect,
     /// Exact canonical request comparison bytes.
     pub request_bytes: Vec<u8>,
+    /// Where the record sits among its subject's records, in a store whose history can branch:
+    /// its own digest and the digests of the records it follows. `None` in a linear store, whose
+    /// records follow one another in position order.
+    // Boxed: most stores keep no lineage, and every record would otherwise carry its size.
+    pub lineage: Option<Box<Lineage>>,
     /// Exact canonical complete-record comparison bytes.
     pub record_bytes: Vec<u8>,
+}
+
+/// Why a received command was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RefusalReason {
+    /// The kernel refused the decision: a precondition, transition, validation or operation.
+    Kernel {
+        /// The kernel's stable refusal, as it renders it.
+        message: String,
+    },
+    /// The subject was not at the revision the command expected.
+    Conflict {
+        /// The subject whose revision disagreed.
+        subject: Subject,
+        /// What the command expected: `None` for absent.
+        expected: Option<u64>,
+        /// What the store held: `None` for absent.
+        found: Option<u64>,
+    },
+    /// The subject has forked and the command was not a merge over its heads.
+    Forked {
+        /// The forked subject.
+        subject: Subject,
+        /// Its heads.
+        heads: Vec<String>,
+    },
+}
+
+/// A command the store received and refused, recorded so the refusal is part of the history.
+///
+/// It never enters a subject's history: a refusal changes no state, so no subject's revision or
+/// head moves because of it. One refusal is kept per distinct content, so a retry refused for the
+/// same reason is the same record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedRefusal {
+    /// The batch key the command was submitted under.
+    pub key: BatchKey,
+    /// The subjects the command named, in its order.
+    pub subjects: Vec<Subject>,
+    /// The command as received: each action's kind, subject and inputs, canonical JSON.
+    pub request: serde_json::Value,
+    /// The provenance the caller supplied with the command's first action.
+    pub recording: crate::Recording,
+    /// Why it was refused.
+    pub reason: RefusalReason,
+}
+
+/// A record's place in a subject history that version control can branch and merge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lineage {
+    /// The record's own digest, which a later record names to follow it.
+    pub digest: String,
+    /// The records this one follows: none for a subject's first record, one normally, and more
+    /// than one only for a merge decision, which joins the branches it names.
+    pub parents: Vec<String>,
 }
 
 impl StoredRecord {
@@ -691,6 +774,14 @@ pub enum AsyncStoreError {
         /// Concrete mismatch.
         detail: String,
     },
+    /// Two branches both recorded decisions for this subject and nothing has joined them yet.
+    /// Its state is unknown until a merge decision names every head.
+    Forked {
+        /// The forked subject.
+        subject: Subject,
+        /// The digests of the records no other record follows.
+        heads: Vec<String>,
+    },
     /// Provider authority is internally inconsistent before an exact subject can be recovered.
     ProviderIntegrity {
         /// Stable provider identity.
@@ -781,6 +872,13 @@ impl fmt::Display for AsyncStoreError {
                 formatter,
                 "history for {} {} is corrupt: {detail}",
                 subject.entity, subject.id
+            ),
+            Self::Forked { subject, heads } => write!(
+                formatter,
+                "history for {} {} has forked into {} heads",
+                subject.entity,
+                subject.id,
+                heads.len()
             ),
             Self::ProviderIntegrity { provider, detail } => {
                 write!(formatter, "{provider} authority is inconsistent: {detail}")

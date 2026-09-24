@@ -4,6 +4,40 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- `entity-eventlog` feature `tree`: `EventlogRecordedStoreOwner::Tree` and
+  `EventlogRecordedStoreProvisioner::Tree` open and prepare a recorded store on
+  `eventlog-tree`, whose immutable files merge under version control. Two branches that recorded
+  decisions for different subjects merge into one store that opens and holds both.
+- Forked subjects:
+  - `StoredRecord.lineage` carries each record's digest and parents when the provider keeps
+    them.
+  - A history with lineage is verified branch by branch: each record is checked against its
+    parent's state.
+  - A subject both branches changed is reported as `AsyncStoreError::Forked` with its heads,
+    instead of `CorruptHistory` for the whole store. Other subjects keep serving; reads and
+    ordinary writes of the forked subject refuse.
+  - `branch_heads` lists a history's heads and their states.
+- `BatchAction::Merge` joins a forked subject. It executes one operation on the state the chosen
+  head reached, at the highest revision any head reached. The append joins every head, and the
+  subject serves again at the next revision.
+- Refused commands are recorded:
+  - `Executor::recording_refusals` records each kernel refusal, expectation conflict and write
+    to a forked subject as a `RecordedRefusal`, before returning the refusal.
+  - `EventlogOperationStore` implements `AsyncRefusalRecorder`: one `er.refused_request` event
+    per distinct refusal on its own `er.refusal` stream, with the content in a blob. A retry
+    refused for the same reason is the same record, and no subject's revision moves.
+
+### Changed
+
+- Eventlog is pinned at the 0.4.0 release (`70096af8`), which adds `eventlog-tree` and the fork
+  vocabulary this release uses.
+- The tree owner opens `eventlog-tree` with the recorded projector registered before the replay,
+  so an open replays the history once instead of twice.
+- `AppendMember` gains `merge`, and `StoredRecord` gains `lineage`. Code that builds either with
+  a struct literal adds the field; `AppendMember::new` sets `merge: None`.
+
 ## [0.20.0] — 2026-09-23
 
 ### Fixed

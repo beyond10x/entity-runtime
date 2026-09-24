@@ -312,6 +312,7 @@ impl MemoryRecordedStore {
                 receipt,
                 expect: member.expect,
                 request_bytes: member.request_bytes.clone(),
+                lineage: None,
                 record_bytes: record_comparison_bytes(&member.entry)
                     .map_err(WriteFailure::NotCommitted)?,
             };
