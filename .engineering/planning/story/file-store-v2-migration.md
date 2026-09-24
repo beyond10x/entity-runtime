@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: story:file-store-v2-migration
 kind: story
 status: implemented

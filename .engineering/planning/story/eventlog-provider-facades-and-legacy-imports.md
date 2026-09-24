@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: story:eventlog-provider-facades-and-legacy-imports
 kind: story
 status: implemented

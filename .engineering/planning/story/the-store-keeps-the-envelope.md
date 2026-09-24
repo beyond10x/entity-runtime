@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: story:the-store-keeps-the-envelope
 kind: story
 status: implemented
