@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.22.0] — 2026-09-24
+
 ### Changed
 
 - `entity-eventlog`: a command reads only its own entities' streams. The readers of
