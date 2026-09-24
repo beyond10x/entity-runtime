@@ -42,6 +42,10 @@ reason, but the CLI does not expose the Rust variant as a JSON `kind`.
 | `RecordConflict` | record ID already names different bytes | investigate idempotency misuse; choose no replacement ID silently |
 | `Unreachable` | provider could not be contacted | retry or follow declared offline policy; never treat as absent |
 | `Backend` | provider itself failed | surface an operational error; do not spin on policy retries |
+| `Forked` | two merged branches both changed the subject; the refusal names its heads | join the heads with `BatchAction::Merge`; do not pick one silently |
+
+`Forked` is an `AsyncStoreError` of the recorded stores that keep lineage, such as the Eventlog
+tree store; see [forked subjects and merge](./storage#forked-subjects-and-merge).
 
 ## False versus unobservable
 

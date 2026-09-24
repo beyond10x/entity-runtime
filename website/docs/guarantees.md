@@ -6,7 +6,7 @@ description: The properties Entity Runtime enforces, the responsibilities it lea
 
 # Guarantees and limits
 
-These are the guarantees of the 0.18.1 runtime. Its API remains in development; definition
+These are the guarantees of the 0.21.0 runtime. Its API remains in development; definition
 versions, runtime releases, and storage formats are separate compatibility boundaries.
 The [system model](./system-model) identifies the source and coverage of each contract.
 
@@ -27,6 +27,11 @@ the same serialized bytes. Maps are ordered and numeric comparisons preserve JSO
 
 Execution borrows the caller's instance and returns a new one only on success. A failed transition,
 rule, validation, invariant, or template produces no partial instance and no events.
+
+A host may ask for refusals to be recorded. An executor built with
+`Executor::recording_refusals` records each kernel refusal, expectation conflict and write to a
+forked subject before returning it. On an Eventlog store that is one `er.refused_request` event on
+its own `er.refusal` stream per distinct refusal; no subject's revision or head moves.
 
 ### Lifecycle through operations only
 
