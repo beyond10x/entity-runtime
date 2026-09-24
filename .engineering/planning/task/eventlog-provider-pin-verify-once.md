@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: task:eventlog-provider-pin-verify-once
 kind: task
 status: implemented

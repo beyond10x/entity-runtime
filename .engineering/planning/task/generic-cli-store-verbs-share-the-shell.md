@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: task:generic-cli-store-verbs-share-the-shell
 kind: task
 status: implemented

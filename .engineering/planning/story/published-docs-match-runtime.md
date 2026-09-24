@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: story:published-docs-match-runtime
 kind: story
 status: implemented

@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: story:async-recorded-contract-executor
 kind: story
 status: implemented

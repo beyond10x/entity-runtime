@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: task:address-independent-review-2026-09-08
 kind: task
 status: implemented

@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: story:events-carry-what-they-were-decided-on
 kind: story
 status: implemented

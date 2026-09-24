@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: epic:the-store-an-adopter-runs-on
 kind: epic
 status: proposed

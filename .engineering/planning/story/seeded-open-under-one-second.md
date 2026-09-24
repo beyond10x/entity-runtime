@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/1
+format: aep.planning-md/2
 id: story:seeded-open-under-one-second
 kind: story
 status: draft
