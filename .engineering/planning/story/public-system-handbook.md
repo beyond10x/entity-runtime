@@ -83,7 +83,7 @@ An initial gate run with CARGO_TARGET_DIR exposed the generator's fixed output-p
 - Live https://beyond10x.github.io/PROVENANCE.json binds sourceCommits.entity-runtime to 513d3bc0c44d7ae0109df90935d984bd3f278afb, source set 5c397b34ea000b8ca00605dea0d9f3cda5bd9a657d1336f2fb7b5eef728395e8, and Atlas control 7b67e8e2437ec9956135930435875a8a76139c3f. The existing Website runtime remains 815fad1b977992d01695f6b5c79495c02576212b and the Docs System pin remains 1c8c31697e87235dda8bec9467264b22a7fa0c95.
 - Local artifact and live browser checks passed for system-model and storage at 1440, 320, 390 and 720 CSS pixels (the last at scale 2), in explicitly verified light and dark themes. Diagrams retain native label size; tables preserve semantic headers and named, focusable overflow; keyboard panning reaches the final columns. No whole-page horizontal overflow or page errors were observed. Desktop diagram and mobile dark-table screenshots were inspected.
 
-The broad read-only reconcile against primary checkouts encountered pre-existing collector drift: `refused: Docs System collection failed for agentide: ~/beyond10x/agentide/b10x.docs.yaml has unsupported schema b10x-docs/v4`. No unrelated primary checkout or collector was changed. Exact Website collection, portal artifact, and live delivery gates passed.
+The broad read-only reconcile against primary checkouts encountered pre-existing collector drift: `refused: Docs System collection failed for agentide: home-path:sha256:67191424faff828505741a67b883fc24da85820dbb9e3b5d405324602e9843ed has unsupported schema b10x-docs/v4`. No unrelated primary checkout or collector was changed. Exact Website collection, portal artifact, and live delivery gates passed.
 
 ## Completion
 

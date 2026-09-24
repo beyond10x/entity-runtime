@@ -73,12 +73,12 @@ Case 1: `crates/entity-eventlog/tests/provider_facades.rs:145`, `opening_an_abse
    Compiling sha2 v0.10.9
    Compiling hashbrown v0.15.5
    Compiling uuid v1.26.1
-   Compiling entity-core v0.18.1 (~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-facades-source-review-2-20260917/crates/entity-core)
+   Compiling entity-core v0.18.1 (home-path:sha256:799a44348fb54324fda068ac350ce48ff659841d42563fa779c4d4a702eb03e0)
    Compiling tokio-macros v2.7.2
    Compiling fs2 v0.4.3
    Compiling pin-project-lite v0.2.17
    Compiling tokio v1.53.1
-   Compiling entity-store v0.18.1 (~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-facades-source-review-2-20260917/crates/entity-store)
+   Compiling entity-store v0.18.1 (home-path:sha256:b6376ec3e191f23cd9618cdb5779b426c61ff4a23f201a2bfa1e641a7e6c9702)
    Compiling eventlog-core v0.2.1 (https://github.com/beyond10x/eventlog?rev=088c27b5df9745c68d8a2240dbb2038998b03efe#088c27b5)
    Compiling hashlink v0.10.0
    Compiling smallvec v1.15.2
@@ -90,12 +90,12 @@ Case 1: `crates/entity-eventlog/tests/provider_facades.rs:145`, `opening_an_abse
    Compiling linux-raw-sys v0.12.1
    Compiling eventlog-sqlite v0.2.1 (https://github.com/beyond10x/eventlog?rev=088c27b5df9745c68d8a2240dbb2038998b03efe#088c27b5)
    Compiling eventlog-file v0.2.1 (https://github.com/beyond10x/eventlog?rev=088c27b5df9745c68d8a2240dbb2038998b03efe#088c27b5)
-   Compiling entity-query v0.18.1 (~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-facades-source-review-2-20260917/crates/entity-query)
-   Compiling entity-executor v0.18.1 (~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-facades-source-review-2-20260917/crates/entity-executor)
+   Compiling entity-query v0.18.1 (home-path:sha256:f9233a66388af471b72bcffb1fee715e55e4d2853fdf0788b5e08c861afd81f4)
+   Compiling entity-executor v0.18.1 (home-path:sha256:957ecae5aad3cbed21e9c0b68abce5e29f0e2eb6be6c0764eb941694a5ea6447)
    Compiling once_cell v1.21.4
    Compiling fastrand v2.5.0
    Compiling tempfile v3.27.0
-   Compiling entity-eventlog v0.18.1 (~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-facades-source-review-2-20260917/crates/entity-eventlog)
+   Compiling entity-eventlog v0.18.1 (home-path:sha256:e56e871017e669e45d04b58ac0ddccea91d5aaa9913c23ebbb8732fe93a2552f)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 18.55s
      Running tests/provider_facades.rs (target/m2-final-review/debug/deps/provider_facades-92085856eca913cf)
 
@@ -118,7 +118,7 @@ error: test failed, to rerun pass `-p entity-eventlog --test provider_facades`
 
 Case 2: `crates/entity-eventlog/tests/provider_facades.rs:164`, `opening_an_absent_sqlite_authority_does_not_create_provider_bytes`. Public `RecordedProviderFacade::start` with a SQLite owner (the path wrapped by `EventlogSqliteStore::open`) must refuse a missing authority without creating a SQLite database. It returns an error but creates the database. Written before any suite run and run alone; red now. Command: `cargo +1.91.0 test -p entity-eventlog --test provider_facades --features sync-bridge,file,sqlite --locked --offline -j 2 opening_an_absent_sqlite_authority_does_not_create_provider_bytes -- --exact --test-threads=1 --nocapture` (same bounded environment; exit 101). Verbatim output follows:
 ```
-   Compiling entity-eventlog v0.18.1 (~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-facades-source-review-2-20260917/crates/entity-eventlog)
+   Compiling entity-eventlog v0.18.1 (home-path:sha256:e56e871017e669e45d04b58ac0ddccea91d5aaa9913c23ebbb8732fe93a2552f)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.49s
      Running tests/provider_facades.rs (target/m2-final-review/debug/deps/provider_facades-92085856eca913cf)
 
@@ -186,14 +186,14 @@ Both open-path findings arise from new ER facade dispatch to existing native cre
 
 Attacked without another concrete failure: the source-bound `/2` anchor’s same/different-source retry path and v1 reader refusal; complete imported-boundary validation, sorted source acquisition and partial-progress reporting; File batch atomicity and process/reopen tests; SQL legacy acquisition and facade dispatch; the unchanged five-path caller-owned PostgreSQL connection authority and driver handoff. The eight pre-existing facade cases passed in the affected suite. PostgreSQL source and caller proof were examined against the contracted reports; this lane did not rerun a live PostgreSQL case or claim a qualified integration result.
 
-Custody: reviewer modified only `crates/entity-eventlog/tests/provider_facades.rs` in the ER tree. The 28 non-test original final-union paths remain byte-for-byte on the accepted manifest, the Eventlog companion tree remains clean, and neither tree was reset, switched, stashed, committed, or published. The reviewer build target is inside the ER tree at `~/.local/state/worktree/trees/b10x/entity-runtime/ess-evolution-facades-source-review-2-20260917/target/m2-final-review`. The root-owned live PostgreSQL fixture `14c32b740eda0aba07ed254597a68cbd7d590b3292e2e9d657ce433fa825e1bf` and its env file were not read or mutated. Both reviewer session leases were released with `worktree hook session-end`; root retains tree and fixture custody.
+Custody: reviewer modified only `crates/entity-eventlog/tests/provider_facades.rs` in the ER tree. The 28 non-test original final-union paths remain byte-for-byte on the accepted manifest, the Eventlog companion tree remains clean, and neither tree was reset, switched, stashed, committed, or published. The reviewer build target is inside the ER tree at `home-path:sha256:4724a1ddf9f068f27a1ab5cf238f24201e0515bd4d0444ff5ef28e1fdaf110e9`. The root-owned live PostgreSQL fixture `14c32b740eda0aba07ed254597a68cbd7d590b3292e2e9d657ce433fa825e1bf` and its env file were not read or mutated. Both reviewer session leases were released with `worktree hook session-end`; root retains tree and fixture custody.
 
 Every path written outside the ER worktree:
-- `~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/facades-source-review-2/report.md`
-- `~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/facades-source-review-2/file-open-red.log`
-- `~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/facades-source-review-2/sqlite-open-red.log`
-- `~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/facades-source-review-2/provider-facades-suite-red.log`
-- `~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/facades-source-review-2/tests-only.patch`
+- `home-path:sha256:0ee15d3ec925a557f61a24a92cdd19dbab8e776e1ca719519d57c185f2422c13`
+- `home-path:sha256:93e3c056f1f6c8273c7aa400b7cbe78aacaa39a563add1b70ec98a231c31d174`
+- `home-path:sha256:fcc8288f61500981197fa1098cbdd7604d98a619a9f947127df6ce5835743cdf`
+- `home-path:sha256:ee60a8e3a562196fd997204055b85559d5413023b7b1e0f9a5d91bceb50c5774`
+- `home-path:sha256:109c4c29c153cb1f44e6398d133e7d0425d3673736270048e36e6b4cde70d39e`
 - `/var/tmp/ess-evolution-m2-final-review-20260917` (private runtime TMPDIR, outside Git)
 
 ```findings

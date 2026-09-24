@@ -34,4 +34,4 @@ same change set at the operator's request to close all follow-ups.
 
 `--binary` takes `$(command -v aep)` through a value parser that accepts an empty string; empty is
 refused as "aep is not on the shell's PATH". Observed: `task plan-check` → `aep implements protocol
-0.54.0 at ~/.cargo/bin/aep (needs 0.26.0)` then `valid`; `--binary ""` → exit 2.
+0.54.0 at home-path:sha256:4f297ba52483ee033f48d6958b0dd45332a6f945d91a5fe8db98d364e031fa61 (needs 0.26.0)` then `valid`; `--binary ""` → exit 2.

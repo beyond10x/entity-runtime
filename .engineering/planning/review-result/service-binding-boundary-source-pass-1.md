@@ -181,7 +181,7 @@ holds.
 
 6. Paths written outside the worktree
 
-- `~/beyond10x/.ess-evolution/waves/0009-service-convergence/service-binding-source-review-1/report.md`
+- `home-path:sha256:26f38cb13e9357703f017ca8fe263a042625cd49bf8994405ec4d2114fa2d0c5`
 
 ```findings
 []
