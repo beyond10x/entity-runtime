@@ -326,7 +326,9 @@ pub struct AppendMember {
 /// this state; the provider holds the heads to the stream's actual heads.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MergeBase {
-    /// The digests of every head the decision joins; the first is the one it was decided on.
+    /// The digests of every record no record follows, which the decision joins: its decision
+    /// heads, or the observations that follow them. The first is the one it was decided on when
+    /// that head is itself one of them.
     pub heads: Vec<String>,
     /// The first head's state at the highest head revision.
     pub base: EntityInstance,
@@ -512,7 +514,8 @@ pub struct Lineage {
     /// The record's own digest, which a later record names to follow it.
     pub digest: String,
     /// The records this one follows: none for a subject's first record, one normally, and more
-    /// than one only for a merge decision, which joins the branches it names.
+    /// than one for a merge decision, which joins the branches it names, or for a record appended
+    /// after observations were merged beside the decision they observed, which follows them all.
     pub parents: Vec<String>,
 }
 
@@ -779,7 +782,7 @@ pub enum AsyncStoreError {
     Forked {
         /// The forked subject.
         subject: Subject,
-        /// The digests of the records no other record follows.
+        /// The digests of its decision heads: the decisions no other decision follows.
         heads: Vec<String>,
     },
     /// Provider authority is internally inconsistent before an exact subject can be recovered.

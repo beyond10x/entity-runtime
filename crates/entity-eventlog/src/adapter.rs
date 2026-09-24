@@ -18,8 +18,9 @@ use entity_store::{
         AsyncStoreError, BatchKey, BatchReceipt, BoxFuture, CommitReceipt, CompleteStoreSnapshot,
         HistoryOrigin, RecordLookup, RecordPosition, RecordReceipt, StoreCoverage, StoredBatch,
         StoredRecord, Subject, SubjectAssurance, SubjectHistory, SubjectSnapshot, WriteFailure,
-        batch_comparison_bytes, original_request_comparison_bytes, record_comparison_bytes,
-        validate_entry_against_state, verify_subject_history, verify_subject_history_extension,
+        batch_comparison_bytes, branch_tips, original_request_comparison_bytes,
+        record_comparison_bytes, validate_entry_against_state, verify_subject_history,
+        verify_subject_history_extension,
     },
 };
 use eventlog_core::{
@@ -45,6 +46,12 @@ use crate::{
         tagged_body,
     },
 };
+
+mod scoped;
+
+use scoped::ReadScope;
+#[cfg(feature = "sync-bridge")]
+use scoped::ScopedModel;
 
 #[cfg(test)]
 thread_local! {
@@ -177,19 +184,26 @@ mod batch_read_tests {
             .expect("bound store")
     }
 
-    fn captures(store: &EventlogRecordedStore) -> usize {
-        store.native_captures.load(Ordering::Relaxed)
+    /// `(complete captures, per-entity reads)` taken through the handle so far.
+    fn reads(store: &EventlogRecordedStore) -> (usize, usize) {
+        let calls = store.calls();
+        (calls.captures, calls.scoped_reads)
+    }
+
+    fn since(store: &EventlogRecordedStore, before: (usize, usize)) -> (usize, usize) {
+        let now = reads(store);
+        (now.0 - before.0, now.1 - before.1)
     }
 
     #[tokio::test]
-    async fn one_native_capture_serves_each_preflight_and_is_never_reused_across_calls() {
+    async fn one_per_entity_read_serves_each_preflight_and_is_never_reused_across_calls() {
         let store = store().await;
         let registry = registry();
         let first_key = BatchKey::Named("first".into());
         let first: Vec<_> = (0..4)
             .map(|i| create(&format!("first-{i}"), &format!("first-record-{i}")))
             .collect();
-        let before = captures(&store);
+        let before = reads(&store);
         assert_eq!(
             store
                 .operation(context("empty"))
@@ -198,7 +212,7 @@ mod batch_read_tests {
                 .expect("empty batch"),
             AppendOutcome::Empty
         );
-        assert_eq!(captures(&store), before, "empty batches do no IO");
+        assert_eq!(reads(&store), before, "empty batches do no IO");
 
         let committed = store
             .operation(context("first"))
@@ -206,12 +220,12 @@ mod batch_read_tests {
             .await
             .expect("four authored decisions commit");
         assert_eq!(
-            captures(&store) - before,
-            3,
-            "one preflight, one append recovery whose capture also supplies the heads, one \
-             postcommit verification"
+            since(&store, before),
+            (0, 3),
+            "one preflight, one append read that also supplies the heads, one postcommit \
+             verification, and no complete capture"
         );
-        let before = captures(&store);
+        let before = reads(&store);
         let replay = store
             .operation(context("first-replay"))
             .execute_batch(&registry, first_key, first)
@@ -220,28 +234,28 @@ mod batch_read_tests {
         assert!(replay.replayed());
         assert_eq!(replay.receipt(), committed.receipt());
         assert_eq!(
-            captures(&store) - before,
-            1,
-            "replay verifies one fresh authority"
+            since(&store, before),
+            (0, 1),
+            "replay verifies one fresh per-entity read"
         );
 
         let second: Vec<_> = (0..4)
             .map(|i| create(&format!("second-{i}"), &format!("second-record-{i}")))
             .collect();
-        let before = captures(&store);
+        let before = reads(&store);
         store
             .operation(context("second"))
             .execute_batch(&registry, BatchKey::Named("second".into()), second)
             .await
             .expect("second batch commits");
         assert_eq!(
-            captures(&store) - before,
-            3,
+            since(&store, before),
+            (0, 3),
             "second call takes its own preflight"
         );
 
         let pending = touch("later", "later-touch");
-        let before = captures(&store);
+        let before = reads(&store);
         assert!(
             store
                 .operation(context("refused"))
@@ -254,7 +268,7 @@ mod batch_read_tests {
                 .expect_err("missing predecessor refuses")
                 .is_revision_conflict()
         );
-        assert_eq!(captures(&store) - before, 1);
+        assert_eq!(since(&store, before), (0, 1));
         store
             .operation(context("later-create"))
             .execute_batch(
@@ -264,7 +278,7 @@ mod batch_read_tests {
             )
             .await
             .expect("authority changes after refusal");
-        let before = captures(&store);
+        let before = reads(&store);
         store
             .operation(context("later-touch"))
             .execute_batch(
@@ -274,18 +288,23 @@ mod batch_read_tests {
             )
             .await
             .expect("fresh call sees created subject");
-        assert_eq!(captures(&store) - before, 3);
+        assert_eq!(since(&store, before), (0, 3));
     }
 
     #[tokio::test]
     async fn stale_preflight_is_guarded_and_replayed_append_recovers_from_fresh_capture() {
         let store = store().await;
         let registry = registry();
-        let stale = BatchReadStore::new(store.operation(context("stale")));
-        stale
-            .lookup_batch(&BatchKey::Named("stale".into()))
-            .await
-            .expect("preflight");
+        let stale_key = BatchKey::SingleRecord("stale".into());
+        let stale_action = create("same", "stale");
+        // The preflight reads everything the batch names, so the decision below is taken on
+        // exactly this stale view rather than on a fresher read of something it did not cover.
+        let stale = BatchReadStore::for_batch(
+            store.operation(context("stale")),
+            &stale_key,
+            std::slice::from_ref(&stale_action),
+        );
+        stale.lookup_batch(&stale_key).await.expect("preflight");
         let winner = store
             .operation(context("winner"))
             .execute_batch(
@@ -297,10 +316,7 @@ mod batch_read_tests {
             .expect("winner commits");
         assert!(!winner.replayed());
         let conflict = Executor::new(&registry, &stale)
-            .batch(
-                BatchKey::SingleRecord("stale".into()),
-                vec![create("same", "stale")],
-            )
+            .batch(stale_key, vec![stale_action])
             .await
             .expect_err("stale predecessor must not append");
         assert!(conflict.is_revision_conflict(), "{conflict:?}");
@@ -314,7 +330,11 @@ mod batch_read_tests {
 
         let action = create("replayed", "replayed");
         let replay_key = BatchKey::SingleRecord("replayed".into());
-        let pending = BatchReadStore::new(store.operation(context("pending")));
+        let pending = BatchReadStore::for_batch(
+            store.operation(context("pending")),
+            &replay_key,
+            std::slice::from_ref(&action),
+        );
         pending
             .lookup_batch(&replay_key)
             .await
@@ -324,7 +344,7 @@ mod batch_read_tests {
             .execute_batch(&registry, replay_key.clone(), vec![action.clone()])
             .await
             .expect("other caller commits exact action");
-        let before = captures(&store);
+        let before = reads(&store);
         let replay = Executor::new(&registry, &pending)
             .batch(replay_key, vec![action])
             .await
@@ -332,9 +352,9 @@ mod batch_read_tests {
         assert!(replay.replayed());
         assert_eq!(replay.receipt(), committed.receipt());
         assert_eq!(
-            captures(&store) - before,
-            2,
-            "append and executor recovery use fresh captures"
+            since(&store, before),
+            (0, 2),
+            "append and executor recovery use fresh per-entity reads"
         );
     }
 
@@ -343,18 +363,21 @@ mod batch_read_tests {
         let store = store().await;
         let registry = registry();
         let key = BatchKey::Named("lost-reply".into());
-        let mut operation = BatchReadStore::new(store.operation(context("lost-reply")));
+        let actions = vec![create("lost-reply", "lost-reply-record")];
+        let mut operation =
+            BatchReadStore::for_batch(store.operation(context("lost-reply")), &key, &actions);
         operation.return_uncertain_after_commit = true;
-        let before = captures(&store);
+        let before = reads(&store);
         let recovered = Executor::new(&registry, &operation)
-            .batch(key.clone(), vec![create("lost-reply", "lost-reply-record")])
+            .batch(key.clone(), actions)
             .await
             .expect("uncertain append recovers from committed authority");
         assert!(recovered.replayed());
         assert_eq!(
-            captures(&store) - before,
-            4,
-            "preflight, guarded write path, postcommit check and fresh recovery"
+            since(&store, before),
+            (0, 4),
+            "preflight, guarded write path, postcommit check and fresh recovery, each a \
+             per-entity read"
         );
         let committed = store
             .lookup_batch(&key)
@@ -370,6 +393,7 @@ mod batch_read_tests {
             model_builds: after.model_builds - before.model_builds,
             model_advances: after.model_advances - before.model_advances,
             records_decoded: after.records_decoded - before.records_decoded,
+            scoped_reads: after.scoped_reads - before.scoped_reads,
         }
     }
 
@@ -394,6 +418,22 @@ mod batch_read_tests {
         let registry = registry();
         seed(&store, &registry, 3).await;
         let subject = Subject::new("ticket", "seed-0").expect("subject");
+        // A command reads per entity and leaves the handle's complete model where it was, so the
+        // first complete read after it advances by the command's records. That read is the one
+        // that verifies the head the five below then read unmoved.
+        let before = store.calls();
+        assert!(store.load(&subject).await.expect("load").is_some());
+        assert_eq!(
+            spent(before, store.calls()),
+            StoreCalls {
+                captures: 1,
+                model_builds: 0,
+                model_advances: 1,
+                records_decoded: 3,
+                scoped_reads: 0,
+            },
+            "the first complete read after the seed advances by its three records"
+        );
         let before = store.calls();
         assert!(store.load(&subject).await.expect("load").is_some());
         assert!(
@@ -435,13 +475,15 @@ mod batch_read_tests {
                 model_builds: 0,
                 model_advances: 0,
                 records_decoded: 0,
+                scoped_reads: 0,
             },
             "five reads of one unmoved head: five captures, and not one model rebuilt"
         );
     }
 
-    /// A decision this handle commits advances the verified model by the records it appended,
-    /// and nothing else is decoded again — the bound is one record per decision, not the store.
+    /// A decision this handle commits reads only its own subject's streams, and the next complete
+    /// read advances the verified model by the records this handle appended — nothing else is
+    /// decoded again, however large the store.
     #[tokio::test]
     async fn a_decision_this_handle_commits_advances_its_model_by_its_own_records_only() {
         let store = store().await;
@@ -458,18 +500,40 @@ mod batch_read_tests {
                 )
                 .await
                 .expect("the decision commits");
+            // The subject shares the seed batch with the other three, and a batch is verified
+            // whole, so each read decodes the four seed records and the touches already made.
             assert_eq!(
                 spent(before, store.calls()),
                 StoreCalls {
-                    captures: 3,
+                    captures: 0,
                     model_builds: 0,
-                    model_advances: 1,
-                    records_decoded: 1,
+                    model_advances: 0,
+                    records_decoded: 3 * (4 + index) + 1,
+                    scoped_reads: 3,
                 },
-                "decision {index}: preflight, append recovery and post-commit captures, one \
-                 advance by the one record it appended"
+                "decision {index}: a per-entity preflight, append read and post-commit check, \
+                 and no complete capture"
             );
         }
+        let before = store.calls();
+        assert!(
+            store
+                .load(&Subject::new("ticket", "seed-0").expect("subject"))
+                .await
+                .expect("complete read")
+                .is_some()
+        );
+        assert_eq!(
+            spent(before, store.calls()),
+            StoreCalls {
+                captures: 1,
+                model_builds: 0,
+                model_advances: 1,
+                records_decoded: 7,
+                scoped_reads: 0,
+            },
+            "the complete read after them advances by the seven records this handle appended"
+        );
         // What the advanced handle answers is what a handle that built everything answers.
         let fresh = EventlogRecordedStore::open(
             Arc::clone(&store.backend),
@@ -541,6 +605,7 @@ mod batch_read_tests {
                 model_builds: 1,
                 model_advances: 0,
                 records_decoded: 1,
+                scoped_reads: 0,
             },
             "a foreign head is a whole build, never an advance"
         );
@@ -779,6 +844,9 @@ pub struct StoreCalls {
     pub model_advances: usize,
     /// Complete records decoded and re-encoded to their canonical bytes while verifying.
     pub records_decoded: usize,
+    /// Per-entity reads: a command's verified view of only the subjects it names, read from
+    /// their own streams rather than from a complete capture.
+    pub scoped_reads: usize,
 }
 
 /// Bound, non-initializing Eventlog implementation of complete recorded reads.
@@ -791,10 +859,22 @@ pub struct EventlogRecordedStore {
     model_builds: AtomicUsize,
     model_advances: AtomicUsize,
     records_decoded: AtomicUsize,
+    scoped_reads: AtomicUsize,
     /// The last capture this handle verified, and the model it verified it into.
     verified: Mutex<Option<Verified>>,
+    /// What the tenant holds, as far as this handle knows: its last complete capture's counts
+    /// plus what its own writes have added since. A command reads per entity and never sees the
+    /// whole tenant, so this is what it holds its write against the bound its handle reads with.
+    held: Mutex<CaptureHeld>,
     /// Events this handle's own committed appends returned, not yet folded into `verified`.
     own_events: Mutex<BTreeSet<String>>,
+}
+
+/// What one write adds to the tenant: events, index rows, and the blobs it binds.
+struct Growth {
+    events: u64,
+    rows: u64,
+    digests: BTreeSet<String>,
 }
 
 /// One verified capture and the model built from it.
@@ -833,6 +913,7 @@ impl EventlogRecordedStore {
             model_builds: self.model_builds.load(Ordering::Relaxed),
             model_advances: self.model_advances.load(Ordering::Relaxed),
             records_decoded: self.records_decoded.load(Ordering::Relaxed),
+            scoped_reads: self.scoped_reads.load(Ordering::Relaxed),
         }
     }
 
@@ -859,7 +940,9 @@ impl EventlogRecordedStore {
             model_builds: AtomicUsize::new(0),
             model_advances: AtomicUsize::new(0),
             records_decoded: AtomicUsize::new(0),
+            scoped_reads: AtomicUsize::new(0),
             verified: Mutex::new(None),
+            held: Mutex::new(CaptureHeld::default()),
             own_events: Mutex::new(BTreeSet::new()),
         };
         let model = store.capture_model().await?;
@@ -962,6 +1045,9 @@ impl EventlogRecordedStore {
     }
 
     fn install(&self, capture: TenantCapture, model: CapturedModel) -> Arc<CapturedModel> {
+        if let Ok(mut held) = self.held.lock() {
+            *held = model.held.clone();
+        }
         let model = Arc::new(model);
         if let Ok(mut verified) = self.verified.lock() {
             *verified = Some(Verified {
@@ -970,6 +1056,63 @@ impl EventlogRecordedStore {
             });
         }
         model
+    }
+
+    /// Refuses a write that would leave the tenant holding more than this handle reads back.
+    ///
+    /// A writer that commits past its own reader leaves a store it cannot read, and loses the
+    /// receipt of the write it just made, because the outcome is verified by reading it back. The
+    /// payload-byte cap is not checked, for the reason the import path gives: computing it would
+    /// re-encode the whole authority on every write.
+    fn admit_growth(&self, growth: &Growth) -> Result<(), AsyncStoreError> {
+        let held = self
+            .held
+            .lock()
+            .map_err(|_| integrity("read bound lock poisoned"))?;
+        let added_blobs = growth
+            .digests
+            .iter()
+            .filter(|digest| !held.digests.contains(digest.as_str()))
+            .count() as u64;
+        for (bound, limit, would_hold) in [
+            (
+                "max_events",
+                self.limits.max_events,
+                held.events.saturating_add(growth.events),
+            ),
+            (
+                "max_blobs",
+                self.limits.max_blobs,
+                held.blobs.saturating_add(added_blobs),
+            ),
+            (
+                "max_projection_rows",
+                self.limits.max_projection_rows,
+                held.rows.saturating_add(growth.rows),
+            ),
+        ] {
+            if would_hold > limit {
+                return Err(AsyncStoreError::BatchExceedsReadBounds {
+                    bound: bound.to_owned(),
+                    limit,
+                    would_hold,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Adds what one of this handle's own writes put in the tenant to what it knows it holds.
+    fn grow(&self, growth: &Growth) {
+        if let Ok(mut held) = self.held.lock() {
+            held.events = held.events.saturating_add(growth.events);
+            held.rows = held.rows.saturating_add(growth.rows);
+            for digest in &growth.digests {
+                if held.digests.insert(digest.clone()) {
+                    held.blobs = held.blobs.saturating_add(1);
+                }
+            }
+        }
     }
 
     /// Where `current` continues `verified` with events only this handle appended, if it does.
@@ -1038,34 +1181,79 @@ pub struct EventlogOperationStore<'a> {
     context: EventlogOperationContext,
 }
 
-/// The executor's reads for one command share a verified capture. The writer clears it before
-/// attempting an append, so replay and uncertain-outcome recovery acquire fresh authority.
+/// The executor's reads for one command share one per-entity read of the subjects, record ids
+/// and batch key the command names. A read outside what it has read so far reads again, over
+/// everything asked so far. The writer clears it before attempting an append, so replay and
+/// uncertain-outcome recovery acquire fresh authority.
 #[cfg(feature = "sync-bridge")]
 pub(crate) struct BatchReadStore<'a> {
     operation: EventlogOperationStore<'a>,
-    model: Mutex<Option<Arc<CapturedModel>>>,
+    scope: Mutex<ReadScope>,
+    model: Mutex<Option<Arc<ScopedModel>>>,
     #[cfg(test)]
     return_uncertain_after_commit: bool,
 }
 
 #[cfg(feature = "sync-bridge")]
 impl<'a> BatchReadStore<'a> {
-    pub(crate) fn new(operation: EventlogOperationStore<'a>) -> Self {
+    /// Reads for one batch, starting from everything its key and actions name.
+    pub(crate) fn for_batch(
+        operation: EventlogOperationStore<'a>,
+        key: &BatchKey,
+        actions: &[BatchAction],
+    ) -> Self {
+        let mut scope = ReadScope::batch(key);
+        for action in actions {
+            let (subject, record_id) = match action {
+                BatchAction::Create(request) => {
+                    (request.subject.clone(), &request.recording.record_id)
+                }
+                BatchAction::Execute(request) => {
+                    (request.subject.clone(), &request.recording.record_id)
+                }
+                BatchAction::Merge(request) => (
+                    request.execute.subject.clone(),
+                    &request.execute.recording.record_id,
+                ),
+                // An observation names its subject by parts rather than as a `Subject`.
+                BatchAction::Observe(observation) => (
+                    Subject {
+                        entity: observation.entity.clone(),
+                        id: observation.id.clone(),
+                    },
+                    &observation.envelope.record_id,
+                ),
+            };
+            scope.subjects.insert(subject);
+            scope.records.insert(record_id.clone());
+        }
+        Self::scoped(operation, scope)
+    }
+
+    fn scoped(operation: EventlogOperationStore<'a>, scope: ReadScope) -> Self {
         Self {
             operation,
+            scope: Mutex::new(scope),
             model: Mutex::new(None),
             #[cfg(test)]
             return_uncertain_after_commit: false,
         }
     }
 
-    async fn model(&self) -> Result<Arc<CapturedModel>, AsyncStoreError> {
-        if let Some(model) = self.model.lock().expect("batch read lock").as_ref() {
+    async fn model(&self, need: ReadScope) -> Result<Arc<ScopedModel>, AsyncStoreError> {
+        if let Some(model) = self.model.lock().expect("batch read lock").as_ref()
+            && model.covers(&need)
+        {
             return Ok(Arc::clone(model));
         }
-        let captured = self.operation.store.capture_model().await?;
-        let mut slot = self.model.lock().expect("batch read lock");
-        Ok(Arc::clone(slot.get_or_insert(captured)))
+        let scope = {
+            let mut scope = self.scope.lock().expect("batch read scope lock");
+            scope.extend(&need);
+            scope.clone()
+        };
+        let read = Arc::new(self.operation.store.scoped_model(&scope).await?);
+        *self.model.lock().expect("batch read lock") = Some(Arc::clone(&read));
+        Ok(read)
     }
 }
 
@@ -1076,9 +1264,10 @@ impl AsyncStateReader for BatchReadStore<'_> {
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>> {
         Box::pin(async move {
-            let model = self.model().await?;
-            refuse_forked(&model, subject)?;
-            Ok(model.terminals.get(subject).cloned())
+            model_state(
+                &self.model(ReadScope::subject(subject)).await?.model,
+                subject,
+            )
         })
     }
 }
@@ -1089,14 +1278,30 @@ impl AsyncRecordedReader for BatchReadStore<'_> {
         &'a self,
         record_id: &'a str,
     ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>> {
-        Box::pin(async move { Ok(self.model().await?.records.get(record_id).cloned()) })
+        Box::pin(async move {
+            Ok(self
+                .model(ReadScope::record(record_id))
+                .await?
+                .model
+                .records
+                .get(record_id)
+                .cloned())
+        })
     }
 
     fn lookup_batch<'a>(
         &'a self,
         key: &'a BatchKey,
     ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>> {
-        Box::pin(async move { Ok(self.model().await?.batches.get(key).cloned()) })
+        Box::pin(async move {
+            Ok(self
+                .model(ReadScope::batch(key))
+                .await?
+                .model
+                .batches
+                .get(key)
+                .cloned())
+        })
     }
 
     fn history<'a>(
@@ -1104,17 +1309,10 @@ impl AsyncRecordedReader for BatchReadStore<'_> {
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>> {
         Box::pin(async move {
-            Ok(self
-                .model()
-                .await?
-                .histories
-                .get(subject)
-                .cloned()
-                .unwrap_or_else(|| SubjectHistory {
-                    subject: subject.clone(),
-                    origin: HistoryOrigin::Genesis,
-                    records: Vec::new(),
-                }))
+            Ok(model_history(
+                &self.model(ReadScope::subject(subject)).await?.model,
+                subject,
+            ))
         })
     }
 
@@ -1230,12 +1428,21 @@ impl AsyncRecordedReader for EventlogRecordedStore {
     }
 }
 
+/// An operation is one command, so its reads are per-entity: each reads the streams of the subject,
+/// record or batch it names, never a capture of the whole tenant. The store handle's own readers
+/// remain complete.
 impl AsyncStateReader for EventlogOperationStore<'_> {
     fn load<'a>(
         &'a self,
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>> {
-        self.store.load(subject)
+        Box::pin(async move {
+            let read = self
+                .store
+                .scoped_model(&ReadScope::subject(subject))
+                .await?;
+            model_state(&read.model, subject)
+        })
     }
 }
 impl AsyncRecordedReader for EventlogOperationStore<'_> {
@@ -1243,19 +1450,31 @@ impl AsyncRecordedReader for EventlogOperationStore<'_> {
         &'a self,
         id: &'a str,
     ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>> {
-        self.store.lookup_record(id)
+        Box::pin(async move {
+            let read = self.store.scoped_model(&ReadScope::record(id)).await?;
+            Ok(read.model.records.get(id).cloned())
+        })
     }
     fn lookup_batch<'a>(
         &'a self,
         key: &'a BatchKey,
     ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>> {
-        self.store.lookup_batch(key)
+        Box::pin(async move {
+            let read = self.store.scoped_model(&ReadScope::batch(key)).await?;
+            Ok(read.model.batches.get(key).cloned())
+        })
     }
     fn history<'a>(
         &'a self,
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>> {
-        self.store.history(subject)
+        Box::pin(async move {
+            let read = self
+                .store
+                .scoped_model(&ReadScope::subject(subject))
+                .await?;
+            Ok(model_history(&read.model, subject))
+        })
     }
     fn complete_snapshot<'a>(
         &'a self,
@@ -1286,7 +1505,7 @@ impl EventlogOperationStore<'_> {
         key: BatchKey,
         actions: Vec<BatchAction>,
     ) -> Result<AppendOutcome, ExecutionError> {
-        let reads = BatchReadStore::new(self);
+        let reads = BatchReadStore::for_batch(self, &key, &actions);
         Executor::new(registry, &reads).batch(key, actions).await
     }
 
@@ -1295,11 +1514,13 @@ impl EventlogOperationStore<'_> {
         let Some(key) = request.key.clone() else {
             return Ok(AppendOutcome::Empty);
         };
+        let scope = ReadScope::of_request(&key, &request);
         let model = self
             .store
-            .capture_model()
+            .scoped_model(&scope)
             .await
-            .map_err(WriteFailure::NotCommitted)?;
+            .map_err(WriteFailure::NotCommitted)?
+            .model;
         if let Some(outcome) =
             recover_from(&model, &key, &request).map_err(WriteFailure::NotCommitted)?
         {
@@ -1310,11 +1531,26 @@ impl EventlogOperationStore<'_> {
         // provider's expected-version check and the guard, exactly as one moved after a second
         // capture here would have been.
         let mut heads: BTreeMap<Subject, Option<u64>> = BTreeMap::new();
+        // Subjects whose stream has more than one tip before this group: a merge decision's, or
+        // one whose observation was merged beside the decision it observed or beside another
+        // observation. A branchable provider holds every member of a group to the heads the stream
+        // had before the group, and extends a stream with several only by an append naming all of
+        // them, so every member of this batch for such a subject names them; the provider chains
+        // the members one after another within the group.
+        let mut joins: BTreeMap<Subject, Vec<String>> = BTreeMap::new();
         for member in &request.members {
             // A merge decision is the one write a forked subject admits.
             if member.merge.is_none() {
                 refuse_forked(&model, &member.entry.subject())
                     .map_err(WriteFailure::NotCommitted)?;
+            }
+            if !heads.contains_key(&member.entry.subject())
+                && let Some(history) = model.histories.get(&member.entry.subject())
+            {
+                let tips = branch_tips(history);
+                if tips.len() > 1 {
+                    joins.insert(member.entry.subject(), tips);
+                }
             }
             heads.entry(member.entry.subject()).or_insert_with(|| {
                 model
@@ -1328,6 +1564,10 @@ impl EventlogOperationStore<'_> {
                     })
             });
         }
+        let new_subjects = heads
+            .keys()
+            .filter(|subject| !model.histories.contains_key(*subject))
+            .count() as u64;
         // Released before the commit, so the post-commit verification advances the model in place.
         drop(model);
         let batch_bytes =
@@ -1366,6 +1606,29 @@ impl EventlogOperationStore<'_> {
                 record_digest,
             ));
         }
+        // One event and one record row per member, one batch row, one subject row per subject the
+        // store does not yet hold, and every blob not already bound. Counted before a byte is
+        // uploaded, so a refusal costs nothing and leaves nothing.
+        let growth = Growth {
+            events: wrappers.len() as u64,
+            rows: wrappers.len() as u64 + 1 + new_subjects,
+            digests: std::iter::once(batch_digest.clone())
+                .chain(
+                    wrappers
+                        .iter()
+                        .flat_map(|(wrapper, _, wrapper_digest, _, _)| {
+                            [
+                                wrapper.record_blob.clone(),
+                                wrapper.request_blob.clone(),
+                                wrapper_digest.clone(),
+                            ]
+                        }),
+                )
+                .collect(),
+        };
+        self.store
+            .admit_growth(&growth)
+            .map_err(WriteFailure::NotCommitted)?;
         let command_key = key_for_value("er.eventlog.batch-command-key/1", json!({"authority":self.store.authority,"batch_key":crate::encoding::BatchKeyWire::from(&key)})).map_err(WriteFailure::NotCommitted)?;
         let meta = self
             .context
@@ -1403,9 +1666,10 @@ impl EventlogOperationStore<'_> {
         for ((_, _, wrapper_digest, _, _), member) in wrappers.iter().zip(&request.members) {
             let subject = member.entry.subject();
             let head = heads.get_mut(&subject).expect("subject head was collected");
-            let expected = match &member.merge {
-                Some(merge) => Expected::Merge(eventlog_core::HeadSetDigest::of(&merge.heads)),
-                None => head.map_or(Expected::NoStream, Expected::Exact),
+            let expected = match (&member.merge, joins.get(&subject)) {
+                (Some(merge), _) => Expected::Merge(eventlog_core::HeadSetDigest::of(&merge.heads)),
+                (None, Some(tips)) => Expected::Merge(eventlog_core::HeadSetDigest::of(tips)),
+                (None, None) => head.map_or(Expected::NoStream, Expected::Exact),
             };
             *head = Some(head.unwrap_or(0).checked_add(1).ok_or_else(|| {
                 WriteFailure::NotCommitted(AsyncStoreError::PositionExhausted {
@@ -1443,6 +1707,12 @@ impl EventlogOperationStore<'_> {
             request: request.clone(),
             slot: slot.clone(),
         });
+        // The blobs are bound now whatever the group does: a capture reads orphans too.
+        self.store.grow(&Growth {
+            events: 0,
+            rows: 0,
+            digests: growth.digests.clone(),
+        });
         match self.store.backend.append_group_guarded(&group, guard).await {
             Ok(result) => {
                 if validate_group_result(&result, wrappers.len()).is_err() {
@@ -1452,7 +1722,13 @@ impl EventlogOperationStore<'_> {
                     });
                 }
                 self.store.remember_own(&result);
-                committed_outcome(self.store, &key, false, &result)
+                if !result.deduplicated {
+                    self.store.grow(&Growth {
+                        digests: BTreeSet::new(),
+                        ..growth
+                    });
+                }
+                committed_outcome(self.store, &scope, &key, false, &result)
                     .await
                     .map_err(|_| {
                     WriteFailure::Uncertain {
@@ -1528,11 +1804,28 @@ impl EventlogOperationStore<'_> {
                     }),
                 }
             }
+            // The provider saw a stream with more heads than this append named: another checkout's
+            // branch was merged in after the capture this append was planned from. That is the
+            // subject's fork as the provider holds it, not a verdict on the provider's integrity.
+            EventLogError::Forked { stream, heads } => {
+                Err(WriteFailure::NotCommitted(forked_append_refusal(
+                    &self.store.authority,
+                    request.members.iter().map(|member| member.entry.subject()),
+                    &stream,
+                    heads,
+                )))
+            }
             other => Err(WriteFailure::NotCommitted(map_append_error(other))),
         }
     }
 }
 
+/// What complete authority says about a request whose append the provider answered with an
+/// unknown outcome, a conflict or a reused command identity.
+///
+/// Deliberately a complete capture, not a per-entity read: this runs only after the provider's
+/// own reply could not be trusted, and it is the one observation that decides whether a write the
+/// caller cannot see was made.
 async fn recover_append(
     store: &EventlogRecordedStore,
     key: &BatchKey,
@@ -1615,13 +1908,16 @@ fn recover_from(
     Ok(None)
 }
 
+/// The receipt of a group the provider reported committed, verified from a fresh per-entity read
+/// of the request's own subjects, record ids and key.
 async fn committed_outcome(
     store: &EventlogRecordedStore,
+    scope: &ReadScope,
     key: &BatchKey,
     replayed: bool,
     result: &eventlog_core::AppendGroupResult,
 ) -> Result<AppendOutcome, AsyncStoreError> {
-    let model = store.capture_model().await?;
+    let model = store.scoped_model(scope).await?.model;
     let batch = model
         .batches
         .get(key)
@@ -1900,6 +2196,28 @@ fn map_put_error(error: EventLogError) -> AsyncStoreError {
         other => map_read_error(other),
     }
 }
+/// A branchable provider's refusal of an append to a stream with more heads than it named.
+///
+/// The stream is one of the subjects the append writes, so the refusal is that subject's fork,
+/// with the heads the provider holds; a stream the append does not write is the provider's
+/// inconsistency.
+fn forked_append_refusal(
+    authority: &Authority,
+    mut subjects: impl Iterator<Item = Subject>,
+    stream: &str,
+    heads: Vec<String>,
+) -> AsyncStoreError {
+    let subject = subjects.find(|subject| {
+        subject_stream_id(authority, subject).is_ok_and(|id| stream == format!("er.subject/{id}"))
+    });
+    match subject {
+        Some(subject) => AsyncStoreError::Forked { subject, heads },
+        None => integrity(format!(
+            "provider refused a stream this append does not write as forked: {stream}"
+        )),
+    }
+}
+
 fn map_append_error(error: EventLogError) -> AsyncStoreError {
     match error {
         EventLogError::Invalid(v) => integrity(v),
@@ -3273,6 +3591,28 @@ fn projection_rows(capture: &TenantCapture) -> u64 {
         .iter()
         .map(|projection| projection.rows.len() as u64)
         .sum()
+}
+
+/// The state a model holds for `subject`, refusing a forked one.
+fn model_state(
+    model: &CapturedModel,
+    subject: &Subject,
+) -> Result<Option<EntityInstance>, AsyncStoreError> {
+    refuse_forked(model, subject)?;
+    Ok(model.terminals.get(subject).cloned())
+}
+
+/// The history a model holds for `subject`: an empty genesis history when it holds none.
+fn model_history(model: &CapturedModel, subject: &Subject) -> SubjectHistory {
+    model
+        .histories
+        .get(subject)
+        .cloned()
+        .unwrap_or_else(|| SubjectHistory {
+            subject: subject.clone(),
+            origin: HistoryOrigin::Genesis,
+            records: Vec::new(),
+        })
 }
 
 /// A forked subject has no one state to serve or to write after.
@@ -5395,4 +5735,58 @@ mod seeded_open {
 
     #[cfg(not(feature = "file"))]
     fn provider_capture(_: &TenantCapture) {}
+}
+
+#[cfg(test)]
+mod forked_append {
+    use super::*;
+
+    fn authority() -> Authority {
+        Authority {
+            logical_scope: "forked-append-scope".to_owned(),
+            tenant: "forked-append".to_owned(),
+            stream_identity: "forked-append-identity".to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_provider_fork_refusal_of_a_written_subject_is_that_subjects_fork() {
+        let authority = authority();
+        let x = Subject::new("ticket", "x").expect("subject");
+        let y = Subject::new("ticket", "y").expect("subject");
+        let stream = format!(
+            "er.subject/{}",
+            subject_stream_id(&authority, &x).expect("stream id")
+        );
+        let heads = vec!["a".to_owned(), "b".to_owned()];
+        let refusal = forked_append_refusal(
+            &authority,
+            [y, x.clone()].into_iter(),
+            &stream,
+            heads.clone(),
+        );
+        assert!(
+            matches!(refusal, AsyncStoreError::Forked { ref subject, heads: ref found }
+                if *subject == x && *found == heads),
+            "a provider fork refusal was not typed as the written subject's fork: {refusal:?}"
+        );
+    }
+
+    #[test]
+    fn a_provider_fork_refusal_of_a_stream_the_append_does_not_write_is_integrity() {
+        let authority = authority();
+        let x = Subject::new("ticket", "x").expect("subject");
+        let refusal = forked_append_refusal(
+            &authority,
+            [x].into_iter(),
+            "er.subject/elsewhere",
+            vec!["a".to_owned(), "b".to_owned()],
+        );
+        assert!(
+            matches!(refusal, AsyncStoreError::ProviderIntegrity { ref detail, .. }
+                if detail.contains("er.subject/elsewhere")),
+            "a fork of a stream the append does not write was not an integrity refusal: \
+             {refusal:?}"
+        );
+    }
 }
