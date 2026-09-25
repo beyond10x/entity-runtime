@@ -29,14 +29,40 @@ fn canonicalize(value: Value) -> Value {
     }
 }
 
+/// Whether `serde_json::Map` is the ordered map in this build, so that every object is already in
+/// the order [`canonicalize`] would put it in.
+///
+/// It is unless a crate in the build enables serde_json's `preserve_order`, which unifies into
+/// this crate and makes a map remember insertion order instead. The two backends are told apart
+/// by what they do, once: an ordered map iterates `"a"` before `"b"` whichever was inserted first.
+fn maps_are_ordered() -> bool {
+    static ORDERED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ORDERED.get_or_init(|| {
+        let mut probe = Map::new();
+        probe.insert("b".to_owned(), Value::Null);
+        probe.insert("a".to_owned(), Value::Null);
+        probe.keys().next().map(String::as_str) == Some("a")
+    })
+}
+
 /// Encodes one domain tag and complete JSON value as canonical compact UTF-8 bytes.
+///
+/// Where every map is already ordered, `canonicalize` would move every subtree into a new map
+/// with the same entries in the same order, and it is skipped: the bytes are the same bytes. That
+/// rebuild was most of the cost of encoding a record that embeds a large definition, which every
+/// read that verifies a record pays.
 ///
 /// # Errors
 ///
 /// Serialization failure without numeric coercion.
 pub fn canonical_domain_bytes(domain: &str, value: Value) -> Result<Vec<u8>, AsyncStoreError> {
-    serde_json::to_vec(&canonicalize(serde_json::json!([domain, value])))
-        .map_err(|error| AsyncStoreError::Encoding(error.to_string()))
+    let document = serde_json::json!([domain, value]);
+    let document = if maps_are_ordered() {
+        document
+    } else {
+        canonicalize(document)
+    };
+    serde_json::to_vec(&document).map_err(|error| AsyncStoreError::Encoding(error.to_string()))
 }
 
 fn tagged_record(entry: &RecordedEntry) -> Result<Value, AsyncStoreError> {
@@ -294,12 +320,13 @@ pub fn batch_comparison_bytes(
             "record": [record_domain(&member.entry), tagged_record(&member.entry)?]
         }));
     }
-    serde_json::to_vec(&canonicalize(serde_json::json!([
-        "er.batch/1",
-        key_value(key),
-        encoded
-    ])))
-    .map_err(|error| AsyncStoreError::Encoding(error.to_string()))
+    let document = serde_json::json!(["er.batch/1", key_value(key), encoded]);
+    let document = if maps_are_ordered() {
+        document
+    } else {
+        canonicalize(document)
+    };
+    serde_json::to_vec(&document).map_err(|error| AsyncStoreError::Encoding(error.to_string()))
 }
 
 /// Derives one normative member coordinate identity from its key and checked u64 index.
@@ -447,6 +474,26 @@ mod tests {
         assert_eq!(
             canonical_domain_bytes("er.record/3", fixture.clone()).expect("encodes"),
             oracle_bytes("er.record/3", fixture)
+        );
+    }
+
+    /// In a build whose maps are ordered, the encoder skips the reordering pass, so the test above
+    /// no longer reaches it. The pass is still what a `preserve_order` build encodes with, and it
+    /// is held here to the same oracle directly, on the same corpus.
+    #[test]
+    fn the_reordering_pass_a_preserve_order_build_encodes_with_is_the_oracle() {
+        let mut corpus = Corpus(0x9e37_79b9_7f4a_7c15);
+        for case in 0..2_000 {
+            let value = corpus.value(6);
+            assert_eq!(
+                serde_json::to_vec(&canonicalize(value.clone())).expect("encodes"),
+                serde_json::to_vec(&canonicalize_by_cloning(value.clone())).expect("encodes"),
+                "generated case {case} reorders differently: {value}"
+            );
+        }
+        assert!(
+            maps_are_ordered(),
+            "this workspace builds serde_json without preserve_order, so the skip is what it runs"
         );
     }
 }

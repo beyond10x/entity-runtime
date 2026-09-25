@@ -15,11 +15,18 @@ use sha2::{Digest as _, Sha256};
 thread_local! {
     /// Stored bytes this file has put through a JSON parser on the current thread.
     ///
-    /// Charged by the only function here that reaches `from_slice`, not beside it: a document this
-    /// file stops parsing stops calling [`parse_stored`] and therefore stops charging, and a
-    /// document it still parses cannot avoid the charge without naming `serde_json::from_slice`
-    /// directly — which nothing outside `parse_stored` now does.
+    /// Charged by the only functions here that reach `from_slice`, not beside them: a document
+    /// this file stops parsing stops calling [`parse_stored`] or [`scan_stored`] and therefore
+    /// stops charging, and a document it still parses cannot avoid the charge without naming
+    /// `serde_json::from_slice` directly — which nothing outside those two now does.
     pub(crate) static PARSED_BYTES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+
+    /// Record documents this file has decoded into a typed record on the current thread.
+    ///
+    /// Charged by [`decode_record_body`], the only typed decode of a record document here, so a
+    /// path that stops decoding a record stops charging and one that still decodes it cannot
+    /// avoid the charge.
+    pub(crate) static RECORD_DECODES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// This file's only path from stored bytes to a JSON document.
@@ -438,10 +445,14 @@ fn decode_tagged<T>(
 }
 
 /// The framing check and the typed decode, over a record document however it was reached.
-fn decode_record_body(document: &Value) -> Result<RecordedEntry, AsyncStoreError> {
-    let array = document
-        .as_array()
-        .ok_or_else(|| invalid("record is not a tagged array"))?;
+fn decode_record_body(document: Value) -> Result<RecordedEntry, AsyncStoreError> {
+    #[cfg(test)]
+    RECORD_DECODES.with(|charged| charged.set(charged.get().saturating_add(1)));
+    // Taken by value, so the record body is moved into the typed decode rather than copied: a
+    // record that embeds a large definition is a large tree.
+    let Value::Array(mut array) = document else {
+        return Err(invalid("record is not a tagged array"));
+    };
     if array.len() != 2
         || array[0]
             .as_str()
@@ -460,7 +471,7 @@ fn decode_record_body(document: &Value) -> Result<RecordedEntry, AsyncStoreError
         },
     }
     Ok(
-        match serde_json::from_value(array[1].clone()).map_err(enc)? {
+        match serde_json::from_value(array.pop().expect("a two-element array")).map_err(enc)? {
             Tagged::Decision { commit } => RecordedEntry::Decision(*commit),
             Tagged::Observation { observation } => RecordedEntry::Observation(*observation),
         },
@@ -469,7 +480,7 @@ fn decode_record_body(document: &Value) -> Result<RecordedEntry, AsyncStoreError
 
 pub(crate) fn decode_record(bytes: &[u8]) -> Result<RecordedEntry, AsyncStoreError> {
     let value: Value = parse_stored(bytes)?;
-    let entry = decode_record_body(&value)?;
+    let entry = decode_record_body(value)?;
     if record_comparison_bytes(&entry)? != bytes {
         return Err(invalid("record bytes do not reproduce the complete record"));
     }
@@ -496,9 +507,10 @@ fn expectation_value(expect: Expect) -> Value {
 /// second time to reach it — a second full decode of every record in the largest blob this store
 /// binds. The property established is the same one and against the same canonical form: the
 /// document reproduces the complete record it decoded to.
-fn decode_record_document(document: &Value) -> Result<RecordedEntry, AsyncStoreError> {
+fn decode_record_document(document: Value) -> Result<RecordedEntry, AsyncStoreError> {
+    let written = serde_json::to_vec(&document).map_err(enc)?;
     let entry = decode_record_body(document)?;
-    if record_comparison_bytes(&entry)? != serde_json::to_vec(document).map_err(enc)? {
+    if record_comparison_bytes(&entry)? != written {
         return Err(invalid("record bytes do not reproduce the complete record"));
     }
     Ok(entry)
@@ -572,11 +584,77 @@ pub(crate) fn decode_batch(bytes: &[u8]) -> Result<(BatchKey, Vec<AppendMember>)
         if expectation_value(expectation) != expect {
             return Err(invalid("batch bytes are not canonical"));
         }
-        let entry = decode_record_document(&record)?;
+        let entry = decode_record_document(record)?;
         let request_bytes = original_request_comparison_bytes(&entry)?;
         decoded.push(AppendMember::new(expectation, entry, request_bytes));
     }
     Ok((key, decoded))
+}
+
+/// The expectations of a batch blob that binds exactly `records` under `key`, or `None`.
+///
+/// A committed group's blob holds every member record again, and [`decode_batch`] decodes each of
+/// them a second time to hold the member against the record blob its reference binds. Where those
+/// record blobs have already been decoded and held to their own canonical bytes, the same property
+/// is established by comparing bytes: this rebuilds the one canonical document a batch of those
+/// records under `key` can be — framing, key, each member's expectation and record bytes verbatim
+/// — and answers only when the stored bytes are that document. A member record whose bytes are
+/// the record blob's decodes to the record blob's record, so nothing a decode would refuse is
+/// admitted. Any other answer, including a document this builds differently from the writer, is
+/// `None`, and the caller decodes the batch in full, so every refusal is the one the full decode
+/// words.
+pub(crate) fn batch_of_records(
+    bytes: &[u8],
+    key: &BatchKey,
+    records: &[&[u8]],
+) -> Option<Vec<Expect>> {
+    #[derive(Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case")]
+    enum ExpectWire {
+        Absent,
+        Revision { revision: u64 },
+    }
+    #[derive(Deserialize)]
+    struct Member {
+        expect: ExpectWire,
+        #[serde(rename = "record")]
+        _record: serde::de::IgnoredAny,
+    }
+    let (_, _, members): (serde::de::IgnoredAny, serde::de::IgnoredAny, Vec<Member>) =
+        scan_stored(bytes).ok()?;
+    if members.len() != records.len() {
+        return None;
+    }
+    let key = canonical_value_bytes(serde_json::to_value(BatchKeyWire::from(key)).ok()?).ok()?;
+    let mut expected = Vec::with_capacity(bytes.len());
+    expected.extend_from_slice(b"[\"er.batch/1\",");
+    expected.extend_from_slice(&key);
+    expected.extend_from_slice(b",[");
+    let mut expectations = Vec::with_capacity(members.len());
+    for (index, (member, record)) in members.into_iter().zip(records).enumerate() {
+        let expect = match member.expect {
+            ExpectWire::Absent => Expect::Absent,
+            ExpectWire::Revision { revision } => Expect::Revision(revision),
+        };
+        if index > 0 {
+            expected.push(b',');
+        }
+        expected.extend_from_slice(b"{\"expect\":");
+        expected.extend_from_slice(&canonical_value_bytes(expectation_value(expect)).ok()?);
+        expected.extend_from_slice(b",\"record\":");
+        expected.extend_from_slice(record);
+        expected.push(b'}');
+        expectations.push(expect);
+    }
+    expected.extend_from_slice(b"]]");
+    (expected == bytes).then_some(expectations)
+}
+
+/// Deserializes stored bytes into a shape that reads only part of them, charged as a parse.
+fn scan_stored<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, AsyncStoreError> {
+    #[cfg(test)]
+    PARSED_BYTES.with(|charged| charged.set(charged.get().saturating_add(bytes.len() as u64)));
+    serde_json::from_slice(bytes).map_err(enc)
 }
 
 pub(crate) fn anchor_from_history(

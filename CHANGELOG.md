@@ -4,6 +4,28 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- `entity-eventlog`: a store handle no longer verifies the same bytes twice. It remembers, in
+  memory only, each blob it has held to its digest, each record it has decoded, each request it
+  has held to its record and each subject history it has replayed — keyed by the exact bytes, or
+  the exact origin and stored records, it verified — so a later read of the same authority hashes,
+  decodes and replays only what is new. Every read still takes a fresh observation from the
+  provider and still refuses what it refused; a blob, record or history that differs in one byte
+  or one coordinate is verified from nothing. A two-action batch on a sixteen-record store now
+  decodes four records instead of some fifty, and a cold open decodes each record once.
+  - A committed group's blob is held byte for byte to the member records a read has just
+    decoded, instead of decoding every member again; any other blob takes the full decode, with
+    its refusals unchanged.
+  - A per-entity read fetches each blob once per round rather than once per member naming it.
+  - What a handle remembers is bounded by an estimate of what it retains — raw bytes plus 16 KiB
+    and three times the raw bytes for each decoded record or entry, measured above what a decode
+    actually holds — not by raw bytes alone, and it forgets everything when the estimate passes
+    64 MiB.
+- `entity-store`: `canonical_domain_bytes` and `batch_comparison_bytes` skip the reordering pass
+  when `serde_json`'s map is already ordered, which it is unless a crate in the build enables
+  `preserve_order`. The bytes are unchanged.
+
 ## [0.22.0] — 2026-09-24
 
 ### Changed

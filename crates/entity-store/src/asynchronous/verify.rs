@@ -382,6 +382,7 @@ fn validate_stored_coordinates(
     history: &SubjectHistory,
     record: &StoredRecord,
     previous_position: Option<super::RecordPosition>,
+    bytes_held: bool,
 ) -> Result<(), AsyncStoreError> {
     let subject = &history.subject;
     if record.entry.subject() != *subject {
@@ -424,6 +425,9 @@ fn validate_stored_coordinates(
                 "single-record receipt does not reproduce its record identity and zero index",
             ));
         }
+    }
+    if bytes_held {
+        return Ok(());
     }
     let encoded = record_comparison_bytes(&record.entry).map_err(|error| {
         corrupt(
@@ -468,7 +472,7 @@ pub fn verify_subject_history(
     if branched(history) {
         return verify_branched(history, origin, terminal);
     }
-    verify_records_from(history, 0, origin, terminal)
+    verify_records_from(history, 0, origin, terminal, false)
 }
 
 /// Whether the history comes from a store whose records carry their lineage.
@@ -569,7 +573,7 @@ fn walk_branches(
     let mut anchor_digest: Option<String> = None;
     let mut previous_position = None;
     for record in &history.records {
-        validate_stored_coordinates(history, record, previous_position)?;
+        validate_stored_coordinates(history, record, previous_position, false)?;
         if !ids.insert(record.entry.record_id()) {
             return Err(corrupt(
                 subject,
@@ -769,7 +773,61 @@ pub fn verify_subject_history_extension(
     if verified == 0 || verified > history.records.len() || branched(history) {
         return verify_subject_history(history, terminal);
     }
-    verify_records_from(history, verified, Some(verified_state.clone()), terminal)
+    verify_records_from(
+        history,
+        verified,
+        Some(verified_state.clone()),
+        terminal,
+        false,
+    )
+}
+
+/// Unsound unless the caller has already checked every stored record's record and request bytes.
+///
+/// Not part of the documented surface: it exists for the Eventlog adapter, whose reads decode
+/// every record from its bound blob and refuse one that does not reproduce it. Any other reader
+/// must call [`verify_subject_history`] or [`verify_subject_history_extension`], which compare
+/// those bytes themselves. Passing a history whose bytes were not checked admits forged record
+/// and request bytes on the caller's word.
+///
+/// [`verify_subject_history_extension`] — or [`verify_subject_history`] without a verified
+/// prefix — for a reader that decoded every stored record of `history` from exactly its
+/// `record_bytes`, and has already held those bytes to be [`record_comparison_bytes`] of the entry
+/// they decoded to and its `request_bytes` to be [`original_request_comparison_bytes`] of it,
+/// refusing the record otherwise.
+///
+/// Those two comparisons are then the only checks not made again: re-encoding each record twice
+/// more to compare bytes the reader has just compared is most of what verifying a record that
+/// embeds a large definition costs. Every coordinate, receipt, identity, replay, observation and
+/// terminal check is made exactly as the verifier it stands for makes it, and a branched history
+/// is verified whole by [`verify_subject_history`], comparisons included. A reader that has not
+/// held a record's bytes itself must call one of those two instead: this function cannot tell.
+///
+/// # Errors
+///
+/// Every refusal [`verify_subject_history_extension`] makes, except that it does not re-compare the
+/// two byte strings the caller has already held.
+#[doc(hidden)]
+pub fn verify_subject_history_with_checked_bytes(
+    history: &SubjectHistory,
+    verified: Option<(usize, &EntityInstance)>,
+    terminal: &EntityInstance,
+) -> Result<SubjectAssurance, AsyncStoreError> {
+    if branched(history) {
+        return verify_subject_history(history, terminal);
+    }
+    match verified {
+        Some((records, state)) if records > 0 && records <= history.records.len() => {
+            verify_records_from(history, records, Some(state.clone()), terminal, true)
+        }
+        _ => {
+            let origin = match &history.origin {
+                HistoryOrigin::Genesis => None,
+                HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
+            };
+            verify_records_from(history, 0, origin, terminal, true)
+        }
+    }
 }
 
 fn verify_records_from(
@@ -777,6 +835,7 @@ fn verify_records_from(
     start: usize,
     mut current: Option<EntityInstance>,
     terminal: &EntityInstance,
+    bytes_held: bool,
 ) -> Result<SubjectAssurance, AsyncStoreError> {
     history.subject.validate()?;
     validate_imported_boundary(history)?;
@@ -788,7 +847,7 @@ fn verify_records_from(
         .map(|record| record.entry.record_id())
         .collect();
     for record in &history.records[start..] {
-        validate_stored_coordinates(history, record, previous_position)?;
+        validate_stored_coordinates(history, record, previous_position, bytes_held)?;
         if !ids.insert(record.entry.record_id()) {
             return Err(corrupt(
                 &history.subject,
