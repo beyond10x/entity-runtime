@@ -20,7 +20,8 @@ pub(crate) use verify::validate_imported_boundary;
 pub use verify::{branch_heads, branch_tips, validate_entry_against_state};
 pub use verify::{
     verify_complete_store, verify_imported_record, verify_store_histories, verify_subject_history,
-    verify_subject_history_extension, verify_subject_prefix,
+    verify_subject_history_extension, verify_subject_history_with_checked_bytes,
+    verify_subject_prefix,
 };
 
 #[cfg(test)]
@@ -358,6 +359,195 @@ mod tests {
                     Err(AsyncStoreError::CorruptHistory { .. })
                 ),
                 "a terminal the suffix does not reach was admitted after {verified}"
+            );
+        }
+    }
+
+    /// The verifier that takes its caller's word for two byte comparisons cannot be picked up by
+    /// mistake: its name states the precondition, its first doc line states it again, and it is
+    /// hidden from the documented surface. A plain name, or the precondition moved below the
+    /// summary where a reader skimming the index does not see it, fails here.
+    #[test]
+    fn the_verifier_that_trusts_its_caller_says_so_in_its_name_and_first_line() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let verify = std::fs::read_to_string(root.join("asynchronous/verify.rs")).expect("source");
+        let surface = std::fs::read_to_string(root.join("asynchronous.rs")).expect("source");
+        let signature = "pub fn verify_subject_history_with_checked_bytes(";
+        let at = verify
+            .find(signature)
+            .expect("the trusting verifier is named for its precondition");
+        let preamble: Vec<&str> = verify[..at]
+            .lines()
+            .rev()
+            .take_while(|line| {
+                let line = line.trim_start();
+                line.starts_with("///") || line.starts_with("#[")
+            })
+            .collect();
+        assert!(
+            preamble.iter().any(|line| line.trim() == "#[doc(hidden)]"),
+            "the trusting verifier is part of the documented surface"
+        );
+        let first = preamble
+            .iter()
+            .rev()
+            .find(|line| line.trim_start().starts_with("///"))
+            .expect("documented");
+        assert!(
+            first.contains("caller has already checked")
+                && first.contains("record")
+                && first.contains("request"),
+            "the first doc line does not state the precondition: {first}"
+        );
+        // Spelled in two halves so that this test's own text is not the match it looks for.
+        let former = concat!("verify_decoded", "_subject_history");
+        for source in [&verify, &surface] {
+            assert!(
+                !source.contains(former),
+                "the trusting verifier is still reachable under a name that does not say it trusts"
+            );
+        }
+    }
+
+    /// A reader that decoded every record from its own bytes, and held those bytes and the
+    /// request bytes to the record, is verified by every other check the whole and extension
+    /// verifiers make — and by nothing less.
+    ///
+    /// On the same mixed history as above: the decoded verifier agrees with the whole verification
+    /// when the history is sound, from every prefix; refuses every defect of the suffix they
+    /// refuse except the one it is documented not to repeat; and the two stored byte strings are
+    /// the only thing it leaves to its caller, which is pinned here so that widening what it skips
+    /// fails this test rather than passing silently.
+    #[test]
+    fn a_decoded_history_meets_every_check_but_the_two_its_reader_already_made() {
+        let store = MemoryRecordedStore::new();
+        let subject = Subject::new("ticket", "one").expect("subject");
+        for (key, expect, entry) in [
+            (
+                "create-one",
+                Expect::Absent,
+                RecordedEntry::Decision(creation("one", "create-one")),
+            ),
+            (
+                "observe-one",
+                Expect::Revision(1),
+                RecordedEntry::Observation(observation("one", "observe-one", json!({"n": 1}))),
+            ),
+            (
+                "close-one",
+                Expect::Revision(1),
+                RecordedEntry::Decision(closed("one", "close-one")),
+            ),
+        ] {
+            crate_test_support::block_on(AsyncRecordedWriter::append(
+                &store,
+                AppendRequest::new(
+                    BatchKey::SingleRecord(key.to_owned()),
+                    vec![member(expect, entry)],
+                )
+                .expect("valid append"),
+            ))
+            .expect("append succeeds");
+        }
+        let history = crate_test_support::block_on(AsyncRecordedReader::history(&store, &subject))
+            .expect("history");
+        let terminal = crate_test_support::block_on(AsyncStateReader::load(&store, &subject))
+            .expect("state")
+            .expect("present");
+        let RecordedEntry::Decision(created) = &history.records[0].entry else {
+            panic!("the first record creates")
+        };
+        let after_prefix = created.instance.clone();
+        let whole = verify_subject_history(&history, &terminal).expect("sound history");
+        assert_eq!(
+            verify_subject_history_with_checked_bytes(&history, None, &terminal)
+                .expect("sound history"),
+            whole
+        );
+        for verified in 1..=3 {
+            let state = if verified == 3 {
+                &terminal
+            } else {
+                &after_prefix
+            };
+            assert_eq!(
+                verify_subject_history_with_checked_bytes(
+                    &history,
+                    Some((verified, state)),
+                    &terminal
+                )
+                .expect("sound extension"),
+                whole,
+                "after {verified} verified records"
+            );
+        }
+
+        type Defect = (&'static str, fn(&mut SubjectHistory));
+        let refused: [Defect; 4] = [
+            ("a crossed store position", |history| {
+                history.records[2].position.store = history.records[1].position.store;
+            }),
+            ("a repeated identity", |history| {
+                let repeated = history.records[0].entry.record_id().to_owned();
+                if let RecordedEntry::Decision(commit) = &mut history.records[2].entry {
+                    commit.envelope.record_id = repeated;
+                }
+            }),
+            ("a receipt that is not the record's", |history| {
+                history.records[2].receipt.revision += 1;
+            }),
+            ("an expectation the predecessor does not meet", |history| {
+                history.records[2].expect = Expect::Absent;
+            }),
+        ];
+        for (what, damage) in refused {
+            let mut damaged = history.clone();
+            damage(&mut damaged);
+            assert!(
+                matches!(
+                    verify_subject_history_with_checked_bytes(&damaged, None, &terminal),
+                    Err(AsyncStoreError::CorruptHistory { .. })
+                ),
+                "{what}: the decoded verification from genesis admitted it"
+            );
+            for verified in 1..=2 {
+                assert!(
+                    matches!(
+                        verify_subject_history_with_checked_bytes(
+                            &damaged,
+                            Some((verified, &after_prefix)),
+                            &terminal
+                        ),
+                        Err(AsyncStoreError::CorruptHistory { .. })
+                    ),
+                    "{what}: the decoded extension after {verified} verified records admitted it"
+                );
+            }
+        }
+
+        let left: [Defect; 2] = [
+            ("record bytes that are not the record", |history| {
+                history.records[2].record_bytes.push(b' ');
+            }),
+            ("request bytes that are not the request", |history| {
+                history.records[2].request_bytes.push(b' ');
+            }),
+        ];
+        for (what, damage) in left {
+            let mut damaged = history.clone();
+            damage(&mut damaged);
+            assert!(
+                matches!(
+                    verify_subject_history(&damaged, &terminal),
+                    Err(AsyncStoreError::CorruptHistory { .. })
+                ),
+                "{what}: the whole verification is the reference and must refuse"
+            );
+            assert_eq!(
+                verify_subject_history_with_checked_bytes(&damaged, None, &terminal)
+                    .expect("left to the reader"),
+                whole,
+                "{what}: the decoded verifier compares bytes its reader is documented to have held"
             );
         }
     }

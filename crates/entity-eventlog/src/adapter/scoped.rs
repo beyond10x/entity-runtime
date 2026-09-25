@@ -28,11 +28,13 @@ use eventlog_core::{
 use serde_json::Value;
 
 use super::{
-    CapturedModel, EventlogRecordedStore, build_model_events, expected_projection_rows, integrity,
-    map_read_error, reference_digest,
+    CapturedModel, Decoded, EventlogRecordedStore, build_model_events_remembering,
+    expected_projection_rows, integrity, map_read_error, reference_digest,
 };
 use crate::{
-    encoding::{EvidenceWire, SubjectWire, decode_anchor, decode_batch, decode_entry},
+    encoding::{
+        EvidenceWire, RecordedEntryWrapper, SubjectWire, decode_anchor, decode_batch, decode_entry,
+    },
     projection::{
         batch_key as physical_batch_key, batch_spec, binding_spec, record_key, record_spec,
         subject_key, subject_spec, subject_stream_id,
@@ -128,7 +130,7 @@ impl ScopedModel {
 }
 
 /// What a blob is, so the reads that discover the blobs it names know how to decode it.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Role {
     Leaf,
     Entry,
@@ -242,9 +244,17 @@ impl EventlogRecordedStore {
                 events.extend(found);
                 read.extend(unread);
             }
+            // Each blob once per round in each role: every member of a group names the group's
+            // blob, and a round that reaches several of them would otherwise read and decode it
+            // once for each.
+            let mut named: BTreeSet<(String, Role)> = BTreeSet::new();
             let wanted: Vec<(String, Role)> = std::mem::take(&mut pending)
                 .into_iter()
-                .filter(|(digest, _)| !blobs.contains_key(digest) && !absent.contains(digest))
+                .filter(|(digest, role)| {
+                    !blobs.contains_key(digest)
+                        && !absent.contains(digest)
+                        && named.insert((digest.clone(), *role))
+                })
                 .collect();
             if wanted.is_empty() {
                 continue;
@@ -280,7 +290,7 @@ impl EventlogRecordedStore {
                 };
                 // What a blob names is read to know what else to read. It is verified by the
                 // build below; a blob that does not decode here is refused there.
-                let (named, members) = discover(role, &bytes);
+                let (named, members) = self.discover(&digest, role, &bytes);
                 pending.extend(named);
                 subjects.extend(members);
                 blobs.insert(digest, bytes);
@@ -302,7 +312,11 @@ impl EventlogRecordedStore {
                 .collect(),
             projections: Vec::new(),
         };
-        let model = build_model_events(&self.authority, &capture, 0).map_err(|_| Retry::Again)?;
+        let model = {
+            let mut memory = self.memory.lock().ok();
+            build_model_events_remembering(&self.authority, &capture, 0, memory.as_deref_mut())
+        }
+        .map_err(|_| Retry::Again)?;
         self.records_decoded
             .fetch_add(model.decoded, Ordering::Relaxed);
         if model.binding.is_none() {
@@ -323,6 +337,27 @@ impl EventlogRecordedStore {
             },
             model,
         })
+    }
+
+    /// What a blob names, answered from this handle's decode of exactly these bytes when it has
+    /// one. The bytes are compared with the ones it verified, not trusted from the digest: what a
+    /// per-entity read discovers has not been verified yet, and is verified by the build.
+    fn discover(
+        &self,
+        digest: &str,
+        role: Role,
+        bytes: &[u8],
+    ) -> (Vec<(String, Role)>, Vec<Subject>) {
+        let remembered = self
+            .memory
+            .lock()
+            .ok()
+            .and_then(|memory| memory.decoded(digest, bytes).cloned());
+        match (role, remembered) {
+            (Role::Entry, Some(Decoded::Entry(wrapper))) => (named_by_entry(*wrapper), Vec::new()),
+            (Role::Batch, Some(Decoded::BatchSubjects(subjects))) => (Vec::new(), subjects),
+            _ => discover(role, bytes),
+        }
     }
 
     fn stream(&self, stream_type: &str, stream_id: &str) -> Result<StreamId, Retry> {
@@ -427,16 +462,7 @@ fn discover(role: Role, bytes: &[u8]) -> (Vec<(String, Role)>, Vec<Subject>) {
         Role::Leaf => (Vec::new(), Vec::new()),
         Role::Entry => decode_entry(bytes).map_or_else(
             |_| (Vec::new(), Vec::new()),
-            |wrapper| {
-                (
-                    vec![
-                        (wrapper.record_blob, Role::Leaf),
-                        (wrapper.request_blob, Role::Leaf),
-                        (wrapper.batch_blob, Role::Batch),
-                    ],
-                    Vec::new(),
-                )
-            },
+            |wrapper| (named_by_entry(wrapper), Vec::new()),
         ),
         Role::Batch => decode_batch(bytes).map_or_else(
             |_| (Vec::new(), Vec::new()),
@@ -469,6 +495,15 @@ fn discover(role: Role, bytes: &[u8]) -> (Vec<(String, Role)>, Vec<Subject>) {
             },
         ),
     }
+}
+
+/// The blobs an entry wrapper names, and what each of them is.
+fn named_by_entry(wrapper: RecordedEntryWrapper) -> Vec<(String, Role)> {
+    vec![
+        (wrapper.record_blob, Role::Leaf),
+        (wrapper.request_blob, Role::Leaf),
+        (wrapper.batch_blob, Role::Batch),
+    ]
 }
 
 /// The subjects an index row names: the one at `subject` in each element of the array at `list`,
