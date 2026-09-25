@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-09-25
+
 ### Changed
 
 - `entity-eventlog`: a store handle no longer verifies the same bytes twice. It remembers, in
