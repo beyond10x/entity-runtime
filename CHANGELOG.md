@@ -4,6 +4,17 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- `entity-core`: two condition operators, `starts_with: [text, prefix]` and `ends_with: [text, suffix]`,
+  available under every semantics. They compare bytes, case-sensitively, with no Unicode
+  normalisation; the empty string is a prefix and suffix of every string. A value nobody recorded
+  answers `unknown`, and a reference that resolves to something other than a string answers `false`.
+  A literal operand that is not a string — YAML reads an unquoted `+44` as the number `44` — is
+  refused at registration as an invalid rule, because no input could ever make it hold; quote it.
+  A build predating these operators refuses a definition that uses them by naming the operator.
+  `Condition` gains two variants, so an exhaustive match over it no longer compiles.
+
 ## [0.23.0] — 2026-09-25
 
 ### Changed

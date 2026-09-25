@@ -1506,6 +1506,10 @@ and all refused in a `kernel/1` definition by `SemanticsKeyNotAvailable`:
 "compare","truthy","for_all","for_any"
 ```
 
+Added later, and available under every semantics rather than `service/1` only: `starts_with` and
+`ends_with`, listed after `contains` in `CONDITION_OPERATORS`. Their semantics are in
+`docs/design/kernel-v0.1.md` § 4; the row below maps ESS's string predicates onto them.
+
 | ESS | ER |
 | --- | --- |
 | `Always` / `Never` | `true` / `false` |
@@ -1515,6 +1519,7 @@ and all refused in a `kernel/1` definition by `SemanticsKeyNotAvailable`:
 | `Truthy` | **`truthy`**, below |
 | `Forall` / `Exists` | **`for_all` / `for_any`**, below |
 | `AnyOf` / `NoneOf` | `in: [$path, [values…]]` and `not: {in: …}` — including **empty** `values`. ER's `In` resolves both operands and answers `Unknown` when the needle resolved to nothing and `false` when it resolved and the literal list is empty (`crates/entity-core/src/runtime.rs:633-643`, `resolve_operand` at `:780-825`), which is exactly ESS's table (`ESS/…/predicate.rs:528-533`). No kernel change and no expansion into equality nodes. |
+| `starts_with` / `ends_with` / `contains` on `String` (added later, not in the original mapping) | `starts_with` / `ends_with` / `contains` over two strings, byte-wise and case-sensitive: `Unknown` when an operand resolves to nothing, `false` when a reference resolves to a non-string; for `starts_with`/`ends_with` a non-string literal operand is refused at registration (`kernel-v0.1.md` § 4), while `contains` keeps its array and object rows |
 
 #### `compare` — the exact three-valued comparison
 

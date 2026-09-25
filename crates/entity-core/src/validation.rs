@@ -1635,7 +1635,43 @@ fn validate_condition_body(
         Condition::Contains { contains } => {
             validate_pair(contains, &format!("{path}.contains"), scope)
         }
+        Condition::StartsWith { starts_with } => {
+            validate_affix_pair(starts_with, &format!("{path}.starts_with"), scope)
+        }
+        Condition::EndsWith { ends_with } => {
+            validate_affix_pair(ends_with, &format!("{path}.ends_with"), scope)
+        }
     }
+}
+
+/// The two operands of `starts_with`/`ends_with`, each of which has to be able to be a string.
+///
+/// A reference is checked like any other operand, and what it resolves to is the instance's
+/// business: a non-string there is an observation, answered `false`. A **literal** is the author's
+/// own text, and one that is not a string — YAML reads `+44` as the integer `44` — makes the rule
+/// `false` at every evaluation, whatever any caller ever supplies. That is a defect that could
+/// never work, so it is refused where it is written, as `before`/`after` refuse an unreadable
+/// literal instant. The reference walk runs first so a `$` reference nested inside a literal list
+/// or mapping is still reported with its own path.
+fn validate_affix_pair(
+    values: &[Value; 2],
+    path: &str,
+    scope: Scope<'_>,
+) -> Result<(), DefinitionError> {
+    for (index, operand) in values.iter().enumerate() {
+        let path = format!("{path}[{index}]");
+        validate_operand(operand, &path, scope)?;
+        if !operand.is_string() {
+            return invalid_rule(
+                &path,
+                format!(
+                    "{operand} is not a string, so the rule would be false at every evaluation; \
+                     quote it if it is meant as text"
+                ),
+            );
+        }
+    }
+    Ok(())
 }
 
 fn validate_pair(values: &[Value; 2], path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
@@ -1686,12 +1722,17 @@ fn unobservable_condition_literals(
             Ok(())
         }
         Condition::Not { not } => unobservable_condition_literals(not, &format!("{path}.not")),
-        // Three operators read no number, and each already refuses what it cannot read where it is
-        // written: `exists` asks whether an address resolves and is two-valued, and `before`/`after`
-        // are `kernel/1` instant operators whose operands `validate_instant_operand` refuses unless
-        // they are a reference or a readable instant. Answering them here would move their refusal
-        // to another message without admitting or refusing anything new.
-        Condition::Exists { .. } | Condition::Before { .. } | Condition::After { .. } => Ok(()),
+        // Five operators read no number. `exists` asks whether an address resolves and is
+        // two-valued; `before`/`after` are `kernel/1` instant operators whose operands
+        // `validate_instant_operand` refuses unless they are a reference or a readable instant; and
+        // `starts_with`/`ends_with` read only strings, and `validate_affix_pair` refuses any
+        // literal operand that is not one — a number included — as a rule that could never hold.
+        // Refusing it here for its numeric domain would name a rule the operator does not apply.
+        Condition::Exists { .. }
+        | Condition::Before { .. }
+        | Condition::After { .. }
+        | Condition::StartsWith { .. }
+        | Condition::EndsWith { .. } => Ok(()),
         Condition::Eq { eq } => pair(eq, "eq"),
         Condition::Ne { ne } => pair(ne, "ne"),
         Condition::Gt { gt } => pair(gt, "gt"),

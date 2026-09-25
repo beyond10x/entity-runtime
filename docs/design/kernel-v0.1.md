@@ -224,11 +224,11 @@ assert:
 ```
 
 Operators: `all`, `any`, `not`, `exists`, `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`,
-`before`, `after`, and the literals `true`/`false`. `all` and `any` must not be empty, and a condition
-carries **exactly one** operator: a mapping with two of them, or with a misspelled one, is refused
-by name rather than parsed as whichever variant matched first and quietly missing the rest (R-16).
-The same rule holds for every key of a definition document — `requried: true` is a defect, not a
-comment. Semantics (R-54):
+`starts_with`, `ends_with`, `before`, `after`, and the literals `true`/`false`. `all` and `any`
+must not be empty, and a condition carries **exactly one** operator: a mapping with two of them, or
+with a misspelled one, is refused by name rather than parsed as whichever variant matched first and
+quietly missing the rest (R-16). The same rule holds for every key of a definition document —
+`requried: true` is a defect, not a comment. Semantics (R-54):
 
 * a condition evaluates to `Truth { True, False, Unknown }` and a rule holds only when the answer
   is `True` (R-57); a *value* question over a reference that resolves to nothing is `Unknown`,
@@ -244,6 +244,16 @@ comment. Semantics (R-54):
   definition tested with integer fixtures would refuse the same document written with a decimal
   point;
 * `contains` is array∋element, string⊇substring, or object∋key;
+* `starts_with`/`ends_with` ask whether the first operand is a string that begins or ends with the
+  second, byte for byte and case-sensitively: no case folding and no Unicode normalisation, so a
+  decomposed `é` does not end a composed one, and the empty string is a prefix and a suffix of every
+  string. They answer as `contains` answers for strings — `false` when a reference resolves to
+  something that is not a string, `Unknown` when either operand resolves to nothing (R-54). A
+  **literal** operand that is not a string is refused at registration as an invalid rule: YAML reads
+  `starts_with: [$fields.caller, +44]` as the integer `44`, and a rule no caller could ever satisfy
+  is the same defect as an unreadable literal instant below. A regular expression, a wildcard
+  pattern and a case-insensitive form are deliberately absent: each would be a second language
+  inside the condition;
 * `before`/`after` order two ISO-8601 instants (R-59). An operand this kernel cannot read is
   `Unknown` rather than `false` — the one place the two comparison families deliberately differ,
   because *not a number* is an observation and *not a timestamp I can read* is a statement about
@@ -254,11 +264,11 @@ comment. Semantics (R-54):
   refused at registration as an invalid rule, like every other defect that could never work.
 
 There is no function call, loop, arithmetic, clock, random source or lookup (R-55). The `Condition`
-type has fifteen variants and none of them is "evaluate this string", which is the property that
-lets a definition be validated at registration, evaluated identically everywhere, and rendered by
-tooling that never parses source code. A richer language (CEL, Rhai, …) could be introduced later
-behind the same two rule slots; nothing in this design depends on the AST staying this small,
-only on it staying data.
+type has seventeen `kernel/1` variants and none of them is "evaluate this string", which is the
+property that lets a definition be validated at registration, evaluated identically everywhere, and
+rendered by tooling that never parses source code. A richer language (CEL, Rhai, …) could be
+introduced later behind the same two rule slots; nothing in this design depends on the AST staying
+this small, only on it staying data.
 
 ### 4.1 Three values, and which questions can have them
 
@@ -272,7 +282,7 @@ operator told only that an evidence gate failed goes and fixes a review that was
 | the question | operators | can be `Unknown` |
 |---|---|---|
 | about the **store** — is there a value at this address? | `exists` | no |
-| about a **value** — what does it say? | `eq` `ne` `gt` `gte` `lt` `lte` `in` `contains` | yes |
+| about a **value** — what does it say? | `eq` `ne` `gt` `gte` `lt` `lte` `in` `contains` `starts_with` `ends_with` | yes |
 
 The kernel holds the instance, so it can always see whether a key carries a value; a presence
 question is therefore always answerable, and pretending otherwise would be a lie about what the

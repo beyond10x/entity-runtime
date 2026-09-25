@@ -2003,6 +2003,12 @@ fn condition_needs_subject(condition: &Condition, bindings: Option<&Bindings<'_>
         Condition::Contains { contains } => contains
             .iter()
             .any(|value| value_needs_subject(value, bindings)),
+        Condition::StartsWith { starts_with } => starts_with
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
+        Condition::EndsWith { ends_with } => ends_with
+            .iter()
+            .any(|value| value_needs_subject(value, bindings)),
         Condition::Compare { compare } => {
             value_needs_subject(&compare.left, bindings)
                 || value_needs_subject(&compare.right, bindings)
@@ -2161,6 +2167,38 @@ fn evaluate_condition(
                 _ => Ok(Truth::Unknown),
             }
         }
+        Condition::StartsWith { starts_with } => compare_strings(
+            starts_with,
+            context,
+            bindings,
+            unobserved,
+            |value, prefix| value.as_bytes().starts_with(prefix.as_bytes()),
+        ),
+        Condition::EndsWith { ends_with } => {
+            compare_strings(ends_with, context, bindings, unobserved, |value, suffix| {
+                value.as_bytes().ends_with(suffix.as_bytes())
+            })
+        }
+    }
+}
+
+/// `starts_with` and `ends_with`: defined over two strings, and answered the way `contains`
+/// answers its string row — `false` when both operands resolve and either is not a string,
+/// `Unknown` when either resolves to nothing. Only a reference can reach the `false` row with a
+/// non-string: a literal non-string operand is refused at registration.
+fn compare_strings(
+    operands: &[Value; 2],
+    context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
+    unobserved: &mut Unobserved,
+    holds: impl Fn(&str, &str) -> bool,
+) -> Result<Truth, CoreError> {
+    match resolve_pair(operands, context, bindings, unobserved)? {
+        (Some(Value::String(value)), Some(Value::String(needle))) => {
+            Ok(Truth::from_bool(holds(&value, &needle)))
+        }
+        (Some(_), Some(_)) => Ok(Truth::False),
+        _ => Ok(Truth::Unknown),
     }
 }
 

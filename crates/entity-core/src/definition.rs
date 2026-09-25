@@ -958,8 +958,26 @@ pub struct RuleDefinition {
 /// registration by `SemanticsKeyNotAvailable`, and a build predating them refuses the document by
 /// naming the operator it does not know.
 pub const CONDITION_OPERATORS: &[&str] = &[
-    "all", "any", "not", "exists", "eq", "ne", "gt", "gte", "lt", "lte", "in", "contains",
-    "before", "after", "compare", "truthy", "for_all", "for_any",
+    "all",
+    "any",
+    "not",
+    "exists",
+    "eq",
+    "ne",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "in",
+    "contains",
+    "starts_with",
+    "ends_with",
+    "before",
+    "after",
+    "compare",
+    "truthy",
+    "for_all",
+    "for_any",
 ];
 
 /// Every operator only a `service/1` definition may use.
@@ -1171,6 +1189,27 @@ pub enum Condition {
         /// Container, then needle.
         contains: [Value; 2],
     },
+    /// The first operand is a string that begins with the second, which is a string.
+    ///
+    /// Byte-wise and case-sensitive: no case folding, no Unicode normalisation, so a decomposed
+    /// `é` is not a prefix of a composed one. The empty string is a prefix of every string.
+    ///
+    /// It answers the way [`Condition::Contains`] answers for strings: an operand that resolves
+    /// to nothing makes it [`Unknown`](crate::Truth::Unknown), and a reference that resolves to
+    /// something other than a string makes it `false` — *not a string* is an observation about the
+    /// value, not a gap in what was recorded. A **literal** operand that is not a string (YAML
+    /// reads `+44` as the integer `44`) is refused at registration instead, because nothing any
+    /// caller supplies could ever make that rule hold. Available under every semantics.
+    StartsWith {
+        /// Haystack, then prefix.
+        starts_with: [Value; 2],
+    },
+    /// The first operand is a string that ends with the second, which is a string. The mirror of
+    /// [`Condition::StartsWith`], with the same reading and the same answers.
+    EndsWith {
+        /// Haystack, then suffix.
+        ends_with: [Value; 2],
+    },
     /// The exact three-valued scalar comparison. `service/1` only.
     ///
     /// Its own operator because two of its rows are **not** what the existing operators answer, and
@@ -1298,6 +1337,12 @@ impl Condition {
             "contains" => Ok(Self::Contains {
                 contains: pair(operand, "contains")?,
             }),
+            "starts_with" => Ok(Self::StartsWith {
+                starts_with: pair(operand, "starts_with")?,
+            }),
+            "ends_with" => Ok(Self::EndsWith {
+                ends_with: pair(operand, "ends_with")?,
+            }),
             "compare" => Ok(Self::Compare {
                 compare: Box::new(structured::<Comparison>(
                     operand,
@@ -1359,6 +1404,8 @@ impl Condition {
             Self::Lte { .. } => "lte",
             Self::In { .. } => "in",
             Self::Contains { .. } => "contains",
+            Self::StartsWith { .. } => "starts_with",
+            Self::EndsWith { .. } => "ends_with",
             Self::Compare { .. } => "compare",
             Self::Truthy { .. } => "truthy",
             Self::ForAll { .. } => "for_all",

@@ -752,6 +752,69 @@ fn service_numeric_equality_membership_and_bounds_all_use_the_observation_rule()
     assert!(create(&validated, "p-1".to_owned(), fields).is_ok());
 }
 
+/// `starts_with` and `ends_with` read no number, so a `service/N` lowering gets exactly the
+/// `kernel/1` answer: a string prefix or suffix is two-valued, any other observed value is `false`
+/// (as it is for `contains`), and a value nobody recorded — `null` included — is `Unknown`.
+#[test]
+fn a_prefix_or_suffix_is_answered_alike_under_kernel_1_and_service_1() {
+    let starts = json!({ "starts_with": ["$fields.value", "+44"] });
+    let ends = json!({ "ends_with": ["$fields.value", "0"] });
+    let rows = [
+        (json!("+44 20 7946 0000"), Truth::True, Truth::True),
+        (json!("+49 30 0000"), Truth::False, Truth::True),
+        (json!("0044"), Truth::False, Truth::False),
+        (json!(""), Truth::False, Truth::False),
+        (json!(440), Truth::False, Truth::False),
+        (json!(true), Truth::False, Truth::False),
+        (json!(["+44"]), Truth::False, Truth::False),
+        (json!({ "+44": "0" }), Truth::False, Truth::False),
+        (Value::Null, Truth::Unknown, Truth::Unknown),
+    ];
+    for semantics in ["kernel/1", "service/1"] {
+        for (value, starts_answer, ends_answer) in &rows {
+            assert_eq!(
+                about(semantics, starts.clone(), value.clone()),
+                *starts_answer,
+                "{semantics}: starts_with over {value}"
+            );
+            assert_eq!(
+                about(semantics, ends.clone(), value.clone()),
+                *ends_answer,
+                "{semantics}: ends_with over {value}"
+            );
+        }
+        // The empty needle holds over every string and still over nothing that is not one.
+        assert_eq!(
+            about(
+                semantics,
+                json!({ "starts_with": ["$fields.value", ""] }),
+                json!("")
+            ),
+            Truth::True,
+            "{semantics}"
+        );
+        assert_eq!(
+            about(
+                semantics,
+                json!({ "ends_with": ["$fields.value", ""] }),
+                json!(0)
+            ),
+            Truth::False,
+            "{semantics}"
+        );
+        // An operand that is itself unrecorded, on the needle's side.
+        assert_eq!(
+            about(
+                semantics,
+                json!({ "ends_with": ["$fields.value", "$fields.other"] }),
+                json!("x")
+            ),
+            Truth::Unknown,
+            "{semantics}"
+        );
+    }
+}
+
 #[test]
 fn kernel_1_number_operators_and_bounds_answer_exactly_what_they_answer_today() {
     let schema = json!({ "fields": { "amount": { "type": "number", "required": true } } });

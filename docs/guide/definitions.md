@@ -177,6 +177,7 @@ An `assert` is an AST:
 | `gt`, `gte`, `lt`, `lte: [a, b]` | numeric comparison; `false` when both resolve and either is not a number |
 | `in: [needle, haystack]` | `true` when `haystack` is an array containing `needle` |
 | `contains: [container, needle]` | array ∋ element, string ⊇ substring, or object ∋ key |
+| `starts_with: [text, prefix]` / `ends_with: [text, suffix]` | byte-wise, case-sensitive prefix / suffix of a string; `false` when a reference resolves to a non-string; a literal that is not a string (`+44` unquoted) is refused at registration |
 
 Numbers compare **numerically** everywhere, so `eq: [$fields.total, 100]` holds for `100` and for
 `100.0` and agrees with `gte`/`lte`. There is no function call, loop, arithmetic, clock, random
@@ -195,7 +196,7 @@ into two groups:
 | the question | operators | can answer `unknown`? |
 |---|---|---|
 | **about the store** — is there a value at this address? | `exists` | no. The kernel holds the instance, so it can always look |
-| **about a value** — what does it say? | `eq` `ne` `gt` `gte` `lt` `lte` `in` `contains` | yes, when there is no value to read |
+| **about a value** — what does it say? | `eq` `ne` `gt` `gte` `lt` `lte` `in` `contains` `starts_with` `ends_with` | yes, when there is no value to read |
 
 So `exists` is an ordinary two-valued predicate and `not: { exists: $fields.x }` means exactly what
 it reads as. What has no answer is `gte: [$fields.score, 4]` on a claim nobody has scored — you
