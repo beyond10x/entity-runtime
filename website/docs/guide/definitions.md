@@ -166,6 +166,7 @@ Every condition carries exactly one operator.
 | `gt`, `gte`, `lt`, `lte: [a, b]` | numeric comparison |
 | `in: [needle, list]` | list contains value |
 | `contains: [container, needle]` | array element, string substring, or object key membership |
+| `starts_with`, `ends_with: [text, affix]` | byte-wise, case-sensitive string prefix or suffix; `false` when a reference is not a string, and a non-string literal is refused at registration |
 | `before`, `after: [a, b]` | ordering of two caller-supplied ISO-8601 instants |
 
 There are no calls, loops, arithmetic expressions, clocks, random sources, or lookups. Time enters

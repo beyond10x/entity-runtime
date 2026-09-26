@@ -1602,6 +1602,165 @@ fn contains_and_in_cover_arrays_strings_objects_and_membership() {
     assert!(matches!(error, CoreError::PreconditionFailed { .. }));
 }
 
+/// R-53, R-54. `starts_with` and `ends_with` are the prefix and suffix halves of `contains`'
+/// substring test, and they answer the way it does: byte for byte, case-sensitively, `false` when
+/// both operands resolve and either is not a string, `Unknown` when there is nothing to read.
+#[test]
+fn starts_with_and_ends_with_test_a_string_prefix_and_suffix_byte_for_byte() {
+    // The ticket's title is "Login fails".
+    let cases = [
+        // A prefix and a suffix that are there.
+        (
+            json!({ "starts_with": ["$fields.title", "Login"] }),
+            Truth::True,
+        ),
+        (
+            json!({ "ends_with": ["$fields.title", "fails"] }),
+            Truth::True,
+        ),
+        (
+            json!({ "starts_with": ["$fields.title", "Login fails"] }),
+            Truth::True,
+        ),
+        // The other end, a different case, a longer needle: not there.
+        (
+            json!({ "starts_with": ["$fields.title", "fails"] }),
+            Truth::False,
+        ),
+        (
+            json!({ "ends_with": ["$fields.title", "Login"] }),
+            Truth::False,
+        ),
+        (
+            json!({ "starts_with": ["$fields.title", "login"] }),
+            Truth::False,
+        ),
+        (
+            json!({ "ends_with": ["$fields.title", "FAILS"] }),
+            Truth::False,
+        ),
+        (
+            json!({ "ends_with": ["$fields.title", "Login fails!"] }),
+            Truth::False,
+        ),
+        // The empty literal is a prefix and a suffix of every string, including the empty one.
+        (json!({ "starts_with": ["$fields.title", ""] }), Truth::True),
+        (json!({ "ends_with": ["$fields.title", ""] }), Truth::True),
+        (json!({ "ends_with": ["", ""] }), Truth::True),
+        (json!({ "starts_with": ["", "L"] }), Truth::False),
+        // Bytes, not characters folded or normalised: a decomposed `é` does not end a composed one,
+        // and its base letter is still its prefix.
+        (
+            json!({ "ends_with": ["caf\u{e9}", "e\u{301}"] }),
+            Truth::False,
+        ),
+        (json!({ "starts_with": ["e\u{301}", "e"] }), Truth::True),
+        // Both resolve and one is not a string: observed, and it does not hold. (A *literal*
+        // non-string is refused at registration instead; see the next test.)
+        (
+            json!({ "starts_with": ["$fields.points", "3"] }),
+            Truth::False,
+        ),
+        (json!({ "starts_with": ["$fields.tags", ""] }), Truth::False),
+        // Nothing recorded: a value question with no value to read, on either side.
+        (
+            json!({ "starts_with": ["$fields.resolution", "x"] }),
+            Truth::Unknown,
+        ),
+        (
+            json!({ "ends_with": ["Login fails", "$fields.resolution"] }),
+            Truth::Unknown,
+        ),
+        (
+            json!({ "not": { "ends_with": ["$fields.resolution", "x"] } }),
+            Truth::Unknown,
+        ),
+        // Negation of an observed answer is ordinary.
+        (
+            json!({ "not": { "starts_with": ["$fields.title", "Log"] } }),
+            Truth::False,
+        ),
+    ];
+    for (condition, expected) in cases {
+        let registry = register(with(
+            ticket(),
+            "operations.touch.preconditions",
+            json!([{ "assert": condition }]),
+        ))
+        .unwrap_or_else(|error| panic!("{condition} registers: {error}"));
+        assert_verdict(&registry, &condition, expected);
+    }
+}
+
+/// R-53. The two new operators are read and checked like every other pair: two operands, both
+/// references resolvable in the rule's scope, and the operator's own name in each refusal.
+#[test]
+fn a_prefix_or_suffix_condition_takes_two_operands_whose_references_are_checked() {
+    for operator in ["starts_with", "ends_with"] {
+        let shape = parse(with(
+            ticket(),
+            "invariants",
+            json!([{ "assert": { operator: ["$fields.title"] } }]),
+        ))
+        .expect_err("one operand");
+        assert!(
+            shape
+                .to_string()
+                .contains(&format!("'{operator}' takes exactly two operands; found 1")),
+            "{shape}"
+        );
+
+        let error = register(with(
+            ticket(),
+            "invariants",
+            json!([{ "assert": { operator: ["$fields.nonexistent", "x"] } }]),
+        ))
+        .expect_err("an undeclared field");
+        assert!(
+            error.iter().any(|defect| matches!(
+                defect,
+                DefinitionError::InvalidRule { path, .. }
+                    if path == &format!("invariants[0].assert.{operator}[0]")
+            )),
+            "{operator}: {error}"
+        );
+
+        let parsed: entity_core::Condition =
+            serde_json::from_value(json!({ operator: ["$fields.title", "L"] })).expect("parses");
+        assert_eq!(parsed.operator(), operator);
+        assert_eq!(
+            serde_json::to_value(&parsed).expect("serialises"),
+            json!({ operator: ["$fields.title", "L"] }),
+            "round-trips under its own key"
+        );
+
+        // A literal that is not a string, on either side and at any shape, could never hold. A
+        // reference nested inside such a literal is still reported for itself first.
+        for (operands, at, not_a_string) in [
+            (json!(["$fields.title", 3]), "[1]", true),
+            (json!([{ "source": "mail" }, ""]), "[0]", true),
+            (json!([["$fields.title"], "x"]), "[0]", true),
+            (json!([["$fields.nope"], "x"]), "[0][0]", false),
+        ] {
+            let error = register(with(
+                ticket(),
+                "invariants",
+                json!([{ "assert": { operator: operands } }]),
+            ))
+            .expect_err("a literal that is not a string");
+            assert!(
+                error.iter().any(|defect| matches!(
+                    defect,
+                    DefinitionError::InvalidRule { path, message }
+                        if path == &format!("invariants[0].assert.{operator}{at}")
+                            && message.contains("is not a string") == not_a_string
+                )),
+                "{operator} {operands}: {error}"
+            );
+        }
+    }
+}
+
 #[test]
 fn numeric_comparisons_are_numeric_and_compare_false_otherwise() {
     let cases = [
