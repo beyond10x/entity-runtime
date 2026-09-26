@@ -950,6 +950,9 @@ fn file_facade_groups_are_process_atomic_and_survive_a_publication_crash() {
         );
         thread::sleep(Duration::from_millis(2));
     }
+    // The group now reaches its publication intent only after admitting and appending all 192
+    // members; before the blobs travelled with it, the first per-blob upload wrote an intent too.
+    let deadline = Instant::now() + Duration::from_secs(300);
     while !directory.path().join("append.json").exists() {
         if let Some(status) = crashing.try_wait().expect("crash child status") {
             panic!("crash child completed before the publication intent was observed: {status}");

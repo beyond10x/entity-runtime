@@ -376,21 +376,7 @@ impl<B: EventlogBackend> AtomicEventStore for CountingBackend<B> {
         group: &'a AppendGroup,
         admission: Arc<dyn Guard>,
     ) -> BoxFuture<'a, Result<AppendGroupResult, EventLogError>> {
-        {
-            let mut observed = self.observed.lock().expect("observed");
-            observed.appends += 1;
-            observed
-                .appended
-                .entry(group.meta.request_id.clone())
-                .or_default()
-                .extend(
-                    group
-                        .appends
-                        .iter()
-                        .filter(|append| append.stream.stream_type() == "er.subject")
-                        .map(|append| append.stream.stream_id().to_owned()),
-                );
-        }
+        self.observe_group(group);
         self.inner.append_group_guarded(group, admission)
     }
 
@@ -400,9 +386,29 @@ impl<B: EventlogBackend> AtomicEventStore for CountingBackend<B> {
         admission: Arc<dyn Guard>,
         blobs: &'a [(String, Vec<u8>)],
     ) -> BoxFuture<'a, Result<AppendGroupResult, EventLogError>> {
-        self.observed.lock().expect("observed").appends += 1;
+        self.observe_group(group);
         self.inner
             .append_group_guarded_with_blobs(group, admission, blobs)
+    }
+}
+
+impl<B: EventlogBackend> CountingBackend<B> {
+    /// Both group methods are observed alike: a command's group reaches the provider through
+    /// whichever one the provider implements.
+    fn observe_group(&self, group: &AppendGroup) {
+        let mut observed = self.observed.lock().expect("observed");
+        observed.appends += 1;
+        observed
+            .appended
+            .entry(group.meta.request_id.clone())
+            .or_default()
+            .extend(
+                group
+                    .appends
+                    .iter()
+                    .filter(|append| append.stream.stream_type() == "er.subject")
+                    .map(|append| append.stream.stream_id().to_owned()),
+            );
     }
 }
 

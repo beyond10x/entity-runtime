@@ -1667,33 +1667,16 @@ impl EventlogOperationStore<'_> {
             .context
             .meta(command_key, batch_digest.clone())
             .map_err(WriteFailure::NotCommitted)?;
-        self.store
-            .backend
-            .put_blob(&self.store.tenant, &batch_digest, &batch_bytes)
-            .await
-            .map_err(|e| WriteFailure::NotCommitted(map_put_error(e)))?;
+        // Every blob the group binds, in the order this path has always uploaded them: the batch,
+        // then each member's record, request and entry. They travel with the group.
+        let mut blobs = Vec::with_capacity(1 + 3 * wrappers.len());
+        blobs.push((batch_digest.clone(), batch_bytes));
         for (wrapper, wrapper_bytes, wrapper_digest, record_bytes, record_digest) in &wrappers {
-            self.store
-                .backend
-                .put_blob(&self.store.tenant, record_digest, record_bytes)
-                .await
-                .map_err(|e| WriteFailure::NotCommitted(map_put_error(e)))?;
             let member = &request.members
                 [usize::try_from(wrapper.member_index).expect("checked from usize")];
-            self.store
-                .backend
-                .put_blob(
-                    &self.store.tenant,
-                    &wrapper.request_blob,
-                    &member.request_bytes,
-                )
-                .await
-                .map_err(|e| WriteFailure::NotCommitted(map_put_error(e)))?;
-            self.store
-                .backend
-                .put_blob(&self.store.tenant, wrapper_digest, wrapper_bytes)
-                .await
-                .map_err(|e| WriteFailure::NotCommitted(map_put_error(e)))?;
+            blobs.push((record_digest.clone(), record_bytes.clone()));
+            blobs.push((wrapper.request_blob.clone(), member.request_bytes.clone()));
+            blobs.push((wrapper_digest.clone(), wrapper_bytes.clone()));
         }
         let mut appends = Vec::with_capacity(wrappers.len());
         for ((_, _, wrapper_digest, _, _), member) in wrappers.iter().zip(&request.members) {
@@ -1740,13 +1723,26 @@ impl EventlogOperationStore<'_> {
             request: request.clone(),
             slot: slot.clone(),
         });
-        // The blobs are bound now whatever the group does: a capture reads orphans too.
-        self.store.grow(&Growth {
-            events: 0,
-            rows: 0,
-            digests: growth.digests.clone(),
-        });
-        match self.store.backend.append_group_guarded(&group, guard).await {
+        let attempt = append_group_with_blobs(
+            &self.store.backend,
+            &self.store.tenant,
+            &group,
+            guard,
+            &blobs,
+            |e| WriteFailure::NotCommitted(map_put_error(e)),
+        )
+        .await?;
+        // Blobs that may be bound count against the read bound whatever the group did: a capture
+        // reads orphans too. Blobs a refusal never bound are not counted as held, or a later
+        // write binding exactly those bytes would be admitted as adding nothing.
+        if attempt.blobs_bound {
+            self.store.grow(&Growth {
+                events: 0,
+                rows: 0,
+                digests: growth.digests.clone(),
+            });
+        }
+        match attempt.settled {
             Ok(result) => {
                 if validate_group_result(&result, wrappers.len()).is_err() {
                     return Err(WriteFailure::Uncertain {
@@ -2105,9 +2101,15 @@ impl AppendGuard {
         let batch_key =
             physical_batch_key(&self.authority, &self.key).map_err(GuardCheckError::Domain)?;
         if rows.get(&(1, batch_key)).is_some_and(Option::is_some) {
-            return Err(GuardCheckError::Domain(AsyncStoreError::BatchConflict {
-                key: self.key.clone(),
-            }));
+            // A batch-bearing group is admitted again when it is a retry of a command Eventlog has
+            // already recorded, before the provider answers from that record; a group without
+            // blobs never is. A batch row is written only by a group committed under this batch's
+            // command key (`er.eventlog.batch-command-key/1` over the authority and the key), so a
+            // row here means the provider holds that command and will answer it — as a replay of
+            // the same group, or as a mismatch the caller recovers from — without appending.
+            // Deferring to that answer is what the group without blobs has always received;
+            // refusing here would turn a replay into a conflict.
+            return Ok(());
         }
         let mut occupied = Vec::new();
         for (index, member) in self.request.members.iter().enumerate() {
@@ -2218,6 +2220,85 @@ fn validate_group_result(
         ));
     }
     Ok(())
+}
+
+/// What one guarded group carrying its blobs settled to.
+struct GroupAttempt {
+    settled: Result<eventlog_core::AppendGroupResult, EventLogError>,
+    /// Whether the blobs may be bound now. The provider's own method binds them only with a
+    /// group it commits, and says nothing on any other path; the fallback bound every one before
+    /// the group was asked, so they are bound whatever the group then did.
+    blobs_bound: bool,
+}
+
+/// Publishes `group` and every blob it references as one guarded write.
+///
+/// A provider that implements `append_group_guarded_with_blobs` commits the group and the blobs
+/// in one transaction, so a guard refusal binds none of them, and the write costs the one
+/// durability barrier the group commits instead of one more per blob. The port's default refuses
+/// with `UNAVAILABLE`, having written nothing, so that a caller holding a trait object is never
+/// handed the weaker guarantee under the stronger name. Taking the slower path is the caller's
+/// decision, and it is taken here: every blob on its own path, in the order given, then the same
+/// guarded group. Same bytes, same keys, same guard, same receipts.
+///
+/// A failed upload on that path is reported through `upload_failed`, the caller's own blob
+/// mapping, exactly as when each write uploaded its blobs itself. An error of the combined call
+/// cannot say which half failed and is returned in `settled` for the caller's group mapping;
+/// `EventStore::put_blob` documents only `Invalid`, which the blob and append mappings translate
+/// alike (`the_blob_and_append_mappings_agree_on_the_only_variant_put_blob_documents`).
+async fn append_group_with_blobs<E>(
+    backend: &Arc<dyn EventlogBackend>,
+    tenant: &TenantId,
+    group: &AppendGroup,
+    guard: Arc<dyn Guard>,
+    blobs: &[(String, Vec<u8>)],
+    upload_failed: impl Fn(EventLogError) -> E,
+) -> Result<GroupAttempt, E> {
+    match backend
+        .append_group_guarded_with_blobs(group, guard.clone(), blobs)
+        .await
+    {
+        Err(EventLogError::Invalid(ref detail)) if detail == UNAVAILABLE => {
+            for (digest, bytes) in blobs {
+                backend
+                    .put_blob(tenant, digest, bytes)
+                    .await
+                    .map_err(&upload_failed)?;
+            }
+            Ok(GroupAttempt {
+                settled: backend.append_group_guarded(group, guard).await,
+                blobs_bound: true,
+            })
+        }
+        settled => Ok(GroupAttempt {
+            blobs_bound: matches!(settled, Ok(_) | Err(EventLogError::UnknownCommit)),
+            settled,
+        }),
+    }
+}
+
+/// The refusal [`AdmitNothing`] gives in place of its inner guard's admission. No typed slot
+/// carries it, so a caller that meets it reports a guard/slot disagreement.
+const ADMITTED_BY_PROBE: &str = "er.eventlog.probe-admitted";
+
+/// A guard that refuses whatever its inner guard admits, so the group it guards cannot commit.
+///
+/// It asks a provider how it answers a group — from a recorded command, or by the inner guard's
+/// refusal — without any risk of the group being written.
+struct AdmitNothing(Arc<dyn Guard>);
+
+impl Guard for AdmitNothing {
+    fn check<'a>(
+        &'a self,
+        store: &'a mut dyn ProjectionStore,
+    ) -> eventlog_core::BoxFuture<'a, Result<(), EventLogError>> {
+        Box::pin(async move {
+            self.0.check(store).await?;
+            Err(EventLogError::GuardRefused {
+                code: ADMITTED_BY_PROBE.into(),
+            })
+        })
+    }
 }
 
 fn map_put_error(error: EventLogError) -> AsyncStoreError {
@@ -2373,10 +2454,6 @@ impl AsyncBindingProvisioner for EventlogBindingProvisioner {
             let meta = context
                 .meta("er.binding/1".into(), digest.clone())
                 .map_err(ProvisionBindingFailure::NotCommitted)?;
-            self.backend
-                .put_blob(&tenant, &digest, &bytes)
-                .await
-                .map_err(|e| ProvisionBindingFailure::NotCommitted(map_put_error(e)))?;
             let group = AppendGroup {
                 tenant: tenant.clone(),
                 appends: vec![StreamAppend {
@@ -2397,7 +2474,18 @@ impl AsyncBindingProvisioner for EventlogBindingProvisioner {
                 tenant: tenant.clone(),
                 slot: slot.clone(),
             });
-            match self.backend.append_group_guarded(&group, guard).await {
+            // A binding lost to another authority between the recovery above and this group
+            // leaves no blob of this authority behind.
+            let attempt = append_group_with_blobs(
+                &self.backend,
+                &tenant,
+                &group,
+                guard,
+                &[(digest, bytes)],
+                |e| ProvisionBindingFailure::NotCommitted(map_put_error(e)),
+            )
+            .await?;
+            match attempt.settled {
                 Ok(result) => {
                     if validate_group_result(&result, 1).is_err() {
                         return Err(ProvisionBindingFailure::Uncertain {
@@ -2852,14 +2940,6 @@ impl EventlogOperationStore<'_> {
         Ok(false)
     }
 
-    async fn upload(&self, key: &str, value: &[u8]) -> Result<(), ImportAnchorFailure> {
-        self.store
-            .backend
-            .put_blob(&self.store.tenant, key, value)
-            .await
-            .map_err(|e| ImportAnchorFailure::NotCommitted(map_put_error(e)))
-    }
-
     async fn import_inner(
         &self,
         history: SubjectHistory,
@@ -2889,27 +2969,67 @@ impl EventlogOperationStore<'_> {
             .context
             .meta(command_key, digest.clone())
             .map_err(ImportAnchorFailure::NotCommitted)?;
-        for (key, value) in &prepared.uploads {
-            self.upload(key, value).await?;
-        }
-        self.upload(&digest, &bytes).await?;
+        let mut blobs = prepared.uploads.clone();
+        blobs.push((digest, bytes.clone()));
         let group = AppendGroup {
             tenant: self.store.tenant.clone(),
             appends: vec![self.import_append(&prepared)?],
             meta,
         };
+        let guard = |slot: &Arc<Mutex<Option<GuardRefusal>>>| {
+            Arc::new(ImportGuard {
+                authority: self.store.authority.clone(),
+                tenant: self.store.tenant.clone(),
+                members: vec![ImportGuardMember {
+                    subject: history.subject.clone(),
+                    record_ids: prepared.record_ids.clone(),
+                    anchor_digest: prepared.anchor_digest.clone(),
+                }],
+                slot: slot.clone(),
+            })
+        };
         let slot = Arc::new(Mutex::new(None));
-        let guard = Arc::new(ImportGuard {
-            authority: self.store.authority.clone(),
-            tenant: self.store.tenant.clone(),
-            members: vec![ImportGuardMember {
-                subject: history.subject.clone(),
-                record_ids: prepared.record_ids.clone(),
-                anchor_digest: prepared.anchor_digest.clone(),
-            }],
-            slot: slot.clone(),
-        });
-        match self.store.backend.append_group_guarded(&group, guard).await {
+        let attempt = append_group_with_blobs(
+            &self.store.backend,
+            &self.store.tenant,
+            &group,
+            guard(&slot),
+            &blobs,
+            |e| ImportAnchorFailure::NotCommitted(map_put_error(e)),
+        )
+        .await?;
+        // A blob-bearing group whose command Eventlog already recorded is admitted again before
+        // the provider answers from that record; a group without blobs is answered from it
+        // unguarded. The command key names only the subject, so a rival that imported the same
+        // subject first holds this key, and a guard that sees the rival's record identity refuses
+        // with `RecordConflict` where the blob-free path — and the fallback — heard the provider's
+        // `IdempotencyMismatch` and reported the subject's `RevisionConflict`. Neither the rows
+        // nor the anchor bytes say which command wrote a subject: a batch import writes the same
+        // bytes under another key, and its rival must still hear the guard. So the refusal is
+        // asked again without blobs, under a guard that refuses whatever it would admit. The
+        // provider then answers exactly as the blob-free path always did, and nothing can commit.
+        //
+        // Every condition the import guard refuses on only ever becomes true — a binding, a record
+        // row and a subject row are never removed — so the second asking is refused again by the
+        // same guard unless the recorded command answers first. Were it ever admitted, the probe's
+        // own code would reach `guard_failure` with an empty slot and be reported as the
+        // provider-integrity fault it would be.
+        let (settled, slot) = match attempt {
+            GroupAttempt {
+                settled: Err(EventLogError::GuardRefused { .. }),
+                blobs_bound: false,
+            } => {
+                let probe = Arc::new(Mutex::new(None));
+                let asked = self
+                    .store
+                    .backend
+                    .append_group_guarded(&group, Arc::new(AdmitNothing(guard(&probe))))
+                    .await;
+                (asked, probe)
+            }
+            attempt => (attempt.settled, slot),
+        };
+        match settled {
             Ok(result) => {
                 if validate_group_result(&result, 1).is_err() {
                     return Err(ImportAnchorFailure::Uncertain {
@@ -3195,28 +3315,18 @@ impl EventlogOperationStore<'_> {
             subject: pending[0].subject.clone(),
             cause,
         };
-        // The provider may not implement guarded blob-bearing groups at all. The port's default
-        // says so and fails closed — it writes nothing, commits nothing, and refuses with
-        // `UNAVAILABLE` — precisely so that a caller holding a trait object is never silently
-        // given the weaker guarantee under the stronger name. Taking the slow path is this
-        // caller's decision to make, and it makes it here: every blob on its own path, then the
-        // same guarded group. Same bytes, same keys, same guard, same receipts; what is lost is
-        // only the single durability barrier, which is what the provider was unable to offer.
-        let attempted = self
-            .store
-            .backend
-            .append_group_guarded_with_blobs(&group, guard.clone(), &blobs)
-            .await;
-        let attempted = match attempted {
-            Err(EventLogError::Invalid(ref detail)) if detail == UNAVAILABLE => {
-                for (key, value) in &blobs {
-                    self.upload(key, value).await?;
-                }
-                self.store.backend.append_group_guarded(&group, guard).await
-            }
-            settled => settled,
-        };
-        let deduplicated = match attempted {
+        // A provider without guarded blob-bearing groups takes the fallback `append_group_with_blobs`
+        // describes; what is lost there is only the single durability barrier.
+        let attempted = append_group_with_blobs(
+            &self.store.backend,
+            &self.store.tenant,
+            &group,
+            guard,
+            &blobs,
+            |e| ImportAnchorFailure::NotCommitted(map_put_error(e)),
+        )
+        .await?;
+        let deduplicated = match attempted.settled {
             Ok(result) => {
                 if validate_group_result(&result, pending.len()).is_err() {
                     return Err(uncertain(ImportAnchorUncertainty::RecoveryUnavailable));
