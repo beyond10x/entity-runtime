@@ -4,6 +4,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.24.1] — 2026-09-26
+
+### Fixed
+
+- The Windows release archive builds again. Eventlog 0.5.0's Git source holds paths longer than
+  Windows' 260-character limit, so Cargo could not check it out and 0.24.0 was tagged without a
+  GitHub Release. The release build now enables Git long paths on Windows. 0.24.1 carries the
+  same library code as 0.24.0.
+
 ## [0.24.0] — 2026-09-26
 
 ### Added
