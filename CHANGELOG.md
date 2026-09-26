@@ -4,6 +4,16 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- `entity-eventlog`: a recorded append, a binding and a singular import now hand their blobs to
+  the provider together with their guarded group, as the batch import already did. On the SQLite
+  and File providers a write refused by the destination guard — a record identity or a binding
+  another writer took first — no longer leaves its blobs bound, and a committed write costs one
+  durability barrier instead of one more per blob. A provider without that method (PostgreSQL)
+  still uploads each blob first and then appends, with the same refusals and receipts as before.
+  A refused append's blobs no longer count against the handle's read bound.
+
 ## [0.24.1] — 2026-09-26
 
 ### Fixed

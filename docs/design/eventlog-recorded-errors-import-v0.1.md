@@ -386,8 +386,12 @@ The batch changes what is *read*, never what is *written*:
    provider that takes the port's default — `eventlog-postgres` — the default itself writes nothing at all — it fails closed, refusing with
    `UNAVAILABLE` as step 3 describes — and the blobs are uploaded by **this adapter's own fallback
    loop**, one at a time, before it calls `append_group_guarded`. A refusal after that point can
-   leave those blobs bound as orphans, exactly as the singular `import_anchor` can, and for the
-   same reason: they were written by the same `EventStore::put_blob` calls. Both are admissible —
+   leave those blobs bound as orphans, exactly as the singular `import_anchor`, a recorded append
+   and a binding can on the same provider, and for the same reason: all four take one fallback
+   (`append_group_with_blobs`) and its `EventStore::put_blob` calls. On an overriding provider none
+   of the four binds a blob its group does not commit
+   (`a_guard_refused_append_binds_no_blob_on_sqlite_and_file` and its siblings in
+   `tests/guarded_write_blob_binding.rs`). Both are admissible —
    an unreferenced content-addressed blob is non-authority and binds nothing — but the component
    that wrote them is this adapter, not the port
    (`the_port_default_fails_closed_and_binds_no_blob`, and
