@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.24.2] — 2026-09-26
+
 ### Changed
 
 - `entity-eventlog`: a recorded append, a binding and a singular import now hand their blobs to
