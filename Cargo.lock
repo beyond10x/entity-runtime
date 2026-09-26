@@ -604,8 +604,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-core"
-version = "0.4.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
+version = "0.5.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8#fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8"
 dependencies = [
  "serde",
  "serde_json",
@@ -617,8 +617,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-file"
-version = "0.4.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
+version = "0.5.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8#fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8"
 dependencies = [
  "eventlog-core",
  "serde",
@@ -630,8 +630,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-postgres"
-version = "0.4.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
+version = "0.5.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8#fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8"
 dependencies = [
  "eventlog-core",
  "rustls",
@@ -647,8 +647,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-sqlite"
-version = "0.4.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
+version = "0.5.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8#fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8"
 dependencies = [
  "eventlog-core",
  "nix",
@@ -660,8 +660,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-tree"
-version = "0.4.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=70096af8c231fedf6d2206c97ce2940b99aecdb8#70096af8c231fedf6d2206c97ce2940b99aecdb8"
+version = "0.5.0"
+source = "git+https://github.com/beyond10x/eventlog?rev=fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8#fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8"
 dependencies = [
  "eventlog-core",
  "eventlog-sqlite",

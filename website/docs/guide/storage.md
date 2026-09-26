@@ -86,7 +86,7 @@ persistence across power loss. Abandoned temporary subject files do not block re
 ## Eventlog-backed stores
 
 `entity-eventlog` keeps complete recorded state on an
-[Eventlog](https://github.com/beyond10x/eventlog) 0.4.0 provider. It needs Rust 1.91; the rest of
+[Eventlog](https://github.com/beyond10x/eventlog) 0.5.0 provider. It needs Rust 1.91; the rest of
 the workspace builds on 1.85. Every provider is an explicit Cargo feature:
 
 | Feature | Provider | Boundary |

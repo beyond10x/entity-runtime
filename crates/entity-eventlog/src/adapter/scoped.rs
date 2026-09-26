@@ -179,7 +179,7 @@ impl EventlogRecordedStore {
     }
 
     async fn scoped_once(&self, scope: &ReadScope) -> Result<ScopedModel, Retry> {
-        // The binding row is read first, and the identity only once it exists. Eventlog 0.4.0 has
+        // The binding row is read first, and the identity only once it exists. The Eventlog port has
         // no non-minting identity call: `stream_identity` mints one for a tenant that has none, so
         // asking it about a tenant that was forgotten would re-create that tenant. A bound tenant
         // already has its identity, so behind a present binding the call only reads it.

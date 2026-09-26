@@ -11,7 +11,7 @@
 //! `AtomicEventStore::append_group_guarded_with_blobs` promises that only of a provider that
 //! *overrides* it: "Publishing nothing when the group refuses is the override's obligation; the
 //! default may leave content-addressed orphan blobs". Of the three providers this crate has a
-//! feature for, only `eventlog-file` overrides it.
+//! feature for, `eventlog-file` overrides it and, since Eventlog 0.5.0, so does `eventlog-sqlite`.
 //!
 //! `tests/providers.rs::a_refused_member_leaves_no_part_of_the_batch_committed` asserts the
 //! documented claim against `eventlog-file` only. This is the same assertion against the SQLite

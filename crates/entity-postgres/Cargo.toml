@@ -27,8 +27,8 @@ entity-eventlog = { path = "../entity-eventlog", version = "0.23.0", features = 
 entity-executor = { path = "../entity-executor", version = "0.23.0", optional = true }
 entity-store = { path = "../entity-store", version = "0.23.0" }
 entity-query = { path = "../entity-query", version = "0.23.0" }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "70096af8c231fedf6d2206c97ce2940b99aecdb8", optional = true }
-eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "70096af8c231fedf6d2206c97ce2940b99aecdb8", optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8", optional = true }
+eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", rev = "fe8a0a7e6e97afde87b349f0840d6e2ed28df3f8", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 # The fifth direct third-party crate in this workspace, and the first that talks to a server. The

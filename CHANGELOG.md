@@ -15,6 +15,24 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   A build predating these operators refuses a definition that uses them by naming the operator.
   `Condition` gains two variants, so an exhaustive match over it no longer compiles.
 
+### Changed
+
+- `entity-eventlog`, `entity-sqlite`, `entity-postgres` and `entity-cli`: Eventlog moves from the
+  0.4.0 release (`70096af8`) to the 0.5.0 release (`fe8a0a7e`). What that changes for you:
+  - On SQLite, a batch import (`import_anchors`) now commits its blobs and its group in one
+    transaction instead of uploading each blob first. A batch the destination guard refuses leaves
+    no blob of itself bound on SQLite, as it already did on File; PostgreSQL still takes the
+    per-blob path, where a refusal can leave unreferenced blobs. A batch of 7 blobs costs one
+    durability barrier on SQLite instead of eight.
+  - A SQLite database file hashes each distinct blob at most once per open handle instead of on
+    every read; tampering after a verified read is still refused.
+  - A SQLite append or group that rolls back no longer lets the next append on the handle take
+    another event's restored id and instant.
+  - PostgreSQL `stream_identity` reads an existing identity instead of rewriting and committing
+    its row on every call.
+  - SQLite gains additive `<prefix>_group_batches` and `<prefix>_origins` tables, created inside
+    the first write that needs them; `open_existing` still creates none.
+
 ## [0.23.0] — 2026-09-25
 
 ### Changed
