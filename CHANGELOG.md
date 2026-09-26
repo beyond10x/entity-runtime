@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-09-26
+
 ### Added
 
 - `entity-core`: two condition operators, `starts_with: [text, prefix]` and `ends_with: [text, suffix]`,
