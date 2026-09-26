@@ -312,7 +312,7 @@ code a complete capture is. Three things are narrower than a complete capture:
 
 - Only the index rows for the keys the command names are held to the events. A tampered row of
   another entity is not refused by a command; the next complete read refuses it.
-- The provider's stream identity is asked only behind a present binding row. Eventlog 0.4.0 has no
+- The provider's stream identity is asked only behind a present binding row. The Eventlog 0.5.0 port has no
   non-minting identity call and `stream_identity` mints on a miss, so a tenant forgotten between
   the two calls can still be given a new identity.
 - A per-entity read is several provider calls, not one snapshot. A read that does not verify is

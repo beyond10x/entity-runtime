@@ -377,11 +377,13 @@ The batch changes what is *read*, never what is *written*:
 
    **What a refused batch leaves behind depends on the provider, and the claim is exactly this.**
    On a provider that *overrides* `AtomicEventStore::append_group_guarded_with_blobs` — of the
-   three this crate has a feature for, only `eventlog-file` — admission runs before any blob is
+   three this crate has a feature for, `eventlog-file` and, since Eventlog 0.5.0,
+   `eventlog-sqlite` — admission runs before any blob is
    bound, so a refused batch leaves no byte of itself behind, not even a bound orphan blob for a
    member the guard never objected to
-   (`a_refused_member_leaves_no_part_of_the_batch_committed`). On a provider that takes the port's
-   default, the default itself writes nothing at all — it fails closed, refusing with
+   (`a_refused_member_leaves_no_part_of_the_batch_committed`,
+   `the_sqlite_override_commits_a_group_with_its_blob_and_a_refused_guard_binds_neither`). On a
+   provider that takes the port's default — `eventlog-postgres` — the default itself writes nothing at all — it fails closed, refusing with
    `UNAVAILABLE` as step 3 describes — and the blobs are uploaded by **this adapter's own fallback
    loop**, one at a time, before it calls `append_group_guarded`. A refusal after that point can
    leave those blobs bound as orphans, exactly as the singular `import_anchor` can, and for the
@@ -394,7 +396,7 @@ The batch changes what is *read*, never what is *written*:
    What holds on *every* provider is narrower and is the part worth relying on: the refusals this
    adapter can see from its own capture — a record identity already taken, one shared by two
    members, a subject already answered for — are made in step 1 and 2, before a single blob is
-   uploaded. `import_batch_blob_binding.rs` holds that on SQLite, which takes the default.
+   uploaded. `import_batch_blob_binding.rs` holds that on SQLite.
 
    **That is also why the guard is reached only by a second writer.** Under a single writer the
    pre-capture answers, from the same authority, every refusal the guard could give, and answers

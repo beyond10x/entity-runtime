@@ -1381,7 +1381,11 @@ fn an_empty_batch_reaches_no_provider() {
     });
 }
 
-/// A batch that *commits* on a provider taking the port's default blob path.
+/// A batch that *commits* on the SQLite provider.
+///
+/// Up to the Eventlog 0.4.0 pin SQLite took the port's default blob path, so this case was the
+/// alarm for that path; since 0.5.0 SQLite overrides the method and this case commits through the
+/// override. The name is kept because the requirements register cites it.
 ///
 /// Every other `import_anchors` case either runs on the File provider, which overrides
 /// `AtomicEventStore::append_group_guarded_with_blobs`, or — like
