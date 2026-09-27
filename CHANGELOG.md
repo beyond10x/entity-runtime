@@ -4,6 +4,16 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- `entity-eventlog`, `entity-sqlite`, `entity-postgres` and `entity-cli` move to Eventlog 0.6.0.
+  With the `tree` feature, a new tree store is created as `eventlog-tree/2`, which keeps each
+  long text of a record or import anchor once under its SHA-256 and serves the exact bytes under
+  the same framed key. An existing `eventlog-tree/1` store opens, reads and records exactly as
+  before; `eventlog_tree::migrate` moves one explicitly, and a recorded store reads the same
+  history after it (`tests/tree_text_blobs.rs`). An Entity Runtime older than this release
+  refuses a new or migrated tree store by name.
+
 ## [0.24.2] — 2026-09-26
 
 ### Changed
