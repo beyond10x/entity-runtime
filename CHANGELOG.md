@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-09-27
+
 ### Changed
 
 - `entity-eventlog`, `entity-sqlite`, `entity-postgres` and `entity-cli` move to Eventlog 0.6.0.
