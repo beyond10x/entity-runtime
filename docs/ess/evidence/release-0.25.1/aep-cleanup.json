@@ -1,0 +1,12 @@
+{
+  "tree_id": "er-suite-evidence-admission",
+  "head": "ba0d7ec714b662963ac1a77a45ca4b8e2751da69",
+  "removed": true,
+  "recovery_kind": "archive",
+  "archive_manifest_sha256": "542dd11f727985eac87e4e07fd9c73278411d9666029f5c7d2357d4995bd26cc",
+  "preserved_commits": [
+    "ba0d7ec714b662963ac1a77a45ca4b8e2751da69",
+    "8913a69427e31bd9e78a29a79137d9aaaad639e3"
+  ],
+  "recorded_at": 1790592032
+}

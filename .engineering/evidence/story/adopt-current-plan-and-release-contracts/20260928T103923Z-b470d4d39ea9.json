@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-28T10:39:23Z",
+  "actor": "human:timo",
+  "artifact": "story:adopt-current-plan-and-release-contracts",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Published bot release: all six asset names, sizes and SHA-256 digests verified against the exact successful build bundle; native binary reports entity 0.25.1",
+    "reference": "docs/ess/evidence/release-0.25.1/release.json"
+  }
+}

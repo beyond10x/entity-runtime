@@ -1,0 +1,41 @@
+{
+  "release_id": 398152467,
+  "url": "https://github.com/beyond10x/entity-runtime/releases/tag/0.25.1",
+  "tag": "0.25.1",
+  "author": "b10x-bot[bot]",
+  "published_at": "2026-09-28T10:37:48Z",
+  "draft": false,
+  "prerelease": false,
+  "assets": [
+    {
+      "name": "entity-0.25.1-aarch64-apple-darwin.tar.gz",
+      "size": 1824506,
+      "digest": "sha256:47a18ee53cf3c3c89c6e08fa3303f706744f7e65c56502200f6e6df95aff714c"
+    },
+    {
+      "name": "entity-0.25.1-aarch64-unknown-linux-gnu.tar.gz",
+      "size": 1954256,
+      "digest": "sha256:cb42074de7e24198f66fa53d8ebbb4e6e0320f475b41c220917f7a7569778898"
+    },
+    {
+      "name": "entity-0.25.1-x86_64-apple-darwin.tar.gz",
+      "size": 1960514,
+      "digest": "sha256:ae88f1f18c9d46cb4f5c996e1bac300ef7e00823dad5c1028a4d27feb125b8c5"
+    },
+    {
+      "name": "entity-0.25.1-x86_64-pc-windows-msvc.zip",
+      "size": 1778109,
+      "digest": "sha256:330ae4d2369dee335a3c6c9f5803eb4206ae7a38b8b521b02f4ab0a28763aead"
+    },
+    {
+      "name": "entity-0.25.1-x86_64-unknown-linux-gnu.tar.gz",
+      "size": 2085816,
+      "digest": "sha256:7927daeca9a1e091fb49d02c55d205afefb293ec47d79a79da6857db6e45c634"
+    },
+    {
+      "name": "SHA256SUMS",
+      "size": 547,
+      "digest": "sha256:47626697db2069eaaa76ab751b2e93b81908e1e3d1c9509ff38ac5df6fbaca63"
+    }
+  ]
+}
