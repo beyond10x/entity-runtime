@@ -76,7 +76,7 @@ cargo install --locked --git https://github.com/beyond10x/ess --rev PIN_FROM_CHE
 ```
 
 The initial integration baseline was ESS
-0.37.0; the final revision must include the governed direct-return and response-resource
+0.37.0; the pinned revision includes the governed direct-return and response-resource
 extensions. No ESS dependency is added to a production crate. New executable tooling is Rust;
 the checker's command line uses clap derive.
 

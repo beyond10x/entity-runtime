@@ -2,7 +2,7 @@
 format: aep.planning-md/2
 id: story:er-shell-query-contracts
 kind: story
-status: active
+status: implemented
 title: Execute the shell and query library contracts
 relations:
 - derived_from: executable-system-specification:er-library-contracts
@@ -20,7 +20,7 @@ scope:
   path: ess/scenarios/query
 - confidence: cited
   path: ess/scenarios/shell
-revision: 5
+revision: 6
 ---
 # Shell and query executable contracts
 

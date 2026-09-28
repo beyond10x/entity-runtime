@@ -24,7 +24,8 @@ The named mutation reports under `../mutations/` retain their own exact intermed
 source identities. This full passing run observes production after all five mutations were
 restored. Bounded independent review and correction probes are retained under `../review/`.
 
-The ESS dependency is pinned by the checker manifest and lockfile. `task-check.log` and
+The ESS dependency is pinned by the checker manifest and lockfile. `toolchain.json` records that
+exact revision and the matching CLI binary checksum. `task-check.log` and
 `msrv-checker.log` replace local machine path prefixes with readable placeholders; structured
 suite/model/report/run/observation bytes are retained unchanged.
 

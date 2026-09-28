@@ -273,7 +273,7 @@ dependencies = [
 [[package]]
 name = "ess-compiler"
 version = "0.37.0"
-source = "git+https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e266b7ffd910f46bdce730957a8b555a0c3"
+source = "git+https://github.com/beyond10x/ess?rev=6e0b577df9fa4142dffc4d616d96fe2ab5881e24#6e0b577df9fa4142dffc4d616d96fe2ab5881e24"
 dependencies = [
  "ess-domain",
  "ess-primitives",
@@ -285,7 +285,7 @@ dependencies = [
 [[package]]
 name = "ess-conformance"
 version = "0.37.0"
-source = "git+https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e266b7ffd910f46bdce730957a8b555a0c3"
+source = "git+https://github.com/beyond10x/ess?rev=6e0b577df9fa4142dffc4d616d96fe2ab5881e24#6e0b577df9fa4142dffc4d616d96fe2ab5881e24"
 dependencies = [
  "ess-compiler",
  "ess-domain",
@@ -300,7 +300,7 @@ dependencies = [
 [[package]]
 name = "ess-domain"
 version = "0.37.0"
-source = "git+https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e266b7ffd910f46bdce730957a8b555a0c3"
+source = "git+https://github.com/beyond10x/ess?rev=6e0b577df9fa4142dffc4d616d96fe2ab5881e24#6e0b577df9fa4142dffc4d616d96fe2ab5881e24"
 dependencies = [
  "ess-primitives",
  "schemars",
@@ -313,7 +313,7 @@ dependencies = [
 [[package]]
 name = "ess-gen"
 version = "0.37.0"
-source = "git+https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e266b7ffd910f46bdce730957a8b555a0c3"
+source = "git+https://github.com/beyond10x/ess?rev=6e0b577df9fa4142dffc4d616d96fe2ab5881e24#6e0b577df9fa4142dffc4d616d96fe2ab5881e24"
 dependencies = [
  "ess-compiler",
  "ess-domain",
@@ -328,7 +328,7 @@ dependencies = [
 [[package]]
 name = "ess-primitives"
 version = "0.37.0"
-source = "git+https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e266b7ffd910f46bdce730957a8b555a0c3"
+source = "git+https://github.com/beyond10x/ess?rev=6e0b577df9fa4142dffc4d616d96fe2ab5881e24#6e0b577df9fa4142dffc4d616d96fe2ab5881e24"
 dependencies = [
  "schemars",
  "serde",

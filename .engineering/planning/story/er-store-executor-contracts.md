@@ -2,7 +2,7 @@
 format: aep.planning-md/2
 id: story:er-store-executor-contracts
 kind: story
-status: active
+status: implemented
 title: Execute storage and asynchronous executor contracts
 relations:
 - derived_from: executable-system-specification:er-library-contracts
@@ -20,7 +20,7 @@ scope:
   path: ess/scenarios/executor
 - confidence: cited
   path: ess/scenarios/store
-revision: 5
+revision: 6
 ---
 # Store and executor executable contracts
 

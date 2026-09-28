@@ -16,10 +16,10 @@ entity-shell = { path = "../../crates/entity-shell" }
 entity-query = { path = "../../crates/entity-query" }
 # ESS 0.37.0 plus its governed direct-return extension, pinned identically for every library.
 # Install the matching CLI at this exact Git revision; no production crate depends on ESS.
-ess-conformance = { git = "https://github.com/beyond10x/ess", rev = "9d488e266b7ffd910f46bdce730957a8b555a0c3" }
-ess-compiler = { git = "https://github.com/beyond10x/ess", rev = "9d488e266b7ffd910f46bdce730957a8b555a0c3" }
-ess-domain = { git = "https://github.com/beyond10x/ess", rev = "9d488e266b7ffd910f46bdce730957a8b555a0c3" }
-ess-primitives = { git = "https://github.com/beyond10x/ess", rev = "9d488e266b7ffd910f46bdce730957a8b555a0c3" }
+ess-conformance = { git = "https://github.com/beyond10x/ess", rev = "6e0b577df9fa4142dffc4d616d96fe2ab5881e24" }
+ess-compiler = { git = "https://github.com/beyond10x/ess", rev = "6e0b577df9fa4142dffc4d616d96fe2ab5881e24" }
+ess-domain = { git = "https://github.com/beyond10x/ess", rev = "6e0b577df9fa4142dffc4d616d96fe2ab5881e24" }
+ess-primitives = { git = "https://github.com/beyond10x/ess", rev = "6e0b577df9fa4142dffc4d616d96fe2ab5881e24" }
 clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }

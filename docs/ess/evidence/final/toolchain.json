@@ -1,0 +1,8 @@
+{
+  "ess_base_version": "0.37.0",
+  "ess_git_revision": "6e0b577df9fa4142dffc4d616d96fe2ab5881e24",
+  "ess_cli_sha256": "e9bda58e14ccdea42952953ada6b5458d82d8abfc4885ee5e076baef35229daa",
+  "aep_version": "0.61.1",
+  "aep_sha256": "67e07ce63a24259f7eef39929e5984db4a6e7636feebb2577a3970a3c2a86e54",
+  "checker_msrv": "1.85.0"
+}

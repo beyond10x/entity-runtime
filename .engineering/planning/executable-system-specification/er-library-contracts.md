@@ -8,7 +8,7 @@ relations:
 - serves: vision:O2
 - specifies: initiative:entity-runtime
 model_digest: a13e6c07be82c913363ea52b8042c6e379343acfda7fcc03a212c0942569da5d
-revision: 4
+revision: 5
 ---
 # Executable ESS contracts for ER libraries
 
@@ -22,7 +22,7 @@ The approved plan covers entity-core under kernel/1 and service/1–3, the publi
 
 ## Integration and verification
 
-The standalone Rust/clap workspace `checks/ess-conformance` has its own lockfile and pins ESS libraries to 9d488e266b7ffd910f46bdce730957a8b555a0c3, the independently reviewed direct-return extension on 0.37.0. The matching CLI uses that same Git revision. Upstream work is story:direct-library-return-observations in ESS and pull request beyond10x/ess#182. No ESS package enters the production workspace dependency graph.
+The standalone Rust/clap workspace `checks/ess-conformance` has its own lockfile and pins ESS libraries to 6e0b577df9fa4142dffc4d616d96fe2ab5881e24, the independently reviewed direct-return extension on 0.37.0. The matching CLI uses that same Git revision. Upstream work is story:direct-library-return-observations in ESS and pull request beyond10x/ess#182. No ESS package enters the production workspace dependency graph.
 
 The complete manifest validates without unresolved references. CLI and checker canonical model bytes agree. The model digest is a13e6c07be82c913363ea52b8042c6e379343acfda7fcc03a212c0942569da5d. The checker synthesizes a nonempty suite/27 with complete declared coverage and no synthesis refusal, repeats canonical generation byte-for-byte, and executes admitted bytes through ESS's Rust runner. Coverage version 2 fingerprints entire scenario contracts, so removing assertions under unchanged IDs requires explicit review. Build-time source identity rejects stale executables; exact suite/report/run/model/source and executable identity are retained. Report timestamps reflect execution; runtime fixture time remains explicit input.
 
