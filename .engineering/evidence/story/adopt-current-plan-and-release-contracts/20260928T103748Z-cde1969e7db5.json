@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-28T10:37:48Z",
+  "actor": "human:timo",
+  "artifact": "story:adopt-current-plan-and-release-contracts",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Exact tag release run: provenance, gate, MSRV, Eventlog runtime, five builds and bundle assembly succeeded",
+    "reference": "https://github.com/beyond10x/entity-runtime/actions/runs/36409629222"
+  }
+}

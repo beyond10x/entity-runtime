@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-28T10:41:15Z",
+  "actor": "human:timo",
+  "artifact": "story:adopt-current-plan-and-release-contracts",
+  "kind": "story",
+  "revision": 16,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Managed GC removed the blocked AEP worktree using a verified archive preserving both unpublished commits; both ESS worktrees already removed",
+    "reference": "docs/ess/evidence/release-0.25.1/aep-cleanup.json"
+  }
+}
