@@ -22,5 +22,12 @@ successful typed coverage admission of this exact pair. Each domain's failing pr
 and restored success remain under `../../mutations/`; bounded independent reviews are retained
 under `../../review/` and `../../planning-migration/`. The final run observes restored sources.
 
+The later `aep-lifecycle-transition.log` records the actual `validated` to `conforming` move.
+AEP retained and re-admitted the original report and suite from its evidence store, checked the
+current model and complete passing inventory, and recorded one derived eligibility separately
+from the unchanged `ess_conformance_coverage_v1` records. No legacy success record was asserted.
+The original admission log retains its original reader identity; lifecycle admission used the
+reviewed AEP bridge identified separately in `toolchain.json`.
+
 These are source verification records. Publication, mainline integration and release asset
 verification are tracked separately by `story:adopt-current-plan-and-release-contracts`.

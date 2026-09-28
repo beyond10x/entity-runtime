@@ -1,0 +1,14 @@
+{
+  "at": "2026-09-28T08:56:02Z",
+  "actor": "human:timo",
+  "artifact": "story:adopt-current-plan-and-release-contracts",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:er-final-evidence-release-manifests",
+    "review": "review-result:er-final-evidence-release-manifests",
+    "outcome": "no-op"
+  }
+}

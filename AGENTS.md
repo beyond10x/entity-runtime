@@ -43,10 +43,11 @@ standalone Rust checker and refuses generated drift, unreviewed scenario-contrac
 incomplete execution. Keep the specification and implementation evidence together when changing
 these libraries; record disagreements as AEP blockers rather than weakening assertions.
 
-AEP admitted the exact [release evidence](docs/ess/evidence/final/release/README.md) after complete
-execution and the repository gate. Authority adoption remains pending the specification
-lifecycle's acceptance of current typed coverage evidence. The following requirements and designs
-retain their existing authority until that transition succeeds.
+The specification is `conforming`: AEP admitted and rechecked the exact
+[release evidence](docs/ess/evidence/final/release/README.md) after complete execution, independent
+review and the repository gate. ESS is authoritative for the five libraries' declared behavior.
+The following requirements and designs retain their IDs, rationale and static obligations;
+outside this declared scope they retain their existing authority.
 
 * [`docs/requirements.md`](docs/requirements.md) — the register. Every row names a test, a type or
   a manifest that pins it; `design` alone marks a gap and is a story.

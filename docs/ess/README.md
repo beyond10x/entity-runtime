@@ -2,8 +2,9 @@
 
 [`ess/ess-inputs.yaml`](../../ess/ess-inputs.yaml) is the canonical composition entry point for
 the selected Entity Runtime library contracts. It lists the source declarations and every
-authored scenario explicitly. [Release evidence](evidence/final/release/README.md) has been admitted;
-authority adoption waits for the specification lifecycle to accept current typed coverage evidence.
+authored scenario explicitly. The specification is conforming and authoritative for its declared
+scope, backed by [admitted release evidence](evidence/final/release/README.md) and a lifecycle
+transition that rechecks the retained original report and suite.
 Requirement IDs and design documents retain their traceability and rationale.
 
 | Behavioral domain | In-process component | Contract register |

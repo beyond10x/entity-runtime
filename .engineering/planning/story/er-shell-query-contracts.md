@@ -20,7 +20,7 @@ scope:
   path: ess/scenarios/query
 - confidence: cited
   path: ess/scenarios/shell
-revision: 8
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-09-28T02:06:57Z", actor: "human:timo", revision: 2, imported: true}
 - {from: "proposed", to: "active", at: "2026-09-28T02:07:03Z", actor: "human:timo", revision: 3, imported: true}
@@ -34,4 +34,4 @@ Shell scenarios cover create/get/list/events/execute, missing subjects, stale in
 
 The adapters preserve lossless JSON and expose actual API results. Scenario state and FileStore directories are isolated. `docs/ess/evidence/mutations/shell/` and `query/` retain exact production mutations that fail their named scenarios; production files were restored. The worker's restored complete suite passes. Integrated reports are retained under `docs/ess/evidence/final/`; independent review is retained under `docs/ess/evidence/review/`.
 
-The full repository gate and complete declared execution passed, with no failure, error, unsupported observation or skip. AEP admitted the final suite/29 and report under `docs/ess/evidence/final/release/`. The original format blocker is cleared; normative adoption now waits for blocker:current-coverage-lifecycle-admission; this implementation does not change ER behavior or add other provider scope.
+The full repository gate and complete declared execution passed, with no failure, error, unsupported observation or skip. AEP admitted the final suite/29 and report under `docs/ess/evidence/final/release/`. The original format blocker is cleared; archived typed coverage now earns the conforming transition and normative adoption, clearing blocker:current-coverage-lifecycle-admission. This implementation does not change ER behavior or add other provider scope.

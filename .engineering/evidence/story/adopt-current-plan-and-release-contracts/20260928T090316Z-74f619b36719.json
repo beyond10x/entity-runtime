@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-28T09:03:16Z",
+  "actor": "human:timo",
+  "artifact": "story:adopt-current-plan-and-release-contracts",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "ER CI at 75394bbb passed the complete reusable gate, PostgreSQL, Eventlog Rust 1.91 and checker/workspace MSRV 1.85",
+    "reference": "https://github.com/beyond10x/entity-runtime/actions/runs/36400218336"
+  }
+}

@@ -20,7 +20,7 @@ scope:
   path: ess/scenarios/executor
 - confidence: cited
   path: ess/scenarios/store
-revision: 8
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-09-28T02:07:21Z", actor: "human:timo", revision: 2, imported: true}
 - {from: "proposed", to: "active", at: "2026-09-28T02:07:27Z", actor: "human:timo", revision: 3, imported: true}
@@ -34,4 +34,4 @@ The adapters invoke MemoryStore, FileStore and MemoryRecordedStore directly. Lit
 
 The final worker suite passed. `docs/ess/evidence/mutations/store/` and `executor/` retain exact failing production mutations, original suite associations and implementation identity. `docs/ess/evidence/review/store-executor-adversary.md` records independent refusal-recording and projection-version probes; the final fixtures reject both mutations and the restored run passes. Production files are restored and unchanged.
 
-The full integrated gate and final suite evidence passed and are retained under `docs/ess/evidence/final/release/`. AEP admitted the exact current pair and the original format blocker is cleared. Authority adoption waits only for blocker:current-coverage-lifecycle-admission. No runtime behavior correction or additional provider scope is claimed.
+The full integrated gate and final suite evidence passed and are retained under `docs/ess/evidence/final/release/`. AEP admitted the exact current pair and the original format blocker is cleared. The exact archived typed coverage earned the conforming transition, cleared blocker:current-coverage-lifecycle-admission and enabled the declared ESS authority. No runtime behavior correction or additional provider scope is claimed.
