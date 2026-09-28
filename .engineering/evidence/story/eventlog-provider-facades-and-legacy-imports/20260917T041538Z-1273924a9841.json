@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-17T04:15:38Z",
+  "actor": "human:timo",
+  "artifact": "story:eventlog-provider-facades-and-legacy-imports",
+  "kind": "story",
+  "revision": 11,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Original source-identity regression red/restored-green, actual-PG full ER gate, Rust minima and site build",
+    "reference": "~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/facades-source-review-1/correction-acceptance/report.md"
+  }
+}

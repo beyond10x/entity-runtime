@@ -1,0 +1,146 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "identity-rejects-untyped-and-invalid-public-address-values",
+  "summary": "identity rejects untyped and invalid public address values.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "identity_field_unknown"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"key\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "identity_field_unknown"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"key\":{\"type\":\"json\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "identity_field_not_addressable"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"key\":{\"type\":\"object\",\"required\":true,\"properties\":{\"untyped\":{\"type\":\"json\"}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "identity_field_not_addressable"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.Address",
+      "input": {
+        "kind": "\"json\"",
+        "value": "1"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "address"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.Address",
+      "input": {
+        "kind": "\"integer\"",
+        "value": "\"text\""
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "address"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:06Z",
+      "command": "entity.core.Address",
+      "input": {
+        "kind": "\"array\"",
+        "value": "[null]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "address"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:07Z",
+      "command": "entity.core.Address",
+      "input": {
+        "kind": "\"object\"",
+        "value": "{\"x\":null}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "address"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:08Z",
+      "command": "entity.core.Address",
+      "input": {
+        "kind": "\"binary64\"",
+        "value": "1e9999"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "address"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:09Z",
+      "command": "entity.core.Address",
+      "input": {
+        "kind": "\"string\"",
+        "value": "\"\""
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "s:"
+      }
+    }
+  ]
+}

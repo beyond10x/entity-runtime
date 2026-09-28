@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: task:roadmap-page-is-current
 kind: task
 status: implemented
@@ -8,6 +8,10 @@ summary: § 1 'The blocking fact' says engineering-protocols has never heard of 
 relations:
 - decomposes: epic:the-store-an-adopter-runs-on
 revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-28T20:34:07Z", actor: "human:operator", revision: 4, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-28T20:34:07Z", actor: "human:operator", revision: 5, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-28T20:34:08Z", actor: "human:operator", revision: 6, decided_on: {"recorded":{"static_analysis":1}}, imported: true}
 ---
 # Task: `docs/roadmap.md` states a fact that stopped being true
 

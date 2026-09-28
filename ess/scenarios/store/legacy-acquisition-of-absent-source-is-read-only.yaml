@@ -1,0 +1,23 @@
+domain: entity.store
+scenario: legacy-acquisition-of-absent-source-is-read-only
+summary: An absent FileStore acquisition returns an empty source without creating provider files.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.AcquireLegacy
+  input:
+    request: '{"source_id":"old-file"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"histories":[],"source_id":"old-file"}'
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.FileExists
+  input:
+    request: '{"path":"file"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'false'
+type: ess-scenario/4

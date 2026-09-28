@@ -1,0 +1,21 @@
+domain: entity.store
+scenario: file-corrupt-marker-is-not-absence
+summary: A malformed on-disk format marker produces a backend refusal, never absent state.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.WriteFileFixture
+  input:
+    request: '{"bytes":"corrupt","path":"file/.entity-store-format"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.Load
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"File"}'
+  outcome: returned
+  response:
+    error: Backend
+    status: error
+type: ess-scenario/4

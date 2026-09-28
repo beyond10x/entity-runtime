@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T08:44:24Z",
+  "actor": "human:timo",
+  "artifact": "task:service-binding-boundary",
+  "kind": "task",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "5da72ebd: task check0 actualPG12/12, Rust1.85build0, nine controls red101/restored0",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/service-binding-boundary-implementation/implementation-result.md"
+  }
+}

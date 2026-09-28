@@ -1,0 +1,39 @@
+[package]
+name = "er-ess-conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+rust-version = "1.85"
+
+# Verification tooling is deliberately outside the production workspace and dependency graph.
+[workspace]
+
+[dependencies]
+entity-core = { path = "../../crates/entity-core" }
+entity-store = { path = "../../crates/entity-store" }
+entity-executor = { path = "../../crates/entity-executor" }
+entity-shell = { path = "../../crates/entity-shell" }
+entity-query = { path = "../../crates/entity-query" }
+# ESS 0.38.0 plus its governed direct-return extension, pinned identically for every library.
+# Install the matching CLI at this exact Git revision; no production crate depends on ESS.
+ess-conformance = { git = "https://github.com/beyond10x/ess", rev = "ac6fc6fe2f39b43f016e4d3a9edecb3573f7d6a1" }
+ess-compiler = { git = "https://github.com/beyond10x/ess", rev = "ac6fc6fe2f39b43f016e4d3a9edecb3573f7d6a1" }
+ess-domain = { git = "https://github.com/beyond10x/ess", rev = "ac6fc6fe2f39b43f016e4d3a9edecb3573f7d6a1" }
+ess-primitives = { git = "https://github.com/beyond10x/ess", rev = "ac6fc6fe2f39b43f016e4d3a9edecb3573f7d6a1" }
+clap = { version = "4.6", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+# Only the manifest reader uses YAML; model/scenario parsing belongs to ESS.
+serde_yaml_ng = "0.10"
+# Source identity covers the actual implementation files, including uncommitted mutations.
+sha2 = "0.10"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[build-dependencies]
+sha2 = "0.10"
+
+[profile.dev]
+debug = 0
+incremental = false

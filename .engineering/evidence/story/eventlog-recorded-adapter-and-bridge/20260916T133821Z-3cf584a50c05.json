@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T13:38:21Z",
+  "actor": "human:timo",
+  "artifact": "story:eventlog-recorded-adapter-and-bridge",
+  "kind": "story",
+  "revision": 31,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Composed adapter3190afe actual-PG full task check, pure1.85 and five provider/service3 acceptance cases",
+    "reference": "local-evidence:ess-evolution/waves/0007-er-eventlog-adapter/service3-composition-acceptance/report.md"
+  }
+}

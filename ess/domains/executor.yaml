@@ -1,0 +1,232 @@
+domain: entity.executor
+summary: Runtime-neutral execution orders identity recovery, transaction-local decisions and mandatory complete recorded append.
+# Native calls use MemoryRecordedStore. Explicit Supply* fixture ports supply refusal or
+# lineage observations without claiming those capabilities for the native memory provider.
+types:
+  - {name: entity.executor.RequestDocument, kind: newtype, of: entity.core.JsonDocument}
+commands:
+  - name: entity.executor.Register
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.ClearRegistry
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.Create
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.Execute
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.Observe
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.Batch
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.CancelBatch
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.Load
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.History
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.HistoryCoordinates
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.LookupRecord
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.LookupReceipt
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.Trace
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.ClearTrace
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.ScriptAppend
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.RecordingRefusals
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.Refusals
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.RefusalReasons
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.SupplyLoadFailure
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.SupplyHistory
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.CapturedMerge
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.CapturedAppend
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.SeedImported
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.VerifyComplete
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.executor.Tamper
+    input:
+      - {name: request, type: entity.executor.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}

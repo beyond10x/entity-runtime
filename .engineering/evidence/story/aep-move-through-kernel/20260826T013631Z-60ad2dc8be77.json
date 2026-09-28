@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-26T01:36:31Z",
+  "actor": "timo",
+  "artifact": "story:aep-move-through-kernel",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "artifact",
+    "source": "code read 2026-08-26",
+    "reference": "engineering-protocols crates/aep-backend-markdown/src/kernel.rs and tests/kernel_equivalence.rs"
+  }
+}

@@ -15,6 +15,23 @@ tasks:
       - task: postgres-check
       - task: eventlog-runtime-check
       - task: notes-check
+      - task: ess-check
+
+  ess-check:
+    desc: Deterministic ESS compilation, reviewed scenario coverage and actual library conformance
+    env:
+      CARGO_TARGET_DIR: '{{.ER_ESS_TARGET_DIR | default "checks/ess-conformance/target"}}'
+    cmds:
+      - cargo fmt --manifest-path checks/ess-conformance/Cargo.toml -- --check
+      - cargo clippy --manifest-path checks/ess-conformance/Cargo.toml --all-targets --locked -- -D warnings
+      - cargo run --manifest-path checks/ess-conformance/Cargo.toml --locked -- check
+
+  ess-regenerate:
+    desc: Regenerate ESS artifacts; changed scenario assertions require --coverage-review
+    env:
+      CARGO_TARGET_DIR: '{{.ER_ESS_TARGET_DIR | default "checks/ess-conformance/target"}}'
+    cmds:
+      - cargo run --manifest-path checks/ess-conformance/Cargo.toml --locked -- regenerate {{.CLI_ARGS}}
 
   eventlog-runtime-check:
     desc: the Rust 1.91 Eventlog adapter closure with every native provider and synchronous bridge
@@ -75,13 +92,9 @@ tasks:
 
   plan-check:
     desc: separate consumer compatibility check, after ER and AEP sources are composed
-    # The version first, and it is not ceremony. `aep artifact` is the only thing that writes
-    # this store, and it is ambient — nothing here pins it. A build predating the store journal
-    # printed every status move it made and recorded none of them, and `artifact validate` stayed
-    # green because it reads the files and the files were fine. So the guard checks `aep` itself,
-    # the binary the next line runs, and not the older `protocol` name it was renamed from. The
-    # shell resolves it and hands the path over: `cargo run` prepends its own directories to the
-    # child's PATH, so a lookup inside the check could find an `aep` the next line will not.
+    # The local command must support the Git-native planning layout. CI builds the exact AEP
+    # revision pinned by planning.yml; this guard checks the local `aep` the next line runs.
+    # Resolve it in the shell because Cargo prepends directories to its child's PATH.
     cmds:
       - cargo run -q -p entity-xtask --locked -- aep-version --binary "$(command -v aep)"
       - aep plan artifact validate

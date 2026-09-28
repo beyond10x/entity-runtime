@@ -1,0 +1,30 @@
+domain: entity.store
+scenario: expectation-absent-is-distinct-from-revision-zero
+summary: The public expectation check distinguishes absent state from a stored revision value.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.CheckExpectation
+  input:
+    request: '{"entity":"ticket","expect":null,"found":null,"id":"a"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.CheckExpectation
+  input:
+    request: '{"entity":"ticket","expect":0,"found":null,"id":"a"}'
+  outcome: returned
+  response:
+    error: RevisionConflict
+    status: error
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.CheckExpectation
+  input:
+    request: '{"entity":"ticket","expect":null,"found":0,"id":"a"}'
+  outcome: returned
+  response:
+    error: RevisionConflict
+    status: error
+type: ess-scenario/4

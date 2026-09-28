@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-08T23:40:25Z",
+  "actor": "human:timo",
+  "artifact": "story:entity-mcp-test-server",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "both_protocol_eras_discover_the_same_sorted_tools ok; mcp_command_keeps_stdout_as_json_rpc_and_lists_definition_derived_tools ok; gate / Gate on main 0e61dde: https://github.com/beyond10x/entity-runtime/actions/runs/34290829734",
+    "reference": "crates/entity-mcp/src/lib.rs"
+  }
+}

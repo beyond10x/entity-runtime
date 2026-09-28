@@ -1,0 +1,56 @@
+type: ess-scenario/4
+domain: entity.shell
+scenario: memory-create-retry-after-advancement
+summary: A repeated recorded creation returns its original result after execution advances state; changed provenance and fresh duplicate creation refuse.
+timeline:
+  - at: 2026-09-28T00:00:00Z
+    command: entity.shell.Open
+    input: {provider: Memory}
+    outcome: returned
+    response: {ok: true}
+  - at: 2026-09-28T00:00:01Z
+    command: entity.shell.Register
+    input:
+      definition: '{"entity":"thing","schema":{},"lifecycle":{"initial":"open","states":["open","done"]},"operations":{"finish":{"transitions":[{"from":"open","to":"done"}]}}}'
+    outcome: returned
+    response: {ok: true}
+  - at: 2026-09-28T00:00:02Z
+    command: entity.shell.Create
+    input:
+      request: '{"entity":"thing","version":1,"id":"one","fields":{},"recording":{"record_id":"created","recorded_at":"2026-09-28T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response: {ok: true, revision: 1, state: open}
+  - at: 2026-09-28T00:00:03Z
+    command: entity.shell.Execute
+    input:
+      request: '{"entity":"thing","id":"one","expected_revision":1,"operation":"finish","arguments":{},"recording":{"record_id":"finished","recorded_at":"2026-09-28T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response: {ok: true, revision: 2, state: done}
+  - at: 2026-09-28T00:00:04Z
+    command: entity.shell.Create
+    input:
+      request: '{"entity":"thing","version":1,"id":"one","fields":{},"recording":{"record_id":"created","recorded_at":"2026-09-28T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response: {ok: true, revision: 1, state: open, record_id: created}
+  - at: 2026-09-28T00:00:05Z
+    command: entity.shell.Create
+    input:
+      request: '{"entity":"thing","version":1,"id":"one","fields":{},"recording":{"record_id":"created","recorded_at":"2026-09-28T00:00:00Z","actor":"changed","correlation":null,"causation":null}}'
+    outcome: returned
+    response: {ok: false, kind: record_conflict, boundary: store, variant: RecordConflict}
+  - at: 2026-09-28T00:00:06Z
+    command: entity.shell.Create
+    input:
+      request: '{"entity":"thing","version":1,"id":"one","fields":{},"recording":{"record_id":"duplicate","recorded_at":"2026-09-28T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response: {ok: false, kind: revision_conflict, boundary: store, variant: RevisionConflict}
+  - at: 2026-09-28T00:00:07Z
+    command: entity.shell.Get
+    input: {request: '{"entity":"thing","id":"one"}'}
+    outcome: returned
+    response: {ok: true, revision: 2, state: done}
+  - at: 2026-09-28T00:00:08Z
+    command: entity.shell.Records
+    input: {request: '{"entity":"thing","id":"one"}'}
+    outcome: returned
+    response: {ok: true, ids: '["created","finished"]', count: 2}

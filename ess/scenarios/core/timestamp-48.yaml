@@ -1,0 +1,20 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "timestamp-48",
+  "summary": "timestamp 48.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Timestamp",
+      "input": {
+        "value": "2026-09-28T00:00:00Z"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "true"
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "numeric-two-wire-doors",
+  "summary": "numeric two wire doors.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"numeric\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"big\":{\"type\":\"number\"},\"same\":{\"type\":\"number\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"rule\",\"assert\":{\"eq\":[\"$fields.big\",\"$fields.same\"]}}]}",
+        "id": "n-1",
+        "fields": "{\"big\":100000000000000000000000001,\"same\":100000000000000000000000001}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"numeric\",\"version\":1,\"id\":\"n-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"big\":100000000000000000000000001,\"same\":100000000000000000000000001}}"
+      }
+    }
+  ]
+}

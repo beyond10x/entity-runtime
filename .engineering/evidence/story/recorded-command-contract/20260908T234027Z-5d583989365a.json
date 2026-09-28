@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-08T23:40:27Z",
+  "actor": "human:timo",
+  "artifact": "story:recorded-command-contract",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "an_exact_execute_retry_through_the_store_returns_the_original_record_after_state_has_advanced ok; implement_records_the_evidence_it_was_decided_on ok; gate / Gate on main 0e61dde: https://github.com/beyond10x/entity-runtime/actions/runs/34290829734",
+    "reference": "crates/entity-cli/tests/cli.rs"
+  }
+}

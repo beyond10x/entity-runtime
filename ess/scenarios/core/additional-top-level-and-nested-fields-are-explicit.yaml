@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "additional-top-level-and-nested-fields-are-explicit",
+  "summary": "additional top level and nested fields are explicit.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"value\",\"version\":1,\"schema\":{\"additional_fields\":true,\"fields\":{\"obj\":{\"type\":\"object\",\"additional_properties\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "v-1",
+        "fields": "{\"extra\":true,\"obj\":{\"x\":1}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"value\",\"version\":1,\"id\":\"v-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"extra\":true,\"obj\":{\"x\":1}}}"
+      }
+    }
+  ]
+}

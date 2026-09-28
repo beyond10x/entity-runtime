@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T13:20:35Z",
+  "actor": "human:timo",
+  "artifact": "story:eventlog-recorded-adapter-and-bridge",
+  "kind": "story",
+  "revision": 30,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Full bridge author task check with actual PostgreSQL, original acceptance matrix and compiled controls at 424a788",
+    "reference": "local-evidence:ess-evolution/waves/0007-er-eventlog-adapter/bridge-worker-acceptance-completion/report.md"
+  }
+}

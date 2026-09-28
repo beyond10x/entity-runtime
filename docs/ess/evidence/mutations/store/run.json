@@ -1,0 +1,158 @@
+{
+  "format": "ess-conformance-run/2",
+  "scenarios": [
+    {
+      "checks": [
+        {
+          "about": "outcome entity.store.CommitRecorded/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.store.CommitRecorded",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        },
+        {
+          "about": "outcome entity.store.CommitRecorded/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.store.CommitRecorded",
+          "code": "ESS-CF-PAYLOAD",
+          "diagnostic": {
+            "code": "ESS-CF-PAYLOAD",
+            "expected": [
+              "actual typed return satisfies its complete schema and authored literals"
+            ],
+            "input": null,
+            "observed": [
+              "response field error differs from its declared literal"
+            ],
+            "scenario": "entity.store/authored/memory-stale-write-preserves-state",
+            "source": [
+              {
+                "kind": "command",
+                "name": "entity.store.CommitRecorded"
+              }
+            ]
+          },
+          "status": "failed"
+        },
+        {
+          "about": "outcome entity.store.Load/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.store.Load",
+          "code": "ESS-CF-PAYLOAD",
+          "diagnostic": {
+            "code": "ESS-CF-PAYLOAD",
+            "expected": [
+              "actual typed return satisfies its complete schema and authored literals"
+            ],
+            "input": null,
+            "observed": [
+              "response field value differs from its declared literal"
+            ],
+            "scenario": "entity.store/authored/memory-stale-write-preserves-state",
+            "source": [
+              {
+                "kind": "command",
+                "name": "entity.store.Load"
+              }
+            ]
+          },
+          "status": "failed"
+        },
+        {
+          "about": "outcome entity.store.Events/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.store.Events",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        },
+        {
+          "about": "outcome entity.store.Ids/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.store.Ids",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        }
+      ],
+      "duration_ms": 100,
+      "purpose": "A stale recorded write reports the revision conflict and leaves all stored evidence unchanged.",
+      "scenario": "entity.store/authored/memory-stale-write-preserves-state",
+      "status": "failed"
+    }
+  ],
+  "started_at": 1700000000000,
+  "summary": {
+    "completed_at": 1700000000300,
+    "conformance_status": "failed",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 0,
+      "skipped": 0,
+      "total": 1,
+      "unsupported": 0
+    },
+    "coverage": {
+      "counts": {
+        "authored": 1,
+        "generated": 0,
+        "outside": 141,
+        "refused": 0
+      },
+      "knowledge": "complete_inventory",
+      "refused": [],
+      "selection": {
+        "filter": {
+          "ids": [
+            "entity.store/authored/memory-stale-write-preserves-state"
+          ],
+          "kind": "explicit",
+          "parent": {
+            "digest": "sha256:da95551c27742409c35b9f87b6fb36048ea50433b03499547488f9b514a2aea0",
+            "digest_profile": "sha256-json-bytes/1",
+            "version": "ess-conformance/27"
+          }
+        },
+        "origins": "generated_and_authored",
+        "scope": {
+          "kind": "system"
+        }
+      }
+    },
+    "execution_status": "failed",
+    "format": "ess-conformance-report/2",
+    "implementation": "entity-runtime source-sha256:ad30ad08ec39211472e02e4b109f9ac3ecbadd903a62de9b20f840d2df998cbc",
+    "outcomes": {
+      "error": [],
+      "failed": [
+        "entity.store/authored/memory-stale-write-preserves-state"
+      ],
+      "passed": [],
+      "skipped": [],
+      "unsupported": []
+    },
+    "policy": "complete-selection/1",
+    "producer_profile": "rust-scenario-status/1",
+    "spec_digest": "df6896d6bf6932a0f5a4e23dfc070121c46520610335e1c0be72e9eac10ddc78",
+    "specification": "entity/v1",
+    "suite": {
+      "digest": "sha256:04df46e4d6634e227a4a130b21fb79e922b4b25784f2b7ce26630093323bb0f6",
+      "digest_profile": "sha256-json-bytes/1",
+      "version": "ess-conformance/27"
+    }
+  }
+}

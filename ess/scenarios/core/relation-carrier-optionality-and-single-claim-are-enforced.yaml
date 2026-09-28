@@ -1,0 +1,115 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "relation-carrier-optionality-and-single-claim-are-enforced",
+  "summary": "relation carrier optionality and single claim are enforced.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"ids\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"relations\":{\"r\":{\"kind\":\"references\",\"target\":\"target\",\"cardinality\":\"many\",\"via\":\"ids\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "relation_carrier_optionality"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"ids\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"relations\":{\"r\":{\"kind\":\"references\",\"target\":\"target\",\"cardinality\":\"many\",\"via\":\"ids\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "relation_via_wrong_shape"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"target\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"identity\":{\"field\":\"key\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"id\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"relations\":{\"first\":{\"kind\":\"references\",\"target\":\"target\",\"cardinality\":\"one\",\"via\":\"id\"},\"second\":{\"kind\":\"references\",\"target\":\"target\",\"cardinality\":\"one\",\"via\":\"id\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "relation_field_claimed_twice"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.Replace",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"id\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"relations\":{\"first\":{\"kind\":\"references\",\"target\":\"target\",\"cardinality\":\"one\",\"via\":\"id\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:06Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "null"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:07Z",
+      "command": "entity.core.Replace",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"id\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"relations\":{\"first\":{\"kind\":\"references\",\"target\":\"target\",\"cardinality\":\"one\",\"via\":\"id\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:08Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "null"
+      }
+    }
+  ]
+}

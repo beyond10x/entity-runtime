@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:file-store-atomic-groups-from-eventlog
 kind: story
 status: implemented
@@ -14,6 +14,10 @@ relations:
 - informed_by: story:replay-from-events
 - serves: vision:O2
 revision: 10
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-18T23:12:07Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-18T23:12:07Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-18T23:12:08Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}, imported: true}
 ---
 ## Problem
 

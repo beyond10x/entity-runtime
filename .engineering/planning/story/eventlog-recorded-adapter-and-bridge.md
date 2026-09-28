@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:eventlog-recorded-adapter-and-bridge
 kind: story
 status: implemented
@@ -53,6 +53,10 @@ scope:
 - confidence: cited
   path: eventlog:crates/eventlog-sqlite/
 revision: 39
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-16T09:26:29Z", actor: "human:timo", revision: 22, decided_on: {"recorded":{"review_outcome":2}}, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-16T09:26:29Z", actor: "human:timo", revision: 23, decided_on: {"recorded":{"review_outcome":2}}, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-18T23:11:31Z", actor: "human:timo", revision: 39, decided_on: {"recorded":{"test_result":4,"review_outcome":2}}, imported: true}
 ---
 ## Outcome
 

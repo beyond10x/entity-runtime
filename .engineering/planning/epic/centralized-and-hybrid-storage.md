@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: epic:centralized-and-hybrid-storage
 kind: epic
 status: implemented
@@ -8,6 +8,10 @@ summary: A store whose record of truth is a server, and a composite over a local
 relations:
 - decomposes: initiative:entity-runtime
 revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T08:31:14Z", actor: "timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T08:31:14Z", actor: "timo", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T08:31:14Z", actor: "timo", revision: 4, imported: true}
 ---
 # Epic: Centralized and hybrid storage
 

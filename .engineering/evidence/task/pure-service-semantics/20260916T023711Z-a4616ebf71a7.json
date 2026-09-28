@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T02:37:11Z",
+  "actor": "human:timo",
+  "artifact": "task:pure-service-semantics",
+  "kind": "task",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Source correction final restored sourcef7904be: workspace, strictClippy, fmt, Rust1.85 purelibs and full taskcheck with actualPostgreSQL allpass;13causalcontrolclasses red/restoredgreen; final SOURCE examination2 and integration pending",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/service-source-correction-1/implementation-result.md"
+  }
+}

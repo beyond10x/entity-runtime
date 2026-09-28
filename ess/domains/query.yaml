@@ -1,0 +1,201 @@
+commands:
+- input:
+  - name: definition
+    type: entity.core.DefinitionDocument
+  - name: subjects
+    type: entity.core.JsonDocument
+  name: entity.query.Seed
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: has_next
+    type: Boolean
+  - name: cursor
+    type: entity.query.Cursor
+  - name: after
+    type: String
+- input:
+  - name: query
+    type: entity.query.QueryDocument
+  name: entity.query.Query
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: has_next
+    type: Boolean
+  - name: cursor
+    type: entity.query.Cursor
+  - name: after
+    type: String
+- input:
+  - name: query
+    type: entity.query.QueryDocument
+  name: entity.query.Continue
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: has_next
+    type: Boolean
+  - name: cursor
+    type: entity.query.Cursor
+  - name: after
+    type: String
+- input:
+  - name: query
+    type: entity.query.QueryDocument
+  - name: instances
+    type: entity.core.JsonDocument
+  name: entity.query.Ordered
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: has_next
+    type: Boolean
+  - name: cursor
+    type: entity.query.Cursor
+  - name: after
+    type: String
+- input:
+  - name: query
+    type: entity.query.QueryDocument
+  - name: instances
+    type: entity.core.JsonDocument
+  name: entity.query.Page
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: has_next
+    type: Boolean
+  - name: cursor
+    type: entity.query.Cursor
+  - name: after
+    type: String
+- input:
+  - name: query
+    type: entity.query.QueryDocument
+  name: entity.query.DecodeCursor
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: has_next
+    type: Boolean
+  - name: cursor
+    type: entity.query.Cursor
+  - name: after
+    type: String
+- input:
+  - name: query
+    type: entity.query.QueryDocument
+  name: entity.query.Limit
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: has_next
+    type: Boolean
+  - name: cursor
+    type: entity.query.Cursor
+  - name: after
+    type: String
+domain: entity.query
+summary: Actual public entity-query Rust API responses; fixture controls are explicit caller-owned setup.
+types:
+- kind: newtype
+  name: entity.query.QueryDocument
+  of: entity.core.JsonDocument
+- kind: newtype
+  name: entity.query.PageDocument
+  of: entity.core.JsonDocument
+- kind: newtype
+  name: entity.query.Cursor
+  of: String

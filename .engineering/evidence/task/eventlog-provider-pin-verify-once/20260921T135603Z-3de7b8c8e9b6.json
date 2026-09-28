@@ -1,0 +1,12 @@
+{
+  "at": "2026-09-21T13:56:03Z",
+  "actor": "human:timo",
+  "artifact": "task:eventlog-provider-pin-verify-once",
+  "kind": "task",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Pinned twice as the chain moved: 4ce78c11 and e535aded, then 8569da24405da850544fa92daf1077892a53aac9 following Eventlog to 76aad5e. task check exit 0 with 634 passed each time, plus the three optional feature builds no gate step enables at 0/0/0. One independent pass, three findings, all routed. Evidence: unit-4-er-eventlog-pin/gate-76aad5e/"
+  }
+}

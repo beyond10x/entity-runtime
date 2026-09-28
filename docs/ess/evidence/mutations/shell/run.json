@@ -1,0 +1,171 @@
+{
+  "format": "ess-conformance-run/2",
+  "scenarios": [
+    {
+      "checks": [
+        {
+          "about": "outcome entity.shell.Open/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.shell.Open",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        },
+        {
+          "about": "outcome entity.shell.Register/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.shell.Register",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        },
+        {
+          "about": "outcome entity.shell.Create/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.shell.Create",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        },
+        {
+          "about": "outcome entity.shell.ClearCalls/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.shell.ClearCalls",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        },
+        {
+          "about": "outcome entity.shell.Execute/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.shell.Execute",
+          "code": "ESS-CF-PAYLOAD",
+          "diagnostic": {
+            "code": "ESS-CF-PAYLOAD",
+            "expected": [
+              "actual typed return satisfies its complete schema and authored literals"
+            ],
+            "input": null,
+            "observed": [
+              "response field boundary differs from its declared literal"
+            ],
+            "scenario": "entity.shell/authored/memory-stale-intent-precedes-kernel",
+            "source": [
+              {
+                "kind": "command",
+                "name": "entity.shell.Execute"
+              }
+            ]
+          },
+          "status": "failed"
+        },
+        {
+          "about": "outcome entity.shell.Calls/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.shell.Calls",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        },
+        {
+          "about": "outcome entity.shell.Get/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.shell.Get",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        },
+        {
+          "about": "outcome entity.shell.Records/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.shell.Records",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        }
+      ],
+      "duration_ms": 100,
+      "purpose": "A stale observed revision refuses before kernel evaluation or a commit call.",
+      "scenario": "entity.shell/authored/memory-stale-intent-precedes-kernel",
+      "status": "failed"
+    }
+  ],
+  "started_at": 1700000000000,
+  "summary": {
+    "completed_at": 1700000000300,
+    "conformance_status": "failed",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 0,
+      "skipped": 0,
+      "total": 1,
+      "unsupported": 0
+    },
+    "coverage": {
+      "counts": {
+        "authored": 1,
+        "generated": 0,
+        "outside": 57,
+        "refused": 0
+      },
+      "knowledge": "complete_inventory",
+      "refused": [],
+      "selection": {
+        "filter": {
+          "ids": [
+            "entity.shell/authored/memory-stale-intent-precedes-kernel"
+          ],
+          "kind": "explicit",
+          "parent": {
+            "digest": "sha256:2b56f5434a9524c107e1e2834e5074d8e8f28fc5f93eebd3fc71b67d2c822b89",
+            "digest_profile": "sha256-json-bytes/1",
+            "version": "ess-conformance/27"
+          }
+        },
+        "origins": "generated_and_authored",
+        "scope": {
+          "kind": "system"
+        }
+      }
+    },
+    "execution_status": "failed",
+    "format": "ess-conformance-report/2",
+    "implementation": "entity-runtime source-sha256:3546a71319f9dbbae376aa3760e5c19693eae827b74d2b9f993e100ef1a1e3d5",
+    "outcomes": {
+      "error": [],
+      "failed": [
+        "entity.shell/authored/memory-stale-intent-precedes-kernel"
+      ],
+      "passed": [],
+      "skipped": [],
+      "unsupported": []
+    },
+    "policy": "complete-selection/1",
+    "producer_profile": "rust-scenario-status/1",
+    "spec_digest": "d6a9a00deccc8060b0fb48640dd4a3351ad9b2e29b3ff4602737c9aa8a5785ba",
+    "specification": "entity/v1",
+    "suite": {
+      "digest": "sha256:cfa37195809c066ad7cbc6f9e77b4e67586df97939641cb9081b8f0b66384d20",
+      "digest_profile": "sha256-json-bytes/1",
+      "version": "ess-conformance/27"
+    }
+  }
+}

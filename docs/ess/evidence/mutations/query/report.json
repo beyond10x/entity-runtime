@@ -1,0 +1,60 @@
+{
+  "completed_at": 1700000000300,
+  "conformance_status": "failed",
+  "counts": {
+    "error": 0,
+    "failed": 1,
+    "passed": 0,
+    "skipped": 0,
+    "total": 1,
+    "unsupported": 0
+  },
+  "coverage": {
+    "counts": {
+      "authored": 1,
+      "generated": 0,
+      "outside": 57,
+      "refused": 0
+    },
+    "knowledge": "complete_inventory",
+    "refused": [],
+    "selection": {
+      "filter": {
+        "ids": [
+          "entity.query/authored/numeric-values-remain-exact"
+        ],
+        "kind": "explicit",
+        "parent": {
+          "digest": "sha256:2b56f5434a9524c107e1e2834e5074d8e8f28fc5f93eebd3fc71b67d2c822b89",
+          "digest_profile": "sha256-json-bytes/1",
+          "version": "ess-conformance/27"
+        }
+      },
+      "origins": "generated_and_authored",
+      "scope": {
+        "kind": "system"
+      }
+    }
+  },
+  "execution_status": "failed",
+  "format": "ess-conformance-report/2",
+  "implementation": "entity-runtime source-sha256:72362a9229985687314519726f993df9945beab472b6cc42fe9a7f501b7d22f1",
+  "outcomes": {
+    "error": [],
+    "failed": [
+      "entity.query/authored/numeric-values-remain-exact"
+    ],
+    "passed": [],
+    "skipped": [],
+    "unsupported": []
+  },
+  "policy": "complete-selection/1",
+  "producer_profile": "rust-scenario-status/1",
+  "spec_digest": "d6a9a00deccc8060b0fb48640dd4a3351ad9b2e29b3ff4602737c9aa8a5785ba",
+  "specification": "entity/v1",
+  "suite": {
+    "digest": "sha256:6f64b2ab7dd1c2069194e99b67dedb483f0413b37118256664f539651ccd69ac",
+    "digest_profile": "sha256-json-bytes/1",
+    "version": "ess-conformance/27"
+  }
+}

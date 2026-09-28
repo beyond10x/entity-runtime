@@ -1,0 +1,24 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "silent-execution-advances-once-with-no-events",
+  "summary": "silent execution advances once with no events.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"ticket\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"count\":{\"type\":\"integer\",\"default\":0}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"create\":{\"emit\":{\"type\":\"Created\",\"payload\":{\"title\":\"$fields.title\"}}},\"operations\":{\"touch\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"arguments\":{\"fields\":{\"count\":{\"type\":\"integer\",\"default\":1}}},\"set\":{\"count\":\"$args.count\"}},\"close\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"arguments\":{\"fields\":{\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"preconditions\":[{\"name\":\"allowed\",\"assert\":{\"eq\":[\"$args.allow\",true]},\"message\":\"allow must be true\"}],\"emits\":[{\"type\":\"Closed\",\"payload\":{\"title\":\"$fields.title\"}},{\"type\":\"Closed\",\"payload\":{\"title\":\"$fields.title\"}}]}}}",
+        "instance": "{\"entity\":\"ticket\",\"version\":1,\"id\":\"t-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"count\":0,\"title\":\"A\"}}",
+        "operation": "touch",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"ticket\",\"version\":1,\"id\":\"t-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"count\":1,\"title\":\"A\"}}",
+        "events": "[]"
+      }
+    }
+  ]
+}

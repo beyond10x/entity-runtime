@@ -1,0 +1,36 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "nested-quantifier-binders-shadow-only-their-inner-scope",
+  "summary": "nested quantifier binders shadow only their inner scope.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"groups\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"for_all\":{\"in\":\"$fields.groups\",\"as\":\"e\",\"that\":{\"for_all\":{\"in\":\"$e.items\",\"as\":\"e\",\"that\":{\"truthy\":\"$e\"}}}}}}]}",
+        "id": "p-1",
+        "fields": "{\"groups\":[{\"items\":[1,2]}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"groups\":[{\"items\":[1,2]}]}}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"groups\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"object\",\"properties\":{\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"for_all\":{\"in\":\"$fields.groups\",\"as\":\"e\",\"that\":{\"for_all\":{\"in\":\"$e.items\",\"as\":\"e\",\"that\":{\"truthy\":\"$e\"}}}}}}]}",
+        "id": "p-1",
+        "fields": "{\"groups\":[{\"items\":[1,0]}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_violation"
+      }
+    }
+  ]
+}

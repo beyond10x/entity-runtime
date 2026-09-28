@@ -1,0 +1,21 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "rehydrate-rejects-empty-history",
+  "summary": "rehydrate rejects empty history.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"empty\",\"version\":1,\"schema\":{\"fields\":{},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{}}",
+        "events": "[]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    }
+  ]
+}

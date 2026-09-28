@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T00:45:51Z",
+  "actor": "human:timo",
+  "artifact": "task:pure-service-semantics",
+  "kind": "task",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Exact cb2c1a1 source: workspace, strict Clippy, fmt, pure MSRV1.85 and local task check; PostgreSQL NOT EXECUTED",
+    "reference": "ESS evolution wave0009/service-implementation/handoff.md"
+  }
+}

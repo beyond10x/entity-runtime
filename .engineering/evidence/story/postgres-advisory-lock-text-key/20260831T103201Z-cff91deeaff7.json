@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-31T10:32:01Z",
+  "actor": "human:operator",
+  "artifact": "story:postgres-advisory-lock-text-key",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check",
+    "reference": "live PostgreSQL gate, 2026-08-31"
+  }
+}

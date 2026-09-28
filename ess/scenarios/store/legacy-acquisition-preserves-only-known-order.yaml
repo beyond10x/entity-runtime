@@ -1,0 +1,30 @@
+domain: entity.store
+scenario: legacy-acquisition-preserves-only-known-order
+summary: File acquisition retains complete decision and observation envelopes with separate per-kind positions, no invented interleaving.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.CommitRecorded
+  input:
+    request: '{"commit":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"a"},"command":{"command":"create","fields":{"title":"a"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}},"expect":null,"provider":"File"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.Observe
+  input:
+    request: '{"observation":{"entity":"ticket","envelope":{"actor":null,"causation":null,"correlation":null,"record":{"evidence":null},"record_id":"seen","recorded_at":"2026-09-28T00:00:00Z"},"id":"a","revision":1},"provider":"File"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.AcquireLegacy
+  input:
+    request: '{"source_id":"old-file"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"histories":[{"origin":{"imported":{"completeness":"complete_subject","evidence":[{"envelope":{"entry":{"decision":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"a"},"command":{"command":"create","fields":{"title":"a"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}}},"known_order":{"per_kind":0},"source_id":"old-file","source_locator":"subjects/7469636b6574/61.json#records/0"}},{"envelope":{"entry":{"observation":{"entity":"ticket","envelope":{"actor":null,"causation":null,"correlation":null,"record":{"evidence":null},"record_id":"seen","recorded_at":"2026-09-28T00:00:00Z"},"id":"a","revision":1}},"known_order":{"per_kind":0},"source_id":"old-file","source_locator":"subjects/7469636b6574/61.json#observations/0"}}],"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"order":"per_kind_only"}},"records":[],"subject":{"entity":"ticket","id":"a"}}],"source_id":"old-file"}'
+type: ess-scenario/4

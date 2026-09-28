@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:provider-session-sequence-and-containment
 kind: story
 status: implemented
@@ -9,6 +9,10 @@ relations:
 - decomposes: epic:the-store-an-adopter-runs-on
 - serves: vision:O2
 revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-31T08:56:44Z", actor: "human:operator", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-31T08:56:45Z", actor: "human:operator", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-31T09:00:57Z", actor: "human:operator", revision: 6, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 ## Context
 

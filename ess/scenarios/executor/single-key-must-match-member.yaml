@@ -1,0 +1,30 @@
+domain: entity.executor
+scenario: single-key-must-match-member
+summary: Single-record keys require exactly one action with the same record ID.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.Batch
+  input:
+    request: '{"actions":[{"entity":"ticket","fields":{"title":"a"},"id":"a","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1}],"key":{"single_record":"other"}}'
+  outcome: returned
+  response:
+    error: InvalidInput
+    status: error
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.Trace
+  input:
+    request: '{}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+type: ess-scenario/4

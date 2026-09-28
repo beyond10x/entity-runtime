@@ -1,0 +1,64 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "references-carrier-kind-comes-from-target-identity",
+  "summary": "references carrier kind comes from target identity.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"account\",\"version\":1,\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"},\"schema\":{\"fields\":{\"key\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"account\":{\"type\":\"integer\"}}},\"relations\":{\"account\":{\"kind\":\"references\",\"target\":\"account\",\"cardinality\":\"one\",\"via\":\"account\"}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "null"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Replace",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"account\":{\"type\":\"string\"}}},\"relations\":{\"account\":{\"kind\":\"references\",\"target\":\"account\",\"cardinality\":\"one\",\"via\":\"account\"}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "relation_via_wrong_shape"
+        ]
+      }
+    }
+  ]
+}

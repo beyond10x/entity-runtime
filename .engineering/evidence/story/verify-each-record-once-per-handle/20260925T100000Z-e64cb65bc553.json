@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-25T10:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:verify-each-record-once-per-handle",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "entity-runtime 0.23.0 release gate (task check, 747 tests, postgres-check)",
+    "reference": "https://github.com/beyond10x/entity-runtime/releases/tag/0.23.0"
+  }
+}

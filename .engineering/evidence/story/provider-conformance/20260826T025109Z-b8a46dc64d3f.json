@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-26T02:51:09Z",
+  "actor": "timo",
+  "artifact": "story:provider-conformance",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check 2026-08-26",
+    "reference": "nine steps, 171 tests, 78 requirements, exit 0"
+  }
+}

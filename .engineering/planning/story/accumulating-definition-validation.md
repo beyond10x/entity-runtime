@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:accumulating-definition-validation
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: Registry::register reports every DefinitionError of a document at once 
 relations:
 - derived_from: epic:kernel
 revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T01:36:31Z", actor: "timo", revision: 4, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T01:36:31Z", actor: "timo", revision: 5, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T01:36:46Z", actor: "timo", revision: 6, decided_on: {"recorded":{"test_result":1,"artifact":1}}, imported: true}
 ---
 # Story: Definition validation accumulates every defect
 

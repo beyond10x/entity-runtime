@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-26T01:36:31Z",
+  "actor": "timo",
+  "artifact": "story:three-valued-conditions",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "artifact",
+    "source": "code read 2026-08-26",
+    "reference": "crates/entity-core/src/truth.rs; docs/requirements.md R-57 and R-58"
+  }
+}

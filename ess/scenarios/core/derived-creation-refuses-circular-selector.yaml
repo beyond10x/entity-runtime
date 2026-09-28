@@ -1,0 +1,21 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "derived-creation-refuses-circular-selector",
+  "summary": "derived creation refuses circular selector.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.CreateDerived",
+      "input": {
+        "definition": "{\"entity\":\"branch_keyed\",\"version\":1,\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"},\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"create\":{\"arguments\":{\"fields\":{\"first\":{\"type\":\"boolean\",\"required\":true}}},\"outcomes\":[{\"name\":\"first\",\"when\":{\"eq\":[\"$id\",\"s:A\"]},\"effect\":\"creates\",\"set\":{\"key\":\"A\"}},{\"name\":\"second\",\"effect\":\"creates\",\"set\":{\"key\":\"B\"}}]}}",
+        "fields": "{\"first\":true}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "template"
+      }
+    }
+  ]
+}

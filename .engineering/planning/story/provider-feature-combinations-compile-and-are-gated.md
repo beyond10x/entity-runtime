@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:provider-feature-combinations-compile-and-are-gated
 kind: story
 status: draft

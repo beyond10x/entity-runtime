@@ -1,0 +1,36 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "deterministic-kernel-record-bytes",
+  "summary": "deterministic kernel record bytes.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"empty\",\"version\":1,\"schema\":{\"fields\":{},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{}}",
+        "id": "e-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "record": "{\"definition\":{\"entity\":\"empty\",\"version\":1,\"schema\":{\"fields\":{},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{}},\"command\":{\"command\":\"create\",\"fields\":{}},\"entity\":\"empty\",\"id\":\"e-1\",\"revision\":1,\"from_state\":null,\"to_state\":\"Held\",\"result\":{\"entity\":\"empty\",\"version\":1,\"id\":\"e-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}},\"changed\":{},\"events\":[]}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"empty\",\"version\":1,\"schema\":{\"fields\":{},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{}}",
+        "id": "e-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "record": "{\"definition\":{\"entity\":\"empty\",\"version\":1,\"schema\":{\"fields\":{},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{}},\"command\":{\"command\":\"create\",\"fields\":{}},\"entity\":\"empty\",\"id\":\"e-1\",\"revision\":1,\"from_state\":null,\"to_state\":\"Held\",\"result\":{\"entity\":\"empty\",\"version\":1,\"id\":\"e-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}},\"changed\":{},\"events\":[]}"
+      }
+    }
+  ]
+}

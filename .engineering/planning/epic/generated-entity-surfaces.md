@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: epic:generated-entity-surfaces
 kind: epic
 status: implemented
@@ -9,6 +9,10 @@ relations:
 - decomposes: initiative:entity-runtime
 - serves: vision:O2
 revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-08T23:38:35Z", actor: "human:timo", revision: 3, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-08T23:38:35Z", actor: "human:timo", revision: 4, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-08T23:38:36Z", actor: "human:timo", revision: 5, imported: true}
 ---
 # Epic: Generated entity surfaces for people and agents
 

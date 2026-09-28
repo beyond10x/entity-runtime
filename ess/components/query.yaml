@@ -1,0 +1,16 @@
+components:
+- accepts:
+    commands:
+    - entity.query.Seed
+    - entity.query.Query
+    - entity.query.Continue
+    - entity.query.Ordered
+    - entity.query.Page
+    - entity.query.DecodeCursor
+    - entity.query.Limit
+  component: entity-query
+  owns:
+    domains:
+    - entity.query
+  reached_by: in_process
+  summary: Public entity-query library contract

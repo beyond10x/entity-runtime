@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: review-result:er-eventlog-pin-review-1
 kind: review-result
 status: active
@@ -7,6 +7,8 @@ title: 'Independent verification pass 1: one git URL, one rev, and what the pin 
 relations:
 - reviews: task:eventlog-provider-pin-verify-once
 revision: 2
+transitions:
+- {from: "draft", to: "active", at: "2026-09-20T23:25:50Z", actor: "human:timo", revision: 2, imported: true}
 ---
 # Independent verification pass 1 — task:eventlog-provider-pin-verify-once
 

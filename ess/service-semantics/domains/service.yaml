@@ -61,13 +61,13 @@ types:
   # (entity, version) pair, which this key never changes.
   - name: entity.service.DefinitionSemantics
     kind: enum
-    variants: [Kernel1, Service1]
+    variants: [Kernel1, Service1, Service2, Service3]
 
   # The comparison framing a decision of this operation is stored under. A service/1 decision's
   # record carries keys er.record/1 never carried, so it takes a new version domain.
   - name: entity.service.RecordFraming
     kind: enum
-    variants: [ErRecord1, ErRecord2]
+    variants: [ErRecord1, ErRecord2, ErRecord3, ErRecord4]
 
   - name: entity.service.OutcomeScope
     kind: enum

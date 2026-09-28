@@ -1,0 +1,30 @@
+domain: entity.store
+scenario: observation-revisions-are-positive-signed-range
+summary: Recorded observations reject revision zero and values beyond the supported signed revision domain.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.ValidateObservation
+  input:
+    request: '{"observation":{"entity":"ticket","envelope":{"actor":null,"causation":null,"correlation":null,"record":{"evidence":null},"record_id":"zero","recorded_at":"2026-09-28T00:00:00Z"},"id":"a","revision":0}}'
+  outcome: returned
+  response:
+    error: Backend
+    status: error
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.ValidateObservation
+  input:
+    request: '{"observation":{"entity":"ticket","envelope":{"actor":null,"causation":null,"correlation":null,"record":{"evidence":null},"record_id":"large","recorded_at":"2026-09-28T00:00:00Z"},"id":"a","revision":9223372036854775808}}'
+  outcome: returned
+  response:
+    error: Backend
+    status: error
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.ValidateObservation
+  input:
+    request: '{"observation":{"entity":"ticket","envelope":{"actor":null,"causation":null,"correlation":null,"record":{"evidence":null},"record_id":"max","recorded_at":"2026-09-28T00:00:00Z"},"id":"a","revision":9223372036854775807}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"entity":"ticket","envelope":{"actor":null,"causation":null,"correlation":null,"record":{"evidence":null},"record_id":"max","recorded_at":"2026-09-28T00:00:00Z"},"id":"a","revision":9223372036854775807}'
+type: ess-scenario/4

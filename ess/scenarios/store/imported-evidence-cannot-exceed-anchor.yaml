@@ -1,0 +1,31 @@
+domain: entity.store
+scenario: imported-evidence-cannot-exceed-anchor
+summary: A future observation in imported evidence publishes no state or reserved record identity.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.SeedImported
+  input:
+    request: '{"history":{"origin":{"imported":{"completeness":"available_evidence_only","evidence":[{"envelope":{"entry":{"observation":{"entity":"ticket","envelope":{"actor":null,"causation":null,"correlation":null,"record":{"evidence":null},"record_id":"too-late","recorded_at":"2026-09-28T00:00:00Z"},"id":"a","revision":2}},"known_order":{"per_kind":0},"source_id":"old","source_locator":"one"}}],"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"order":"per_kind_only"}},"records":[],"subject":{"entity":"ticket","id":"a"}}}'
+  outcome: returned
+  response:
+    error: CorruptHistory
+    status: error
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.LookupRecord
+  input:
+    request: '{"record_id":"too-late"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.Load
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"RecordedMemory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+type: ess-scenario/4

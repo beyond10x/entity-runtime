@@ -1,0 +1,30 @@
+domain: entity.store
+scenario: older-framing-reader-refuses-before-payload
+summary: A reader that does not know the new domain refuses at its tag even when the rest of the document is truncated.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.RecordFraming
+  input:
+    request: '{"bytes":"[\"er.record/4\",{\"kind\":"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '"er.record/4"'
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.ReadRecordDomain
+  input:
+    request: '{"bytes":"[\"er.record/4\",{\"kind\":","domain":"er.record/3"}'
+  outcome: returned
+  response:
+    error: Encoding
+    status: error
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.ReadRecordDomain
+  input:
+    request: '{"bytes":"[\"er.request/4\",{\"kind\":","domain":"er.request/3"}'
+  outcome: returned
+  response:
+    error: Encoding
+    status: error
+type: ess-scenario/4

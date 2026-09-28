@@ -1,0 +1,71 @@
+domain: entity.executor
+scenario: optional-refusal-recorder-sees-conflicts-not-malformed-input
+summary: The supplied refusal recorder receives one conflict, deduplicates its retry and never receives malformed input.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.RecordingRefusals
+  input:
+    request: '{"enabled":true}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.Create
+  input:
+    request: '{"entity":"ticket","fields":{"title":"a"},"id":"a","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:03Z
+  command: entity.executor.Execute
+  input:
+    request: '{"arguments":{},"entity":"ticket","expected_revision":2,"id":"a","operation":"touch","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"stale","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    error: RevisionConflict
+    status: error
+- at: 2026-09-28T00:00:04Z
+  command: entity.executor.Execute
+  input:
+    request: '{"arguments":{},"entity":"ticket","expected_revision":2,"id":"a","operation":"touch","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"stale","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    error: RevisionConflict
+    status: error
+- at: 2026-09-28T00:00:05Z
+  command: entity.executor.Execute
+  input:
+    request: '{"arguments":{},"entity":"ticket","expected_revision":0,"id":"a","operation":"touch","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"invalid","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    error: InvalidInput
+    status: error
+- at: 2026-09-28T00:00:06Z
+  command: entity.executor.RefusalReasons
+  input:
+    request: '{}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[{"expected":2,"found":1,"kind":"Conflict","subject":{"entity":"ticket","id":"a"}}]'
+- at: 2026-09-28T00:00:07Z
+  command: entity.executor.Load
+  input:
+    request: '{"entity":"ticket","id":"a"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}'
+type: ess-scenario/4

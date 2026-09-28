@@ -1,0 +1,60 @@
+{
+  "completed_at": 1700000000300,
+  "conformance_status": "failed",
+  "counts": {
+    "error": 0,
+    "failed": 1,
+    "passed": 0,
+    "skipped": 0,
+    "total": 1,
+    "unsupported": 0
+  },
+  "coverage": {
+    "counts": {
+      "authored": 1,
+      "generated": 0,
+      "outside": 141,
+      "refused": 0
+    },
+    "knowledge": "complete_inventory",
+    "refused": [],
+    "selection": {
+      "filter": {
+        "ids": [
+          "entity.store/authored/memory-stale-write-preserves-state"
+        ],
+        "kind": "explicit",
+        "parent": {
+          "digest": "sha256:da95551c27742409c35b9f87b6fb36048ea50433b03499547488f9b514a2aea0",
+          "digest_profile": "sha256-json-bytes/1",
+          "version": "ess-conformance/27"
+        }
+      },
+      "origins": "generated_and_authored",
+      "scope": {
+        "kind": "system"
+      }
+    }
+  },
+  "execution_status": "failed",
+  "format": "ess-conformance-report/2",
+  "implementation": "entity-runtime source-sha256:ad30ad08ec39211472e02e4b109f9ac3ecbadd903a62de9b20f840d2df998cbc",
+  "outcomes": {
+    "error": [],
+    "failed": [
+      "entity.store/authored/memory-stale-write-preserves-state"
+    ],
+    "passed": [],
+    "skipped": [],
+    "unsupported": []
+  },
+  "policy": "complete-selection/1",
+  "producer_profile": "rust-scenario-status/1",
+  "spec_digest": "df6896d6bf6932a0f5a4e23dfc070121c46520610335e1c0be72e9eac10ddc78",
+  "specification": "entity/v1",
+  "suite": {
+    "digest": "sha256:04df46e4d6634e227a4a130b21fb79e922b4b25784f2b7ce26630093323bb0f6",
+    "digest_profile": "sha256-json-bytes/1",
+    "version": "ess-conformance/27"
+  }
+}

@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:aep-mapping-review
 kind: story
 status: archived
@@ -9,6 +9,8 @@ relations:
 - derived_from: epic:drive-engineering-protocols
 - informed_by: story:aep-lifecycles-as-definitions
 revision: 5
+transitions:
+- {from: "draft", to: "archived", at: "2026-08-26T01:36:59Z", actor: "timo", revision: 5, imported: true}
 ---
 # Story: Phase 0 — the AEP mapping is reviewed by both repositories
 

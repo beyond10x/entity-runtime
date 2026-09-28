@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-15T02:39:30Z",
+  "actor": "human:timo",
+  "artifact": "story:async-recorded-contract-executor",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check with disposable PostgreSQL; actual final corrected-source gate exited zero on 2026-09-15",
+    "reference": "ESS evolution wave0002 final-gate/task-check.log; sha256:67cdc608f961ea9e1eacce24fd4ae3c680c24146ca3e45df9e91face7e1dddbc"
+  }
+}

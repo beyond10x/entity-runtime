@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T06:27:45Z",
+  "actor": "human:timo",
+  "artifact": "story:pure-service-semantics",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Both source reviews corrected, final full native/MSRV gates pass and exact source integrated at24d31cf1",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/service-source-correction-2/integration.md"
+  }
+}

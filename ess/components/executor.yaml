@@ -1,0 +1,33 @@
+components:
+  - component: entity-executor
+    summary: Public Rust library contract for entity-executor.
+    owns:
+      domains: [entity.executor]
+    reached_by: in_process
+    accepts:
+      commands:
+        - entity.executor.Register
+        - entity.executor.ClearRegistry
+        - entity.executor.Create
+        - entity.executor.Execute
+        - entity.executor.Observe
+        - entity.executor.Batch
+        - entity.executor.CancelBatch
+        - entity.executor.Load
+        - entity.executor.History
+        - entity.executor.HistoryCoordinates
+        - entity.executor.LookupRecord
+        - entity.executor.LookupReceipt
+        - entity.executor.Trace
+        - entity.executor.ClearTrace
+        - entity.executor.ScriptAppend
+        - entity.executor.RecordingRefusals
+        - entity.executor.Refusals
+        - entity.executor.RefusalReasons
+        - entity.executor.SupplyLoadFailure
+        - entity.executor.SupplyHistory
+        - entity.executor.CapturedMerge
+        - entity.executor.CapturedAppend
+        - entity.executor.SeedImported
+        - entity.executor.VerifyComplete
+        - entity.executor.Tamper

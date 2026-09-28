@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-binary64-retains-negative-zero",
+  "summary": "service1 binary64 retains negative zero.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"value\",\"version\":1,\"schema\":{\"fields\":{\"n\":{\"type\":\"binary64\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"semantics\":\"service/1\"}",
+        "id": "v-1",
+        "fields": "{\"n\":-0.0}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"value\",\"version\":1,\"id\":\"v-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"n\":-0.0}}"
+      }
+    }
+  ]
+}

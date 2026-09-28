@@ -1,0 +1,29 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "constraints-accumulate-independent-value-errors",
+  "summary": "constraints accumulate independent value errors.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"value\",\"version\":1,\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"min\":1,\"max\":5},\"s\":{\"type\":\"string\",\"min_length\":2,\"max_length\":4},\"a\":{\"type\":\"array\",\"items\":{\"type\":\"boolean\"}},\"o\":{\"type\":\"object\",\"properties\":{\"s\":{\"type\":\"string\",\"required\":true}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "v-1",
+        "fields": "{\"n\":0,\"s\":\"x\",\"a\":[3],\"o\":{\"extra\":1}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "fields.a[0]",
+          "fields.n",
+          "fields.o.s",
+          "fields.o.extra",
+          "fields.s"
+        ]
+      }
+    }
+  ]
+}

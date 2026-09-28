@@ -1,0 +1,24 @@
+components:
+- accepts:
+    commands:
+    - entity.shell.Open
+    - entity.shell.Register
+    - entity.shell.Replace
+    - entity.shell.ClearRegistry
+    - entity.shell.Create
+    - entity.shell.Execute
+    - entity.shell.Get
+    - entity.shell.List
+    - entity.shell.Events
+    - entity.shell.Records
+    - entity.shell.Reopen
+    - entity.shell.Fault
+    - entity.shell.Race
+    - entity.shell.Calls
+    - entity.shell.ClearCalls
+  component: entity-shell
+  owns:
+    domains:
+    - entity.shell
+  reached_by: in_process
+  summary: Public entity-shell library contract

@@ -1,0 +1,77 @@
+domain: entity.query
+scenario: numeric-values-remain-exact
+summary: Numeric containment keeps mathematical equality across representations and distinction beyond binary64 precision and exponent bounds.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Seed
+  input:
+    definition: '{"entity":"docs","lifecycle":{"initial":"ready","states":["ready"]},"schema":{"fields":{"data":{"type":"json"}}}}'
+    subjects: '[{"fields":{"data":100},"id":"a"},{"fields":{"data":0},"id":"b"},{"fields":{"data":0.1},"id":"c"},{"fields":{"data":9007199254740992},"id":"d"},{"fields":{"data":9007199254740993},"id":"e"},{"fields":{"data":1e+9223372036854775808},"id":"f"},{"fields":{"data":100e+9999999999999999999999999},"id":"g"}]'
+  outcome: returned
+  response:
+    ok: true
+- at: 2026-09-28T00:00:01Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":100.0}}'
+  outcome: returned
+  response:
+    ids: '["a"]'
+    ok: true
+- at: 2026-09-28T00:00:02Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":-0.0}}'
+  outcome: returned
+  response:
+    ids: '["b"]'
+    ok: true
+- at: 2026-09-28T00:00:03Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":1e-1}}'
+  outcome: returned
+  response:
+    ids: '["c"]'
+    ok: true
+- at: 2026-09-28T00:00:04Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":9007199254740992}}'
+  outcome: returned
+  response:
+    ids: '["d"]'
+    ok: true
+- at: 2026-09-28T00:00:05Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":9007199254740993}}'
+  outcome: returned
+  response:
+    ids: '["e"]'
+    ok: true
+- at: 2026-09-28T00:00:06Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":1e9223372036854775808}}'
+  outcome: returned
+  response:
+    ids: '["f"]'
+    ok: true
+- at: 2026-09-28T00:00:07Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":1e10000000000000000000000001}}'
+  outcome: returned
+  response:
+    ids: '["g"]'
+    ok: true
+- at: 2026-09-28T00:00:08Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":1e-9999999999999999999999999}}'
+  outcome: returned
+  response:
+    ids: '[]'
+    ok: true
+type: ess-scenario/4

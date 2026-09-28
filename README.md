@@ -276,6 +276,11 @@ The full public statement is in
 
 ## Develop
 
+The five library contracts for core, store, executor, shell and query have a canonical
+[ESS entry point](ess/ess-inputs.yaml) and a [conformance guide](docs/ess/README.md).
+The standalone Rust checker runs real APIs, preserves exact JSON values and requires reviewed
+scenario changes. It runs as part of `task check` and CI; ESS stays outside production dependencies.
+
 Requires Rust 1.85+ and [go-task](https://taskfile.dev); `entity-eventlog` needs Rust 1.91, and
 `task check` runs its `eventlog-runtime-check` step on the 1.91.0 toolchain. PostgreSQL tests run
 when `ENTITY_POSTGRES_URL` is set and print that they were skipped otherwise.

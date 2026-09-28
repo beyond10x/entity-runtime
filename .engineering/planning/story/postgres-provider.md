@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:postgres-provider
 kind: story
 status: implemented
@@ -10,6 +10,10 @@ relations:
 - depends_on: story:store-enumeration
 - informed_by: story:sqlite-provider
 revision: 10
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-28T16:03:32Z", actor: "human:operator", revision: 6, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-28T16:03:32Z", actor: "human:operator", revision: 7, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-28T16:09:02Z", actor: "human:operator", revision: 9, imported: true}
 ---
 # Story: `entity-postgres` — a provider with a server, and a gate that says when it did not run
 

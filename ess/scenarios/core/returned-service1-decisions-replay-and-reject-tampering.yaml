@@ -1,0 +1,58 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "returned-service1-decisions-replay-and-reject-tampering",
+  "summary": "returned service1 decisions replay and reject tampering.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"witness_ticket\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Held\",\"Closed\",\"Archived\"]},\"operations\":{\"CloseTicket\":{\"arguments\":{\"fields\":{\"urgent\":{\"type\":\"boolean\",\"required\":true}}},\"outcomes\":[{\"name\":\"closed-fast\",\"when\":{\"eq\":[\"$args.urgent\",true]},\"effect\":{\"moves\":{\"to\":\"Closed\",\"from\":\"Open\"}},\"set\":{\"note\":\"fast\"}},{\"name\":\"closed-slow\",\"effect\":{\"moves\":{\"to\":\"Closed\",\"from\":\"Held\"}},\"set\":{\"note\":\"slow\"}},{\"name\":\"wrong-state\",\"wrong_state\":true,\"refuses\":{\"error\":\"TicketStateConflict\"}}]}}}",
+        "id": "x-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"witness_ticket\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Held\",\"Closed\",\"Archived\"]},\"operations\":{\"CloseTicket\":{\"arguments\":{\"fields\":{\"urgent\":{\"type\":\"boolean\",\"required\":true}}},\"outcomes\":[{\"name\":\"closed-fast\",\"when\":{\"eq\":[\"$args.urgent\",true]},\"effect\":{\"moves\":{\"to\":\"Closed\",\"from\":\"Open\"}},\"set\":{\"note\":\"fast\"}},{\"name\":\"closed-slow\",\"effect\":{\"moves\":{\"to\":\"Closed\",\"from\":\"Held\"}},\"set\":{\"note\":\"slow\"}},{\"name\":\"wrong-state\",\"wrong_state\":true,\"refuses\":{\"error\":\"TicketStateConflict\"}}]}}}",
+        "instance": "{\"entity\":\"witness_ticket\",\"version\":1,\"id\":\"x-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "CloseTicket",
+        "arguments": "{\"urgent\":true}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "closed-fast"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ReplayReturned",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"witness_ticket\",\"version\":1,\"id\":\"x-1\",\"lifecycle_state\":\"Closed\",\"revision\":2,\"fields\":{\"note\":\"fast\"}}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ReplayTampered",
+      "input": {
+        "patch": "{\"outcome\":\"forged\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    }
+  ]
+}

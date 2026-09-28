@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: task:fold-refuses-unemitted-event-types
 kind: task
 status: implemented
@@ -9,6 +9,10 @@ relations:
 - decomposes: story:replay-from-events
 - serves: vision:O2
 revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-08T23:00:39Z", actor: "human:timo", revision: 3, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-08T23:00:39Z", actor: "human:timo", revision: 4, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-08T23:00:39Z", actor: "human:timo", revision: 5, imported: true}
 ---
 ## Outcome
 

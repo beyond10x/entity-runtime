@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:atomic-batch-store
 kind: story
 status: implemented
@@ -9,6 +9,10 @@ relations:
 - derived_from: epic:the-store-an-adopter-runs-on
 - serves: vision:O2
 revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-30T22:10:01Z", actor: "human:operator", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-30T22:10:01Z", actor: "human:operator", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-30T22:25:18Z", actor: "human:operator", revision: 4, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 ## Finding
 

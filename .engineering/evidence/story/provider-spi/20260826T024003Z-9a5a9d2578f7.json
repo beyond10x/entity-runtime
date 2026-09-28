@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-26T02:40:03Z",
+  "actor": "timo",
+  "artifact": "story:provider-spi",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check 2026-08-26",
+    "reference": "nine steps, 149 tests, exit 0; entity-store with two providers"
+  }
+}

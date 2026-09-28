@@ -1,0 +1,3812 @@
+{
+  "coverage": {
+    "authored": [
+      "entity.core/authored/exact-number-38"
+    ],
+    "authored_sources": {
+      "scenarios/core/additional-top-level-and-nested-fields-are-explicit.yaml": {
+        "digest": "sha256:31b9bea0840b39de3929c546628ba6aa28aeeb22baca1f1a237c8b24e0646220",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/additional-top-level-and-nested-fields-are-explicit"
+      },
+      "scenarios/core/all-scalar-and-collection-kinds-validate.yaml": {
+        "digest": "sha256:d7e3510d6a829e62dde6e6b9f711acf0f4fffa312ccd863f13e8cf526a392bb7",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/all-scalar-and-collection-kinds-validate"
+      },
+      "scenarios/core/argument-validation-precedes-transition-refusal.yaml": {
+        "digest": "sha256:d26eba19b9a147f25567008021e12a911dcaa5760763ed710d0f426366ee1e66",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/argument-validation-precedes-transition-refusal"
+      },
+      "scenarios/core/assignments-read-one-pre-operation-map.yaml": {
+        "digest": "sha256:adf2135a51560b46334618a938bf718e796b5c1d408af483e4cc559e71f91d94",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/assignments-read-one-pre-operation-map"
+      },
+      "scenarios/core/blank-identity-is-a-typed-validation-refusal.yaml": {
+        "digest": "sha256:7fc98db457e20aa51a81b059ff187a09e89e77d8b931efb766e3f0ba6c05115d",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/blank-identity-is-a-typed-validation-refusal"
+      },
+      "scenarios/core/conditional-presence-requires-service2.yaml": {
+        "digest": "sha256:eb5c9e972280da7e25092bc9e8873479afbc79bba88db673bf4ce7b3a51534d1",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/conditional-presence-requires-service2"
+      },
+      "scenarios/core/constraint-kind-is-checked.yaml": {
+        "digest": "sha256:55bc22886252513136a6e000f7aa97c86161d3e8f331a32e8f41461bceb120c7",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/constraint-kind-is-checked"
+      },
+      "scenarios/core/constraints-accumulate-independent-value-errors.yaml": {
+        "digest": "sha256:6e0ff08ea4ce906c6998e1aa0d3a23d5d9f4520ed4a806cd77ba12d38325d5b3",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/constraints-accumulate-independent-value-errors"
+      },
+      "scenarios/core/creation-accumulates-field-errors.yaml": {
+        "digest": "sha256:607e3c2d77e84ac26e75bf496484595416f5c71be1a80ef572a75eb626f968ee",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/creation-accumulates-field-errors"
+      },
+      "scenarios/core/creation-applies-defaults-and-returns-an-exact-event.yaml": {
+        "digest": "sha256:5c8283e4544f4b1e793b43c53e3fe328fe5a3008fa78ffb99c74ffb39ec5e90e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/creation-applies-defaults-and-returns-an-exact-event"
+      },
+      "scenarios/core/creation-template-has-no-previous-state.yaml": {
+        "digest": "sha256:ec7c1b9dff3e1f3387104a37045fc3ec1f6d2aba1d1a70989247887ee877064d",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/creation-template-has-no-previous-state"
+      },
+      "scenarios/core/defaults-must-satisfy-schema.yaml": {
+        "digest": "sha256:702384aa1d078292590fbbd4b13028bec876ff80ad231c8873930826f744f34e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/defaults-must-satisfy-schema"
+      },
+      "scenarios/core/definition-keys-are-closed.yaml": {
+        "digest": "sha256:888d935ebe2c80cba4927dd276985181e4431bb37a82ad6adf41118b35251cd0",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/definition-keys-are-closed"
+      },
+      "scenarios/core/definition-validation-accumulates-independent-defects.yaml": {
+        "digest": "sha256:46b5c415ba791a7b8ba0476707b54d9ea650eb6d63bb097b20817d3f3338c703",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/definition-validation-accumulates-independent-defects"
+      },
+      "scenarios/core/derived-create-requires-logical-identity.yaml": {
+        "digest": "sha256:e0747f8d420412723103b71a8a0cedaecf51b5ec31b8b75229d870d7236f4315",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/derived-create-requires-logical-identity"
+      },
+      "scenarios/core/derived-creation-refuses-circular-assignment.yaml": {
+        "digest": "sha256:e000385dd32091499ddc742fde219dd015dec9296f9cf3a33ed67487b5bc6bdc",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/derived-creation-refuses-circular-assignment"
+      },
+      "scenarios/core/derived-creation-refuses-circular-selector.yaml": {
+        "digest": "sha256:824be6dd571fd20ef169d10d89055df452471a02f83796e834c6b939c87f3f62",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/derived-creation-refuses-circular-selector"
+      },
+      "scenarios/core/derived-creation-selects-first-identity.yaml": {
+        "digest": "sha256:cd29d70cb6a9640b10c69bd26f6e07e928703d90d71e800fad9d419f47464618",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/derived-creation-selects-first-identity"
+      },
+      "scenarios/core/derived-creation-selects-second-identity.yaml": {
+        "digest": "sha256:a84b98788d7496ed876d0df2c8af29302720e139b7546bae992aa39c64ad630a",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/derived-creation-selects-second-identity"
+      },
+      "scenarios/core/derived-identity-uses-logical-value.yaml": {
+        "digest": "sha256:6c7539c6e7f7fe00e8fa1c8802afad9d280177a7cd4a191840c49a4a32582d9e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/derived-identity-uses-logical-value"
+      },
+      "scenarios/core/deterministic-kernel-record-bytes.yaml": {
+        "digest": "sha256:68225ba9ccc70843020119208b67426a6332c4f90b399f16ffbeb8c3ff50d8ab",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/deterministic-kernel-record-bytes"
+      },
+      "scenarios/core/duplicate-events-retain-declared-order-and-multiplicity.yaml": {
+        "digest": "sha256:62c9ac894a3e4744fd969169e1ff9ea610c533a80fd33aa5c6149d63b7dfd806",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/duplicate-events-retain-declared-order-and-multiplicity"
+      },
+      "scenarios/core/entity-mismatch-precedes-unknown-state.yaml": {
+        "digest": "sha256:2779aa1a031be4e8016f8e13cfe65a68fab817eaf55d873d02bad1b08422cd1b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/entity-mismatch-precedes-unknown-state"
+      },
+      "scenarios/core/exact-number-35.yaml": {
+        "digest": "sha256:60d3943c92bf00b5c7f62e90df177a774afa5988cd3c5bd2ba89184302ae81c0",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/exact-number-35"
+      },
+      "scenarios/core/exact-number-36.yaml": {
+        "digest": "sha256:fe24afa99f0d6f0375dc6a4e83d675930fdeb897b8e5f1af35b4f6f6d4029e65",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/exact-number-36"
+      },
+      "scenarios/core/exact-number-37.yaml": {
+        "digest": "sha256:666748f4c7a03e14cba515ba6b811099631d8bd453d3732f18bea489a72d3fb7",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/exact-number-37"
+      },
+      "scenarios/core/exact-number-38.yaml": {
+        "digest": "sha256:1d2b4cababdcedc7f801a269659fcb0c4c9e759b952cd0dec0cdcf6c9be33d99",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/exact-number-38"
+      },
+      "scenarios/core/exact-number-39.yaml": {
+        "digest": "sha256:c6a0bc761374d9d95898458f520273a574c98f6d0a831355010630b25af49873",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/exact-number-39"
+      },
+      "scenarios/core/exact-number-40.yaml": {
+        "digest": "sha256:72676c4f79cf012712316a053fc8b370b3f18bd1b572fbe01b2871a7964556d9",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/exact-number-40"
+      },
+      "scenarios/core/exact-number-41.yaml": {
+        "digest": "sha256:168927b05bd8f3f4330488fca163b7fbfafdec85dd864cadf31ec8c3dc5b55b1",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/exact-number-41"
+      },
+      "scenarios/core/failed-precondition-produces-no-decision.yaml": {
+        "digest": "sha256:d1ede824725a201a4b3049f31b593f55ff2fd1c28f7dc70f8cae55d925fc89f6",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/failed-precondition-produces-no-decision"
+      },
+      "scenarios/core/field-input-must-be-an-object.yaml": {
+        "digest": "sha256:3acd819fbabff535a36f185ec5a5acff238ed4aeeff13e50145733117d28e234",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/field-input-must-be-an-object"
+      },
+      "scenarios/core/fulfillment-declaration-boundary-service1.yaml": {
+        "digest": "sha256:7db661e0e3bdd7753939e1e95d08d6f23ac49de0eb6721d6b798e1b343b461d9",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/fulfillment-declaration-boundary-service1"
+      },
+      "scenarios/core/fulfillment-declaration-boundary-service2.yaml": {
+        "digest": "sha256:a9cb0e97bd0b89ea7a38c52cab336fab9008cd47e101a74ce870ab88e4f0c39c",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/fulfillment-declaration-boundary-service2"
+      },
+      "scenarios/core/fulfillment-declaration-boundary-service3.yaml": {
+        "digest": "sha256:93810da38fa67216270afcf81930d66b507dddd345c49f87298c374a99fb8852",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/fulfillment-declaration-boundary-service3"
+      },
+      "scenarios/core/identity-address-42.yaml": {
+        "digest": "sha256:b409826a1f705875431785a0428083327f807c0427f5349d7fde918a93fbe07b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/identity-address-42"
+      },
+      "scenarios/core/identity-address-43.yaml": {
+        "digest": "sha256:0e04207e2b5db8ea19777a6f68549f900d00442644d9675b298359e2cfc9d7d0",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/identity-address-43"
+      },
+      "scenarios/core/identity-address-44.yaml": {
+        "digest": "sha256:041e48611da807a3eac426c18da9a80e327d465250fa16c176b1d8730a43ddb5",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/identity-address-44"
+      },
+      "scenarios/core/identity-address-45.yaml": {
+        "digest": "sha256:a410bf039907b154de1f293c004b48f588a5b8f5bb7134b04f85c8076b2bff90",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/identity-address-45"
+      },
+      "scenarios/core/identity-address-46.yaml": {
+        "digest": "sha256:6bfccb876bd158f3bc46a21d1d2f7ab5a633acfef1417b004fa44cfb907fdd20",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/identity-address-46"
+      },
+      "scenarios/core/identity-address-47.yaml": {
+        "digest": "sha256:214654dedb6457d16d08a02f4ffbbeb3e10ba45d521dea5271b8c07f71fc92fc",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/identity-address-47"
+      },
+      "scenarios/core/invariant-cannot-read-arguments.yaml": {
+        "digest": "sha256:b8f7c8ebeddac3a7e4159b06535071eea565c8f7af64abdeb2e33b2b4de68fbf",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/invariant-cannot-read-arguments"
+      },
+      "scenarios/core/invariants-judge-the-post-operation-fields.yaml": {
+        "digest": "sha256:d3a02226867db9554deba9c9ebf7955ee0b733c8dea05371d6e68bae64d11d48",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/invariants-judge-the-post-operation-fields"
+      },
+      "scenarios/core/kernel-condition-after.yaml": {
+        "digest": "sha256:e69c05362c75d6681e9be6845d51d80cee38d826a9bc62ad16c08a3c6e10a8c1",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-after"
+      },
+      "scenarios/core/kernel-condition-all.yaml": {
+        "digest": "sha256:28534f79e515e6fd9a88006d3b9da86ba51ab45cad9d2d9632b7ae0452db95ee",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-all"
+      },
+      "scenarios/core/kernel-condition-any.yaml": {
+        "digest": "sha256:ce26f97511447886c6bfe95659f06e33f83ef82a356f465d2bbaadc8d132f668",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-any"
+      },
+      "scenarios/core/kernel-condition-before.yaml": {
+        "digest": "sha256:a9dabfa97901300f81f014d72e5a86e1f0d352b08458216f8466a392f7ae7014",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-before"
+      },
+      "scenarios/core/kernel-condition-contains.yaml": {
+        "digest": "sha256:0081354454eaac814ca4964a96cbddf5485ff3c58683b395cd698e26825b77fd",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-contains"
+      },
+      "scenarios/core/kernel-condition-eq.yaml": {
+        "digest": "sha256:2eb4fdecbfeb412419bf30df5d3f9d11c7ec5f7abb8ef898852aa2e0f5151e7d",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-eq"
+      },
+      "scenarios/core/kernel-condition-exists.yaml": {
+        "digest": "sha256:166d0285ba7813f7e2c09ad379d88a3c3042ce2640be34ea83d7ce14a757d7b1",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-exists"
+      },
+      "scenarios/core/kernel-condition-gt.yaml": {
+        "digest": "sha256:b4f429d7db407826531efbcb79a9bf6ed873bac9d58fc19104ab23fd21e77fed",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-gt"
+      },
+      "scenarios/core/kernel-condition-gte.yaml": {
+        "digest": "sha256:63a02cbe5beca6c12769cf306b18a935e8ca4d20588579bfb4297df986eb0e96",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-gte"
+      },
+      "scenarios/core/kernel-condition-in.yaml": {
+        "digest": "sha256:9fe945eea780d5c464f58c28d92cbad966d5eec5cb1cbe4ee2209b3373b0549e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-in"
+      },
+      "scenarios/core/kernel-condition-lt.yaml": {
+        "digest": "sha256:a6a5d6794c7d82d413b246aa142eaecc0277035b5d2fa4479a03dea5a9306d26",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-lt"
+      },
+      "scenarios/core/kernel-condition-lte.yaml": {
+        "digest": "sha256:1ea175dbec6b20757aac1b44f1b272cca89dfa2fd6eb581b858667020e5e8623",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-lte"
+      },
+      "scenarios/core/kernel-condition-missing.yaml": {
+        "digest": "sha256:a64de40af25fce27bef214768e6a777fa89c57bca5bb4e9e7d3e09d46408c27a",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-missing"
+      },
+      "scenarios/core/kernel-condition-ne.yaml": {
+        "digest": "sha256:01a921083ce79cff778ad07be98ad85df1c2eb565a4c2d863650bb4a5084a663",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-ne"
+      },
+      "scenarios/core/kernel-condition-not.yaml": {
+        "digest": "sha256:c59d1e5d0072de82a51add1c5888825f7274bc4cee3a1426da49bd8fd6a4ea1a",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-not"
+      },
+      "scenarios/core/kernel-condition-prefix-case-sensitive.yaml": {
+        "digest": "sha256:bc873185cfba393002028cf84350b342d1b68d92212518fd158253b9f3c247f8",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-prefix-case-sensitive"
+      },
+      "scenarios/core/kernel-condition-prefix.yaml": {
+        "digest": "sha256:5d049703a3891b234d588774f3e7a7a07edd78da0cb632853ae5bb3d7935bfc4",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-prefix"
+      },
+      "scenarios/core/kernel-condition-suffix.yaml": {
+        "digest": "sha256:dffaae783cf5d226e7e6279342f83c215c3de221367e5e8ed30e4c69bc8210ec",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/kernel-condition-suffix"
+      },
+      "scenarios/core/legacy-event-rehydration-refuses-service1.yaml": {
+        "digest": "sha256:d743cd03a697b4e60ed053c3b6d8df3450bd746fd989e499f9b551e1574f2416",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/legacy-event-rehydration-refuses-service1"
+      },
+      "scenarios/core/legacy-event-rehydration-refuses-service2.yaml": {
+        "digest": "sha256:d005bfab99601b827da63f315581d7300d54f18a70a33d11e03d4548f4e8152c",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/legacy-event-rehydration-refuses-service2"
+      },
+      "scenarios/core/legacy-event-rehydration-refuses-service3.yaml": {
+        "digest": "sha256:66a6c94cc05787818ded4ef846fc09cafda40e8a89715a2b457f345e685917f2",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/legacy-event-rehydration-refuses-service3"
+      },
+      "scenarios/core/legacy-event-rehydration-rejects-changed-payload.yaml": {
+        "digest": "sha256:e08007111361c6815c7acec56d31c9ae87d49a2c96ae9c24a8aaeca16ef12024",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/legacy-event-rehydration-rejects-changed-payload"
+      },
+      "scenarios/core/legacy-event-rehydration-rejects-missing-duplicate.yaml": {
+        "digest": "sha256:36a2184ee6cdd50f252855260db6213741c97ddc81cf12ccf4e3d8896ce142b2",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/legacy-event-rehydration-rejects-missing-duplicate"
+      },
+      "scenarios/core/legacy-event-rehydration-rejects-revision-gap.yaml": {
+        "digest": "sha256:feaf4aaa9c6a1da378d17026a3f55cd906e376fce29910cc4db1bdf204920ed3",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/legacy-event-rehydration-rejects-revision-gap"
+      },
+      "scenarios/core/legacy-event-rehydration-retains-duplicate-events.yaml": {
+        "digest": "sha256:7e23358ad2b4bb59f01e4e3f239df276fc09ec001c7db8e3a123070096bcc0b6",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/legacy-event-rehydration-retains-duplicate-events"
+      },
+      "scenarios/core/logical-identity-must-match-storage-address.yaml": {
+        "digest": "sha256:cae68fb3cd2cfa1dbf26e73e874f51a7b65ee19340954b01a17ac1d5b96fc031",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/logical-identity-must-match-storage-address"
+      },
+      "scenarios/core/nested-defaults-apply-only-to-supplied-objects.yaml": {
+        "digest": "sha256:a204c0b666b7b701f24bf02435795a51d332361e91108776addc9e8629156506",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/nested-defaults-apply-only-to-supplied-objects"
+      },
+      "scenarios/core/nested-reference-must-be-declared.yaml": {
+        "digest": "sha256:39b163019dafe6fdc5f2d5f7c462266f024ec1bcf0005076a27744008e1be39b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/nested-reference-must-be-declared"
+      },
+      "scenarios/core/normalization-applies-argument-defaults.yaml": {
+        "digest": "sha256:73e5a59143452eb0b515ad9a45b5f56811804cc3db3ed9691f3ccee0fe32265b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/normalization-applies-argument-defaults"
+      },
+      "scenarios/core/numeric-adjacent-integers-past-binary64.yaml": {
+        "digest": "sha256:60cacad7b6a216f8178566a29ee61c03434be3e3ea1183422e793534879fce53",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/numeric-adjacent-integers-past-binary64"
+      },
+      "scenarios/core/numeric-kernel-exact-door.yaml": {
+        "digest": "sha256:5be0a2154f24745013f34dfede2ec6a88b6aedbc021efd60a7657c8285ee56e5",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/numeric-kernel-exact-door"
+      },
+      "scenarios/core/numeric-two-wire-doors.yaml": {
+        "digest": "sha256:eed95a93df114549d23c7c736a3d1394dc0793a3d9b91d992fb7cc908672e45d",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/numeric-two-wire-doors"
+      },
+      "scenarios/core/numeric-underflow-remains-stored.yaml": {
+        "digest": "sha256:32ff7215c60ccd24f8ab92e3caa21b6aef01ba451263665ad00a840f7f99c807",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/numeric-underflow-remains-stored"
+      },
+      "scenarios/core/numeric-wire-and-literal-doors.yaml": {
+        "digest": "sha256:aaf2fa08ec246364d6750706260c89fe454d3cdf64bc45b0b51cc6e1acc7f689",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/numeric-wire-and-literal-doors"
+      },
+      "scenarios/core/operation-cannot-change-identity-mirror.yaml": {
+        "digest": "sha256:611bbc4f132581c3aae9365dace3f361e6e3203ca6f7a25d7329816ec5697ced",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/operation-cannot-change-identity-mirror"
+      },
+      "scenarios/core/post-set-fields-are-revalidated.yaml": {
+        "digest": "sha256:1e0f08b90c5ff08e55128a1cda8812790f5aba718351e03feaf30655e64c7e90",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/post-set-fields-are-revalidated"
+      },
+      "scenarios/core/precondition-cannot-read-next-state.yaml": {
+        "digest": "sha256:809ed662b9c918657c69ee4c957d89657ccfcac22f755303fcc7f958e60a401e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/precondition-cannot-read-next-state"
+      },
+      "scenarios/core/preload-payment-negative.yaml": {
+        "digest": "sha256:f10ccaf7acccb781d416620184f65017cc77a3e1afec5815c507b84ea6a54fd1",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/preload-payment-negative"
+      },
+      "scenarios/core/preload-payment-positive.yaml": {
+        "digest": "sha256:3ffba47d988b7b6b7d640ee448f6eca76204ec4b937af77d5ac08bb77ea58d46",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/preload-payment-positive"
+      },
+      "scenarios/core/preload-payment-zero.yaml": {
+        "digest": "sha256:62d2baa6322678953969df8ce02d51d5808821a9a5c4ee444299bfedec765008",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/preload-payment-zero"
+      },
+      "scenarios/core/preload-validates-input-before-refusal.yaml": {
+        "digest": "sha256:4e19e3dc7cc00b870bbc1e5a44fd5f380ef064d696a75df449134a53da2bcca3",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/preload-validates-input-before-refusal"
+      },
+      "scenarios/core/references-carrier-kind-comes-from-target-identity.yaml": {
+        "digest": "sha256:16f4aba03b4baf51b6f43448af8ea719fbd359e93256b62e1148212f0b298385",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/references-carrier-kind-comes-from-target-identity"
+      },
+      "scenarios/core/registry-duplicate-and-invalid-replacement-preserve-definition.yaml": {
+        "digest": "sha256:22081c80e1bef5b416d01d6d58b68899d3bf07d7dfd6bfa16f5562c1fe981de9",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/registry-duplicate-and-invalid-replacement-preserve-definition"
+      },
+      "scenarios/core/registry-refuses-two-owners-of-one-entity.yaml": {
+        "digest": "sha256:43d1958b95b97735c16f2c6fba4e8a3fb08e59dff85bedd496bad9e150c13f9e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/registry-refuses-two-owners-of-one-entity"
+      },
+      "scenarios/core/registry-relations-check-carrier-on-target.yaml": {
+        "digest": "sha256:5e8209b8e477322e454aafc56ce810d7c6363574fa038feab0e540829b62a281",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/registry-relations-check-carrier-on-target"
+      },
+      "scenarios/core/registry-resolves-reference-targets-as-a-set.yaml": {
+        "digest": "sha256:a384ce5a97e97a5d9d9af28f825367f7d6d53185a2cc773b9885bd3c98e5f8c6",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/registry-resolves-reference-targets-as-a-set"
+      },
+      "scenarios/core/rehydrate-rejects-empty-history.yaml": {
+        "digest": "sha256:97e6e53593f77fb6c2194e8a4377954f8df78f9c50037735ab4d8f786217947b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/rehydrate-rejects-empty-history"
+      },
+      "scenarios/core/replay-rejects-empty-history.yaml": {
+        "digest": "sha256:023730c8c8895487f91dbb6cfea37cd062e6cd700e6240c57b0a002aac2b4683",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/replay-rejects-empty-history"
+      },
+      "scenarios/core/replay-rejects-fields-tampering.yaml": {
+        "digest": "sha256:9d96e36c67a65d03073bfa535c033de579a7f64349dfcc699e07b59386bf6108",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/replay-rejects-fields-tampering"
+      },
+      "scenarios/core/replay-rejects-identity-tampering.yaml": {
+        "digest": "sha256:90ee276ee3da79df30ef5df743d6eb0a7195302bc75eed4b02d0fe390da21dd0",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/replay-rejects-identity-tampering"
+      },
+      "scenarios/core/replay-rejects-missing-definition-tampering.yaml": {
+        "digest": "sha256:32631f345a9f696782b137b3e31bee0032a3c940860485ddea60f702a292e8cb",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/replay-rejects-missing-definition-tampering"
+      },
+      "scenarios/core/replay-rejects-revision-tampering.yaml": {
+        "digest": "sha256:546fcb85863eb5fc8a428035bdec58ac3212bc4138673ffd2c6b4e00574d48be",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/replay-rejects-revision-tampering"
+      },
+      "scenarios/core/replay-rejects-state-tampering.yaml": {
+        "digest": "sha256:8ea7b424683021878e59f5bf17593915200c84710dffc3cfcf7be5beb7cedba3",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/replay-rejects-state-tampering"
+      },
+      "scenarios/core/replay-zero-event-genesis.yaml": {
+        "digest": "sha256:19c7c247fae286aba955174efcd07301bc0997f29a45aa884d6ce8f870eda4e1",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/replay-zero-event-genesis"
+      },
+      "scenarios/core/returned-kernel1-decisions-replay-and-reject-tampering.yaml": {
+        "digest": "sha256:8298baefe012d98b24d507f55f0723cd91e22983f9b3acfb042b01a275edcaea",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/returned-kernel1-decisions-replay-and-reject-tampering"
+      },
+      "scenarios/core/returned-service1-decisions-replay-and-reject-tampering.yaml": {
+        "digest": "sha256:30eb9ad3bed44b885273f2e014b53b250da229a0bae23f54cd4435867c59e12f",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/returned-service1-decisions-replay-and-reject-tampering"
+      },
+      "scenarios/core/returned-service2-decisions-replay-and-reject-tampering.yaml": {
+        "digest": "sha256:2b18d426f4fefd6cefcbdc26bfa7a8e1318d02855bacfce8e289337b6a416419",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/returned-service2-decisions-replay-and-reject-tampering"
+      },
+      "scenarios/core/returned-service3-decisions-replay-and-reject-tampering.yaml": {
+        "digest": "sha256:cf4a5e462751c9a0e1bd0e0355259e4de424795dae10229c6ae6feb00884a332",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/returned-service3-decisions-replay-and-reject-tampering"
+      },
+      "scenarios/core/revision-exhaustion-refuses-before-effects.yaml": {
+        "digest": "sha256:c141fe9b3676e136c435aef2eaea75f4b13c25fa4101d3f401f417f493f50051",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/revision-exhaustion-refuses-before-effects"
+      },
+      "scenarios/core/runtime-executes-the-exact-instance-definition.yaml": {
+        "digest": "sha256:a319ac360c95b28377536ac55c463e00a0f46fb6e7c0d8419c84dc06cb94db4e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/runtime-executes-the-exact-instance-definition"
+      },
+      "scenarios/core/runtime-refuses-missing-registry-version.yaml": {
+        "digest": "sha256:0f75cd6ffd80bae9cbe1bb18a7ff69a1c7a72dafd085fd32648e7541def2b1ee",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/runtime-refuses-missing-registry-version"
+      },
+      "scenarios/core/service1-adjacent-union-preserves-tag-and-value.yaml": {
+        "digest": "sha256:fbd9485d4de61bc7b2ddde3d8950e30de1b57530fccbc0e625a970eb0093ee6e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-adjacent-union-preserves-tag-and-value"
+      },
+      "scenarios/core/service1-array-ordinal.yaml": {
+        "digest": "sha256:2b041434f1263710c907830b43aeae9a3f9312b0407cdd9ce7106befeb4b729c",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-array-ordinal"
+      },
+      "scenarios/core/service1-bare-state-guard-is-a-selector.yaml": {
+        "digest": "sha256:4251a22af143587880f4322eb16131dc337d5cb4632e2c72cb4b6ffff9b51898",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-bare-state-guard-is-a-selector"
+      },
+      "scenarios/core/service1-binary64-refuses-nonfinite-magnitude.yaml": {
+        "digest": "sha256:9c9a95657375e13e6d443fa5b69a5bf76bc6eca7a9aa1969447d48ffe2fa0dc0",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-binary64-refuses-nonfinite-magnitude"
+      },
+      "scenarios/core/service1-binary64-retains-negative-zero.yaml": {
+        "digest": "sha256:2d8d58bb9438f88765f6de4d7e702349e8e004d63a37374c667c27c30fbb5f5c",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-binary64-retains-negative-zero"
+      },
+      "scenarios/core/service1-collection-count.yaml": {
+        "digest": "sha256:c0d683edcc5a7f325a2efa9e673a1c7f6c831fe5fe992b47ce7ce387bbc4f118",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-collection-count"
+      },
+      "scenarios/core/service1-compare-missing.yaml": {
+        "digest": "sha256:6d27b2caf9868bae4c53b6531ef9e6f7e027a48db8568e3d65d90306643ee38a",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-compare-missing"
+      },
+      "scenarios/core/service1-compare-number.yaml": {
+        "digest": "sha256:5a908318ec4b50260635b6e5bfb1759293441bf3b04f55624fb1933acd623176",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-compare-number"
+      },
+      "scenarios/core/service1-compare-ranked-text.yaml": {
+        "digest": "sha256:9d199592604f7c3146bac0abbfaf08503b2b4712276f0c37ffea47eb9c107ac9",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-compare-ranked-text"
+      },
+      "scenarios/core/service1-first-matching-outcome-wins.yaml": {
+        "digest": "sha256:87b496f961162c669ee3ee331be4511e0ea904b46bfb6b026fe32a34ef5f17ea",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-first-matching-outcome-wins"
+      },
+      "scenarios/core/service1-forall-empty.yaml": {
+        "digest": "sha256:0c42a0435e6f161c4bb853d57ade512c796a736f38bdeda8592083ee78b8eef3",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-forall-empty"
+      },
+      "scenarios/core/service1-forall-false.yaml": {
+        "digest": "sha256:bb28f94f9fa49f7c1082a6d7c67d07ef43983afaefdbfe141c32b37589f490cc",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-forall-false"
+      },
+      "scenarios/core/service1-forall-true.yaml": {
+        "digest": "sha256:4ecc1edc5aadb04e89a90591c63b3a7262280c3376eb9f4e5290bcc680dba2b4",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-forall-true"
+      },
+      "scenarios/core/service1-forany-empty.yaml": {
+        "digest": "sha256:cf025bd848f25ceaed2dc6ca77ef69c557aff00815ea206b927a68d44eb9a0ad",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-forany-empty"
+      },
+      "scenarios/core/service1-forany-missing.yaml": {
+        "digest": "sha256:af209f09084807b044f15681aac0b03b04198cedf48d1305e9911e0e7b05fa1d",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-forany-missing"
+      },
+      "scenarios/core/service1-forany-true.yaml": {
+        "digest": "sha256:0dfddb064f4c7b73225b8aa7502ef9b9cd03e965cdf76cbb718383ec6eb54e30",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-forany-true"
+      },
+      "scenarios/core/service1-map-count-not-count-key.yaml": {
+        "digest": "sha256:2294baa7f2ca4f2003e7ec99d8253c955bd5805c881cd35fb62d19ccadfb2e60",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-map-count-not-count-key"
+      },
+      "scenarios/core/service1-map-member-errors-retain-paths.yaml": {
+        "digest": "sha256:eb65e2cf57dca04fa6e2a0f471eef3e6a95cab457539605ec6051f868b9e01b4",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-map-member-errors-retain-paths"
+      },
+      "scenarios/core/service1-map-quantified-values.yaml": {
+        "digest": "sha256:376dec037328f0adfcab1f3fd7c35a0c7e570e46c06b4707da2ff12dc780f763",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-map-quantified-values"
+      },
+      "scenarios/core/service1-map-values-are-typed.yaml": {
+        "digest": "sha256:1f36f4903aec98a7aa85d5f5660a4b8a4e2b3eadc48caa7b480bc4ee3c84821e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-map-values-are-typed"
+      },
+      "scenarios/core/service1-no-matching-outcome-is-typed.yaml": {
+        "digest": "sha256:348f6341f5832ffc895914f3093d8fee322045831c60f9ef23c1e46e75e1d4c2",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-no-matching-outcome-is-typed"
+      },
+      "scenarios/core/service1-rank-disagreement.yaml": {
+        "digest": "sha256:f6952adf9465c927c8e6a3d647879dad6801e1443caccfe37700e4b61c5e19e7",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-rank-disagreement"
+      },
+      "scenarios/core/service1-rank-without-scale.yaml": {
+        "digest": "sha256:32b77562a2486ab040f86d8e3f7da2ead493f80b30d630da3680d5142103f912",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-rank-without-scale"
+      },
+      "scenarios/core/service1-selection-fallback.yaml": {
+        "digest": "sha256:ecd5a2c13af9f81149b3a9c6b4b5fbd21b37eec7980eccc9e7fdda12720b617b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-selection-fallback"
+      },
+      "scenarios/core/service1-selection-fast.yaml": {
+        "digest": "sha256:aea169345c2d94a04f53500f070f62d58fbc32a8629708eef109d609c2ffac78",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-selection-fast"
+      },
+      "scenarios/core/service1-selection-terminal.yaml": {
+        "digest": "sha256:9655f3eddee06865ff181de722f7f713d11f24d88929ccb65972dcf2520b0d5c",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-selection-terminal"
+      },
+      "scenarios/core/service1-selection-wrong-source.yaml": {
+        "digest": "sha256:5a834540b5a37d057e4f78566f463e67d630eb148332b1c1fdd769345c595e1e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-selection-wrong-source"
+      },
+      "scenarios/core/service1-state-guard-skips-unobservable-input.yaml": {
+        "digest": "sha256:2ada1ef271f23df6a35824e2cc2def14131fa9c795e8cb61ae0511a9a44c1ef6",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-state-guard-skips-unobservable-input"
+      },
+      "scenarios/core/service1-truthy-missing.yaml": {
+        "digest": "sha256:40d82ac51b9f9c65d7d5dea40ad7f05f6185fc95fc38a58803124db907586960",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-truthy-missing"
+      },
+      "scenarios/core/service1-truthy-true.yaml": {
+        "digest": "sha256:cb756d7a65120c70606224148d7cc5b9f5f7c73b5d6709c6700932a1bd0c6eaf",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-truthy-true"
+      },
+      "scenarios/core/service1-truthy-zero.yaml": {
+        "digest": "sha256:5cf12fc1298f656daf2c4ebf040c0922aa8b755fa3c9072bc89175e775d9194b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-truthy-zero"
+      },
+      "scenarios/core/service1-union-refuses-unknown-tag.yaml": {
+        "digest": "sha256:43ae42afbbe32648a89fcdb89bf09f4115f8ef4542a03bf62d81e29e9bffa6f6",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-union-refuses-unknown-tag"
+      },
+      "scenarios/core/service1-unknown-negation.yaml": {
+        "digest": "sha256:ce8d32d34f3134f9a6a75d474129a3b7e880173ba65954c1c89f74de947c2f46",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-unknown-negation"
+      },
+      "scenarios/core/service2-presence-absent.yaml": {
+        "digest": "sha256:62a640472a38fd18fa17560b166e0a96f5f01eeeb389f6b94902eea47bd90e34",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service2-presence-absent"
+      },
+      "scenarios/core/service2-presence-null.yaml": {
+        "digest": "sha256:ac8117efc3db353c13e74cb499702f4ad7235e22a0e1c6b3e60710a937828c24",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service2-presence-null"
+      },
+      "scenarios/core/service2-presence-present.yaml": {
+        "digest": "sha256:f07fbfa18d9f6e6738647721b3a94fc100e472a473506e066a2128efd7c0d756",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service2-presence-present"
+      },
+      "scenarios/core/service2-presence-rejects-null-string.yaml": {
+        "digest": "sha256:d582a0deb3d371efacf3a15c33e6c6d58fc13df56c5b8981bc8935e698bf67ca",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service2-presence-rejects-null-string"
+      },
+      "scenarios/core/service3-direct-execute-requires-fulfillment.yaml": {
+        "digest": "sha256:1cf2c1ca34a4c149613dd52f7831756c14a83015e16855426b52d46803711808",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service3-direct-execute-requires-fulfillment"
+      },
+      "scenarios/core/service3-fulfillment-extra-coordinate.yaml": {
+        "digest": "sha256:a9916709fead57f99645aaf72eb9ab71e78ddc61269d25e00898212d607bc1d5",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service3-fulfillment-extra-coordinate"
+      },
+      "scenarios/core/service3-fulfillment-invalid-value.yaml": {
+        "digest": "sha256:85f73fdba7373e6424419ab63febcaa537a1269bae117a4efd2447b806367c24",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service3-fulfillment-invalid-value"
+      },
+      "scenarios/core/service3-fulfillment-missing-coordinate.yaml": {
+        "digest": "sha256:23f317fc36f7ce25342b390e1e6a190521f26233cad24c9b6b5c8d97162272c7",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service3-fulfillment-missing-coordinate"
+      },
+      "scenarios/core/service3-fulfillment-preserve.yaml": {
+        "digest": "sha256:a958e2ea07dd53fdea1638fa161c7be02ca142f2d51fb7af67a753c299c622d0",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service3-fulfillment-preserve"
+      },
+      "scenarios/core/service3-fulfillment-remove-required.yaml": {
+        "digest": "sha256:ef1bd3548019029fcd948402dcac613718b06746239f7a0fbe5a1e17e3a182ee",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service3-fulfillment-remove-required"
+      },
+      "scenarios/core/service3-fulfillment-set-remove.yaml": {
+        "digest": "sha256:aeac34097c8b74e7b268ce04bc4803c6383b1763f177afd988d600ed973693ee",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service3-fulfillment-set-remove"
+      },
+      "scenarios/core/service3-refusal-needs-no-loaded-instance.yaml": {
+        "digest": "sha256:9a21e6a8f1d26ac84231681b3d68b300aa610d56c24be534898e5de7b9c6c164",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service3-refusal-needs-no-loaded-instance"
+      },
+      "scenarios/core/silent-execution-advances-once-with-no-events.yaml": {
+        "digest": "sha256:d0780ea8d7f2e5fd0877ba4b7411cc48ee5321c8d3101c1f63441c978b08ae80",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/silent-execution-advances-once-with-no-events"
+      },
+      "scenarios/core/timestamp-48.yaml": {
+        "digest": "sha256:4009406ca6149ea627ef9ddd707a3b42619f67802c6555828c58fc1235d7a70b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/timestamp-48"
+      },
+      "scenarios/core/timestamp-49.yaml": {
+        "digest": "sha256:f54945621e71c4dcc82cd36bc8d9c44493707aba6ec1ab11657580c5fe816849",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/timestamp-49"
+      },
+      "scenarios/core/timestamp-50.yaml": {
+        "digest": "sha256:76c0c6232b933195e7957b6284f94e9eb46ff9a2e7607f7ac488c85a7fc26fd9",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/timestamp-50"
+      },
+      "scenarios/core/transition-refusal-precedes-failed-precondition.yaml": {
+        "digest": "sha256:80bcab1f9818b9e5990792c0f4f7597d12e3db3e772a0290651f0c033de5b8fd",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/transition-refusal-precedes-failed-precondition"
+      },
+      "scenarios/core/unknown-operation-is-typed.yaml": {
+        "digest": "sha256:408bc4a5cf06e6a72ed6b158640fd3653cc863b1b781ab6c940abda39e041258",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/unknown-operation-is-typed"
+      },
+      "scenarios/core/unknown-rules-do-not-become-false.yaml": {
+        "digest": "sha256:748c9e72b8c456744d4e4f99c28f05942e433a3b2f89827485d13b5a67425a35",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/unknown-rules-do-not-become-false"
+      },
+      "scenarios/core/unknown-state-precedes-unknown-operation.yaml": {
+        "digest": "sha256:1304aae13b9cb8d1963dbfdb92ed5f635787448376626d7fdaaec6f528ae57f2",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/unknown-state-precedes-unknown-operation"
+      },
+      "scenarios/executor/changed-batch-order-conflicts.yaml": {
+        "digest": "sha256:01ea15e88de05abb94cb8e15231d775da319a5e9d1a918e486825101ff40f840",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/changed-batch-order-conflicts"
+      },
+      "scenarios/executor/changed-request-conflicts.yaml": {
+        "digest": "sha256:f99bd033990032a59359dbff1ffedf84ffb25fef647ede5e80d64ec1ba3b3ec5",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/changed-request-conflicts"
+      },
+      "scenarios/executor/complete-decisions-retain-duplicate-events.yaml": {
+        "digest": "sha256:0251b4952aec65b852b7e8155b41d3e353a8383f59c3a53b523b477da155e6c6",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/complete-decisions-retain-duplicate-events"
+      },
+      "scenarios/executor/corrupt-history-never-recovers-success.yaml": {
+        "digest": "sha256:1f18be8b86ff884f6787a0e7f5328143dceea8e9ce1608aac8577046dd71ac92",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/corrupt-history-never-recovers-success"
+      },
+      "scenarios/executor/dropped-pending-response-is-not-rollback.yaml": {
+        "digest": "sha256:671dd3191bcb4c97a6584e686708412c04e68525941bb576711386f9c3d51429",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/dropped-pending-response-is-not-rollback"
+      },
+      "scenarios/executor/dropping-before-poll-dispatches-nothing.yaml": {
+        "digest": "sha256:8f15e2503e64c8c39f265b01c6d65ebbb8c81beaa9585e565584eaf09f2f08d3",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/dropping-before-poll-dispatches-nothing"
+      },
+      "scenarios/executor/duplicate-identities-refuse-before-io.yaml": {
+        "digest": "sha256:8b8a8aa24701beeaf66d9b325286abddece9dbbbeb573f4e92c5ca430d0b9812",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/duplicate-identities-refuse-before-io"
+      },
+      "scenarios/executor/empty-batches-perform-no-io.yaml": {
+        "digest": "sha256:faad9be7196d0980b8c1a02f22c8dcec705b6dd1c24e19c61d57090dc27e1232",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/empty-batches-perform-no-io"
+      },
+      "scenarios/executor/empty-history-is-not-a-merge.yaml": {
+        "digest": "sha256:76f585b5b83a2d1e925ed08c04442b08cd996c08040e3d31fb37341cf210e8ab",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/empty-history-is-not-a-merge"
+      },
+      "scenarios/executor/global-record-identities-span-subjects-and-kinds.yaml": {
+        "digest": "sha256:2690c0e8051ba9361d9ba5c0005334152e6c13f07c863cc5595ffede91db9b71",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/global-record-identities-span-subjects-and-kinds"
+      },
+      "scenarios/executor/historical-observation-has-no-committed-receipt.yaml": {
+        "digest": "sha256:630926893707fbcce923ea2f6d24c5e4a546e2e704b701d8d4bd6552d82b42fb",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/historical-observation-has-no-committed-receipt"
+      },
+      "scenarios/executor/imported-exact-retry-is-historical.yaml": {
+        "digest": "sha256:033d12b89208425a15ae4a0e9cbf5397f6dc0d09b0898169bcd10e3d95ec2318",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/imported-exact-retry-is-historical"
+      },
+      "scenarios/executor/imported-missing-definition-cannot-prove-retry.yaml": {
+        "digest": "sha256:28e2e2bcc1fa1280180cfcd1f2077f20a57a8e194b23b5b542967165ca0d30f0",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/imported-missing-definition-cannot-prove-retry"
+      },
+      "scenarios/executor/kernel-refusal-is-recorded.yaml": {
+        "digest": "sha256:5d8b3a3c32bf930b020b49d9d27cf023436cbce28fdbbe03fbd49a059c507790",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/kernel-refusal-is-recorded"
+      },
+      "scenarios/executor/malformed-create-is-rejected-before-io.yaml": {
+        "digest": "sha256:3124486b1ce4118dbf215a75bdf04c551ec75e0f8478b53420041c5cb0608f53",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/malformed-create-is-rejected-before-io"
+      },
+      "scenarios/executor/merge-appends-over-observation-tips.yaml": {
+        "digest": "sha256:9de235eb1a9844427fe61f1636acb4829e18b23ee27019ef476bb61435be5e50",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/merge-appends-over-observation-tips"
+      },
+      "scenarios/executor/merge-candidate-uses-first-state-and-all-tips.yaml": {
+        "digest": "sha256:794708ddad860fdcd4cf2b077330d0973886e23df4b2d61def67041309663b85",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/merge-candidate-uses-first-state-and-all-tips"
+      },
+      "scenarios/executor/merge-checks-head-and-highest-revision.yaml": {
+        "digest": "sha256:ce259bd6bd514111c76bc4e7bb7dd026aa18f56c9e97c5eb74fa126a271c54b3",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/merge-checks-head-and-highest-revision"
+      },
+      "scenarios/executor/mixed-batch-orders-decisions-and-observations.yaml": {
+        "digest": "sha256:07ea5f32e2d678a299fcc85a753477a1fe9e26688580a161a7a0be88751a2882",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/mixed-batch-orders-decisions-and-observations"
+      },
+      "scenarios/executor/named-and-single-retries-keep-original-receipts.yaml": {
+        "digest": "sha256:211c7eb39bf417c02cfec763455177c250046b4f81599a7dae6f5d51bf3f9f08",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/named-and-single-retries-keep-original-receipts"
+      },
+      "scenarios/executor/optional-refusal-recorder-sees-conflicts-not-malformed-input.yaml": {
+        "digest": "sha256:7d12f14b972851fea230e0657dacd7e40a64aeaf1d1008a68f9e6b37327c747e",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/optional-refusal-recorder-sees-conflicts-not-malformed-input"
+      },
+      "scenarios/executor/ordinary-forked-write-records-refusal.yaml": {
+        "digest": "sha256:ee78d09c0481e2fa1ddb805654328888c443b652be2a356e1632774b481aeb63",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/ordinary-forked-write-records-refusal"
+      },
+      "scenarios/executor/saved-definition-retry-precedes-current-authority.yaml": {
+        "digest": "sha256:5cbaa4ae899865dc4b19997666390b75e73dd85ac3c7335b76c96e98885b9447",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/saved-definition-retry-precedes-current-authority"
+      },
+      "scenarios/executor/service-1-saved-definition-retry.yaml": {
+        "digest": "sha256:33a3b6974af04589dacd66162fdfadfbc0fbaf1f8b64d8dd1fdd2513bbbfc7a3",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/service-1-saved-definition-retry"
+      },
+      "scenarios/executor/service-2-conditional-presence-retry.yaml": {
+        "digest": "sha256:1f0ed83fefd0d156326ff5a872394686b37d07db83eee70a800d873d69a623eb",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/service-2-conditional-presence-retry"
+      },
+      "scenarios/executor/service-3-fulfillment-retry.yaml": {
+        "digest": "sha256:627d60e653a128531f363a67945bb2d6574489acfb9b00a0967bd71e178a6231",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/service-3-fulfillment-retry"
+      },
+      "scenarios/executor/single-key-must-match-member.yaml": {
+        "digest": "sha256:bd940c62a471cea7d5ce456ac80d082717bac166b46f17fc744cdd43f585824d",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/single-key-must-match-member"
+      },
+      "scenarios/executor/stale-observation-rolls-back-whole-batch.yaml": {
+        "digest": "sha256:54c000e7ff57b94df8cecee28548ea14345f8b389a7dc2f6428ac5c3537aea8d",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/stale-observation-rolls-back-whole-batch"
+      },
+      "scenarios/executor/uncertain-response-recovers-one-original-receipt.yaml": {
+        "digest": "sha256:ce651ad505fa0a5fc020d0a607c9e9907f4cfd3988a25956b2dadb7c93c7e464",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/uncertain-response-recovers-one-original-receipt"
+      },
+      "scenarios/executor/unreachable-is-never-absent.yaml": {
+        "digest": "sha256:18be6dec5615abadfa9a2629ae179696dcb65c5f4ba10b2aff1c7713a3487e4e",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/unreachable-is-never-absent"
+      },
+      "scenarios/query/consumed-descending-identity-refuses.yaml": {
+        "digest": "sha256:79d751bda7b9c7866e144c2e95176a424cbad59bd7441fdebb9a3746d8bf0dc9",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/consumed-descending-identity-refuses"
+      },
+      "scenarios/query/consumed-duplicate-identity-refuses.yaml": {
+        "digest": "sha256:e3e7b99c96903a6d7643b3185a9d8aa2aeacc48fd22bca0f611d1d8051476e65",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/consumed-duplicate-identity-refuses"
+      },
+      "scenarios/query/consumed-foreign-entity-refuses.yaml": {
+        "digest": "sha256:1706007becda706bdde9cab51eb1573c858da77050004b1410edd460c3cad141",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/consumed-foreign-entity-refuses"
+      },
+      "scenarios/query/consumed-prefix-before-cursor-is-validated.yaml": {
+        "digest": "sha256:ff8dbfaec9af1ab4317d54f3246f8ebb44231719a72a6d6aa6368e24f4061ea8",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/consumed-prefix-before-cursor-is-validated"
+      },
+      "scenarios/query/fixed-dataset-complete-traversal.yaml": {
+        "digest": "sha256:718efdbba9dd3994f2d8d85db89b6bd97f0a65b83e4341206f2dd6e78bdb1147",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/fixed-dataset-complete-traversal"
+      },
+      "scenarios/query/foreign-entity-cursor-refuses.yaml": {
+        "digest": "sha256:4e99041f2a352cae0eb6826bc5e093a304339525cf20905e84c1dfc8aceba2b6",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/foreign-entity-cursor-refuses"
+      },
+      "scenarios/query/foreign-predicate-cursor-refuses.yaml": {
+        "digest": "sha256:416b850744fe09f677f23bb2f599475264a8b9ad315e8e293fe2ce140bc38fdd",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/foreign-predicate-cursor-refuses"
+      },
+      "scenarios/query/malformed-cursors-are-typed-refusals.yaml": {
+        "digest": "sha256:0b28b768109a6072b7f39249391c68a192071258ff46e48ddaf49a27afe3dc8f",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/malformed-cursors-are-typed-refusals"
+      },
+      "scenarios/query/matching-pages-skip-nonmatches.yaml": {
+        "digest": "sha256:dde2c67d56450ae0b873742de9fa7b46d6a010a108026e3f1b701a3b91384f24",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/matching-pages-skip-nonmatches"
+      },
+      "scenarios/query/nested-numeric-containment.yaml": {
+        "digest": "sha256:09e4b4712a01bd9faa709241c5d338a516056c2c0283a182bfe02fe814b4eea9",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/nested-numeric-containment"
+      },
+      "scenarios/query/numeric-values-remain-exact.yaml": {
+        "digest": "sha256:3661b8d328117f5baf4c7bc5d6896d2d562a23af04421477c57b60817eef2e48",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/numeric-values-remain-exact"
+      },
+      "scenarios/query/ordered-api-stops-after-matching-lookahead.yaml": {
+        "digest": "sha256:334752f2bdeb4a74707b61e9977bf866d6f5e47e46246c7db217da1baca8801b",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/ordered-api-stops-after-matching-lookahead"
+      },
+      "scenarios/query/page-builder-truncates-matches.yaml": {
+        "digest": "sha256:4d378169c5f21bfc2ac28b5d5e1b225f414fab9c1331056fb0c3095d0ffca3cb",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/page-builder-truncates-matches"
+      },
+      "scenarios/query/page-limit-boundaries.yaml": {
+        "digest": "sha256:92cde996afc1081e7abf07df49387f0efa028170595380e391bc8ceee7a0593e",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/page-limit-boundaries"
+      },
+      "scenarios/query/query-document-keys-are-closed.yaml": {
+        "digest": "sha256:a5b961ebd145795ada9d06660d01bc18e4dbbdf5bf07341ef3afe860cce52990",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/query-document-keys-are-closed"
+      },
+      "scenarios/query/recursive-containment.yaml": {
+        "digest": "sha256:3968ddf7c782ca1fb1d34b50e4da081624e8227227b54190fe5e80e31f3f758d",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/recursive-containment"
+      },
+      "scenarios/shell/file-changed-retry-conflicts.yaml": {
+        "digest": "sha256:275072aba77bee99d96f0058e0614906faefc5dbada2f55be3b95edeb599f7f9",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-changed-retry-conflicts"
+      },
+      "scenarios/shell/file-create-retry-after-advancement.yaml": {
+        "digest": "sha256:b9dff8b8c2d086bb3e39c8a57fab9b2161b1770b60f7564537bf1fad8c9ee348",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-create-retry-after-advancement"
+      },
+      "scenarios/shell/file-invalid-recording-publishes-nothing.yaml": {
+        "digest": "sha256:dd7391bbb0c459ddc9a7cb6c76b0e966434c55055d1b23205202de365afe6a20",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-invalid-recording-publishes-nothing"
+      },
+      "scenarios/shell/file-missing-subjects.yaml": {
+        "digest": "sha256:96e44a57ac68ad853006376dc09ef724702aa7b6e439cd0668532a0efc00d9f6",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-missing-subjects"
+      },
+      "scenarios/shell/file-provider-failures-preserve-classification.yaml": {
+        "digest": "sha256:0ce89a2e5d770883250f4f8f93c67421566e20459963755acedac8935945565b",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-provider-failures-preserve-classification"
+      },
+      "scenarios/shell/file-retry-uses-original-record.yaml": {
+        "digest": "sha256:e5e04222bb9aa4c5c1bb125e877058b46cbcb243e33d59e0f51d6ba3051379ed",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-retry-uses-original-record"
+      },
+      "scenarios/shell/file-revision-rechecked-at-commit.yaml": {
+        "digest": "sha256:6864b3d0ef414d51b89b87586b3ee72d0f2846785bdae713d43222f9a89459e0",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-revision-rechecked-at-commit"
+      },
+      "scenarios/shell/file-round-trip.yaml": {
+        "digest": "sha256:1369f27e60674c42e7718a4c8638b34ddde2886057acec59e9c05934ed42b190",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-round-trip"
+      },
+      "scenarios/shell/file-stale-intent-precedes-kernel.yaml": {
+        "digest": "sha256:45002fe8e4fe4e54d75d27989724f8d8feeb998c98b34516f6e3b20bd4e3291a",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-stale-intent-precedes-kernel"
+      },
+      "scenarios/shell/kernel-refusal-precedes-recording-validation.yaml": {
+        "digest": "sha256:9409b90f7339c858cc85d448cc94f2ff89bb3b3bff2d129a9a414caf2365d0d2",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/kernel-refusal-precedes-recording-validation"
+      },
+      "scenarios/shell/memory-changed-retry-conflicts.yaml": {
+        "digest": "sha256:68e0fccb26ffd10a726ea22b7dc612ed50a0521f8d0455be972ba36acce85ba3",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-changed-retry-conflicts"
+      },
+      "scenarios/shell/memory-create-retry-after-advancement.yaml": {
+        "digest": "sha256:d04653781d2fba3599784a18b484ae3fb36f52b5b7125e4b398827b0b35284d0",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-create-retry-after-advancement"
+      },
+      "scenarios/shell/memory-invalid-recording-publishes-nothing.yaml": {
+        "digest": "sha256:4200da86c4e8050041e8285f02d19a5668feb355deb568ff975b9d62957f0c8c",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-invalid-recording-publishes-nothing"
+      },
+      "scenarios/shell/memory-missing-subjects.yaml": {
+        "digest": "sha256:616cc33fcd0a5e0c05cb079521d69b5dd80bb57f6ff3b6b4580fbea407f5c7b6",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-missing-subjects"
+      },
+      "scenarios/shell/memory-retry-uses-original-record.yaml": {
+        "digest": "sha256:96e930badc6a295b6e477bebc2b2ca0ce19dd34a4e997781ab9c3fcbe2a28a7c",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-retry-uses-original-record"
+      },
+      "scenarios/shell/memory-revision-rechecked-at-commit.yaml": {
+        "digest": "sha256:cbfb6f88eb557cf1c6a2e6beb6d87f6e429fbc0e6080bba2c8fed1abdc38dd14",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-revision-rechecked-at-commit"
+      },
+      "scenarios/shell/memory-round-trip.yaml": {
+        "digest": "sha256:1fa651ebfa5df48eb937a47357b60aad8cf4ffffc03439d8d86e01744f7819a0",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-round-trip"
+      },
+      "scenarios/shell/memory-stale-intent-precedes-kernel.yaml": {
+        "digest": "sha256:56a5c6f897027a7499825c79b03a1006a5a0089566a8bbfacc5dfb9ef0b72f99",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-stale-intent-precedes-kernel"
+      },
+      "scenarios/shell/provider-failures-preserve-classification.yaml": {
+        "digest": "sha256:c7b8bd71cd52f0c3b035016e16bc44a319f77ae9925763365ed8599734be1af9",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/provider-failures-preserve-classification"
+      },
+      "scenarios/shell/retry-does-not-hide-read-failure.yaml": {
+        "digest": "sha256:8b46ad641fb24d6aef9727ef100ce65cbdc24b1ec8876bf28aa493686c049873",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/retry-does-not-hide-read-failure"
+      },
+      "scenarios/store/absence.yaml": {
+        "digest": "sha256:c2a73f01b9d4a627e136822fd559e0b9401e7d7d07ac263f13e473b204586ffa",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/an-absent-memory-subject-is-none"
+      },
+      "scenarios/store/canonical-byte-encoding-preserves-exact-number-tokens.yaml": {
+        "digest": "sha256:a78bb786b01669605837aec3ace1c26aeac8e0d9aded9e2f825bae6c7ae2ebd4",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/canonical-byte-encoding-preserves-exact-number-tokens"
+      },
+      "scenarios/store/complete-assurance-requires-provider-capture.yaml": {
+        "digest": "sha256:c6bae0d9ed87a3e7876bf7b620144c9cfe8c9b926a5bf91e55faa4e56d5b7063",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/complete-assurance-requires-provider-capture"
+      },
+      "scenarios/store/coordinates-retain-opaque-subjects-and-disjoint-batch-namespaces.yaml": {
+        "digest": "sha256:d8432917598b11423a26ea12be21ae94c10ac9b1c7764351c946cdc3adbb083c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/coordinates-retain-opaque-subjects-and-disjoint-batch-namespaces"
+      },
+      "scenarios/store/envelope-null-provenance-is-explicit.yaml": {
+        "digest": "sha256:abdbf1772e70ec1ab0f7f290c3a9843ec225a76173577f1260425eb459c9f27f",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/envelope-null-provenance-is-explicit"
+      },
+      "scenarios/store/expectation-absent-is-distinct-from-revision-zero.yaml": {
+        "digest": "sha256:3f3e8d2913d4b3f8bad9bcb6170afbf79430f63707d0869b3dde93d64cb42079",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/expectation-absent-is-distinct-from-revision-zero"
+      },
+      "scenarios/store/file-absence.yaml": {
+        "digest": "sha256:b1e998054c7eaa399457f02790a3b3d1431345f64b670a23e4446f835b19ebd4",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-absence"
+      },
+      "scenarios/store/file-corrupt-marker-is-not-absence.yaml": {
+        "digest": "sha256:515fe87f550702f7db93db3d49ce88fc79f2461f1659ffd6a16aa0b6c03249ee",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-corrupt-marker-is-not-absence"
+      },
+      "scenarios/store/file-exact-retry-after-state-advances.yaml": {
+        "digest": "sha256:48744167cb8f515f599f9a79a28beb662f18734d21e17e03f57bf3b323fc8eb7",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-exact-retry-after-state-advances"
+      },
+      "scenarios/store/file-global-record-identity.yaml": {
+        "digest": "sha256:8e060305e7e2fdfaa3aca70fd026ff170f35253df6dc1094bc5e16aa5fe12e44",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-global-record-identity"
+      },
+      "scenarios/store/file-invalid-recording-is-inert.yaml": {
+        "digest": "sha256:053609afe3aff94fe040e1409cecca2141e2baff56750fdf68f9614f3d0352c8",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-invalid-recording-is-inert"
+      },
+      "scenarios/store/file-listed-identities-are-sorted.yaml": {
+        "digest": "sha256:ecfcbc4913ce1c19496ed02a164799f7cf52d6e935d798b2193b3c4d912d095c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-listed-identities-are-sorted"
+      },
+      "scenarios/store/file-observations-do-not-advance.yaml": {
+        "digest": "sha256:1dad7065d43b5efe26ffa682da1a606239b5eb3d738ecd0f39d77f3c3df88918",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-observations-do-not-advance"
+      },
+      "scenarios/store/file-ordered-duplicate-events.yaml": {
+        "digest": "sha256:578d31cc07fd9ff0fb3498df3439b52ea3866ef46aec60cc88b873319ba30082",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-ordered-duplicate-events"
+      },
+      "scenarios/store/file-reopen.yaml": {
+        "digest": "sha256:344d53b1afd4f911bdba93418e44c21cb8dc2b4ba6ddc37d1666406538bdb32f",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-reopen"
+      },
+      "scenarios/store/file-stale-write-preserves-state.yaml": {
+        "digest": "sha256:4c36cc3199270c273efe450eefcf63e9ef4c287894d225bf3a6a93894e68daab",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-stale-write-preserves-state"
+      },
+      "scenarios/store/imported-boundary-retains-limited-assurance.yaml": {
+        "digest": "sha256:3e3f5fc40dc454074353fddadaf9513406dd9f6201409d0ac9d9ed9a3576a00a",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/imported-boundary-retains-limited-assurance"
+      },
+      "scenarios/store/imported-evidence-cannot-exceed-anchor.yaml": {
+        "digest": "sha256:20f59a69bf656fcdd581a693f3dbda10a09dd6dcc82f8f2d65c894e35ad19cfe",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/imported-evidence-cannot-exceed-anchor"
+      },
+      "scenarios/store/legacy-acquisition-of-absent-source-is-read-only.yaml": {
+        "digest": "sha256:94fe9682b43fbfaf2f91d51bd64b9846552d5de859b7f2882b242132f8492449",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/legacy-acquisition-of-absent-source-is-read-only"
+      },
+      "scenarios/store/legacy-acquisition-preserves-only-known-order.yaml": {
+        "digest": "sha256:11c23afa470d6b94fbd9114d355283c71a413e09d6ba5c69b8b32234ad74e05a",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/legacy-acquisition-preserves-only-known-order"
+      },
+      "scenarios/store/lineage-decisions-produce-two-heads.yaml": {
+        "digest": "sha256:1ab5f7052781e9b7853ff108215f218dbc22a619554f80242fb4eb45b1d57d2d",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/lineage-decisions-produce-two-heads"
+      },
+      "scenarios/store/memory-absence.yaml": {
+        "digest": "sha256:943ac7c203f2db93069c166f0ccc6c2190c58756c488235c84efb2b9a8ad4111",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-absence"
+      },
+      "scenarios/store/memory-atomic-order.yaml": {
+        "digest": "sha256:965d54177356fc82bbd2494cb1da5aec6d781a3f998054f7589c02883420baf3",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-atomic-order"
+      },
+      "scenarios/store/memory-atomic-rollback.yaml": {
+        "digest": "sha256:e194e01b97621b6c0dd97cb2327f0a1137e4ec1ee112ae0cf87bf032dd12d0dd",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-atomic-rollback"
+      },
+      "scenarios/store/memory-empty-batch.yaml": {
+        "digest": "sha256:584a71173d86d28d914ed5cd43bcd0c0b3b39851a24a4de7fd418af1a604cbc9",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-empty-batch"
+      },
+      "scenarios/store/memory-exact-retry-after-state-advances.yaml": {
+        "digest": "sha256:e48625663f9ea31753e2e8b09fc8ddd08c9b8f8afe58ca5be2264693bb27132b",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-exact-retry-after-state-advances"
+      },
+      "scenarios/store/memory-global-record-identity.yaml": {
+        "digest": "sha256:a5933934b4fff2a4b81f005886227b5719dc619d5a73af3122a42291eb8425c5",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-global-record-identity"
+      },
+      "scenarios/store/memory-invalid-recording-is-inert.yaml": {
+        "digest": "sha256:21fa14746b6b308f663fc3a828599aae77c308ff0b06c7ac879356b46f31fdc8",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-invalid-recording-is-inert"
+      },
+      "scenarios/store/memory-listed-identities-are-sorted.yaml": {
+        "digest": "sha256:75fa90a65834267c4d3d639fa828f4b9f33f0584721320f0252f4f62210303ce",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-listed-identities-are-sorted"
+      },
+      "scenarios/store/memory-observations-do-not-advance.yaml": {
+        "digest": "sha256:709734a8f3f57e1251e7706b2a87d59ea237cdd7e022571396960623a551397c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-observations-do-not-advance"
+      },
+      "scenarios/store/memory-ordered-duplicate-events.yaml": {
+        "digest": "sha256:72516a7c1d69ef07d43d0495bb16078d964cfa8a58597e6b577e45b1510fe22c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-ordered-duplicate-events"
+      },
+      "scenarios/store/memory-stale-write-preserves-state.yaml": {
+        "digest": "sha256:d3868be7d53b134732621686f9f4d2d76d04843c7a3aca07ecb280208b6d4aa7",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-stale-write-preserves-state"
+      },
+      "scenarios/store/migration-dry-run-and-out-of-place.yaml": {
+        "digest": "sha256:f32a80ea7e8bb5226321eec09a3ad6f4f8f7db7cc61797303e848cb4318c9198",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/migration-dry-run-and-out-of-place"
+      },
+      "scenarios/store/migration-invalid-source-publishes-nothing.yaml": {
+        "digest": "sha256:82503626e2363f33b6e6f3201088c8c3afdf0531b7cddda44e6aa46dca61dbe8",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/migration-invalid-source-publishes-nothing"
+      },
+      "scenarios/store/observation-revisions-are-positive-signed-range.yaml": {
+        "digest": "sha256:358c79e54de4967a6a7144537819e35c1ea9807d8aaa32f148c2e676f66d3ff2",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/observation-revisions-are-positive-signed-range"
+      },
+      "scenarios/store/observations-are-tips-but-not-decision-heads.yaml": {
+        "digest": "sha256:df6dfcb6bd32d25f45e05fce4a661b916fe2977404ded1e61d68405e9520db73",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/observations-are-tips-but-not-decision-heads"
+      },
+      "scenarios/store/older-framing-reader-refuses-before-payload.yaml": {
+        "digest": "sha256:e4f74eb3f384c0b566b18e4cad415df320fec5a53a19e0e3dffaff101eaf09f9",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/older-framing-reader-refuses-before-payload"
+      },
+      "scenarios/store/projection-groups-sorted-identities.yaml": {
+        "digest": "sha256:feff2b73a1d1f82725cb01f7594fabd42de0bc3ab4f625dc1d16a473e791036e",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/projection-groups-sorted-identities"
+      },
+      "scenarios/store/projection-scalar-and-nested-keys.yaml": {
+        "digest": "sha256:e828f9f0604925983e8e40d5ba49a0845cbdd589396910bdd63484299d0df310",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/projection-scalar-and-nested-keys"
+      },
+      "scenarios/store/record-domain-kernel-1.yaml": {
+        "digest": "sha256:a291d071fd419fe9229dcc15319619202cd9b6cb6302df62039c81e55488906c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/record-domain-kernel-1"
+      },
+      "scenarios/store/record-domain-service-1.yaml": {
+        "digest": "sha256:20d6cfcffdc0d909b0657ceff688228a4ec9fab82601eee8312e35c57d2bcca5",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/record-domain-service-1"
+      },
+      "scenarios/store/record-domain-service-2.yaml": {
+        "digest": "sha256:82547f91941838b01e84c91396a3b07323378fab8104d15567c6b6fd9f111aa5",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/record-domain-service-2"
+      },
+      "scenarios/store/record-domain-service-3.yaml": {
+        "digest": "sha256:1e6a813eddfc52571ffab7e19149723ea5cb8fc211ae4b07ea614c189aeece1b",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/record-domain-service-3"
+      },
+      "scenarios/store/recorded-commit-result-must-match-instance.yaml": {
+        "digest": "sha256:15d145d9c11512c877d08ca29b74354fb058dee87ba7914a00c4c29f7c4859ed",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-commit-result-must-match-instance"
+      },
+      "scenarios/store/recorded-memory-atomic-observation-order.yaml": {
+        "digest": "sha256:e8eaf44cc04006f709a6fd4c5f8ae962bce7da48f3f7637aaba33b97c10d11f4",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-memory-atomic-observation-order"
+      },
+      "scenarios/store/recorded-memory-atomic-rollback.yaml": {
+        "digest": "sha256:1e9b55aea4eb94cfc77855dec8ba41bda19a6dcf05eee9bc08e15919f4054344",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-memory-atomic-rollback"
+      },
+      "scenarios/store/recorded-memory-writer-revalidates-public-members.yaml": {
+        "digest": "sha256:b8577c6fe4a27623d0a6118568c7d55990c7e55571599a1163470eb247f26921",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-memory-writer-revalidates-public-members"
+      },
+      "scenarios/store/recorded-position-overflow-is-atomic.yaml": {
+        "digest": "sha256:ac5ec0092bbcd87610391fea33927d8f0d7d0aac38605be698bb3709282f32a9",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-position-overflow-is-atomic"
+      },
+      "scenarios/store/tampered-complete-history-is-rejected.yaml": {
+        "digest": "sha256:81b55d4c88d5b244f18dd5df040272585859c44e2e61af662c3a6d78f84ee922",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/tampered-complete-history-is-rejected"
+      }
+    },
+    "counts": {
+      "authored": 1,
+      "generated": 0,
+      "outside": 381,
+      "refused": 0
+    },
+    "generated": [],
+    "knowledge": "complete_inventory",
+    "outside": [
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Address/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.CompareNumbers/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Create/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.CreateDerived/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Execute/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Fulfill/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.NormalizeArguments/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Prepare/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Register/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Registry/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Rehydrate/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Replace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Replay/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.ReplayReturned/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.ReplayTampered/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.RuntimeCreate/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.RuntimeExecute/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.Timestamp/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.ValidateDefinition/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.core.ValidateRegistry/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/additional-top-level-and-nested-fields-are-explicit"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/all-scalar-and-collection-kinds-validate"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/argument-validation-precedes-transition-refusal"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/assignments-read-one-pre-operation-map"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/blank-identity-is-a-typed-validation-refusal"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/conditional-presence-requires-service2"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/constraint-kind-is-checked"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/constraints-accumulate-independent-value-errors"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/creation-accumulates-field-errors"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/creation-applies-defaults-and-returns-an-exact-event"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/creation-template-has-no-previous-state"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/defaults-must-satisfy-schema"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/definition-keys-are-closed"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/definition-validation-accumulates-independent-defects"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/derived-create-requires-logical-identity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/derived-creation-refuses-circular-assignment"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/derived-creation-refuses-circular-selector"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/derived-creation-selects-first-identity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/derived-creation-selects-second-identity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/derived-identity-uses-logical-value"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/deterministic-kernel-record-bytes"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/duplicate-events-retain-declared-order-and-multiplicity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/entity-mismatch-precedes-unknown-state"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/exact-number-35"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/exact-number-36"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/exact-number-37"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/exact-number-39"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/exact-number-40"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/exact-number-41"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/failed-precondition-produces-no-decision"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/field-input-must-be-an-object"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/fulfillment-declaration-boundary-service1"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/fulfillment-declaration-boundary-service2"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/fulfillment-declaration-boundary-service3"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/identity-address-42"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/identity-address-43"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/identity-address-44"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/identity-address-45"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/identity-address-46"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/identity-address-47"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/invariant-cannot-read-arguments"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/invariants-judge-the-post-operation-fields"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-after"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-all"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-any"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-before"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-contains"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-eq"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-exists"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-gt"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-gte"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-in"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-lt"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-lte"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-missing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-ne"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-not"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-prefix"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-prefix-case-sensitive"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/kernel-condition-suffix"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/legacy-event-rehydration-refuses-service1"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/legacy-event-rehydration-refuses-service2"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/legacy-event-rehydration-refuses-service3"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/legacy-event-rehydration-rejects-changed-payload"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/legacy-event-rehydration-rejects-missing-duplicate"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/legacy-event-rehydration-rejects-revision-gap"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/legacy-event-rehydration-retains-duplicate-events"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/logical-identity-must-match-storage-address"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/nested-defaults-apply-only-to-supplied-objects"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/nested-reference-must-be-declared"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/normalization-applies-argument-defaults"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/numeric-adjacent-integers-past-binary64"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/numeric-kernel-exact-door"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/numeric-two-wire-doors"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/numeric-underflow-remains-stored"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/numeric-wire-and-literal-doors"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/operation-cannot-change-identity-mirror"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/post-set-fields-are-revalidated"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/precondition-cannot-read-next-state"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/preload-payment-negative"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/preload-payment-positive"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/preload-payment-zero"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/preload-validates-input-before-refusal"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/references-carrier-kind-comes-from-target-identity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/registry-duplicate-and-invalid-replacement-preserve-definition"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/registry-refuses-two-owners-of-one-entity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/registry-relations-check-carrier-on-target"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/registry-resolves-reference-targets-as-a-set"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/rehydrate-rejects-empty-history"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/replay-rejects-empty-history"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/replay-rejects-fields-tampering"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/replay-rejects-identity-tampering"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/replay-rejects-missing-definition-tampering"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/replay-rejects-revision-tampering"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/replay-rejects-state-tampering"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/replay-zero-event-genesis"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/returned-kernel1-decisions-replay-and-reject-tampering"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/returned-service1-decisions-replay-and-reject-tampering"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/returned-service2-decisions-replay-and-reject-tampering"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/returned-service3-decisions-replay-and-reject-tampering"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/revision-exhaustion-refuses-before-effects"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/runtime-executes-the-exact-instance-definition"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/runtime-refuses-missing-registry-version"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-adjacent-union-preserves-tag-and-value"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-array-ordinal"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-bare-state-guard-is-a-selector"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-binary64-refuses-nonfinite-magnitude"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-binary64-retains-negative-zero"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-collection-count"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-compare-missing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-compare-number"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-compare-ranked-text"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-first-matching-outcome-wins"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-forall-empty"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-forall-false"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-forall-true"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-forany-empty"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-forany-missing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-forany-true"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-map-count-not-count-key"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-map-member-errors-retain-paths"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-map-quantified-values"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-map-values-are-typed"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-no-matching-outcome-is-typed"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-rank-disagreement"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-rank-without-scale"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-selection-fallback"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-selection-fast"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-selection-terminal"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-selection-wrong-source"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-state-guard-skips-unobservable-input"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-truthy-missing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-truthy-true"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-truthy-zero"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-union-refuses-unknown-tag"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service1-unknown-negation"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service2-presence-absent"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service2-presence-null"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service2-presence-present"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service2-presence-rejects-null-string"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service3-direct-execute-requires-fulfillment"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service3-fulfillment-extra-coordinate"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service3-fulfillment-invalid-value"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service3-fulfillment-missing-coordinate"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service3-fulfillment-preserve"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service3-fulfillment-remove-required"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service3-fulfillment-set-remove"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/service3-refusal-needs-no-loaded-instance"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/silent-execution-advances-once-with-no-events"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/timestamp-48"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/timestamp-49"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/timestamp-50"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/transition-refusal-precedes-failed-precondition"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/unknown-operation-is-typed"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/unknown-rules-do-not-become-false"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.core/authored/unknown-state-precedes-unknown-operation"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Batch/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.CancelBatch/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.CapturedAppend/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.CapturedMerge/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.ClearRegistry/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.ClearTrace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Create/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Execute/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.History/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.HistoryCoordinates/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Load/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.LookupReceipt/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.LookupRecord/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Observe/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.RecordingRefusals/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.RefusalReasons/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Refusals/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Register/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.ScriptAppend/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.SeedImported/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.SupplyHistory/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.SupplyLoadFailure/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Tamper/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Trace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.VerifyComplete/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/changed-batch-order-conflicts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/changed-request-conflicts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/complete-decisions-retain-duplicate-events"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/corrupt-history-never-recovers-success"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/dropped-pending-response-is-not-rollback"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/dropping-before-poll-dispatches-nothing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/duplicate-identities-refuse-before-io"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/empty-batches-perform-no-io"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/empty-history-is-not-a-merge"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/global-record-identities-span-subjects-and-kinds"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/historical-observation-has-no-committed-receipt"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/imported-exact-retry-is-historical"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/imported-missing-definition-cannot-prove-retry"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/kernel-refusal-is-recorded"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/malformed-create-is-rejected-before-io"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/merge-appends-over-observation-tips"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/merge-candidate-uses-first-state-and-all-tips"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/merge-checks-head-and-highest-revision"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/mixed-batch-orders-decisions-and-observations"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/named-and-single-retries-keep-original-receipts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/optional-refusal-recorder-sees-conflicts-not-malformed-input"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/ordinary-forked-write-records-refusal"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/saved-definition-retry-precedes-current-authority"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/service-1-saved-definition-retry"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/service-2-conditional-presence-retry"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/service-3-fulfillment-retry"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/single-key-must-match-member"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/stale-observation-rolls-back-whole-batch"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/uncertain-response-recovers-one-original-receipt"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/unreachable-is-never-absent"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Continue/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.DecodeCursor/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Limit/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Ordered/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Page/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Query/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Seed/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/consumed-descending-identity-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/consumed-duplicate-identity-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/consumed-foreign-entity-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/consumed-prefix-before-cursor-is-validated"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/fixed-dataset-complete-traversal"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/foreign-entity-cursor-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/foreign-predicate-cursor-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/malformed-cursors-are-typed-refusals"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/matching-pages-skip-nonmatches"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/nested-numeric-containment"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/numeric-values-remain-exact"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/ordered-api-stops-after-matching-lookahead"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/page-builder-truncates-matches"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/page-limit-boundaries"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/query-document-keys-are-closed"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/recursive-containment"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Calls/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.ClearCalls/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.ClearRegistry/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Create/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Events/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Execute/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Fault/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Get/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.List/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Open/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Race/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Records/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Register/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Reopen/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Replace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-changed-retry-conflicts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-create-retry-after-advancement"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-invalid-recording-publishes-nothing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-missing-subjects"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-provider-failures-preserve-classification"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-retry-uses-original-record"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-revision-rechecked-at-commit"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-round-trip"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-stale-intent-precedes-kernel"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/kernel-refusal-precedes-recording-validation"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-changed-retry-conflicts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-create-retry-after-advancement"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-invalid-recording-publishes-nothing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-missing-subjects"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-retry-uses-original-record"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-revision-rechecked-at-commit"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-round-trip"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-stale-intent-precedes-kernel"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/provider-failures-preserve-classification"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/retry-does-not-hide-read-failure"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.AcquireLegacy/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Append/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.AtomicBatch/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.BatchCoordinate/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.BranchHeads/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.BranchTips/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.CanonicalBytes/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.CheckExpectation/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ClearTrace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Commit/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.CommitRecorded/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Events/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.FileExists/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.History/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Ids/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Load/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.LookupBatch/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.LookupRecord/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.MemberCoordinate/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.MigrateFile/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Observations/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Observe/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Project/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ReadFileFixture/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ReadRecordDomain/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.RecordDomains/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.RecordFraming/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Records/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Reopen/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.RequestBytes/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Seal/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.SeedImported/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.SetPosition/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.SubjectCoordinate/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Tamper/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Trace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ValidateEnvelope/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ValidateObservation/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ValidateRecordedCommit/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.VerifyComplete/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.VerifyExplicit/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.VerifySubject/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.WriteFileFixture/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/an-absent-memory-subject-is-none"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/canonical-byte-encoding-preserves-exact-number-tokens"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/complete-assurance-requires-provider-capture"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/coordinates-retain-opaque-subjects-and-disjoint-batch-namespaces"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/envelope-null-provenance-is-explicit"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/expectation-absent-is-distinct-from-revision-zero"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-absence"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-corrupt-marker-is-not-absence"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-exact-retry-after-state-advances"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-global-record-identity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-invalid-recording-is-inert"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-listed-identities-are-sorted"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-observations-do-not-advance"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-ordered-duplicate-events"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-reopen"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-stale-write-preserves-state"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/imported-boundary-retains-limited-assurance"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/imported-evidence-cannot-exceed-anchor"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/legacy-acquisition-of-absent-source-is-read-only"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/legacy-acquisition-preserves-only-known-order"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/lineage-decisions-produce-two-heads"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-absence"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-atomic-order"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-atomic-rollback"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-empty-batch"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-exact-retry-after-state-advances"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-global-record-identity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-invalid-recording-is-inert"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-listed-identities-are-sorted"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-observations-do-not-advance"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-ordered-duplicate-events"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-stale-write-preserves-state"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/migration-dry-run-and-out-of-place"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/migration-invalid-source-publishes-nothing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/observation-revisions-are-positive-signed-range"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/observations-are-tips-but-not-decision-heads"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/older-framing-reader-refuses-before-payload"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/projection-groups-sorted-identities"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/projection-scalar-and-nested-keys"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/record-domain-kernel-1"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/record-domain-service-1"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/record-domain-service-2"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/record-domain-service-3"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-commit-result-must-match-instance"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-memory-atomic-observation-order"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-memory-atomic-rollback"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-memory-writer-revalidates-public-members"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-position-overflow-is-atomic"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/tampered-complete-history-is-rejected"
+      }
+    ],
+    "refused": [],
+    "selection": {
+      "filter": {
+        "ids": [
+          "entity.core/authored/exact-number-38"
+        ],
+        "kind": "explicit",
+        "parent": {
+          "digest": "sha256:81146021cf2d5d3b5b45562d3852812ad712151c3b6996f7c97e1d157778797a",
+          "digest_profile": "sha256-json-bytes/1",
+          "version": "ess-conformance/27"
+        }
+      },
+      "origins": "generated_and_authored",
+      "scope": {
+        "kind": "system"
+      }
+    }
+  },
+  "provenance": {
+    "contract_digest": "6808a631d32c083794030e69dbf3e64f08285d63e10323433871df1b426574e6",
+    "spec_digest": "36be70a6a78819b731469e046e709011a99be9a1a286d09967f01e2b7e419b6e",
+    "specification_version": "v1",
+    "suite_version": "ess-conformance/27",
+    "system": "entity"
+  },
+  "scenarios": {
+    "entity.core/authored/exact-number-38": {
+      "purpose": "exact number 38.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.CompareNumbers"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.CompareNumbers",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.CompareNumbers",
+          "input": {
+            "left": {
+              "kind": "literal",
+              "value": "9007199254740992"
+            },
+            "right": {
+              "kind": "literal",
+              "value": "9007199254740993"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.CompareNumbers",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.CompareNumbers",
+            "declarations": {},
+            "expected": {
+              "status": "ok",
+              "value": "Less"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.CompareNumbers",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    }
+  }
+}

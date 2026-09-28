@@ -1,0 +1,21 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "exact-number-39",
+  "summary": "exact number 39.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.CompareNumbers",
+      "input": {
+        "left": "1e100000",
+        "right": "1e99999"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "Greater"
+      }
+    }
+  ]
+}

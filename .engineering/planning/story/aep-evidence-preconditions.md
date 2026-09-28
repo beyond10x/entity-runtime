@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:aep-evidence-preconditions
 kind: story
 status: implemented
@@ -9,6 +9,10 @@ relations:
 - derived_from: epic:drive-engineering-protocols
 - depends_on: story:aep-move-through-kernel
 revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T01:36:32Z", actor: "timo", revision: 4, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T01:36:32Z", actor: "timo", revision: 5, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T01:36:46Z", actor: "timo", revision: 6, decided_on: {"recorded":{"test_result":1,"artifact":1}}, imported: true}
 ---
 # Story: Phase 3 — implemented and accepted require evidence
 

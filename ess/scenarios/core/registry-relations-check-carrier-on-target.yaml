@@ -1,0 +1,64 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "registry-relations-check-carrier-on-target",
+  "summary": "registry relations check carrier on target.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/1\",\"identity\":{\"field\":\"invoice_id\"},\"schema\":{\"fields\":{\"invoice_id\":{\"type\":\"string\",\"required\":true},\"account_id\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"account\",\"version\":1,\"semantics\":\"service/1\",\"identity\":{\"field\":\"account_id\"},\"relations\":{\"invoices\":{\"kind\":\"owns\",\"target\":\"invoice\",\"cardinality\":\"many\",\"via\":\"account_id\"}},\"schema\":{\"fields\":{\"account_id\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "null"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Replace",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/1\",\"identity\":{\"field\":\"invoice_id\"},\"schema\":{\"fields\":{\"invoice_id\":{\"type\":\"string\",\"required\":true},\"account_id\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "relation_carrier_wrong"
+        ]
+      }
+    }
+  ]
+}

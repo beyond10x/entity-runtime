@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-08T23:40:27Z",
+  "actor": "human:timo",
+  "artifact": "story:provider-integrity-hardening",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "separate_writers_preserve_exactly_one_winning_revision_and_all_its_records ok and the 0.17.7 regression table in docs/reviews/2026-09-05-runtime-hardening.md; gate / Gate on main 0e61dde: https://github.com/beyond10x/entity-runtime/actions/runs/34290829734",
+    "reference": "docs/reviews/2026-09-05-runtime-hardening.md"
+  }
+}

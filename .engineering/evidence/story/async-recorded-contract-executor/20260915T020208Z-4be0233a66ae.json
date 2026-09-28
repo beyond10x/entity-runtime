@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-15T02:02:08Z",
+  "actor": "human:timo",
+  "artifact": "story:async-recorded-contract-executor",
+  "kind": "story",
+  "revision": 10,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "ER-ASYNC-ADV-2: all revision-bearing imported evidence is bounded by anchor subject and revision before publication; unchanged adversary and partial-history controls green in 52-case affected suite; causal reversal exits 101",
+    "reference": "local-evidence:ess-evolution/waves/0002-er-contract/correction1-evidence/mutation-imported-revision-bound.log",
+    "review": "review-result:er-async-adversary-pass-1",
+    "outcome": "fixed"
+  }
+}

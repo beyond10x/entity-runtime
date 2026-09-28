@@ -1,0 +1,75 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "runtime-refuses-missing-registry-version",
+  "summary": "runtime refuses missing registry version.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.RuntimeCreate",
+      "input": {
+        "entity": "empty",
+        "version": "1",
+        "id": "e-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "entity_not_registered"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"empty\",\"version\":1,\"schema\":{\"fields\":{},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.RuntimeCreate",
+      "input": {
+        "entity": "empty",
+        "version": "2",
+        "id": "e-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "entity_not_registered"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"empty\",\"version\":2,\"schema\":{\"fields\":{},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.RuntimeCreate",
+      "input": {
+        "entity": "empty",
+        "version": "2",
+        "id": "e-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"empty\",\"version\":2,\"id\":\"e-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}}"
+      }
+    }
+  ]
+}

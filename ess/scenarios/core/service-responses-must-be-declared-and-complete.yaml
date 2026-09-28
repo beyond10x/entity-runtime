@@ -1,0 +1,53 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service-responses-must-be-declared-and-complete",
+  "summary": "Required responses need a producing expression; unknown response fields and responses on refusing branches are rejected.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\"}],\"response\":{\"fields\":{\"receipt\":{\"type\":\"string\",\"required\":true}}}}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "outcome_response_incomplete"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"responds\":{\"extra\":\"value\"}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "response_field_unknown"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"refused\",\"refuses\":{\"error\":\"Denied\"},\"responds\":{\"receipt\":\"value\"}}],\"response\":{\"fields\":{\"receipt\":{\"type\":\"string\"}}}}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "refusal_mutates_state"
+        ]
+      }
+    }
+  ]
+}

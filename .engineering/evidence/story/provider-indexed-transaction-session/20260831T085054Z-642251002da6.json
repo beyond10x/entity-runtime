@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-31T08:50:54Z",
+  "actor": "human:operator",
+  "artifact": "story:provider-indexed-transaction-session",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check",
+    "reference": "local release gate 0.17.0"
+  }
+}

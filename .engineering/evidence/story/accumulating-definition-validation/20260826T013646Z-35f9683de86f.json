@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-26T01:36:46Z",
+  "actor": "timo",
+  "artifact": "story:accumulating-definition-validation",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check 2026-08-26",
+    "reference": "nine steps, 137 tests, exit 0 - gate log ~/.cache/claude-tmp/er-gate-3.log"
+  }
+}

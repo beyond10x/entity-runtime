@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-28T08:07:20Z",
+  "actor": "human:timo",
+  "artifact": "story:adopt-current-plan-and-release-contracts",
+  "kind": "story",
+  "revision": 14,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Full task check passed before cutting 0.25.1; 414 conformance scenarios passed, zero nonpassing scenarios",
+    "reference": "docs/ess/evidence/planning-migration/pre-release-task-check.log"
+  }
+}

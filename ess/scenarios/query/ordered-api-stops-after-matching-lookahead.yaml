@@ -1,0 +1,15 @@
+domain: entity.query
+scenario: ordered-api-stops-after-matching-lookahead
+summary: 'Only the consumed prefix is validated: limit plus one matches terminate consumption.'
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Ordered
+  input:
+    instances: '[{"entity":"docs","fields":{"data":1},"id":"a","lifecycle_state":"ready","revision":1,"version":1},{"entity":"docs","fields":{"data":2},"id":"b","lifecycle_state":"ready","revision":1,"version":1},{"entity":"foreign","fields":{"data":3},"id":"c","lifecycle_state":"ready","revision":1,"version":1}]'
+    query: '{"entity":"docs","limit":1}'
+  outcome: returned
+  response:
+    has_next: true
+    ids: '["a"]'
+    ok: true
+type: ess-scenario/4

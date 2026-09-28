@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-18T23:11:53Z",
+  "actor": "human:timo",
+  "artifact": "story:file-store-atomic-groups-from-eventlog",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Complete qualified runtime/provider integration and actual database acceptance at 8b175736",
+    "reference": "~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/final-integration-20260918/acceptance.md"
+  }
+}

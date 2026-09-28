@@ -1,0 +1,9 @@
+format: ess/15
+system: erprobe
+version: v1
+domain: erprobe.core
+commands:
+  - name: erprobe.core.Compare
+    input: [{name: left, type: Integer}, {name: right, type: Integer}]
+    response: [{name: ordering, type: String}]
+    outcomes: [{name: returned, accepts: nothing}]

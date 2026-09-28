@@ -1,11 +1,16 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: initiative:entity-runtime
 kind: initiative
 status: active
 title: Schema-driven entity runtime
 summary: Entity types declared as data and executed by an IO-free deterministic kernel, offered as a Rust library and a CLI; the foundation the engineering-protocols artifact model is to be driven by.
 revision: 8
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-08T23:38:36Z", actor: "human:timo", revision: 3, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-08T23:38:36Z", actor: "human:timo", revision: 4, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-08T23:38:36Z", actor: "human:timo", revision: 5, imported: true}
+- {from: "implemented", to: "active", at: "2026-09-14T22:50:56Z", actor: "human:timo", revision: 7, imported: true}
 ---
 # Initiative: Schema-driven entity runtime
 

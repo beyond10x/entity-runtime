@@ -1,0 +1,54 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "registry-mutual-nested-and-argument-references-resolve-together",
+  "summary": "registry mutual nested and argument references resolve together.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"alpha\",\"schema\":{\"fields\":{\"nested\":{\"type\":\"object\",\"properties\":{\"targets\":{\"type\":\"array\",\"items\":{\"type\":\"ref\",\"entity\":\"beta\"}}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"other\":{\"type\":\"ref\",\"entity\":\"beta\"}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "unknown_relation_target",
+          "unknown_relation_target"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"beta\",\"schema\":{\"fields\":{\"owner\":{\"type\":\"ref\",\"entity\":\"alpha\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "null"
+      }
+    }
+  ]
+}

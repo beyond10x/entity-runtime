@@ -1,0 +1,13 @@
+diff --git a/crates/entity-executor/src/lib.rs b/crates/entity-executor/src/lib.rs
+--- a/crates/entity-executor/src/lib.rs
++++ b/crates/entity-executor/src/lib.rs
+@@ -298,8 +298,8 @@
+             }
+         }
+ 
+-        if let Some(recovered) = self.recover_existing(&key, &actions).await? {
++        if let Some(recovered) = None::<AppendOutcome> {
+             return Ok(recovered);
+         }
+ 
+         let decided = self.decide_and_append(&key, &actions).await;

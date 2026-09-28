@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-26T01:36:32Z",
+  "actor": "timo",
+  "artifact": "story:aep-open-status-vocabulary",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "artifact",
+    "source": "code read 2026-08-26",
+    "reference": "engineering-protocols crates/aep-domain/src/artifact.rs - Other(String) on kind and status; shipped 0.13.0, spent 0.23.0"
+  }
+}

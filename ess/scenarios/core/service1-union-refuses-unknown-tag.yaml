@@ -1,0 +1,25 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-union-refuses-unknown-tag",
+  "summary": "service1 union refuses unknown tag.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"value\",\"version\":1,\"schema\":{\"fields\":{\"payee\":{\"type\":\"union\",\"tag\":\"kind\",\"required\":true,\"variants\":{\"person\":{\"type\":\"string\"},\"company\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"semantics\":\"service/1\"}",
+        "id": "v-1",
+        "fields": "{\"payee\":{\"kind\":\"alien\",\"value\":\"a@b.c\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "fields.payee"
+        ]
+      }
+    }
+  ]
+}

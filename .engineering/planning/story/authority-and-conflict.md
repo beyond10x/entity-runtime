@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:authority-and-conflict
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: Policy is four required words with no default; a losing write is record
 relations:
 - decomposes: epic:centralized-and-hybrid-storage
 revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T02:56:10Z", actor: "timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T02:56:10Z", actor: "timo", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T02:56:10Z", actor: "timo", revision: 4, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 # Story: Which side wins, declared per entity type
 

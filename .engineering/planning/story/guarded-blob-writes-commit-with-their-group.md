@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:guarded-blob-writes-commit-with-their-group
 kind: story
 status: draft

@@ -1,0 +1,17 @@
+type: ess-scenario/4
+domain: entity.store
+scenario: an-absent-memory-subject-is-none
+summary: A real MemoryStore returns absence and no identities for an untouched type.
+timeline:
+  - at: 2026-09-28T00:00:00Z
+    command: entity.store.Load
+    input:
+      request: '{"provider":"Memory","entity":"ticket","id":"missing"}'
+    outcome: returned
+    response: {status: ok, error: '', value: 'null'}
+  - at: 2026-09-28T00:00:01Z
+    command: entity.store.Ids
+    input:
+      request: '{"provider":"Memory","entity":"ticket"}'
+    outcome: returned
+    response: {status: ok, error: '', value: '[]'}

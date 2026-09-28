@@ -1,0 +1,23 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-compare-missing",
+  "summary": "service1 compare missing.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"values\":{\"type\":\"array\",\"items\":{\"type\":\"boolean\"}},\"number\":{\"type\":\"number\"},\"rank\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Check\":{\"outcomes\":[{\"name\":\"yes\",\"when\":{\"compare\":{\"left\":\"$fields.number\",\"op\":\"eq\",\"right\":2}},\"effect\":{\"moves\":{\"from\":\"Held\",\"to\":\"Held\"}}},{\"name\":\"no\",\"refuses\":{\"error\":\"NotTrue\"}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}}",
+        "operation": "Check",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "outcome_unobservable"
+      }
+    }
+  ]
+}

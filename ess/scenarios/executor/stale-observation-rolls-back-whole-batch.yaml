@@ -1,0 +1,48 @@
+domain: entity.executor
+scenario: stale-observation-rolls-back-whole-batch
+summary: A stale later observation prevents every decision, identity and receipt in the batch.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.Batch
+  input:
+    request: '{"actions":[{"entity":"ticket","fields":{"title":"a"},"id":"a","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1},{"arguments":{},"entity":"ticket","expected_revision":1,"id":"a","kind":"execute","operation":"touch","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"two","recorded_at":"2026-09-28T00:00:00Z"}},{"kind":"observe","observation":{"entity":"ticket","envelope":{"actor":null,"causation":null,"correlation":null,"record":{"evidence":null},"record_id":"stale","recorded_at":"2026-09-28T00:00:00Z"},"id":"a","revision":1}}],"key":{"named":"mixed"}}'
+  outcome: returned
+  response:
+    error: RevisionConflict
+    status: error
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.Load
+  input:
+    request: '{"entity":"ticket","id":"a"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+- at: 2026-09-28T00:00:03Z
+  command: entity.executor.LookupRecord
+  input:
+    request: '{"record_id":"one"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+- at: 2026-09-28T00:00:04Z
+  command: entity.executor.HistoryCoordinates
+  input:
+    request: '{"entity":"ticket","id":"a"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+type: ess-scenario/4

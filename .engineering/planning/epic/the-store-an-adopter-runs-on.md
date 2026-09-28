@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: epic:the-store-an-adopter-runs-on
 kind: epic
 status: proposed
@@ -8,6 +8,8 @@ summary: 'What engineering-protocols'' storage waves F, G and H need from the SP
 relations:
 - decomposes: initiative:entity-runtime
 revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-28T14:23:05Z", actor: "human:operator", revision: 4, imported: true}
 ---
 # Epic: The store an adopter runs on
 

@@ -1,0 +1,21 @@
+domain: entity.query
+scenario: nested-numeric-containment
+summary: Numeric comparison remains exact inside nested arrays and object members.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Seed
+  input:
+    definition: '{"entity":"docs","lifecycle":{"initial":"ready","states":["ready"]},"schema":{"fields":{"data":{"type":"json"}}}}'
+    subjects: '[{"fields":{"data":{"values":[100,9007199254740993]}},"id":"a"},{"fields":{"data":{"values":[9007199254740992]}},"id":"b"}]'
+  outcome: returned
+  response:
+    ok: true
+- at: 2026-09-28T00:00:01Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":{"values":[100.0,9007199254740993]}}}'
+  outcome: returned
+  response:
+    ids: '["a"]'
+    ok: true
+type: ess-scenario/4

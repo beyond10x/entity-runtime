@@ -1,0 +1,12 @@
+{
+  "at": "2026-09-20T23:02:26Z",
+  "actor": "human:timo",
+  "artifact": "task:eventlog-provider-pin-verify-once",
+  "kind": "task",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check at 4ce78c11, 10 steps each exit 0, 634 passed 0 failed across 91 test-result lines; postgres-check skipped with ENTITY_POSTGRES_URL unset; plus cargo check --locked exit 0 for -p entity-cli --features eventlog-providers, -p entity-sqlite --features eventlog-facade, -p entity-postgres --features eventlog-facade. Source: unit-4-er-eventlog-pin/gate-4manifest/exits.txt and 01-task-check.log"
+  }
+}

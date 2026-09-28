@@ -1,0 +1,112 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "continuation-keeps-implicit-paths-refusals-and-fulfillment-boundary",
+  "summary": "Public continuation follows direct implicit paths, returns early input refusal and requests fulfillment after loading.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}]}},\"semantics\":\"kernel/1\"}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{}}",
+        "events": "[]",
+        "response": "null"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Continue",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}]}},\"semantics\":\"kernel/1\"}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{}",
+        "id": "p-1"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{}}",
+        "events": "[]",
+        "response": "null"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}]}},\"semantics\":\"service/1\"}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{}}",
+        "events": "[]",
+        "response": "null"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Continue",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}]}},\"semantics\":\"service/1\"}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{}",
+        "id": "p-1"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{}}",
+        "events": "[]",
+        "response": "null"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.Continue",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"no\",\"refuses\":{\"error\":\"Denied\",\"message\":\"not allowed\"}}]}},\"semantics\":\"service/1\"}",
+        "id": "p-1",
+        "instance": "not-json",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "refused",
+        "outcome": "no",
+        "error_name": "Denied",
+        "value": "\"not allowed\""
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.Continue",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"yes\",\"effect\":\"updates\",\"fulfills\":{\"note\":{\"actions\":\"optional\"}}}]}},\"semantics\":\"service/3\"}",
+        "id": "p-1",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "fulfillment_required"
+      }
+    }
+  ]
+}

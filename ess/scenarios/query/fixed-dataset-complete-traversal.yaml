@@ -1,0 +1,65 @@
+domain: entity.query
+scenario: fixed-dataset-complete-traversal
+summary: Keyset pages traverse an unchanged dataset in byte identity order, allowing page-size changes.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Seed
+  input:
+    definition: '{"entity":"docs","lifecycle":{"initial":"ready","states":["ready"]},"schema":{"fields":{"data":{"type":"json"}}}}'
+    subjects: '[{"fields":{"data":1},"id":"é"},{"fields":{"data":1},"id":"a"},{"fields":{"data":1},"id":"aa"},{"fields":{"data":1},"id":"Z"},{"fields":{"data":1},"id":"z"}]'
+  outcome: returned
+  response:
+    ok: true
+- at: 2026-09-28T00:00:01Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","limit":1}'
+  outcome: returned
+  response:
+    count: 1
+    cursor: 5b22646f6373222c7b7d5d.5a
+    has_next: true
+    ids: '["Z"]'
+    ok: true
+- at: 2026-09-28T00:00:02Z
+  command: entity.query.Continue
+  input:
+    query: '{"entity":"docs","limit":2}'
+  outcome: returned
+  response:
+    count: 2
+    has_next: true
+    ids: '["a","aa"]'
+    ok: true
+- at: 2026-09-28T00:00:03Z
+  command: entity.query.Continue
+  input:
+    query: '{"entity":"docs","limit":1}'
+  outcome: returned
+  response:
+    count: 1
+    has_next: true
+    ids: '["z"]'
+    ok: true
+- at: 2026-09-28T00:00:04Z
+  command: entity.query.Continue
+  input:
+    query: '{"entity":"docs","limit":1000}'
+  outcome: returned
+  response:
+    count: 1
+    cursor: ''
+    has_next: false
+    ids: '["é"]'
+    ok: true
+- at: 2026-09-28T00:00:05Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"missing"}'
+  outcome: returned
+  response:
+    count: 0
+    has_next: false
+    ids: '[]'
+    ok: true
+type: ess-scenario/4

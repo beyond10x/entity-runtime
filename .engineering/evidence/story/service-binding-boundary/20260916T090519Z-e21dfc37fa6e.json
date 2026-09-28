@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T09:05:19Z",
+  "actor": "human:timo",
+  "artifact": "story:service-binding-boundary",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "final integration task check and PostgreSQL 12/12; common receipt verified",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/service-binding-integration/integration.md"
+  }
+}

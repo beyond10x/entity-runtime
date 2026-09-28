@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:eventlog-provider-facades-and-legacy-imports
 kind: story
 status: implemented
@@ -45,6 +45,10 @@ scope:
 - confidence: inferred
   path: website/
 revision: 19
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-18T23:11:53Z", actor: "human:timo", revision: 17, decided_on: {"recorded":{"test_result":3,"review_outcome":2}}, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-18T23:11:53Z", actor: "human:timo", revision: 18, decided_on: {"recorded":{"test_result":3,"review_outcome":2}}, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-18T23:11:53Z", actor: "human:timo", revision: 19, decided_on: {"recorded":{"test_result":3,"review_outcome":2}}, imported: true}
 ---
 ## Outcome
 

@@ -1,0 +1,13 @@
+diff --git a/crates/entity-shell/src/lib.rs b/crates/entity-shell/src/lib.rs
+index aab24af2..737ae6b8 100644
+--- a/crates/entity-shell/src/lib.rs
++++ b/crates/entity-shell/src/lib.rs
+@@ -225,7 +225,7 @@ where
+                 });
+             }
+         }
+-        if instance.revision != expected_revision {
++        if false && instance.revision != expected_revision {
+             return Err(ShellError::StaleRevision {
+                 entity: entity.to_owned(),
+                 id: id.to_owned(),

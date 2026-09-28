@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: task:eventlog-provider-pin-verify-once
 kind: task
 status: implemented
@@ -9,6 +9,10 @@ relations:
 - decomposes: story:eventlog-recorded-adapter-and-bridge
 - serves: vision:O2
 revision: 7
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-20T22:40:55Z", actor: "human:timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-20T22:40:55Z", actor: "human:timo", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-21T13:56:03Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":2,"metric_observation":1,"review_outcome":3}}, imported: true}
 ---
 ## Done when
 

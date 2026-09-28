@@ -1,0 +1,14 @@
+domain: entity.store
+scenario: projection-groups-sorted-identities
+summary: Projection results filter entity/version/state, retain scalar keys and omit missing keys.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.Project
+  input:
+    request: '{"definition":{"entity":"ticket","lifecycle":{"initial":"open","states":["open","closed"]},"projections":{"open_titles":{"in_state":"open","key":"$fields.title"},"states":{"key":"$state"}},"schema":{"fields":{"title":{"type":"string"}}},"version":1},"instances":[{"entity":"ticket","version":2,"id":"other-version","lifecycle_state":"open","revision":1,"fields":{"title":"foreign-version"}},{"entity":"ticket","fields":{"title":"b"},"id":"b","lifecycle_state":"open","revision":1,"version":1},{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},{"entity":"ticket","fields":{"title":"c"},"id":"c","lifecycle_state":"closed","revision":2,"version":1},{"entity":"ticket","fields":{},"id":"missing","lifecycle_state":"open","revision":1,"version":1},{"entity":"other","fields":{"title":"foreign"},"id":"foreign","lifecycle_state":"open","revision":1,"version":1}]}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"open_titles":{"a":["a"],"b":["b"]},"states":{"closed":["c"],"open":["a","b","missing"]}}'
+type: ess-scenario/4

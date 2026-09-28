@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "nested-defaults-apply-only-to-supplied-objects",
+  "summary": "nested defaults apply only to supplied objects.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"value\",\"version\":1,\"schema\":{\"fields\":{\"missing\":{\"type\":\"object\",\"properties\":{\"n\":{\"type\":\"integer\",\"default\":7}}},\"present\":{\"type\":\"object\",\"properties\":{\"n\":{\"type\":\"integer\",\"default\":7}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "v-1",
+        "fields": "{\"present\":{}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"value\",\"version\":1,\"id\":\"v-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"present\":{\"n\":7}}}"
+      }
+    }
+  ]
+}

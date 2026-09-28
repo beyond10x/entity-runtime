@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-collection-count",
+  "summary": "service1 collection count.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"values\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"rank\":{\"type\":\"string\"},\"value\":{\"type\":\"number\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"scales\":{},\"invariants\":[{\"name\":\"rule\",\"assert\":{\"compare\":{\"left\":\"$fields.values.count\",\"op\":\"eq\",\"right\":2}}}]}",
+        "id": "p-1",
+        "fields": "{\"values\":[1,2]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"values\":[1,2]}}"
+      }
+    }
+  ]
+}

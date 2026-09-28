@@ -1,0 +1,2 @@
+executable-system-specification:er-library-contracts moved validated -> conforming (revision 7)
+  derived ess_conformance eligibility from 1 admitted current complete ess_conformance_coverage_v1 record(s)

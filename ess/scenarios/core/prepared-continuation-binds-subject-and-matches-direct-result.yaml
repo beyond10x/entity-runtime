@@ -1,0 +1,180 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "prepared-continuation-binds-subject-and-matches-direct-result",
+  "summary": "prepared continuation binds subject and matches direct result.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Prepare",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "load",
+        "arguments": "{\"note\":\"defaulted\"}",
+        "subject": "{\"entity\":\"probe\",\"id\":\"p-1\",\"version\":1}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"note\":\"old\"}}",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "accepted",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"defaulted\"}}",
+        "events": "[]",
+        "response": "{}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.Fulfill",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"note\":\"old\"}}",
+        "actions": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "accepted",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"defaulted\"}}",
+        "events": "[]",
+        "response": "{}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Fulfill",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{}",
+        "instance": "{\"entity\":\"foreign\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"note\":\"old\"}}",
+        "actions": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "entity_mismatch"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.Fulfill",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"other\",\"lifecycle_state\":\"Missing\",\"revision\":1,\"fields\":{\"note\":\"old\"}}",
+        "actions": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "subject_mismatch"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.Fulfill",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Missing\",\"revision\":1,\"fields\":{\"note\":\"old\"}}",
+        "actions": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "unknown_state"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:06Z",
+      "command": "entity.core.Continue",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"note\":\"old\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "accepted",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"defaulted\"}}",
+        "events": "[]",
+        "response": "{}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:07Z",
+      "command": "entity.core.Continue",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{}",
+        "instance": "{\"entity\":\"foreign\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"note\":\"old\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "entity_mismatch"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:08Z",
+      "command": "entity.core.Continue",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"other\",\"lifecycle_state\":\"Missing\",\"revision\":1,\"fields\":{\"note\":\"old\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "subject_mismatch"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:09Z",
+      "command": "entity.core.Continue",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"defaulted\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"set\":{\"note\":\"$args.note\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Missing\",\"revision\":1,\"fields\":{\"note\":\"old\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "unknown_state"
+      }
+    }
+  ]
+}

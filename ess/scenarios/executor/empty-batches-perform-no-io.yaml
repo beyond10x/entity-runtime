@@ -1,0 +1,23 @@
+domain: entity.executor
+scenario: empty-batches-perform-no-io
+summary: An empty action list ignores an invalid blank batch key and reaches no provider.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Batch
+  input:
+    request: '{"actions":[],"key":{"named":""}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"kind":"Empty"}'
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.Trace
+  input:
+    request: '{}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+type: ess-scenario/4

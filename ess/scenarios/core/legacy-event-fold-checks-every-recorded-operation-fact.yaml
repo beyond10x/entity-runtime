@@ -1,0 +1,190 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "legacy-event-fold-checks-every-recorded-operation-fact",
+  "summary": "legacy event fold checks every recorded operation fact.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Closed\",\"revision\":2,\"fields\":{\"n\":1}}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"foreign\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "entity_mismatch"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"other\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Closed\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Closed\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":\"bad\"},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":\"bad\"},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:06Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":false,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":false,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:07Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":2},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":2},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:08Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":11},\"args\":{\"allow\":true,\"n\":11},\"payload\":{\"n\":11}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":11},\"args\":{\"allow\":true,\"n\":11},\"payload\":{\"n\":11}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:09Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":6},\"args\":{\"allow\":true,\"n\":6},\"payload\":{\"n\":6}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":6},\"args\":{\"allow\":true,\"n\":6},\"payload\":{\"n\":6}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:10Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:11Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Unknown\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:12Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Unknown\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":0},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:13Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true,\"min\":0,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"lte\":[\"$fields.n\",5]}}],\"create\":{\"emit\":{\"type\":\"Started\",\"payload\":{\"n\":\"$fields.n\"}}},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"n\":{\"type\":\"integer\",\"required\":true},\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"set\":{\"n\":\"$args.n\"},\"emits\":[{\"type\":\"First\",\"payload\":{\"n\":\"$fields.n\"}},{\"type\":\"Second\",\"payload\":{\"n\":\"$fields.n\"}}]}}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":1,\"type\":\"Started\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"n\":1},\"args\":{\"n\":0},\"payload\":{\"n\":0}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"First\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}},{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Second\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"n\":1},\"args\":{\"allow\":true,\"n\":1},\"payload\":{\"n\":1}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+diff --git a/crates/entity-core/src/number.rs b/crates/entity-core/src/number.rs
+index 4e312ad6..3de8a862 100644
+--- a/crates/entity-core/src/number.rs
++++ b/crates/entity-core/src/number.rs
+@@ -50,7 +50,7 @@ pub fn compare(left: &Number, right: &Number) -> Ordering {
+     if left.negative {
+         order.reverse()
+     } else {
+-        order
++        order.reverse()
+     }
+ }
+ 

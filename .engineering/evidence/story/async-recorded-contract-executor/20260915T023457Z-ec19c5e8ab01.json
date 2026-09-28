@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-15T02:34:57Z",
+  "actor": "human:timo",
+  "artifact": "story:async-recorded-contract-executor",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "Root inspected mandatory public-writer validation, unchanged independent regression, complete affected checks and causal removal/restoration",
+    "reference": "crates/entity-store/tests/async_recorded_adversary_pass2.rs",
+    "review": "review-result:er-async-adversary-pass-2",
+    "outcome": "fixed"
+  }
+}

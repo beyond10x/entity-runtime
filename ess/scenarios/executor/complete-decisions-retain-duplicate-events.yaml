@@ -1,0 +1,38 @@
+domain: entity.executor
+scenario: complete-decisions-retain-duplicate-events
+summary: A decision containing duplicate domain facts advances one revision and retains both ordered events in one receipt member.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[{"payload":{"id":"$id"},"type":"Closed"},{"payload":{"id":"$id"},"type":"Closed"}],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.Create
+  input:
+    request: '{"entity":"ticket","fields":{"title":"a"},"id":"a","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.Execute
+  input:
+    request: '{"arguments":{},"entity":"ticket","expected_revision":1,"id":"a","operation":"close","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"two","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:03Z
+  command: entity.executor.HistoryCoordinates
+  input:
+    request: '{"entity":"ticket","id":"a"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[{"events":[],"kind":"decision","receipt":{"batch_key":{"single_record":"one"},"kind":"decision","member_index":0,"position":{"store":0,"subject":0},"record_id":"one","revision":1,"subject":{"entity":"ticket","id":"a"}},"record_id":"one","revision":1},{"events":[{"args":{},"changed":{},"entity":"ticket","from_state":"open","id":"a","payload":{"id":"a"},"revision":2,"to_state":"closed","type":"Closed","version":1},{"args":{},"changed":{},"entity":"ticket","from_state":"open","id":"a","payload":{"id":"a"},"revision":2,"to_state":"closed","type":"Closed","version":1}],"kind":"decision","receipt":{"batch_key":{"single_record":"two"},"kind":"decision","member_index":0,"position":{"store":1,"subject":1},"record_id":"two","revision":2,"subject":{"entity":"ticket","id":"a"}},"record_id":"two","revision":2}]'
+type: ess-scenario/4

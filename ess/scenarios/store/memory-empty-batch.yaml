@@ -1,0 +1,23 @@
+domain: entity.store
+scenario: memory-empty-batch
+summary: An empty atomic batch leaves the store empty.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.AtomicBatch
+  input:
+    request: '{"commits":[]}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.Ids
+  input:
+    request: '{"entity":"ticket"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+type: ess-scenario/4

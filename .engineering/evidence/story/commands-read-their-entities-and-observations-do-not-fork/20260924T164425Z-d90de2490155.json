@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-24T16:44:25Z",
+  "actor": "human:timo",
+  "artifact": "story:commands-read-their-entities-and-observations-do-not-fork",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "entity-store, entity-executor, entity-eventlog --all-features: 239 passed; clippy, fmt, check-requirements clean",
+    "reference": "git:beyond10x/entity-runtime@e16fa323"
+  }
+}

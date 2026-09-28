@@ -1,0 +1,21 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "kernel-condition-contains",
+  "summary": "kernel condition contains.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"value\":{\"type\":\"json\"},\"other\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"rule\",\"assert\":{\"contains\":[\"$fields.value\",2]},\"message\":\"rule\"}]}",
+        "id": "p-1",
+        "fields": "{\"value\":[1,2]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    }
+  ]
+}

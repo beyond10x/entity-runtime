@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: task:pure-service-semantics
 kind: task
 status: implemented
@@ -12,6 +12,10 @@ relations:
 - informed_by: task:service-semantic-contract
 - decomposes: story:pure-service-semantics
 revision: 8
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-16T00:06:53Z", actor: "human:timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-16T00:06:53Z", actor: "human:timo", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-16T06:27:45Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":3,"review_outcome":8}}, imported: true}
 ---
 ## Approved requirement and prerequisite
 

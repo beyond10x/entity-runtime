@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-adjacent-union-preserves-tag-and-value",
+  "summary": "service1 adjacent union preserves tag and value.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"value\",\"version\":1,\"schema\":{\"fields\":{\"payee\":{\"type\":\"union\",\"tag\":\"kind\",\"required\":true,\"variants\":{\"person\":{\"type\":\"string\"},\"company\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"semantics\":\"service/1\"}",
+        "id": "v-1",
+        "fields": "{\"payee\":{\"kind\":\"person\",\"value\":\"a@b.c\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"value\",\"version\":1,\"id\":\"v-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"payee\":{\"kind\":\"person\",\"value\":\"a@b.c\"}}}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "at": "2026-09-20T23:02:26Z",
+  "actor": "human:timo",
+  "artifact": "task:eventlog-provider-pin-verify-once",
+  "kind": "task",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "metric_observation",
+    "source": "entity-eventlog lane 'cargo +1.91.0 test -p entity-eventlog --all-features --locked', interleaved A/B, three pairs: median 10.97 s at f802eb8 vs 11.03 s at c698923; 88 passed 0 failed in all six runs. No difference, because every case in this lane opens a fresh empty tempfile store, while the provider cost the pin removes scales with the bytes already on disk. Measured, not a failure. Source: unit-4-er-eventlog-pin/implementation-report.md section 5"
+  }
+}

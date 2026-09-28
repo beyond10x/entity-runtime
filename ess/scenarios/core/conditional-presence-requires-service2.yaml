@@ -1,0 +1,20 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "conditional-presence-requires-service2",
+  "summary": "conditional presence requires service2.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"fixed\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\"]},\"create\":{\"arguments\":{\"fields\":{\"fixed\":{\"type\":\"string\",\"required\":true},\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"fixed\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set\":{\"fixed\":\"$args.fixed\"},\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"InvoiceCreated\",\"payload\":{\"fixed\":\"$fields.fixed\"},\"payload_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}],\"responds\":{\"fixed\":\"$fields.fixed\"},\"responds_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition"
+      }
+    }
+  ]
+}

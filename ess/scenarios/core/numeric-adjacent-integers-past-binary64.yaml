@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "numeric-adjacent-integers-past-binary64",
+  "summary": "numeric adjacent integers past binary64.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"numeric\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"big\":{\"type\":\"number\"},\"same\":{\"type\":\"number\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"rule\",\"assert\":{\"compare\":{\"left\":\"$fields.big\",\"op\":\"lt\",\"right\":\"$fields.same\"}}}]}",
+        "id": "n-1",
+        "fields": "{\"big\":9007199254740992,\"same\":9007199254740993}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"numeric\",\"version\":1,\"id\":\"n-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"big\":9007199254740992,\"same\":9007199254740993}}"
+      }
+    }
+  ]
+}

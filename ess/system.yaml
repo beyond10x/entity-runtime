@@ -1,0 +1,11 @@
+format: ess/17
+system: entity
+version: v1
+domains:
+  - entity.core
+  - entity.store
+  - entity.executor
+  - entity.shell
+  - entity.query
+  - entity.service
+  - entity.recording

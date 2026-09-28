@@ -1,0 +1,20 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "replay-rejects-empty-history",
+  "summary": "replay rejects empty history.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Replay",
+      "input": {
+        "records": "[]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    }
+  ]
+}

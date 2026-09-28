@@ -1,0 +1,56 @@
+type: ess-scenario/4
+domain: entity.executor
+scenario: service-3-fulfillment-retry
+summary: Actual asynchronous execution retains Set and Remove actions, verifies history, and refuses changed fulfillment on retry.
+timeline:
+  - at: 2026-09-28T00:00:00Z
+    command: entity.executor.Register
+    input:
+      request: '{"definition":{"entity":"invoice","version":1,"semantics":"service/3","schema":{"fields":{"issued_at":{"type":"string","required":true},"note":{"type":"string"}}},"lifecycle":{"initial":"Draft","states":["Draft"]},"operations":{"Issue":{"outcomes":[{"name":"issued","effect":"updates","fulfills":{"issued_at":{"actions":"required"},"note":{"actions":"optional"}}}]}}}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-09-28T00:00:01Z
+    command: entity.executor.Create
+    input:
+      request: '{"entity":"invoice","id":"i-1","version":1,"fields":{"issued_at":"pending","note":"remove"},"recording":{"record_id":"r-1","recorded_at":"2026-09-28T00:00:00Z","correlation":null,"causation":null,"actor":null}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-09-28T00:00:02Z
+    command: entity.executor.Execute
+    input:
+      request: '{"entity":"invoice","id":"i-1","expected_revision":1,"operation":"Issue","arguments":{},"fulfillments":{"issued_at":{"set":{"value":"issued"}},"note":"remove"},"recording":{"record_id":"r-2","recorded_at":"2026-09-28T00:00:00Z","correlation":null,"causation":null,"actor":null}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-09-28T00:00:03Z
+    command: entity.executor.Load
+    input: {request: '{"entity":"invoice","id":"i-1"}'}
+    outcome: returned
+    response:
+      status: ok
+      value: '{"entity":"invoice","fields":{"issued_at":"issued"},"id":"i-1","lifecycle_state":"Draft","revision":2,"version":1}'
+  - at: 2026-09-28T00:00:04Z
+    command: entity.executor.ClearRegistry
+    input: {request: '{}'}
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-09-28T00:00:05Z
+    command: entity.executor.Execute
+    input:
+      request: '{"entity":"invoice","id":"i-1","expected_revision":1,"operation":"Issue","arguments":{},"fulfillments":{"issued_at":{"set":{"value":"issued"}},"note":"remove"},"recording":{"record_id":"r-2","recorded_at":"2026-09-28T00:00:00Z","correlation":null,"causation":null,"actor":null}}'
+    outcome: returned
+    response:
+      status: ok
+      value: '{"kind":"Committed","receipt":{"single":{"batch_key":{"single_record":"r-2"},"kind":"decision","member_index":0,"position":{"store":1,"subject":1},"record_id":"r-2","revision":2,"subject":{"entity":"invoice","id":"i-1"}}},"replayed":true}'
+  - at: 2026-09-28T00:00:06Z
+    command: entity.executor.Execute
+    input:
+      request: '{"entity":"invoice","id":"i-1","expected_revision":1,"operation":"Issue","arguments":{},"fulfillments":{"issued_at":{"set":{"value":"different"}},"note":"remove"},"recording":{"record_id":"r-2","recorded_at":"2026-09-28T00:00:00Z","correlation":null,"causation":null,"actor":null}}'
+    outcome: returned
+    response: {status: error, error: RecordConflict}
+  - at: 2026-09-28T00:00:07Z
+    command: entity.executor.VerifyComplete
+    input: {request: '{"scope":"service-3"}'}
+    outcome: returned
+    response:
+      status: ok
+      value: '{"coverage":"CompleteSnapshot","scope":"service-3","subjects":[{"kind":"VerifiedFromGenesis","subject":{"entity":"invoice","id":"i-1"}}]}'

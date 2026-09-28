@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T06:27:44Z",
+  "actor": "human:timo",
+  "artifact": "task:pure-service-semantics",
+  "kind": "task",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Final corrected source: workspace Clippy fmt MSRV and task check with actual PostgreSQL all exit0; exact-source integration",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/service-source-correction-2/integration.md"
+  }
+}

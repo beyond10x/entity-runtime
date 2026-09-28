@@ -1,0 +1,33 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "derived-creation-selects-second-identity",
+  "summary": "derived creation selects second identity.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.CreateDerived",
+      "input": {
+        "definition": "{\"entity\":\"branch_keyed\",\"version\":1,\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"},\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"create\":{\"arguments\":{\"fields\":{\"first\":{\"type\":\"boolean\",\"required\":true}}},\"outcomes\":[{\"name\":\"first\",\"when\":{\"eq\":[\"$args.first\",true]},\"effect\":\"creates\",\"set\":{\"key\":\"A\"}},{\"name\":\"second\",\"effect\":\"creates\",\"set\":{\"key\":\"B\"}}]}}",
+        "fields": "{\"first\":false}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "second",
+        "instance": "{\"entity\":\"branch_keyed\",\"version\":1,\"id\":\"s:B\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"key\":\"B\"}}",
+        "events": "[]"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ReplayReturned",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"branch_keyed\",\"version\":1,\"id\":\"s:B\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"key\":\"B\"}}"
+      }
+    }
+  ]
+}

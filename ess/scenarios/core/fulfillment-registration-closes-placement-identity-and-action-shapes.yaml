@@ -1,0 +1,98 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "fulfillment-registration-closes-placement-identity-and-action-shapes",
+  "summary": "fulfillment registration closes placement identity and action shapes.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"identity\":{\"field\":\"key\"},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"fulfills\":{\"note\":{\"actions\":\"optional\"}}}]}},\"create\":{\"outcomes\":[{\"name\":\"created\",\"effect\":\"creates\",\"fulfills\":{\"note\":{\"actions\":\"optional\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "fulfillment_on_create"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"identity\":{\"field\":\"key\"},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"fulfills\":{\"key\":{\"actions\":\"required\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "fulfillment_identity_field"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"identity\":{\"field\":\"key\"},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"fulfills\":{\"missing\":{\"actions\":\"optional\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "fulfillment_field_unknown"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"identity\":{\"field\":\"key\"},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"fulfills\":{\"note\":{\"actions\":\"required\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "fulfillment_presence_mismatch"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"identity\":{\"field\":\"key\"},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"fulfills\":{\"note\":{\"actions\":\"optional\"}},\"set\":{\"note\":\"fixed\"}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "fulfillment_set_conflict"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"identity\":{\"field\":\"key\"},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"updates\",\"fulfills\":{\"note\":{\"actions\":\"optional\"}},\"refuses\":{\"error\":\"Denied\"}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "refusal_mutates_state"
+        ]
+      }
+    }
+  ]
+}

@@ -35,10 +35,24 @@ its name promises.
 
 ## Which documents are normative
 
+The executable contract for `entity-core`, `entity-store`, `entity-executor`, `entity-shell` and
+`entity-query` is composed by [`ess/ess-inputs.yaml`](ess/ess-inputs.yaml). Its
+[traceability registers and execution guide](docs/ess/README.md) connect named ESS scenarios to
+the requirements, designs, public APIs and static Rust obligations. `task check` runs the
+standalone Rust checker and refuses generated drift, unreviewed scenario-contract changes or
+incomplete execution. Keep the specification and implementation evidence together when changing
+these libraries; record disagreements as AEP blockers rather than weakening assertions.
+
+The specification is `conforming`: AEP admitted and rechecked the exact
+[release evidence](docs/ess/evidence/final/release/README.md) after complete execution, independent
+review and the repository gate. ESS is authoritative for the five libraries' declared behavior.
+The following requirements and designs retain their IDs, rationale and static obligations;
+outside this declared scope they retain their existing authority.
+
 * [`docs/requirements.md`](docs/requirements.md) — the register. Every row names a test, a type or
   a manifest that pins it; `design` alone marks a gap and is a story.
-* [`docs/design/kernel-v0.1.md`](docs/design/kernel-v0.1.md) — the kernel's semantics. Where code
-  and this document disagree, the document wins until a later revision says otherwise.
+* [`docs/design/kernel-v0.1.md`](docs/design/kernel-v0.1.md) — the kernel's semantic rationale,
+  traced to the executable core contract. Record any disagreement as a governed blocker.
 * [`docs/design/kernel-v0.2.md`](docs/design/kernel-v0.2.md) and
   [`docs/design/store-v0.2.md`](docs/design/store-v0.2.md) — validated execution handles,
   verifiable decision records, recorded provider history and File Store v2. They supersede the
@@ -158,7 +172,8 @@ what it records, in both directions — a moved copy and an unpinned file beside
 `postgres-check` (the Postgres provider's tests
 against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they did not run) ·
 `eventlog-runtime-check` (`entity-eventlog`'s tests and Clippy with `--all-features` on the
-`+1.91.0` toolchain) · `notes-check`. Every cargo step runs `--locked`, so the gate judges the dependency
+`+1.91.0` toolchain) · `notes-check` · `ess-check` (canonical regeneration, reviewed scenario
+contracts and complete execution against the selected libraries). Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
 
 The local `pin-check` holds the AEP lifecycle fixture against its own `PIN.md`.
@@ -280,6 +295,13 @@ requirements registers, versioned designs or reviews. `task site-build` runs the
 
 ## Planning artifacts
 
+This repository uses `aep.project/5` with `store: {git: {}}`. Artifact files are the authority;
+transitions live in their frontmatter and evidence is stored under `.engineering/evidence/`.
+Use a current AEP CLI (at least 0.63.1); `.github/workflows/planning.yml` pins the exact compatible
+source revision for CI. The verified conversion from the retired Eventlog layout is recorded in
+`docs/ess/evidence/planning-migration/`. Do not recreate the removed Eventlog store or use the
+retired `validate --against` option.
+
 Plan items are markdown files under `.engineering/planning/<kind>/<slug>.md`: YAML frontmatter the
 `aep` CLI owns, and a body the agent and operator own. The repository-local skill at
 `.agents/skills/planning/SKILL.md` carries the full model and store conventions.
@@ -343,9 +365,17 @@ commit that delivered the work, and its `CHANGELOG.md` heading matches the versi
 Pushing the tag queues the release: `.github/workflows/release.yml` runs the gate concurrently with
 building the
 `entity` command for Linux (x86_64, aarch64), macOS (x86_64, arm64) and Windows (x86_64), and
-creates the GitHub Release only after both succeed, with the archives, a `SHA256SUMS` file and the tag's `CHANGELOG.md`
-section as its notes. The provenance job refuses a tag unless the tag, workspace version and dated
+retains a `release-bundle-<tag>` artifact only after both succeed, with the archives, a
+`SHA256SUMS` file and the tag's `CHANGELOG.md` section as its notes. The provenance job refuses a tag unless the tag, workspace version and dated
 changelog heading agree. There is no generated-notes fallback: cut the section first.
+
+After the exact tag's release run succeeds, download its named bundle, verify every archive
+against `SHA256SUMS`, and publish through the bot-authenticated Gates delivery tools. Create a
+draft release through `b10x-gates api`, upload the verified assets through Gates' bot delivery,
+then publish the draft after verifying the complete asset set. Verify `b10x-bot[bot]` as the
+release author and the tag's reachability from `origin/main`. CI holds read-only permissions;
+its Actions identity must not create the release. A successful build alone is still queued
+until the published release and all required artifacts have been verified.
 
 ```console
 task check

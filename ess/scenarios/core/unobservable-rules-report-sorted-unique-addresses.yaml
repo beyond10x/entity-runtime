@@ -1,0 +1,45 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "unobservable-rules-report-sorted-unique-addresses",
+  "summary": "Both invariant and precondition refusals retain every unresolved address in sorted duplicate-free order.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"a\":{\"type\":\"json\"},\"z\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"name\":\"evidence\",\"message\":\"every observed input must exist\",\"assert\":{\"all\":[{\"eq\":[\"$fields.z\",1]},{\"eq\":[\"$fields.a\",2]},{\"eq\":[\"$fields.z\",3]}]}}]}",
+        "id": "p-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable",
+        "unresolved": [
+          "$fields.a",
+          "$fields.z"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"a\":{\"type\":\"json\"},\"z\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"preconditions\":[{\"name\":\"evidence\",\"message\":\"every observed input must exist\",\"assert\":{\"any\":[{\"eq\":[\"$fields.z\",1]},{\"eq\":[\"$fields.a\",2]},{\"eq\":[\"$fields.z\",3]}]}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$fields.a",
+          "$fields.z"
+        ]
+      }
+    }
+  ]
+}

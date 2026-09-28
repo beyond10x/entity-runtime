@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:service-operation-field-fulfillment
 kind: story
 status: implemented
@@ -47,6 +47,10 @@ scope:
 - confidence: cited
   path: docs/requirements.md
 revision: 26
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-16T09:45:38Z", actor: "human:timo", revision: 12, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-16T09:54:55Z", actor: "human:timo", revision: 17, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-16T12:23:49Z", actor: "human:timo", revision: 26, decided_on: {"recorded":{"test_result":1,"review_outcome":2}}, imported: true}
 ---
 ## Approved requirement and exact blocker
 

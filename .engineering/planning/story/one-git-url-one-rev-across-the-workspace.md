@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:one-git-url-one-rev-across-the-workspace
 kind: story
 status: draft

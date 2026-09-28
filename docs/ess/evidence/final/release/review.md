@@ -1,0 +1,9 @@
+## Bounded independent evidence and release-manifest review
+
+No concrete findings. This read-only review covered the final 0.25.1 evidence organization, selected source identity, suite/report association, internal dependency constraints, honest adoption status and release bundle workflow. It did not approve a future release or the pending AEP lifecycle change.
+
+The release suite's exact SHA256 is a6f8ceb64b95f76d33f75c741fb3b67770ad6130243504b77761921be6832548 and matches the report. All 414 selected IDs match the detailed run; all scenarios and checks passed, with 303 authored and 111 generated and no refused/outside/error/skip. Component-wise path ordering matching Rust PathBuf independently reproduces source closure 297bbdd096984bb2a24bb963707d2604592525faf348a1283662b37ab9fd52a4. The reviewer corrected its initial string-ordering probe; the actual checker independently reconfirmed the retained source and executable identities without rebuilding.
+
+The parent final directory explicitly identifies the earlier 567200cbb0faefbaa6efaa7ad849393b7088e60e151c21405e114dbbac07f92c reader-integration run and prototype gate logs. Original prototype and mutation evidence retain their historical identities. The guide and AGENTS retain pending authority language until the lifecycle accepts current evidence. Every internal entity dependency names 0.25.1; the isolated ESS manifest and lock agree on ac6fc6fe2f39b43f016e4d3a9edecb3573f7d6a1. Release CI selects only build-* artifacts after the gate; bot publication remains a distinct verified step.
+
+No repository, store or status changes were made by the reviewer. Its managed lease was released. Root retains the review verbatim in substance and records its no-op outcome through AEP; future authority and publication claims require their own actual evidence.

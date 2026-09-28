@@ -1,0 +1,17 @@
+{
+  "ess_base_version": "0.38.0",
+  "ess_git_revision": "ac6fc6fe2f39b43f016e4d3a9edecb3573f7d6a1",
+  "ess_cli_sha256": "61646f67cbc92f11ed17be6e3e8bcadf40cf4d71740c0410789833c694aeebb9",
+  "aep_version": "0.63.1",
+  "aep_binary_source_revision": "a0ea362399385fbcfcb3df1d812760919801acd2",
+  "aep_published_revision": "068478785661ed41b05146ab77858d1b94794388",
+  "aep_sha256": "6801c5769eded73f043748120e9916a976ee6464a810b83bc8b1e160d6c0e355",
+  "aep_lifecycle_binary_source_revision": "6c381ed2ba9fd24adf76c4479e8aebc94daef717",
+  "aep_lifecycle_sha256": "50ac9f1ce4c35429151fe2b70873a040e32328a3484fef53f1d0ffc7f6725ae5",
+  "aep_first_integrated_source_revision": "582b5b407e36b791d022d10f8ed08d1fcec9b737",
+  "aep_first_integrated_store_validation_sha256": "287123e669cb52aea67a0f856028fac5bb460f9c31c8930b6942addfcefc0b34",
+  "aep_integrated_source_revision": "18a18a3f1cfa110dc5c9a675b3e9956f74c29bb7",
+  "aep_final_store_validation_sha256": "bfbcfa7b1aa8f7c629332f7b5d4363b5fff9f1391e22fd2ba44c4824ba5b5556",
+  "aep_lifecycle_source_note": "Built from the reviewed source before the evidence-only commit; this commit preserves that source. Original admission and lifecycle admission retain distinct binary identities.",
+  "checker_msrv": "1.85.0"
+}

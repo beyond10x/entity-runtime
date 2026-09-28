@@ -1,0 +1,29 @@
+domain: entity.executor
+scenario: changed-batch-order-conflicts
+summary: Reversing an existing named batch cannot create a new history under its old identity.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.Batch
+  input:
+    request: '{"actions":[{"entity":"ticket","fields":{"title":"a"},"id":"a","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1},{"entity":"ticket","fields":{"title":"b"},"id":"b","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"two","recorded_at":"2026-09-28T00:00:00Z"},"version":1}],"key":{"named":"original"}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.Batch
+  input:
+    request: '{"actions":[{"entity":"ticket","fields":{"title":"b"},"id":"b","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"two","recorded_at":"2026-09-28T00:00:00Z"},"version":1},{"entity":"ticket","fields":{"title":"a"},"id":"a","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1}],"key":{"named":"original"}}'
+  outcome: returned
+  response:
+    error: RecordConflict
+    status: error
+type: ess-scenario/4

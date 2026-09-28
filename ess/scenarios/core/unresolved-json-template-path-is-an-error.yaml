@@ -1,0 +1,23 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "unresolved-json-template-path-is-an-error",
+  "summary": "A dynamically missing JSON path refuses event materialization rather than returning null.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"emits\":[{\"type\":\"Changed\",\"payload\":{\"missing\":\"$fields.extra.absent\"}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"extra\":{}}}",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "template"
+      }
+    }
+  ]
+}

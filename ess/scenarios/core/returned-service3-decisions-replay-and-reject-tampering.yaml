@@ -1,0 +1,60 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "returned-service3-decisions-replay-and-reject-tampering",
+  "summary": "returned service3 decisions replay and reject tampering.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/3\",\"identity\":{\"field\":\"invoice_id\"},\"schema\":{\"fields\":{\"invoice_id\":{\"type\":\"string\",\"required\":true},\"issued_at\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\",\"Issued\"]},\"operations\":{\"Issue\":{\"arguments\":{\"fields\":{\"accept\":{\"type\":\"boolean\",\"required\":true}}},\"response\":{\"fields\":{\"issued_at\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"rejected\",\"when\":{\"eq\":[\"$args.accept\",false]},\"refuses\":{\"error\":\"NotAccepted\"}},{\"name\":\"issued\",\"effect\":{\"moves\":{\"from\":\"Draft\",\"to\":\"Issued\"}},\"fulfills\":{\"issued_at\":{\"actions\":\"required\"},\"note\":{\"actions\":\"optional\"}},\"emits\":[{\"type\":\"InvoiceIssued\",\"payload\":{\"issued_at\":\"$fields.issued_at\"}}],\"responds\":{\"issued_at\":\"$fields.issued_at\"}}]}}}",
+        "id": "s:inv-1",
+        "fields": "{\"invoice_id\":\"inv-1\",\"issued_at\":\"pending\",\"note\":\"remove me\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Fulfill",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/3\",\"identity\":{\"field\":\"invoice_id\"},\"schema\":{\"fields\":{\"invoice_id\":{\"type\":\"string\",\"required\":true},\"issued_at\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\",\"Issued\"]},\"operations\":{\"Issue\":{\"arguments\":{\"fields\":{\"accept\":{\"type\":\"boolean\",\"required\":true}}},\"response\":{\"fields\":{\"issued_at\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"rejected\",\"when\":{\"eq\":[\"$args.accept\",false]},\"refuses\":{\"error\":\"NotAccepted\"}},{\"name\":\"issued\",\"effect\":{\"moves\":{\"from\":\"Draft\",\"to\":\"Issued\"}},\"fulfills\":{\"issued_at\":{\"actions\":\"required\"},\"note\":{\"actions\":\"optional\"}},\"emits\":[{\"type\":\"InvoiceIssued\",\"payload\":{\"issued_at\":\"$fields.issued_at\"}}],\"responds\":{\"issued_at\":\"$fields.issued_at\"}}]}}}",
+        "id": "s:inv-1",
+        "operation": "Issue",
+        "arguments": "{\"accept\":true}",
+        "instance": "{\"entity\":\"invoice\",\"version\":1,\"id\":\"s:inv-1\",\"lifecycle_state\":\"Draft\",\"revision\":1,\"fields\":{\"invoice_id\":\"inv-1\",\"issued_at\":\"pending\",\"note\":\"remove me\"}}",
+        "actions": "{\"issued_at\":{\"set\":{\"value\":\"done\"}},\"note\":\"remove\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "response": "{\"issued_at\":\"done\"}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ReplayReturned",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"invoice\",\"version\":1,\"id\":\"s:inv-1\",\"lifecycle_state\":\"Issued\",\"revision\":2,\"fields\":{\"invoice_id\":\"inv-1\",\"issued_at\":\"done\"}}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ReplayTampered",
+      "input": {
+        "patch": "{\"outcome\":\"forged\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    }
+  ]
+}

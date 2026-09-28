@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-31T09:00:56Z",
+  "actor": "human:operator",
+  "artifact": "story:provider-session-sequence-and-containment",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check",
+    "reference": "local release gate 0.17.1"
+  }
+}

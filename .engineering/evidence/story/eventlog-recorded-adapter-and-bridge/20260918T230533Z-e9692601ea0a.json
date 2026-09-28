@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-18T23:05:33Z",
+  "actor": "human:timo",
+  "artifact": "story:eventlog-recorded-adapter-and-bridge",
+  "kind": "story",
+  "revision": 36,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Qualified native File SQLite PostgreSQL group recovery; full provider gate and TLS production proof; local integration f802eb8",
+    "reference": "~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/native-qualification-20260918/integration.md"
+  }
+}

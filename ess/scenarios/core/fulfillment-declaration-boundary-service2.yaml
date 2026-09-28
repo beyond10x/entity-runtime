@@ -1,0 +1,20 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "fulfillment-declaration-boundary-service2",
+  "summary": "fulfillment declaration boundary service2.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/2\",\"identity\":{\"field\":\"invoice_id\"},\"schema\":{\"fields\":{\"invoice_id\":{\"type\":\"string\",\"required\":true},\"issued_at\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\",\"Issued\"]},\"operations\":{\"Issue\":{\"arguments\":{\"fields\":{\"accept\":{\"type\":\"boolean\",\"required\":true}}},\"response\":{\"fields\":{\"issued_at\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"rejected\",\"when\":{\"eq\":[\"$args.accept\",false]},\"refuses\":{\"error\":\"NotAccepted\"}},{\"name\":\"issued\",\"effect\":{\"moves\":{\"from\":\"Draft\",\"to\":\"Issued\"}},\"fulfills\":{\"issued_at\":{\"actions\":\"required\"},\"note\":{\"actions\":\"optional\"}},\"emits\":[{\"type\":\"InvoiceIssued\",\"payload\":{\"issued_at\":\"$fields.issued_at\"}}],\"responds\":{\"issued_at\":\"$fields.issued_at\"}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition"
+      }
+    }
+  ]
+}

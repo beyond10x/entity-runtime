@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-28T09:58:44Z",
+  "actor": "human:timo",
+  "artifact": "story:adopt-current-plan-and-release-contracts",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Published AEP 582b5b407 validates all 123 current Git-native ER planning artifacts; exact final source and binary identity retained in docs/ess/evidence/final/release/toolchain.json",
+    "reference": "docs/ess/evidence/final/release/planning-validation.log"
+  }
+}

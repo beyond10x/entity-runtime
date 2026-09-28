@@ -1,0 +1,25 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-map-member-errors-retain-paths",
+  "summary": "service1 map member errors retain paths.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"value\",\"version\":1,\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"},\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"semantics\":\"service/1\"}",
+        "id": "v-1",
+        "fields": "{\"meta\":{\"a\":\"wrong\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "fields.meta.a"
+        ]
+      }
+    }
+  ]
+}

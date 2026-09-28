@@ -1,0 +1,48 @@
+domain: entity.executor
+scenario: named-and-single-retries-keep-original-receipts
+summary: An exact named retry preserves all coordinates; a single retry of its second member retains the original batch index.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.Batch
+  input:
+    request: '{"actions":[{"entity":"ticket","fields":{"title":"a"},"id":"a","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1},{"arguments":{},"entity":"ticket","expected_revision":1,"id":"a","kind":"execute","operation":"touch","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"two","recorded_at":"2026-09-28T00:00:00Z"}}],"key":{"named":"original"}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"kind":"Committed","receipt":{"batch":{"key":{"named":"original"},"members":[{"batch_key":{"named":"original"},"kind":"decision","member_index":0,"position":{"store":0,"subject":0},"record_id":"one","revision":1,"subject":{"entity":"ticket","id":"a"}},{"batch_key":{"named":"original"},"kind":"decision","member_index":1,"position":{"store":1,"subject":1},"record_id":"two","revision":2,"subject":{"entity":"ticket","id":"a"}}]}},"replayed":false}'
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.Batch
+  input:
+    request: '{"actions":[{"entity":"ticket","fields":{"title":"a"},"id":"a","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1},{"arguments":{},"entity":"ticket","expected_revision":1,"id":"a","kind":"execute","operation":"touch","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"two","recorded_at":"2026-09-28T00:00:00Z"}}],"key":{"named":"original"}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"kind":"Committed","receipt":{"batch":{"key":{"named":"original"},"members":[{"batch_key":{"named":"original"},"kind":"decision","member_index":0,"position":{"store":0,"subject":0},"record_id":"one","revision":1,"subject":{"entity":"ticket","id":"a"}},{"batch_key":{"named":"original"},"kind":"decision","member_index":1,"position":{"store":1,"subject":1},"record_id":"two","revision":2,"subject":{"entity":"ticket","id":"a"}}]}},"replayed":true}'
+- at: 2026-09-28T00:00:03Z
+  command: entity.executor.Execute
+  input:
+    request: '{"arguments":{},"entity":"ticket","expected_revision":1,"id":"a","operation":"touch","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"two","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"kind":"Committed","receipt":{"single":{"batch_key":{"named":"original"},"kind":"decision","member_index":1,"position":{"store":1,"subject":1},"record_id":"two","revision":2,"subject":{"entity":"ticket","id":"a"}}},"replayed":true}'
+- at: 2026-09-28T00:00:04Z
+  command: entity.executor.Batch
+  input:
+    request: '{"actions":[{"entity":"ticket","fields":{"title":"a"},"id":"a","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1}],"key":{"named":"fresh"}}'
+  outcome: returned
+  response:
+    error: PreviouslyRecordedBatchEntries
+    status: error
+type: ess-scenario/4

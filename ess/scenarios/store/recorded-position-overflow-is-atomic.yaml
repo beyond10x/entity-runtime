@@ -1,0 +1,30 @@
+domain: entity.store
+scenario: recorded-position-overflow-is-atomic
+summary: Checked store-coordinate allocation rejects overflow without publishing the first member.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.SetPosition
+  input:
+    request: '{"position":18446744073709551615}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.Append
+  input:
+    request: '{"key":{"named":"overflow"},"members":[{"entry":{"decision":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"a"},"command":{"command":"create","fields":{"title":"a"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}}},"expect":null},{"entry":{"decision":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"b"},"command":{"command":"create","fields":{"title":"b"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"b","result":{"entity":"ticket","fields":{"title":"b"},"id":"b","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"two","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"b"},"id":"b","lifecycle_state":"open","revision":1,"version":1}}},"expect":null}]}'
+  outcome: returned
+  response:
+    error: PositionExhausted
+    status: error
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.LookupRecord
+  input:
+    request: '{"record_id":"one"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+type: ess-scenario/4
