@@ -1,0 +1,24 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service2-presence-absent",
+  "summary": "service2 presence absent.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"fixed\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\"]},\"create\":{\"arguments\":{\"fields\":{\"fixed\":{\"type\":\"string\",\"required\":true},\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"fixed\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set\":{\"fixed\":\"$args.fixed\"},\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"InvoiceCreated\",\"payload\":{\"fixed\":\"$fields.fixed\"},\"payload_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}],\"responds\":{\"fixed\":\"$fields.fixed\"},\"responds_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}",
+        "id": "i-1",
+        "fields": "{\"fixed\":\"A\",\"bound\":{}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "accepted",
+        "instance": "{\"entity\":\"invoice\",\"version\":1,\"id\":\"i-1\",\"lifecycle_state\":\"Draft\",\"revision\":1,\"fields\":{\"fixed\":\"A\"}}",
+        "response": "{\"fixed\":\"A\"}"
+      }
+    }
+  ]
+}

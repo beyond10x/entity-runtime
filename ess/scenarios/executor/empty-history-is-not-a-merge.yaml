@@ -1,0 +1,21 @@
+domain: entity.executor
+scenario: empty-history-is-not-a-merge
+summary: A subject with no branch heads cannot be merged.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.Batch
+  input:
+    request: '{"actions":[{"arguments":{},"entity":"ticket","expected_revision":1,"first":"none","id":"a","kind":"merge","operation":"touch","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"merge","recorded_at":"2026-09-28T00:00:00Z"}}],"key":{"single_record":"merge"}}'
+  outcome: returned
+  response:
+    error: InvalidInput
+    status: error
+type: ess-scenario/4

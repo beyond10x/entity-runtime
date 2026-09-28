@@ -1,0 +1,147 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "registration-lifecycle-defects-do-not-cascade",
+  "summary": "Lifecycle and transition registration defects retain their exact variants and independent order; broken ladders do not cascade.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "empty_lifecycle"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\" \"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "empty_lifecycle_state"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "duplicate_lifecycle_state"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "no_transitions"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":[],\"to\":\"Closed\"}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "empty_from_states"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Missing\",\"to\":\"Absent\"}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "unknown_from_state",
+          "unknown_to_state"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:06Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"},{\"from\":\"Open\",\"to\":\"Open\"}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "ambiguous_transition"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:07Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"missing\":\"x\"},\"emits\":[{\"type\":\" \",\"payload\":{}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "unknown_set_field",
+          "empty_event_type"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:08Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":3},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Absent\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"},{\"from\":\"Open\",\"to\":\"Open\"}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "unknown_initial_state",
+          "invalid_field",
+          "ambiguous_transition"
+        ]
+      }
+    }
+  ]
+}

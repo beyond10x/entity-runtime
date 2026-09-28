@@ -1,0 +1,10 @@
+type: ess-scenario/1
+domain: erprobe.core
+scenario: unequal-values-have-an-observable-order
+summary: A pure result must be checked without declaring publication or persistence.
+timeline:
+  - at: 2026-09-28T00:00:00Z
+    command: erprobe.core.Compare
+    input: {left: 1, right: 2}
+    outcome: returned
+    response: {ordering: Less}

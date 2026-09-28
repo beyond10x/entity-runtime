@@ -1,0 +1,102 @@
+domain: entity.query
+scenario: malformed-cursors-are-typed-refusals
+summary: Cursor parsing distinguishes framing, canonical lowercase hexadecimal, query identity and UTF-8 failures.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Query
+  input:
+    query: '{"after":"bad","entity":"docs"}'
+  outcome: returned
+  response:
+    detail: query cursor is malformed
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:01Z
+  command: entity.query.Query
+  input:
+    query: '{"after":"0.61","entity":"docs"}'
+  outcome: returned
+  response:
+    detail: query cursor has invalid hexadecimal data
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:02Z
+  command: entity.query.Query
+  input:
+    query: '{"after":"gg.61","entity":"docs"}'
+  outcome: returned
+  response:
+    detail: query cursor has invalid hexadecimal data
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:03Z
+  command: entity.query.Query
+  input:
+    query: '{"after":"5B22646f6373222c7b7d5d.61","entity":"docs"}'
+  outcome: returned
+  response:
+    detail: query cursor has invalid hexadecimal data
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:04Z
+  command: entity.query.Query
+  input:
+    query: '{"after":"00.61","entity":"docs"}'
+  outcome: returned
+  response:
+    detail: query cursor belongs to another query
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:05Z
+  command: entity.query.Query
+  input:
+    query: '{"after":"5b22646f6373222c7b7d5d.f","entity":"docs"}'
+  outcome: returned
+  response:
+    detail: query cursor has invalid hexadecimal data
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:06Z
+  command: entity.query.Query
+  input:
+    query: '{"after":"5b22646f6373222c7b7d5d.gg","entity":"docs"}'
+  outcome: returned
+  response:
+    detail: query cursor has invalid hexadecimal data
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:07Z
+  command: entity.query.Query
+  input:
+    query: '{"after":"5b22646f6373222c7b7d5d.ff","entity":"docs"}'
+  outcome: returned
+  response:
+    detail: query cursor identity is not UTF-8
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:08Z
+  command: entity.query.Query
+  input:
+    query: '{"after":"5b22646f6373222c7b7d5d.61.62","entity":"docs"}'
+  outcome: returned
+  response:
+    detail: query cursor has invalid hexadecimal data
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:09Z
+  command: entity.query.DecodeCursor
+  input:
+    query: '{"after":"5b22646f6373222c7b7d5d.61","entity":"docs"}'
+  outcome: returned
+  response:
+    after: a
+    ok: true
+- at: 2026-09-28T00:00:10Z
+  command: entity.query.DecodeCursor
+  input:
+    query: '{"entity":"docs"}'
+  outcome: returned
+  response:
+    after: ''
+    ok: true
+type: ess-scenario/4

@@ -1,0 +1,43 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "returned-kernel1-decisions-replay-and-reject-tampering",
+  "summary": "returned kernel1 decisions replay and reject tampering.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"empty\",\"version\":1,\"schema\":{\"fields\":{},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{}}",
+        "id": "e-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ReplayReturned",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"empty\",\"version\":1,\"id\":\"e-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ReplayTampered",
+      "input": {
+        "patch": "{\"outcome\":\"forged\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    }
+  ]
+}

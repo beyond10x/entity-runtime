@@ -1,0 +1,47 @@
+domain: entity.query
+scenario: page-limit-boundaries
+summary: Default and both admitted boundaries are explicit; zero and excessive limits are typed invalid queries.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Limit
+  input:
+    query: '{"entity":"docs"}'
+  outcome: returned
+  response:
+    count: 100
+    ok: true
+- at: 2026-09-28T00:00:01Z
+  command: entity.query.Limit
+  input:
+    query: '{"entity":"docs","limit":1}'
+  outcome: returned
+  response:
+    count: 1
+    ok: true
+- at: 2026-09-28T00:00:02Z
+  command: entity.query.Limit
+  input:
+    query: '{"entity":"docs","limit":1000}'
+  outcome: returned
+  response:
+    count: 1000
+    ok: true
+- at: 2026-09-28T00:00:03Z
+  command: entity.query.Limit
+  input:
+    query: '{"entity":"docs","limit":0}'
+  outcome: returned
+  response:
+    detail: query limit must be between 1 and 1000
+    kind: invalid
+    ok: false
+- at: 2026-09-28T00:00:04Z
+  command: entity.query.Limit
+  input:
+    query: '{"entity":"docs","limit":1001}'
+  outcome: returned
+  response:
+    detail: query limit must be between 1 and 1000
+    kind: invalid
+    ok: false
+type: ess-scenario/4

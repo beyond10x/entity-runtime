@@ -1,0 +1,20 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "replay-rejects-missing-definition-tampering",
+  "summary": "replay rejects missing definition tampering.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Replay",
+      "input": {
+        "records": "[{\"definition\":null,\"command\":{\"command\":\"create\",\"fields\":{}},\"entity\":\"empty\",\"id\":\"e-1\",\"revision\":1,\"from_state\":null,\"to_state\":\"Held\",\"result\":{\"entity\":\"empty\",\"version\":1,\"id\":\"e-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}},\"changed\":{},\"events\":[]}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    }
+  ]
+}

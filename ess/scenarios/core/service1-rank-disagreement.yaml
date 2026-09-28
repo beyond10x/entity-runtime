@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-rank-disagreement",
+  "summary": "service1 rank disagreement.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"values\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"rank\":{\"type\":\"string\"},\"value\":{\"type\":\"number\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"scales\":{\"one\":[\"low\",\"high\"],\"two\":[\"high\",\"low\"]},\"invariants\":[{\"name\":\"rule\",\"assert\":{\"compare\":{\"left\":\"$fields.rank\",\"op\":\"lt\",\"right\":\"high\"}}}]}",
+        "id": "p-1",
+        "fields": "{\"rank\":\"low\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable"
+      }
+    }
+  ]
+}

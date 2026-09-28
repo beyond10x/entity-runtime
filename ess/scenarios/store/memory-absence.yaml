@@ -1,0 +1,50 @@
+domain: entity.store
+scenario: memory-absence
+summary: Missing state, events, records and observations are distinct empty public results.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.Load
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.Ids
+  input:
+    request: '{"entity":"ticket","provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.Events
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+- at: 2026-09-28T00:00:03Z
+  command: entity.store.Records
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+- at: 2026-09-28T00:00:04Z
+  command: entity.store.Observations
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+type: ess-scenario/4

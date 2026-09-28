@@ -1,0 +1,24 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "templates-recurse-escape-dollar-and-read-post-set-fields",
+  "summary": "Recursive event payloads resolve exact scopes, preserve scalar literals and escape a literal dollar after simultaneous writes.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"set\":{\"note\":\"after\"},\"emits\":[{\"type\":\"Changed\",\"payload\":{\"nested\":{\"ids\":[\"$id\",\"$$id\"],\"states\":{\"now\":\"$to_state\",\"was\":\"$from_state\"}},\"whole\":\"$fields\",\"old\":\"$old_fields\",\"number\":7}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"note\":\"before\"}}",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Closed\",\"revision\":2,\"fields\":{\"note\":\"after\"}}",
+        "events": "[{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"revision\":2,\"type\":\"Changed\",\"from_state\":\"Open\",\"to_state\":\"Closed\",\"changed\":{\"note\":\"after\"},\"args\":{},\"payload\":{\"nested\":{\"ids\":[\"p-1\",\"$id\"],\"states\":{\"now\":\"Closed\",\"was\":\"Open\"}},\"number\":7,\"old\":{\"note\":\"before\"},\"whole\":{\"note\":\"after\"}}}]"
+      }
+    }
+  ]
+}

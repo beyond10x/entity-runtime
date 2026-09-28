@@ -1,0 +1,107 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "timestamp-unknown-diagnostics-and-literal-validation",
+  "summary": "timestamp unknown diagnostics and literal validation.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"now\":{\"type\":\"string\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"preconditions\":[{\"assert\":{\"before\":[\"$args.now\",\"2026-12-31\"]}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{\"now\":\"2026-08-25T12:00:00+02:00\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$args.now"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"now\":{\"type\":\"string\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"preconditions\":[{\"assert\":{\"before\":[\"$args.now\",\"2026-12-31\"]}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{\"now\":\"yesterday\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$args.now"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"now\":{\"type\":\"string\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"preconditions\":[{\"assert\":{\"before\":[\"$args.now\",\"2026-12-31\"]}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{\"now\":\"2026-13-01\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$args.now"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"now\":{\"type\":\"string\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"preconditions\":[{\"assert\":{\"before\":[\"$args.now\",\"2026-12-31\"]}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{\"now\":\"2026-08-25\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{}}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"now\":{\"type\":\"string\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"preconditions\":[{\"assert\":{\"before\":[\"$args.now\",\"2026-13-01\"]}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "invalid_rule"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"now\":{\"type\":\"string\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"preconditions\":[{\"assert\":{\"before\":[\"$args.now\",\"2026-08-25T12:00:00+02:00\"]}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "invalid_rule"
+        ]
+      }
+    }
+  ]
+}

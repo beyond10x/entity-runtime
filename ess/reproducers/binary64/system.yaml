@@ -1,0 +1,10 @@
+format: ess/15
+system: erprobe
+version: v1
+domain: erprobe.core
+types:
+  - {name: erprobe.core.Float, kind: newtype, of: Binary64}
+commands:
+  - name: erprobe.core.Compare
+    input: [{name: value, type: erprobe.core.Float}]
+    outcomes: [{name: returned, accepts: nothing}]

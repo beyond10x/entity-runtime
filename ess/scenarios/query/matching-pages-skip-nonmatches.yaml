@@ -1,0 +1,31 @@
+domain: entity.query
+scenario: matching-pages-skip-nonmatches
+summary: The lookahead and continuation count matching documents rather than consumed inputs.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Seed
+  input:
+    definition: '{"entity":"docs","lifecycle":{"initial":"ready","states":["ready"]},"schema":{"fields":{"data":{"type":"json"}}}}'
+    subjects: '[{"fields":{"data":true},"id":"a"},{"fields":{"data":false},"id":"b"},{"fields":{"data":true},"id":"c"},{"fields":{"data":false},"id":"d"},{"fields":{"data":true},"id":"e"}]'
+  outcome: returned
+  response:
+    ok: true
+- at: 2026-09-28T00:00:01Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","limit":1,"matching":{"data":true}}'
+  outcome: returned
+  response:
+    has_next: true
+    ids: '["a"]'
+    ok: true
+- at: 2026-09-28T00:00:02Z
+  command: entity.query.Continue
+  input:
+    query: '{"entity":"docs","limit":2,"matching":{"data":true}}'
+  outcome: returned
+  response:
+    has_next: false
+    ids: '["c","e"]'
+    ok: true
+type: ess-scenario/4

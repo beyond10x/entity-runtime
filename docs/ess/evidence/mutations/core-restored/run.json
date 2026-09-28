@@ -1,0 +1,84 @@
+{
+  "format": "ess-conformance-run/2",
+  "scenarios": [
+    {
+      "checks": [
+        {
+          "about": "outcome entity.core.CompareNumbers/returned",
+          "code": "ESS-CF-OUTCOME",
+          "status": "passed"
+        },
+        {
+          "about": "direct response entity.core.CompareNumbers",
+          "code": "ESS-CF-PAYLOAD",
+          "status": "passed"
+        }
+      ],
+      "duration_ms": 100,
+      "purpose": "exact number 38.",
+      "scenario": "entity.core/authored/exact-number-38",
+      "status": "passed"
+    }
+  ],
+  "started_at": 1700000000000,
+  "summary": {
+    "completed_at": 1700000000300,
+    "conformance_status": "passed",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 1,
+      "skipped": 0,
+      "total": 1,
+      "unsupported": 0
+    },
+    "coverage": {
+      "counts": {
+        "authored": 1,
+        "generated": 0,
+        "outside": 381,
+        "refused": 0
+      },
+      "knowledge": "complete_inventory",
+      "refused": [],
+      "selection": {
+        "filter": {
+          "ids": [
+            "entity.core/authored/exact-number-38"
+          ],
+          "kind": "explicit",
+          "parent": {
+            "digest": "sha256:81146021cf2d5d3b5b45562d3852812ad712151c3b6996f7c97e1d157778797a",
+            "digest_profile": "sha256-json-bytes/1",
+            "version": "ess-conformance/27"
+          }
+        },
+        "origins": "generated_and_authored",
+        "scope": {
+          "kind": "system"
+        }
+      }
+    },
+    "execution_status": "passed",
+    "format": "ess-conformance-report/2",
+    "implementation": "entity-runtime source-sha256:341f116fedfcc48bd4ea837e25e9cf9447ef1b6857ef4a507d26236086eef63a;executable-sha256:73320945619082e1d06d3e23531c9c7859310202f5416eedf972c06b5165d4a0",
+    "outcomes": {
+      "error": [],
+      "failed": [],
+      "passed": [
+        "entity.core/authored/exact-number-38"
+      ],
+      "skipped": [],
+      "unsupported": []
+    },
+    "policy": "complete-selection/1",
+    "producer_profile": "rust-scenario-status/1",
+    "spec_digest": "36be70a6a78819b731469e046e709011a99be9a1a286d09967f01e2b7e419b6e",
+    "specification": "entity/v1",
+    "suite": {
+      "digest": "sha256:c0beb9f13b908d9f828084dc9187cff8ebeffea264aa975e938bf93fee768e0a",
+      "digest_profile": "sha256-json-bytes/1",
+      "version": "ess-conformance/27"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+domain: entity.store
+scenario: envelope-null-provenance-is-explicit
+summary: Valid envelopes retain null provenance and a missing provenance key fails deserialization.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.Seal
+  input:
+    request: '{"recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"value":{"x":null}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"actor":null,"causation":null,"correlation":null,"record":{"x":null},"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"}'
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.ValidateEnvelope
+  input:
+    request: '{"envelope":{"causation":null,"correlation":null,"record":{},"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    error: Deserialize
+    status: error
+type: ess-scenario/4

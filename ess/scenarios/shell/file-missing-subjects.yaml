@@ -1,0 +1,70 @@
+domain: entity.shell
+scenario: file-missing-subjects
+summary: Missing get, events and execution are typed NotFound; listing an absent entity is an empty result.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.shell.Open
+  input:
+    provider: File
+  outcome: returned
+  response:
+    ok: true
+- at: 2026-09-28T00:00:01Z
+  command: entity.shell.Register
+  input:
+    definition: '{"entity":"thing","lifecycle":{"initial":"open","states":["open","done"]},"operations":{"advance":{"arguments":{"fields":{"n":{"default":7,"type":"integer"}}},"emits":[{"payload":{"n":"$fields.n"},"type":"Advanced"},{"payload":{"n":"$fields.n"},"type":"Advanced"}],"set":{"n":"$args.n"},"transitions":[{"from":"open","to":"open"}]},"finish":{"transitions":[{"from":"open","to":"done"}]}},"schema":{"fields":{"n":{"required":true,"type":"integer"}}}}'
+  outcome: returned
+  response:
+    count: 1
+    ok: true
+- at: 2026-09-28T00:00:02Z
+  command: entity.shell.Create
+  input:
+    request: '{"entity":"thing","fields":{"n":0},"id":"one","recording":{"actor":"tester","causation":null,"correlation":null,"record_id":"created","recorded_at":"2026-09-28T00:00:00Z"},"version":1}'
+  outcome: returned
+  response:
+    count: 0
+    fields: '{"n":0}'
+    ok: true
+    record_id: created
+    revision: 1
+    state: open
+- at: 2026-09-28T00:00:03Z
+  command: entity.shell.Get
+  input:
+    request: '{"entity":"thing","id":"missing"}'
+  outcome: returned
+  response:
+    boundary: store
+    kind: not_found
+    ok: false
+    variant: NotFound
+- at: 2026-09-28T00:00:04Z
+  command: entity.shell.Events
+  input:
+    request: '{"entity":"thing","id":"missing"}'
+  outcome: returned
+  response:
+    boundary: store
+    kind: not_found
+    ok: false
+    variant: NotFound
+- at: 2026-09-28T00:00:05Z
+  command: entity.shell.Execute
+  input:
+    request: '{"arguments":{},"entity":"thing","expected_revision":1,"id":"missing","operation":"advance","recording":{"actor":"tester","causation":null,"correlation":null,"record_id":"missing","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    kind: not_found
+    ok: false
+    variant: NotFound
+- at: 2026-09-28T00:00:06Z
+  command: entity.shell.List
+  input:
+    entity: unknown
+  outcome: returned
+  response:
+    count: 0
+    ids: '[]'
+    ok: true
+type: ess-scenario/4

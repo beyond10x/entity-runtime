@@ -1,0 +1,15 @@
+domain: entity.query
+scenario: consumed-duplicate-identity-refuses
+summary: The ordered-input API rejects invalid consumed input before returning a page.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Ordered
+  input:
+    instances: '[{"entity":"docs","fields":{"data":1},"id":"a","lifecycle_state":"ready","revision":1,"version":1},{"entity":"docs","fields":{"data":2},"id":"a","lifecycle_state":"ready","revision":1,"version":1}]'
+    query: '{"entity":"docs","limit":1}'
+  outcome: returned
+  response:
+    detail: query input is not strictly ordered by identity
+    kind: invalid
+    ok: false
+type: ess-scenario/4

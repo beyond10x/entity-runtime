@@ -1,0 +1,24 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service3-refusal-needs-no-loaded-instance",
+  "summary": "service3 refusal needs no loaded instance.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Prepare",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/3\",\"identity\":{\"field\":\"invoice_id\"},\"schema\":{\"fields\":{\"invoice_id\":{\"type\":\"string\",\"required\":true},\"issued_at\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\",\"Issued\"]},\"operations\":{\"Issue\":{\"arguments\":{\"fields\":{\"accept\":{\"type\":\"boolean\",\"required\":true}}},\"response\":{\"fields\":{\"issued_at\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"rejected\",\"when\":{\"eq\":[\"$args.accept\",false]},\"refuses\":{\"error\":\"NotAccepted\"}},{\"name\":\"issued\",\"effect\":{\"moves\":{\"from\":\"Draft\",\"to\":\"Issued\"}},\"fulfills\":{\"issued_at\":{\"actions\":\"required\"},\"note\":{\"actions\":\"optional\"}},\"emits\":[{\"type\":\"InvoiceIssued\",\"payload\":{\"issued_at\":\"$fields.issued_at\"}}],\"responds\":{\"issued_at\":\"$fields.issued_at\"}}]}}}",
+        "id": "s:absent",
+        "operation": "Issue",
+        "arguments": "{\"accept\":false}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "refused",
+        "outcome": "rejected",
+        "error_name": "NotAccepted"
+      }
+    }
+  ]
+}

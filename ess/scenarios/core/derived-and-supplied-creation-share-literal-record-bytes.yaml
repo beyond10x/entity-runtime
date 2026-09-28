@@ -1,0 +1,35 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "derived-and-supplied-creation-share-literal-record-bytes",
+  "summary": "derived and supplied creation share literal record bytes.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.CreateDerived",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"},\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"outcomes\":[{\"name\":\"created\",\"effect\":\"creates\",\"set\":{\"key\":\"K\"}}]}}",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "record": "{\"definition\":{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"invariants\":[],\"create\":{\"emit\":null,\"outcomes\":[{\"name\":\"created\",\"effect\":\"creates\",\"set\":{\"key\":\"K\"}}]},\"operations\":{},\"projections\":{},\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"}},\"command\":{\"command\":\"create\",\"fields\":{\"key\":\"K\"}},\"entity\":\"probe\",\"id\":\"s:K\",\"revision\":1,\"from_state\":null,\"to_state\":\"Open\",\"result\":{\"entity\":\"probe\",\"version\":1,\"id\":\"s:K\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"key\":\"K\"}},\"changed\":{\"key\":\"K\"},\"events\":[],\"outcome\":\"created\",\"effect\":\"created\",\"response\":{}}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"},\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"outcomes\":[{\"name\":\"created\",\"effect\":\"creates\",\"set\":{\"key\":\"K\"}}]}}",
+        "id": "s:K",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "record": "{\"definition\":{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"invariants\":[],\"create\":{\"emit\":null,\"outcomes\":[{\"name\":\"created\",\"effect\":\"creates\",\"set\":{\"key\":\"K\"}}]},\"operations\":{},\"projections\":{},\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"}},\"command\":{\"command\":\"create\",\"fields\":{\"key\":\"K\"}},\"entity\":\"probe\",\"id\":\"s:K\",\"revision\":1,\"from_state\":null,\"to_state\":\"Open\",\"result\":{\"entity\":\"probe\",\"version\":1,\"id\":\"s:K\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"key\":\"K\"}},\"changed\":{\"key\":\"K\"},\"events\":[],\"outcome\":\"created\",\"effect\":\"created\",\"response\":{}}"
+      }
+    }
+  ]
+}

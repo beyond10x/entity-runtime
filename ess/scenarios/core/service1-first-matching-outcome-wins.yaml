@@ -1,0 +1,24 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-first-matching-outcome-wins",
+  "summary": "service1 first matching outcome wins.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"guarded\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"value\":{\"type\":\"integer\"}}},\"lifecycle\":{\"initial\":\"A\",\"states\":[\"A\",\"B\"]},\"operations\":{\"Check\":{\"response\":{\"fields\":{\"picked\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"first\",\"when\":true,\"responds\":{\"picked\":\"first\"}},{\"name\":\"second\",\"when\":true,\"responds\":{\"picked\":\"second\"}}]}}}",
+        "instance": "{\"entity\":\"guarded\",\"version\":1,\"id\":\"g-1\",\"lifecycle_state\":\"A\",\"revision\":1,\"fields\":{}}",
+        "operation": "Check",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "first",
+        "response": "{\"picked\":\"first\"}"
+      }
+    }
+  ]
+}

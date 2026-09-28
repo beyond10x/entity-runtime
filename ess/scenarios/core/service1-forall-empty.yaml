@@ -1,0 +1,25 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-forall-empty",
+  "summary": "service1 forall empty.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"values\":{\"type\":\"array\",\"items\":{\"type\":\"boolean\"}},\"number\":{\"type\":\"number\"},\"rank\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Check\":{\"outcomes\":[{\"name\":\"yes\",\"when\":{\"for_all\":{\"in\":\"$fields.values\",\"as\":\"e\",\"that\":{\"truthy\":\"$e\"}}},\"effect\":{\"moves\":{\"from\":\"Held\",\"to\":\"Held\"}}},{\"name\":\"no\",\"refuses\":{\"error\":\"NotTrue\"}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"values\":[]}}",
+        "operation": "Check",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "yes",
+        "events": "[]",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":2,\"fields\":{\"values\":[]}}"
+      }
+    }
+  ]
+}

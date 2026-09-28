@@ -1,0 +1,29 @@
+domain: entity.store
+scenario: tampered-complete-history-is-rejected
+summary: Changing a stored result while retaining its identity is a history-integrity failure.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.Append
+  input:
+    request: '{"key":{"named":"one"},"members":[{"entry":{"decision":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"a"},"command":{"command":"create","fields":{"title":"a"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}}},"expect":null}]}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.Tamper
+  input:
+    request: '{"field":"result","record_id":"one"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.VerifySubject
+  input:
+    request: '{"entity":"ticket","id":"a"}'
+  outcome: returned
+  response:
+    error: CorruptHistory
+    status: error
+type: ess-scenario/4

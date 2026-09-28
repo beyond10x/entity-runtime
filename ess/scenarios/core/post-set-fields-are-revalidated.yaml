@@ -1,0 +1,26 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "post-set-fields-are-revalidated",
+  "summary": "post set fields are revalidated.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"swap\",\"version\":1,\"schema\":{\"fields\":{\"left\":{\"type\":\"integer\"},\"right\":{\"type\":\"integer\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Bad\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"set\":{\"left\":\"invalid\"}}}}",
+        "instance": "{\"entity\":\"swap\",\"version\":1,\"id\":\"s-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"left\":1,\"right\":2}}",
+        "operation": "Bad",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "fields.left"
+        ]
+      }
+    }
+  ]
+}

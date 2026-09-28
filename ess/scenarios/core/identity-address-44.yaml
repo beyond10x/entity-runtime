@@ -1,0 +1,21 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "identity-address-44",
+  "summary": "identity address 44.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Address",
+      "input": {
+        "kind": "\"boolean\"",
+        "value": "true"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "true"
+      }
+    }
+  ]
+}

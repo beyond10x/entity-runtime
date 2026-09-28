@@ -1,0 +1,205 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "conditional-presence-registration-requires-one-typed-optional-leaf",
+  "summary": "conditional presence registration requires one typed optional leaf.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\",\"required\":true}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_argument_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\",\"default\":\"default\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_argument_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":false,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_argument_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}},\"additional_properties\":true}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_argument_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}},\"additional_fields\":true},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_argument_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"$args.bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_argument_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:06Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound..note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_argument_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:07Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_invalid",
+          "conditional_target_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:08Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"default\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_invalid",
+          "conditional_target_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:09Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"max_length\":3}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:10Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"missing\":{\"argument\":\"bound.note\"}}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:11Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"set\":{\"note\":\"fixed\"}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_conflict"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:12Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"accepted\",\"effect\":\"creates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_set_on_operation"
+        ]
+      }
+    }
+  ]
+}

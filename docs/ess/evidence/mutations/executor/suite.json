@@ -1,0 +1,1769 @@
+{
+  "coverage": {
+    "authored": [
+      "entity.executor/authored/saved-definition-retry-precedes-current-authority"
+    ],
+    "authored_sources": {
+      "scenarios/executor/changed-batch-order-conflicts.yaml": {
+        "digest": "sha256:01ea15e88de05abb94cb8e15231d775da319a5e9d1a918e486825101ff40f840",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/changed-batch-order-conflicts"
+      },
+      "scenarios/executor/changed-request-conflicts.yaml": {
+        "digest": "sha256:f99bd033990032a59359dbff1ffedf84ffb25fef647ede5e80d64ec1ba3b3ec5",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/changed-request-conflicts"
+      },
+      "scenarios/executor/complete-decisions-retain-duplicate-events.yaml": {
+        "digest": "sha256:0251b4952aec65b852b7e8155b41d3e353a8383f59c3a53b523b477da155e6c6",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/complete-decisions-retain-duplicate-events"
+      },
+      "scenarios/executor/corrupt-history-never-recovers-success.yaml": {
+        "digest": "sha256:1f18be8b86ff884f6787a0e7f5328143dceea8e9ce1608aac8577046dd71ac92",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/corrupt-history-never-recovers-success"
+      },
+      "scenarios/executor/dropped-pending-response-is-not-rollback.yaml": {
+        "digest": "sha256:671dd3191bcb4c97a6584e686708412c04e68525941bb576711386f9c3d51429",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/dropped-pending-response-is-not-rollback"
+      },
+      "scenarios/executor/dropping-before-poll-dispatches-nothing.yaml": {
+        "digest": "sha256:8f15e2503e64c8c39f265b01c6d65ebbb8c81beaa9585e565584eaf09f2f08d3",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/dropping-before-poll-dispatches-nothing"
+      },
+      "scenarios/executor/duplicate-identities-refuse-before-io.yaml": {
+        "digest": "sha256:8b8a8aa24701beeaf66d9b325286abddece9dbbbeb573f4e92c5ca430d0b9812",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/duplicate-identities-refuse-before-io"
+      },
+      "scenarios/executor/empty-batches-perform-no-io.yaml": {
+        "digest": "sha256:faad9be7196d0980b8c1a02f22c8dcec705b6dd1c24e19c61d57090dc27e1232",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/empty-batches-perform-no-io"
+      },
+      "scenarios/executor/empty-history-is-not-a-merge.yaml": {
+        "digest": "sha256:76f585b5b83a2d1e925ed08c04442b08cd996c08040e3d31fb37341cf210e8ab",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/empty-history-is-not-a-merge"
+      },
+      "scenarios/executor/global-record-identities-span-subjects-and-kinds.yaml": {
+        "digest": "sha256:2690c0e8051ba9361d9ba5c0005334152e6c13f07c863cc5595ffede91db9b71",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/global-record-identities-span-subjects-and-kinds"
+      },
+      "scenarios/executor/historical-observation-has-no-committed-receipt.yaml": {
+        "digest": "sha256:630926893707fbcce923ea2f6d24c5e4a546e2e704b701d8d4bd6552d82b42fb",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/historical-observation-has-no-committed-receipt"
+      },
+      "scenarios/executor/imported-exact-retry-is-historical.yaml": {
+        "digest": "sha256:033d12b89208425a15ae4a0e9cbf5397f6dc0d09b0898169bcd10e3d95ec2318",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/imported-exact-retry-is-historical"
+      },
+      "scenarios/executor/imported-missing-definition-cannot-prove-retry.yaml": {
+        "digest": "sha256:28e2e2bcc1fa1280180cfcd1f2077f20a57a8e194b23b5b542967165ca0d30f0",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/imported-missing-definition-cannot-prove-retry"
+      },
+      "scenarios/executor/malformed-create-is-rejected-before-io.yaml": {
+        "digest": "sha256:3124486b1ce4118dbf215a75bdf04c551ec75e0f8478b53420041c5cb0608f53",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/malformed-create-is-rejected-before-io"
+      },
+      "scenarios/executor/merge-appends-over-observation-tips.yaml": {
+        "digest": "sha256:9de235eb1a9844427fe61f1636acb4829e18b23ee27019ef476bb61435be5e50",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/merge-appends-over-observation-tips"
+      },
+      "scenarios/executor/merge-candidate-uses-first-state-and-all-tips.yaml": {
+        "digest": "sha256:794708ddad860fdcd4cf2b077330d0973886e23df4b2d61def67041309663b85",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/merge-candidate-uses-first-state-and-all-tips"
+      },
+      "scenarios/executor/merge-checks-head-and-highest-revision.yaml": {
+        "digest": "sha256:ce259bd6bd514111c76bc4e7bb7dd026aa18f56c9e97c5eb74fa126a271c54b3",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/merge-checks-head-and-highest-revision"
+      },
+      "scenarios/executor/mixed-batch-orders-decisions-and-observations.yaml": {
+        "digest": "sha256:07ea5f32e2d678a299fcc85a753477a1fe9e26688580a161a7a0be88751a2882",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/mixed-batch-orders-decisions-and-observations"
+      },
+      "scenarios/executor/named-and-single-retries-keep-original-receipts.yaml": {
+        "digest": "sha256:211c7eb39bf417c02cfec763455177c250046b4f81599a7dae6f5d51bf3f9f08",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/named-and-single-retries-keep-original-receipts"
+      },
+      "scenarios/executor/optional-refusal-recorder-sees-conflicts-not-malformed-input.yaml": {
+        "digest": "sha256:7d12f14b972851fea230e0657dacd7e40a64aeaf1d1008a68f9e6b37327c747e",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/optional-refusal-recorder-sees-conflicts-not-malformed-input"
+      },
+      "scenarios/executor/ordinary-forked-write-records-refusal.yaml": {
+        "digest": "sha256:ee78d09c0481e2fa1ddb805654328888c443b652be2a356e1632774b481aeb63",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/ordinary-forked-write-records-refusal"
+      },
+      "scenarios/executor/saved-definition-retry-precedes-current-authority.yaml": {
+        "digest": "sha256:5cbaa4ae899865dc4b19997666390b75e73dd85ac3c7335b76c96e98885b9447",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/saved-definition-retry-precedes-current-authority"
+      },
+      "scenarios/executor/single-key-must-match-member.yaml": {
+        "digest": "sha256:bd940c62a471cea7d5ce456ac80d082717bac166b46f17fc744cdd43f585824d",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/single-key-must-match-member"
+      },
+      "scenarios/executor/stale-observation-rolls-back-whole-batch.yaml": {
+        "digest": "sha256:54c000e7ff57b94df8cecee28548ea14345f8b389a7dc2f6428ac5c3537aea8d",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/stale-observation-rolls-back-whole-batch"
+      },
+      "scenarios/executor/uncertain-response-recovers-one-original-receipt.yaml": {
+        "digest": "sha256:ce651ad505fa0a5fc020d0a607c9e9907f4cfd3988a25956b2dadb7c93c7e464",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/uncertain-response-recovers-one-original-receipt"
+      },
+      "scenarios/executor/unreachable-is-never-absent.yaml": {
+        "digest": "sha256:18be6dec5615abadfa9a2629ae179696dcb65c5f4ba10b2aff1c7713a3487e4e",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/unreachable-is-never-absent"
+      },
+      "scenarios/store/absence.yaml": {
+        "digest": "sha256:c2a73f01b9d4a627e136822fd559e0b9401e7d7d07ac263f13e473b204586ffa",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/an-absent-memory-subject-is-none"
+      },
+      "scenarios/store/canonical-byte-encoding-preserves-exact-number-tokens.yaml": {
+        "digest": "sha256:a78bb786b01669605837aec3ace1c26aeac8e0d9aded9e2f825bae6c7ae2ebd4",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/canonical-byte-encoding-preserves-exact-number-tokens"
+      },
+      "scenarios/store/complete-assurance-requires-provider-capture.yaml": {
+        "digest": "sha256:c6bae0d9ed87a3e7876bf7b620144c9cfe8c9b926a5bf91e55faa4e56d5b7063",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/complete-assurance-requires-provider-capture"
+      },
+      "scenarios/store/coordinates-retain-opaque-subjects-and-disjoint-batch-namespaces.yaml": {
+        "digest": "sha256:d8432917598b11423a26ea12be21ae94c10ac9b1c7764351c946cdc3adbb083c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/coordinates-retain-opaque-subjects-and-disjoint-batch-namespaces"
+      },
+      "scenarios/store/envelope-null-provenance-is-explicit.yaml": {
+        "digest": "sha256:abdbf1772e70ec1ab0f7f290c3a9843ec225a76173577f1260425eb459c9f27f",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/envelope-null-provenance-is-explicit"
+      },
+      "scenarios/store/expectation-absent-is-distinct-from-revision-zero.yaml": {
+        "digest": "sha256:3f3e8d2913d4b3f8bad9bcb6170afbf79430f63707d0869b3dde93d64cb42079",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/expectation-absent-is-distinct-from-revision-zero"
+      },
+      "scenarios/store/file-absence.yaml": {
+        "digest": "sha256:b1e998054c7eaa399457f02790a3b3d1431345f64b670a23e4446f835b19ebd4",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-absence"
+      },
+      "scenarios/store/file-corrupt-marker-is-not-absence.yaml": {
+        "digest": "sha256:515fe87f550702f7db93db3d49ce88fc79f2461f1659ffd6a16aa0b6c03249ee",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-corrupt-marker-is-not-absence"
+      },
+      "scenarios/store/file-exact-retry-after-state-advances.yaml": {
+        "digest": "sha256:48744167cb8f515f599f9a79a28beb662f18734d21e17e03f57bf3b323fc8eb7",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-exact-retry-after-state-advances"
+      },
+      "scenarios/store/file-global-record-identity.yaml": {
+        "digest": "sha256:8e060305e7e2fdfaa3aca70fd026ff170f35253df6dc1094bc5e16aa5fe12e44",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-global-record-identity"
+      },
+      "scenarios/store/file-invalid-recording-is-inert.yaml": {
+        "digest": "sha256:053609afe3aff94fe040e1409cecca2141e2baff56750fdf68f9614f3d0352c8",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-invalid-recording-is-inert"
+      },
+      "scenarios/store/file-listed-identities-are-sorted.yaml": {
+        "digest": "sha256:ecfcbc4913ce1c19496ed02a164799f7cf52d6e935d798b2193b3c4d912d095c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-listed-identities-are-sorted"
+      },
+      "scenarios/store/file-observations-do-not-advance.yaml": {
+        "digest": "sha256:1dad7065d43b5efe26ffa682da1a606239b5eb3d738ecd0f39d77f3c3df88918",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-observations-do-not-advance"
+      },
+      "scenarios/store/file-ordered-duplicate-events.yaml": {
+        "digest": "sha256:578d31cc07fd9ff0fb3498df3439b52ea3866ef46aec60cc88b873319ba30082",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-ordered-duplicate-events"
+      },
+      "scenarios/store/file-reopen.yaml": {
+        "digest": "sha256:344d53b1afd4f911bdba93418e44c21cb8dc2b4ba6ddc37d1666406538bdb32f",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-reopen"
+      },
+      "scenarios/store/file-stale-write-preserves-state.yaml": {
+        "digest": "sha256:4c36cc3199270c273efe450eefcf63e9ef4c287894d225bf3a6a93894e68daab",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/file-stale-write-preserves-state"
+      },
+      "scenarios/store/imported-boundary-retains-limited-assurance.yaml": {
+        "digest": "sha256:3e3f5fc40dc454074353fddadaf9513406dd9f6201409d0ac9d9ed9a3576a00a",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/imported-boundary-retains-limited-assurance"
+      },
+      "scenarios/store/imported-evidence-cannot-exceed-anchor.yaml": {
+        "digest": "sha256:20f59a69bf656fcdd581a693f3dbda10a09dd6dcc82f8f2d65c894e35ad19cfe",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/imported-evidence-cannot-exceed-anchor"
+      },
+      "scenarios/store/legacy-acquisition-of-absent-source-is-read-only.yaml": {
+        "digest": "sha256:94fe9682b43fbfaf2f91d51bd64b9846552d5de859b7f2882b242132f8492449",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/legacy-acquisition-of-absent-source-is-read-only"
+      },
+      "scenarios/store/legacy-acquisition-preserves-only-known-order.yaml": {
+        "digest": "sha256:11c23afa470d6b94fbd9114d355283c71a413e09d6ba5c69b8b32234ad74e05a",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/legacy-acquisition-preserves-only-known-order"
+      },
+      "scenarios/store/lineage-decisions-produce-two-heads.yaml": {
+        "digest": "sha256:1ab5f7052781e9b7853ff108215f218dbc22a619554f80242fb4eb45b1d57d2d",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/lineage-decisions-produce-two-heads"
+      },
+      "scenarios/store/memory-absence.yaml": {
+        "digest": "sha256:943ac7c203f2db93069c166f0ccc6c2190c58756c488235c84efb2b9a8ad4111",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-absence"
+      },
+      "scenarios/store/memory-atomic-order.yaml": {
+        "digest": "sha256:965d54177356fc82bbd2494cb1da5aec6d781a3f998054f7589c02883420baf3",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-atomic-order"
+      },
+      "scenarios/store/memory-atomic-rollback.yaml": {
+        "digest": "sha256:e194e01b97621b6c0dd97cb2327f0a1137e4ec1ee112ae0cf87bf032dd12d0dd",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-atomic-rollback"
+      },
+      "scenarios/store/memory-empty-batch.yaml": {
+        "digest": "sha256:584a71173d86d28d914ed5cd43bcd0c0b3b39851a24a4de7fd418af1a604cbc9",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-empty-batch"
+      },
+      "scenarios/store/memory-exact-retry-after-state-advances.yaml": {
+        "digest": "sha256:e48625663f9ea31753e2e8b09fc8ddd08c9b8f8afe58ca5be2264693bb27132b",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-exact-retry-after-state-advances"
+      },
+      "scenarios/store/memory-global-record-identity.yaml": {
+        "digest": "sha256:a5933934b4fff2a4b81f005886227b5719dc619d5a73af3122a42291eb8425c5",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-global-record-identity"
+      },
+      "scenarios/store/memory-invalid-recording-is-inert.yaml": {
+        "digest": "sha256:21fa14746b6b308f663fc3a828599aae77c308ff0b06c7ac879356b46f31fdc8",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-invalid-recording-is-inert"
+      },
+      "scenarios/store/memory-listed-identities-are-sorted.yaml": {
+        "digest": "sha256:75fa90a65834267c4d3d639fa828f4b9f33f0584721320f0252f4f62210303ce",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-listed-identities-are-sorted"
+      },
+      "scenarios/store/memory-observations-do-not-advance.yaml": {
+        "digest": "sha256:709734a8f3f57e1251e7706b2a87d59ea237cdd7e022571396960623a551397c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-observations-do-not-advance"
+      },
+      "scenarios/store/memory-ordered-duplicate-events.yaml": {
+        "digest": "sha256:72516a7c1d69ef07d43d0495bb16078d964cfa8a58597e6b577e45b1510fe22c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-ordered-duplicate-events"
+      },
+      "scenarios/store/memory-stale-write-preserves-state.yaml": {
+        "digest": "sha256:d3868be7d53b134732621686f9f4d2d76d04843c7a3aca07ecb280208b6d4aa7",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/memory-stale-write-preserves-state"
+      },
+      "scenarios/store/migration-dry-run-and-out-of-place.yaml": {
+        "digest": "sha256:f32a80ea7e8bb5226321eec09a3ad6f4f8f7db7cc61797303e848cb4318c9198",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/migration-dry-run-and-out-of-place"
+      },
+      "scenarios/store/migration-invalid-source-publishes-nothing.yaml": {
+        "digest": "sha256:82503626e2363f33b6e6f3201088c8c3afdf0531b7cddda44e6aa46dca61dbe8",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/migration-invalid-source-publishes-nothing"
+      },
+      "scenarios/store/observation-revisions-are-positive-signed-range.yaml": {
+        "digest": "sha256:358c79e54de4967a6a7144537819e35c1ea9807d8aaa32f148c2e676f66d3ff2",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/observation-revisions-are-positive-signed-range"
+      },
+      "scenarios/store/observations-are-tips-but-not-decision-heads.yaml": {
+        "digest": "sha256:df6dfcb6bd32d25f45e05fce4a661b916fe2977404ded1e61d68405e9520db73",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/observations-are-tips-but-not-decision-heads"
+      },
+      "scenarios/store/older-framing-reader-refuses-before-payload.yaml": {
+        "digest": "sha256:e4f74eb3f384c0b566b18e4cad415df320fec5a53a19e0e3dffaff101eaf09f9",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/older-framing-reader-refuses-before-payload"
+      },
+      "scenarios/store/projection-groups-sorted-identities.yaml": {
+        "digest": "sha256:a6d048e5e8d30330d8c6ebff112a349dfcb9c430c430a7393be897b7a95bbe06",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/projection-groups-sorted-identities"
+      },
+      "scenarios/store/record-domain-kernel-1.yaml": {
+        "digest": "sha256:a291d071fd419fe9229dcc15319619202cd9b6cb6302df62039c81e55488906c",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/record-domain-kernel-1"
+      },
+      "scenarios/store/record-domain-service-1.yaml": {
+        "digest": "sha256:20d6cfcffdc0d909b0657ceff688228a4ec9fab82601eee8312e35c57d2bcca5",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/record-domain-service-1"
+      },
+      "scenarios/store/record-domain-service-2.yaml": {
+        "digest": "sha256:82547f91941838b01e84c91396a3b07323378fab8104d15567c6b6fd9f111aa5",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/record-domain-service-2"
+      },
+      "scenarios/store/record-domain-service-3.yaml": {
+        "digest": "sha256:1e6a813eddfc52571ffab7e19149723ea5cb8fc211ae4b07ea614c189aeece1b",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/record-domain-service-3"
+      },
+      "scenarios/store/recorded-commit-result-must-match-instance.yaml": {
+        "digest": "sha256:15d145d9c11512c877d08ca29b74354fb058dee87ba7914a00c4c29f7c4859ed",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-commit-result-must-match-instance"
+      },
+      "scenarios/store/recorded-memory-atomic-observation-order.yaml": {
+        "digest": "sha256:e8eaf44cc04006f709a6fd4c5f8ae962bce7da48f3f7637aaba33b97c10d11f4",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-memory-atomic-observation-order"
+      },
+      "scenarios/store/recorded-memory-atomic-rollback.yaml": {
+        "digest": "sha256:1e9b55aea4eb94cfc77855dec8ba41bda19a6dcf05eee9bc08e15919f4054344",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-memory-atomic-rollback"
+      },
+      "scenarios/store/recorded-memory-writer-revalidates-public-members.yaml": {
+        "digest": "sha256:b8577c6fe4a27623d0a6118568c7d55990c7e55571599a1163470eb247f26921",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-memory-writer-revalidates-public-members"
+      },
+      "scenarios/store/recorded-position-overflow-is-atomic.yaml": {
+        "digest": "sha256:ac5ec0092bbcd87610391fea33927d8f0d7d0aac38605be698bb3709282f32a9",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/recorded-position-overflow-is-atomic"
+      },
+      "scenarios/store/tampered-complete-history-is-rejected.yaml": {
+        "digest": "sha256:81b55d4c88d5b244f18dd5df040272585859c44e2e61af662c3a6d78f84ee922",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/tampered-complete-history-is-rejected"
+      }
+    },
+    "counts": {
+      "authored": 1,
+      "generated": 0,
+      "outside": 141,
+      "refused": 0
+    },
+    "generated": [],
+    "knowledge": "complete_inventory",
+    "outside": [
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Batch/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.CancelBatch/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.CapturedAppend/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.CapturedMerge/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.ClearRegistry/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.ClearTrace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Create/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Execute/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.History/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.HistoryCoordinates/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Load/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.LookupReceipt/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.LookupRecord/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Observe/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.RecordingRefusals/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.RefusalReasons/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Refusals/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Register/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.ScriptAppend/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.SeedImported/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.SupplyHistory/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.SupplyLoadFailure/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Tamper/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.Trace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.executor.VerifyComplete/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/changed-batch-order-conflicts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/changed-request-conflicts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/complete-decisions-retain-duplicate-events"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/corrupt-history-never-recovers-success"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/dropped-pending-response-is-not-rollback"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/dropping-before-poll-dispatches-nothing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/duplicate-identities-refuse-before-io"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/empty-batches-perform-no-io"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/empty-history-is-not-a-merge"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/global-record-identities-span-subjects-and-kinds"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/historical-observation-has-no-committed-receipt"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/imported-exact-retry-is-historical"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/imported-missing-definition-cannot-prove-retry"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/malformed-create-is-rejected-before-io"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/merge-appends-over-observation-tips"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/merge-candidate-uses-first-state-and-all-tips"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/merge-checks-head-and-highest-revision"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/mixed-batch-orders-decisions-and-observations"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/named-and-single-retries-keep-original-receipts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/optional-refusal-recorder-sees-conflicts-not-malformed-input"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/ordinary-forked-write-records-refusal"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/single-key-must-match-member"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/stale-observation-rolls-back-whole-batch"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/uncertain-response-recovers-one-original-receipt"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.executor/authored/unreachable-is-never-absent"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.AcquireLegacy/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Append/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.AtomicBatch/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.BatchCoordinate/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.BranchHeads/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.BranchTips/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.CanonicalBytes/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.CheckExpectation/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ClearTrace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Commit/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.CommitRecorded/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Events/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.FileExists/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.History/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Ids/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Load/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.LookupBatch/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.LookupRecord/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.MemberCoordinate/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.MigrateFile/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Observations/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Observe/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Project/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ReadFileFixture/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ReadRecordDomain/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.RecordDomains/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.RecordFraming/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Records/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Reopen/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.RequestBytes/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Seal/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.SeedImported/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.SetPosition/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.SubjectCoordinate/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Tamper/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.Trace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ValidateEnvelope/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ValidateObservation/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.ValidateRecordedCommit/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.VerifyComplete/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.VerifyExplicit/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.VerifySubject/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.store.WriteFileFixture/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/an-absent-memory-subject-is-none"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/canonical-byte-encoding-preserves-exact-number-tokens"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/complete-assurance-requires-provider-capture"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/coordinates-retain-opaque-subjects-and-disjoint-batch-namespaces"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/envelope-null-provenance-is-explicit"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/expectation-absent-is-distinct-from-revision-zero"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-absence"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-corrupt-marker-is-not-absence"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-exact-retry-after-state-advances"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-global-record-identity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-invalid-recording-is-inert"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-listed-identities-are-sorted"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-observations-do-not-advance"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-ordered-duplicate-events"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-reopen"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/file-stale-write-preserves-state"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/imported-boundary-retains-limited-assurance"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/imported-evidence-cannot-exceed-anchor"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/legacy-acquisition-of-absent-source-is-read-only"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/legacy-acquisition-preserves-only-known-order"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/lineage-decisions-produce-two-heads"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-absence"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-atomic-order"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-atomic-rollback"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-empty-batch"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-exact-retry-after-state-advances"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-global-record-identity"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-invalid-recording-is-inert"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-listed-identities-are-sorted"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-observations-do-not-advance"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-ordered-duplicate-events"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/memory-stale-write-preserves-state"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/migration-dry-run-and-out-of-place"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/migration-invalid-source-publishes-nothing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/observation-revisions-are-positive-signed-range"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/observations-are-tips-but-not-decision-heads"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/older-framing-reader-refuses-before-payload"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/projection-groups-sorted-identities"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/record-domain-kernel-1"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/record-domain-service-1"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/record-domain-service-2"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/record-domain-service-3"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-commit-result-must-match-instance"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-memory-atomic-observation-order"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-memory-atomic-rollback"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-memory-writer-revalidates-public-members"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/recorded-position-overflow-is-atomic"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.store/authored/tampered-complete-history-is-rejected"
+      }
+    ],
+    "refused": [],
+    "selection": {
+      "filter": {
+        "ids": [
+          "entity.executor/authored/saved-definition-retry-precedes-current-authority"
+        ],
+        "kind": "explicit",
+        "parent": {
+          "digest": "sha256:da95551c27742409c35b9f87b6fb36048ea50433b03499547488f9b514a2aea0",
+          "digest_profile": "sha256-json-bytes/1",
+          "version": "ess-conformance/27"
+        }
+      },
+      "origins": "generated_and_authored",
+      "scope": {
+        "kind": "system"
+      }
+    }
+  },
+  "provenance": {
+    "contract_digest": "00ffc140bcf32e9bc0f4ce0abe9cd0ad09afc7c3471f5acce9372e030f16446f",
+    "spec_digest": "df6896d6bf6932a0f5a4e23dfc070121c46520610335e1c0be72e9eac10ddc78",
+    "specification_version": "v1",
+    "suite_version": "ess-conformance/27",
+    "system": "entity"
+  },
+  "scenarios": {
+    "entity.executor/authored/saved-definition-retry-precedes-current-authority": {
+      "purpose": "An exact old creation recovers after state advances and the current registry is removed, without loading current state.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.executor"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.executor.RequestDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.ClearRegistry"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.ClearTrace"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Execute"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Load"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Register"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Trace"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.ClearRegistry",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.ClearTrace",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Execute",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Load",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Register",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Trace",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.executor.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"create\":{\"emit\":null},\"entity\":\"ticket\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"touch\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"title\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]}}},\"version\":1}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Register",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"fields\":{\"title\":\"a\"},\"id\":\"a\",\"recording\":{\"actor\":null,\"causation\":null,\"correlation\":null,\"record_id\":\"one\",\"recorded_at\":\"2026-09-28T00:00:00Z\"},\"version\":1}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Create",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Execute",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"arguments\":{},\"entity\":\"ticket\",\"expected_revision\":1,\"id\":\"a\",\"operation\":\"touch\",\"recording\":{\"actor\":null,\"causation\":null,\"correlation\":null,\"record_id\":\"two\",\"recorded_at\":\"2026-09-28T00:00:00Z\"}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Execute",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.ClearRegistry",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.ClearRegistry",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.ClearRegistry",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.ClearRegistry",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.ClearTrace",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.ClearTrace",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.ClearTrace",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.ClearTrace",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"fields\":{\"title\":\"a\"},\"id\":\"a\",\"recording\":{\"actor\":null,\"causation\":null,\"correlation\":null,\"record_id\":\"one\",\"recorded_at\":\"2026-09-28T00:00:00Z\"},\"version\":1}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Create",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok",
+              "value": "{\"kind\":\"Committed\",\"receipt\":{\"single\":{\"batch_key\":{\"single_record\":\"one\"},\"kind\":\"decision\",\"member_index\":0,\"position\":{\"store\":0,\"subject\":0},\"record_id\":\"one\",\"revision\":1,\"subject\":{\"entity\":\"ticket\",\"id\":\"a\"}}},\"replayed\":true}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Trace",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Trace",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Trace",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok",
+              "value": "[\"lookup_batch\",\"lookup_record:one\",\"history:[\\\"ticket\\\",\\\"a\\\"]\"]"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Trace",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Load",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Load",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Load",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok",
+              "value": "{\"entity\":\"ticket\",\"fields\":{\"title\":\"a\"},\"id\":\"a\",\"lifecycle_state\":\"open\",\"revision\":2,\"version\":1}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Load",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    }
+  }
+}

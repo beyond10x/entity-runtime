@@ -1,0 +1,31 @@
+domain: entity.store
+scenario: imported-boundary-retains-limited-assurance
+summary: Imported materialized state is retained without a fabricated genesis or committed receipt.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.SeedImported
+  input:
+    request: '{"history":{"origin":{"imported":{"completeness":"available_evidence_only","evidence":[],"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":8,"version":1},"order":"per_kind_only"}},"records":[],"subject":{"entity":"ticket","id":"a"}}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.Load
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"RecordedMemory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":8,"version":1}'
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.VerifySubject
+  input:
+    request: '{"entity":"ticket","id":"a"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"anchor_revision":8,"kind":"VerifiedAfterBoundary","subject":{"entity":"ticket","id":"a"}}'
+type: ess-scenario/4

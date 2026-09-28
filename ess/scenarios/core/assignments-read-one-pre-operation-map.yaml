@@ -1,0 +1,24 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "assignments-read-one-pre-operation-map",
+  "summary": "assignments read one pre operation map.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"swap\",\"version\":1,\"schema\":{\"fields\":{\"left\":{\"type\":\"integer\"},\"right\":{\"type\":\"integer\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Swap\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"set\":{\"left\":\"$fields.right\",\"right\":\"$old_fields.left\"}}}}",
+        "instance": "{\"entity\":\"swap\",\"version\":1,\"id\":\"s-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"left\":1,\"right\":2}}",
+        "operation": "Swap",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"swap\",\"version\":1,\"id\":\"s-1\",\"lifecycle_state\":\"Held\",\"revision\":2,\"fields\":{\"left\":2,\"right\":1}}",
+        "events": "[]"
+      }
+    }
+  ]
+}

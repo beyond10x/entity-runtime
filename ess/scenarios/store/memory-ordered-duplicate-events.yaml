@@ -1,0 +1,47 @@
+domain: entity.store
+scenario: memory-ordered-duplicate-events
+summary: Complete recorded commits retain ordered duplicate events, and exact retries append none.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.CommitRecorded
+  input:
+    request: '{"commit":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"a"},"command":{"command":"create","fields":{"title":"a"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[{"payload":{"id":"$id"},"type":"Closed"},{"payload":{"id":"$id"},"type":"Closed"}],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"create-a","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}},"expect":null,"provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.CommitRecorded
+  input:
+    request: '{"commit":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{},"command":{"arguments":{},"command":"execute","operation":"close"},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[{"payload":{"id":"$id"},"type":"Closed"},{"payload":{"id":"$id"},"type":"Closed"}],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[{"args":{},"changed":{},"entity":"ticket","from_state":"open","id":"a","payload":{"id":"a"},"revision":2,"to_state":"closed","type":"Closed","version":1},{"args":{},"changed":{},"entity":"ticket","from_state":"open","id":"a","payload":{"id":"a"},"revision":2,"to_state":"closed","type":"Closed","version":1}],"from_state":"open","id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"closed","revision":2,"version":1},"revision":2,"to_state":"closed"},"record_id":"close-a","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"closed","revision":2,"version":1}},"expect":1,"provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.CommitRecorded
+  input:
+    request: '{"commit":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{},"command":{"arguments":{},"command":"execute","operation":"close"},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[{"payload":{"id":"$id"},"type":"Closed"},{"payload":{"id":"$id"},"type":"Closed"}],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[{"args":{},"changed":{},"entity":"ticket","from_state":"open","id":"a","payload":{"id":"a"},"revision":2,"to_state":"closed","type":"Closed","version":1},{"args":{},"changed":{},"entity":"ticket","from_state":"open","id":"a","payload":{"id":"a"},"revision":2,"to_state":"closed","type":"Closed","version":1}],"from_state":"open","id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"closed","revision":2,"version":1},"revision":2,"to_state":"closed"},"record_id":"close-a","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"closed","revision":2,"version":1}},"expect":1,"provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:03Z
+  command: entity.store.Events
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[{"args":{},"changed":{},"entity":"ticket","from_state":"open","id":"a","payload":{"id":"a"},"revision":2,"to_state":"closed","type":"Closed","version":1},{"args":{},"changed":{},"entity":"ticket","from_state":"open","id":"a","payload":{"id":"a"},"revision":2,"to_state":"closed","type":"Closed","version":1}]'
+- at: 2026-09-28T00:00:04Z
+  command: entity.store.Load
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"closed","revision":2,"version":1}'
+type: ess-scenario/4

@@ -1,0 +1,119 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service-map-and-union-declarations-and-outer-values-are-closed",
+  "summary": "service map and union declarations and outer values are closed.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"value\":{\"type\":\"map\",\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "map_key_not_text"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"value\":{\"type\":\"map\",\"key\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "map_value_missing"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"value\":{\"type\":\"union\",\"tag\":\"kind\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "union_variant_missing"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"value\":{\"type\":\"union\",\"variants\":{\"a\":{\"type\":\"string\"}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "union_variant_missing"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"value\":{\"type\":\"union\",\"tag\":\"kind\",\"variants\":{\"text\":{\"type\":\"string\"}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\"}",
+        "id": "p-1",
+        "fields": "{\"value\":{\"kind\":1,\"value\":\"x\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "fields.value"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"value\":{\"type\":\"union\",\"tag\":\"kind\",\"variants\":{\"text\":{\"type\":\"string\"}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\"}",
+        "id": "p-1",
+        "fields": "{\"value\":{\"kind\":\"text\",\"value\":2}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "fields.value.value"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:06Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"value\":{\"type\":\"union\",\"tag\":\"kind\",\"variants\":{\"text\":{\"type\":\"string\"}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\"}",
+        "id": "p-1",
+        "fields": "{\"value\":{\"kind\":\"text\",\"value\":\"x\",\"extra\":true}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "fields.value.extra"
+        ]
+      }
+    }
+  ]
+}

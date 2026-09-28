@@ -15,6 +15,23 @@ tasks:
       - task: postgres-check
       - task: eventlog-runtime-check
       - task: notes-check
+      - task: ess-check
+
+  ess-check:
+    desc: Deterministic ESS compilation, reviewed scenario coverage and actual library conformance
+    env:
+      CARGO_TARGET_DIR: '{{.ER_ESS_TARGET_DIR | default "checks/ess-conformance/target"}}'
+    cmds:
+      - cargo fmt --manifest-path checks/ess-conformance/Cargo.toml -- --check
+      - cargo clippy --manifest-path checks/ess-conformance/Cargo.toml --all-targets --locked -- -D warnings
+      - cargo run --manifest-path checks/ess-conformance/Cargo.toml --locked -- check
+
+  ess-regenerate:
+    desc: Regenerate ESS artifacts; changed scenario assertions require --coverage-review
+    env:
+      CARGO_TARGET_DIR: '{{.ER_ESS_TARGET_DIR | default "checks/ess-conformance/target"}}'
+    cmds:
+      - cargo run --manifest-path checks/ess-conformance/Cargo.toml --locked -- regenerate {{.CLI_ARGS}}
 
   eventlog-runtime-check:
     desc: the Rust 1.91 Eventlog adapter closure with every native provider and synchronous bridge

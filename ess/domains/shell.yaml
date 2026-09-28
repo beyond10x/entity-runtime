@@ -1,0 +1,521 @@
+commands:
+- input:
+  - name: provider
+    type: String
+  name: entity.shell.Open
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: definition
+    type: entity.core.DefinitionDocument
+  name: entity.shell.Register
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: definition
+    type: entity.core.DefinitionDocument
+  name: entity.shell.Replace
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input: []
+  name: entity.shell.ClearRegistry
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: request
+    type: entity.shell.RequestDocument
+  name: entity.shell.Create
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: request
+    type: entity.shell.RequestDocument
+  name: entity.shell.Execute
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: request
+    type: entity.shell.SubjectDocument
+  name: entity.shell.Get
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: entity
+    type: String
+  name: entity.shell.List
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: request
+    type: entity.shell.SubjectDocument
+  name: entity.shell.Events
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: request
+    type: entity.shell.SubjectDocument
+  name: entity.shell.Records
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input: []
+  name: entity.shell.Reopen
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: request
+    type: entity.shell.FaultDocument
+  name: entity.shell.Fault
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input:
+  - name: request
+    type: entity.shell.RequestDocument
+  name: entity.shell.Race
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input: []
+  name: entity.shell.Calls
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+- input: []
+  name: entity.shell.ClearCalls
+  outcomes:
+  - name: returned
+    returns: true
+  response:
+  - name: ok
+    type: Boolean
+  - name: kind
+    type: String
+  - name: boundary
+    type: String
+  - name: variant
+    type: String
+  - name: detail
+    type: String
+  - name: value
+    type: entity.core.JsonDocument
+  - name: ids
+    type: entity.core.JsonDocument
+  - name: event_types
+    type: entity.core.JsonDocument
+  - name: count
+    type: Integer
+  - name: revision
+    type: Integer
+  - name: state
+    type: String
+  - name: fields
+    type: entity.core.JsonDocument
+  - name: record_id
+    type: String
+domain: entity.shell
+summary: Actual public entity-shell Rust API responses; fixture controls are explicit caller-owned setup.
+types:
+- kind: enum
+  name: entity.shell.ErrorBoundary
+  variants:
+  - kernel
+  - store
+  - input
+- kind: newtype
+  name: entity.shell.RequestDocument
+  of: entity.core.JsonDocument
+- kind: newtype
+  name: entity.shell.SubjectDocument
+  of: entity.core.JsonDocument
+- kind: newtype
+  name: entity.shell.FaultDocument
+  of: entity.core.JsonDocument

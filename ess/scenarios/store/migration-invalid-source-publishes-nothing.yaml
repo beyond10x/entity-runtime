@@ -1,0 +1,30 @@
+domain: entity.store
+scenario: migration-invalid-source-publishes-nothing
+summary: An identity/path disagreement is refused before destination publication.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.WriteFileFixture
+  input:
+    request: '{"bytes":"{\"entity\":\"ticket\",\"fields\":{\"title\":\"a\"},\"id\":\"a\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1}","path":"legacy/ticket/wrong.json"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.MigrateFile
+  input:
+    request: '{"destination":"file","dry_run":false,"source":"legacy"}'
+  outcome: returned
+  response:
+    error: Backend
+    status: error
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.FileExists
+  input:
+    request: '{"path":"file"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'false'
+type: ess-scenario/4

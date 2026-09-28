@@ -1,0 +1,37 @@
+domain: entity.executor
+scenario: imported-missing-definition-cannot-prove-retry
+summary: An imported envelope lacking its saved definition cannot report historical retry success.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.SeedImported
+  input:
+    request: '{"history":{"origin":{"imported":{"completeness":"available_evidence_only","evidence":[{"envelope":{"entry":{"decision":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"a"},"command":{"command":"create","fields":{"title":"a"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"historical","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}}},"known_order":{"per_kind":0},"source_id":"old","source_locator":"ticket/a"}}],"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"order":"per_kind_only"}},"records":[],"subject":{"entity":"ticket","id":"a"}}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.Tamper
+  input:
+    request: '{"field":"definition","record_id":"historical"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:03Z
+  command: entity.executor.Create
+  input:
+    request: '{"entity":"ticket","fields":{"title":"a"},"id":"a","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"historical","recorded_at":"2026-09-28T00:00:00Z"},"version":1}'
+  outcome: returned
+  response:
+    error: HistoricalRetryUnverifiable
+    status: error
+type: ess-scenario/4

@@ -1,0 +1,30 @@
+domain: entity.store
+scenario: memory-listed-identities-are-sorted
+summary: Public identity enumeration follows identity order rather than insertion order.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.CommitRecorded
+  input:
+    request: '{"commit":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"z"},"command":{"command":"create","fields":{"title":"z"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"z","result":{"entity":"ticket","fields":{"title":"z"},"id":"z","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"z","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"z"},"id":"z","lifecycle_state":"open","revision":1,"version":1}},"expect":null,"provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.CommitRecorded
+  input:
+    request: '{"commit":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"a"},"command":{"command":"create","fields":{"title":"a"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"a","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}},"expect":null,"provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.Ids
+  input:
+    request: '{"entity":"ticket","provider":"Memory"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '["a","z"]'
+type: ess-scenario/4

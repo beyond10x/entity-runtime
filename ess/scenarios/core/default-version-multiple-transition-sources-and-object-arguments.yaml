@@ -1,0 +1,72 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "default-version-multiple-transition-sources-and-object-arguments",
+  "summary": "default version multiple transition sources and object arguments.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":[\"Open\",\"Closed\"],\"to\":\"Open\"}]}}}",
+        "id": "p-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":[\"Open\",\"Closed\"],\"to\":\"Open\"}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{}}",
+        "events": "[]"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":[\"Open\",\"Closed\"],\"to\":\"Open\"}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Closed\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{}}",
+        "events": "[]"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":[\"Open\",\"Closed\"],\"to\":\"Open\"}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "operation": "act",
+        "arguments": "[]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "arguments"
+        ]
+      }
+    }
+  ]
+}

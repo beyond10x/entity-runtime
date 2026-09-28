@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-map-values-are-typed",
+  "summary": "service1 map values are typed.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"value\",\"version\":1,\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"},\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"semantics\":\"service/1\"}",
+        "id": "v-1",
+        "fields": "{\"meta\":{\"a\":1,\"b\":2}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"value\",\"version\":1,\"id\":\"v-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"meta\":{\"a\":1,\"b\":2}}}"
+      }
+    }
+  ]
+}

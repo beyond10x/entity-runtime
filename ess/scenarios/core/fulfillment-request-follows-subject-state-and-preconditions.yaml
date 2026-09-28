@@ -1,0 +1,59 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "fulfillment-request-follows-subject-state-and-preconditions",
+  "summary": "fulfillment request follows subject state and preconditions.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Fulfill",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"outcomes\":[{\"name\":\"accepted\",\"effect\":{\"moves\":{\"from\":\"Open\",\"to\":\"Closed\"}},\"fulfills\":{\"note\":{\"actions\":\"optional\"}}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{\"allow\":true}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"other\",\"lifecycle_state\":\"Missing\",\"revision\":1,\"fields\":{}}",
+        "actions": "not-json"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "subject_mismatch"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Fulfill",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"outcomes\":[{\"name\":\"accepted\",\"effect\":{\"moves\":{\"from\":\"Open\",\"to\":\"Closed\"}},\"fulfills\":{\"note\":{\"actions\":\"optional\"}}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{\"allow\":true}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Closed\",\"revision\":1,\"fields\":{}}",
+        "actions": "not-json"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invalid_transition"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.Fulfill",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"preconditions\":[{\"assert\":{\"eq\":[\"$args.allow\",true]}}],\"outcomes\":[{\"name\":\"accepted\",\"effect\":{\"moves\":{\"from\":\"Open\",\"to\":\"Closed\"}},\"fulfills\":{\"note\":{\"actions\":\"optional\"}}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{\"allow\":false}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{}}",
+        "actions": "not-json"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_failed"
+      }
+    }
+  ]
+}

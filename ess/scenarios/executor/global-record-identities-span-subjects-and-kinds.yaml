@@ -1,0 +1,46 @@
+domain: entity.executor
+scenario: global-record-identities-span-subjects-and-kinds
+summary: One global record ID cannot be reused as another subject's creation or an observation.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.Create
+  input:
+    request: '{"entity":"ticket","fields":{"title":"a"},"id":"a","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.Create
+  input:
+    request: '{"entity":"ticket","fields":{"title":"b"},"id":"b","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1}'
+  outcome: returned
+  response:
+    error: RecordConflict
+    status: error
+- at: 2026-09-28T00:00:03Z
+  command: entity.executor.Observe
+  input:
+    request: '{"observation":{"entity":"ticket","envelope":{"actor":null,"causation":null,"correlation":null,"record":{"evidence":null},"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"id":"a","revision":1}}'
+  outcome: returned
+  response:
+    error: RecordConflict
+    status: error
+- at: 2026-09-28T00:00:04Z
+  command: entity.executor.Load
+  input:
+    request: '{"entity":"ticket","id":"b"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+type: ess-scenario/4

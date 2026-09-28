@@ -1,0 +1,40 @@
+domain: entity.executor
+scenario: dropping-before-poll-dispatches-nothing
+summary: An unpolled executor future performs no storage calls and creates no identity.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.CancelBatch
+  input:
+    request: '{"actions":[{"entity":"ticket","fields":{"title":"a"},"id":"a","kind":"create","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":1}],"key":{"single_record":"one"},"poll":false}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"poll":"Unpolled"}'
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.Trace
+  input:
+    request: '{}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+- at: 2026-09-28T00:00:03Z
+  command: entity.executor.LookupRecord
+  input:
+    request: '{"record_id":"one"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+type: ess-scenario/4

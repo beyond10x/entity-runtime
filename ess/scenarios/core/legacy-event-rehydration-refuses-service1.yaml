@@ -1,0 +1,21 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "legacy-event-rehydration-refuses-service1",
+  "summary": "legacy event rehydration refuses service1.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"ticket\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"count\":{\"type\":\"integer\",\"default\":0}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"create\":{\"emit\":{\"type\":\"Created\",\"payload\":{\"title\":\"$fields.title\"}}},\"operations\":{\"touch\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"arguments\":{\"fields\":{\"count\":{\"type\":\"integer\",\"default\":1}}},\"set\":{\"count\":\"$args.count\"}},\"close\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"arguments\":{\"fields\":{\"allow\":{\"type\":\"boolean\",\"required\":true}}},\"preconditions\":[{\"name\":\"allowed\",\"assert\":{\"eq\":[\"$args.allow\",true]},\"message\":\"allow must be true\"}],\"emits\":[{\"type\":\"Closed\",\"payload\":{\"title\":\"$fields.title\"}},{\"type\":\"Closed\",\"payload\":{\"title\":\"$fields.title\"}}]}},\"semantics\":\"service/1\"}",
+        "events": "[{\"entity\":\"ticket\",\"version\":1,\"id\":\"t-1\",\"revision\":1,\"type\":\"Created\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"count\":0,\"title\":\"A\"},\"args\":{\"count\":0,\"title\":\"A\"},\"payload\":{\"title\":\"A\"}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    }
+  ]
+}

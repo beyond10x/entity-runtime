@@ -1,0 +1,2255 @@
+task: [fmt-check] cargo fmt --all -- --check
+task: [clippy] cargo clippy --workspace --all-targets --locked -- -D warnings
+    Blocking waiting for file lock on package cache
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+    Checking memchr v2.8.3
+   Compiling syn v3.0.4
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.151
+    Checking itoa v1.0.18
+    Checking zmij v1.0.23
+   Compiling serde_derive v1.0.229
+    Checking libc v0.2.189
+    Checking fs2 v0.4.3
+    Checking cfg-if v1.0.4
+    Checking typenum v1.20.1
+    Checking entity-core v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-core)
+   Compiling version_check v0.9.5
+    Checking rand_core v0.10.1
+   Compiling getrandom v0.4.3
+    Checking entity-store v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-store)
+    Checking bytes v1.12.1
+    Checking pin-project-lite v0.2.17
+   Compiling getrandom v0.3.4
+   Compiling generic-array v0.14.7
+    Checking mio v1.2.2
+    Checking socket2 v0.6.5
+   Compiling tokio-macros v2.7.2
+    Checking bitflags v2.13.1
+    Checking equivalent v1.0.2
+    Checking allocator-api2 v0.2.21
+    Checking foldhash v0.2.0
+    Checking tokio v1.53.1
+    Checking hashbrown v0.17.1
+    Checking once_cell v1.21.4
+    Checking block-buffer v0.10.4
+    Checking crypto-common v0.1.7
+   Compiling thiserror v2.0.20
+    Checking digest v0.10.7
+   Compiling thiserror-impl v2.0.20
+    Checking deranged v0.5.8
+   Compiling syn v2.0.119
+   Compiling rustix v1.1.4
+    Checking num-conv v0.2.2
+    Checking cpufeatures v0.2.17
+    Checking time-core v0.1.9
+    Checking powerfmt v0.2.0
+    Checking time v0.3.55
+    Checking sha2 v0.10.9
+    Checking uuid v1.26.1
+    Checking linux-raw-sys v0.12.1
+    Checking smallvec v1.15.2
+    Checking eventlog-core v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+    Checking fastrand v2.5.0
+    Checking scan-support v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/scan-support)
+    Checking entity-eventlog v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-eventlog)
+    Checking tempfile v3.27.0
+   Compiling synstructure v0.13.2
+    Checking indexmap v2.14.0
+    Checking ryu v1.0.23
+    Checking unsafe-libyaml v0.2.11
+   Compiling zerofrom-derive v0.1.7
+    Checking serde_yaml_ng v0.10.0
+    Checking zerofrom v0.1.8
+   Compiling yoke-derive v0.7.5
+    Checking hybrid-array v0.4.14
+    Checking stable_deref_trait v1.2.1
+   Compiling autocfg v1.5.1
+    Checking yoke v0.7.5
+   Compiling num-traits v0.2.19
+   Compiling zerovec-derive v0.10.4
+   Compiling parking_lot_core v0.9.12
+    Checking cmov v0.5.4
+   Compiling heck v0.5.0
+    Checking zerovec v0.10.4
+    Checking ctutils v0.4.2
+    Checking block-buffer v0.12.1
+    Checking crypto-common v0.2.2
+   Compiling displaydoc v0.2.7
+    Checking scopeguard v1.2.0
+    Checking const-oid v0.10.2
+    Checking lock_api v0.4.14
+    Checking digest v0.11.3
+    Checking cpufeatures v0.3.1
+    Checking tinyvec_macros v0.1.1
+    Checking parking_lot v0.12.5
+    Checking tinyvec v1.12.0
+    Checking tinystr v0.7.6
+    Checking entity-graph v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-graph)
+   Compiling find-msvc-tools v0.1.11
+    Checking writeable v0.5.5
+    Checking utf8parse v0.2.2
+   Compiling shlex v2.0.1
+    Checking litemap v0.7.5
+    Checking percent-encoding v2.3.2
+   Compiling icu_locid_transform_data v1.5.1
+    Checking icu_locid v1.5.0
+   Compiling cc v1.4.4
+    Checking anstyle-parse v1.0.0
+    Checking unicode-normalization v0.1.25
+    Checking num-integer v0.1.47
+    Checking chacha20 v0.10.2
+    Checking entity-yaml v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-yaml)
+   Compiling icu_provider_macros v1.5.0
+    Checking is_terminal_polyfill v1.70.2
+    Checking anstyle v1.0.14
+   Compiling pkg-config v0.3.34
+    Checking unicode-properties v0.1.4
+    Checking anstyle-query v1.1.5
+    Checking colorchoice v1.0.5
+    Checking futures-core v0.3.34
+   Compiling icu_properties_data v1.5.1
+    Checking futures-sink v0.3.34
+    Checking unicode-bidi v0.3.18
+   Compiling vcpkg v0.2.15
+   Compiling libsqlite3-sys v0.38.2
+    Checking anstream v1.0.0
+    Checking stringprep v0.1.5
+    Checking icu_provider v1.5.0
+    Checking rand v0.10.2
+    Checking sha2 v0.11.0
+    Checking md-5 v0.11.0
+    Checking hmac v0.13.0
+   Compiling icu_normalizer_data v1.5.1
+    Checking clap_lex v1.1.0
+    Checking siphasher v1.0.3
+   Compiling zerocopy v0.8.56
+    Checking strsim v0.11.1
+    Checking base64 v0.22.1
+    Checking byteorder v1.5.0
+    Checking fallible-iterator v0.2.0
+    Checking clap_builder v4.6.6
+    Checking postgres-protocol v0.6.12
+    Checking phf_shared v0.13.1
+    Checking icu_locid_transform v1.5.0
+    Checking num-bigint v0.4.8
+    Checking icu_collections v1.5.0
+   Compiling clap_derive v4.6.4
+   Compiling ahash v0.8.12
+   Compiling ref-cast v1.0.27
+    Checking futures-task v0.3.34
+    Checking regex-syntax v0.8.11
+    Checking futures-util v0.3.34
+    Checking clap v4.6.6
+    Checking icu_properties v1.5.1
+    Checking num-rational v0.4.2
+    Checking phf v0.13.1
+    Checking postgres-types v0.2.14
+    Checking tokio-util v0.7.19
+    Checking futures-channel v0.3.34
+    Checking num-iter v0.1.46
+    Checking entity-surface v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-surface)
+    Checking num-complex v0.4.6
+    Checking hashlink v0.12.2
+    Checking entity-executor v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-executor)
+    Checking entity-shell v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-shell)
+    Checking whoami v2.1.3
+   Compiling ref-cast-impl v1.0.27
+   Compiling async-trait v0.1.92
+    Checking aho-corasick v1.1.5
+    Checking utf16_iter v1.0.5
+    Checking log v0.4.34
+    Checking fallible-streaming-iterator v0.1.9
+    Checking utf8_iter v1.0.4
+    Checking write16 v1.0.0
+    Checking fallible-iterator v0.3.0
+    Checking rusqlite v0.40.2
+    Checking regex-automata v0.4.18
+    Checking icu_normalizer v1.5.0
+    Checking tokio-postgres v0.7.18
+    Checking num v0.4.3
+    Checking borrow-or-share v0.2.4
+   Compiling unicode-general-category v1.1.0
+    Checking bit-vec v0.8.0
+    Checking lazy_static v1.5.0
+    Checking bit-set v0.8.0
+    Checking fraction v0.15.4
+    Checking fluent-uri v0.4.1
+    Checking postgres v0.19.14
+    Checking idna_adapter v1.2.0
+    Checking entity-mcp v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-mcp)
+   Compiling strum_macros v0.28.0
+    Checking entity-query v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-query)
+    Checking num-cmp v0.1.0
+    Checking outref v0.5.2
+    Checking micromap v0.3.0
+    Checking vsimd v0.8.0
+    Checking bytecount v0.6.9
+    Checking jsonschema-value v0.49.9
+    Checking strum v0.28.0
+    Checking uuid-simd v0.8.0
+    Checking referencing v0.49.9
+    Checking idna v1.1.0
+    Checking fancy-regex v0.19.0
+    Checking regex v1.13.1
+    Checking entity-sqlite v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-sqlite)
+    Checking jsonschema-regex v0.49.9
+    Checking email_address v0.2.9
+    Checking data-encoding v2.11.1
+    Checking entity-postgres v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-postgres)
+    Checking entity-remote v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-remote)
+    Checking jsonschema v0.49.9
+    Checking entity-cli v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-cli)
+    Checking entity-xtask v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-xtask)
+    Finished `dev` profile [unoptimized] target(s) in 1m 02s
+task: [test] cargo test --workspace --locked
+   Compiling memchr v2.8.3
+   Compiling serde_core v1.0.229
+   Compiling cfg-if v1.0.4
+   Compiling typenum v1.20.1
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling foldhash v0.2.0
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.151
+   Compiling bytes v1.12.1
+   Compiling entity-core v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-core)
+   Compiling equivalent v1.0.2
+   Compiling allocator-api2 v0.2.21
+   Compiling hashbrown v0.17.1
+   Compiling pin-project-lite v0.2.17
+   Compiling getrandom v0.3.4
+   Compiling mio v1.2.2
+   Compiling socket2 v0.6.5
+   Compiling once_cell v1.21.4
+   Compiling entity-store v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-store)
+   Compiling bitflags v2.13.1
+   Compiling tokio v1.53.1
+   Compiling generic-array v0.14.7
+   Compiling smallvec v1.15.2
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling digest v0.10.7
+   Compiling deranged v0.5.8
+   Compiling num-conv v0.2.2
+   Compiling powerfmt v0.2.0
+   Compiling time-core v0.1.9
+   Compiling cpufeatures v0.2.17
+   Compiling time v0.3.55
+   Compiling sha2 v0.10.9
+   Compiling thiserror v2.0.20
+   Compiling uuid v1.26.1
+   Compiling scan-support v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/scan-support)
+   Compiling linux-raw-sys v0.12.1
+   Compiling eventlog-core v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+   Compiling rustix v1.1.4
+   Compiling fastrand v2.5.0
+   Compiling entity-eventlog v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-eventlog)
+   Compiling tempfile v3.27.0
+   Compiling indexmap v2.14.0
+   Compiling unsafe-libyaml v0.2.11
+   Compiling ryu v1.0.23
+   Compiling serde_yaml_ng v0.10.0
+   Compiling zerofrom v0.1.8
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.7.5
+   Compiling hybrid-array v0.4.14
+   Compiling scopeguard v1.2.0
+   Compiling zerovec v0.10.4
+   Compiling lock_api v0.4.14
+   Compiling parking_lot_core v0.9.12
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.2
+   Compiling num-traits v0.2.19
+   Compiling parking_lot v0.12.5
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling entity-graph v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-graph)
+   Compiling const-oid v0.10.2
+   Compiling percent-encoding v2.3.2
+   Compiling digest v0.11.3
+   Compiling tinystr v0.7.6
+   Compiling litemap v0.7.5
+   Compiling cpufeatures v0.3.1
+   Compiling tinyvec_macros v0.1.1
+   Compiling writeable v0.5.5
+   Compiling tinyvec v1.12.0
+   Compiling icu_locid v1.5.0
+   Compiling num-integer v0.1.47
+   Compiling icu_locid_transform_data v1.5.1
+   Compiling unicode-normalization v0.1.25
+   Compiling icu_provider v1.5.0
+   Compiling chacha20 v0.10.2
+   Compiling entity-yaml v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-yaml)
+   Compiling futures-core v0.3.34
+   Compiling unicode-properties v0.1.4
+   Compiling futures-sink v0.3.34
+   Compiling unicode-bidi v0.3.18
+   Compiling rand v0.10.2
+   Compiling stringprep v0.1.5
+   Compiling icu_locid_transform v1.5.0
+   Compiling icu_properties_data v1.5.1
+   Compiling num-bigint v0.4.8
+   Compiling sha2 v0.11.0
+   Compiling hmac v0.13.0
+   Compiling md-5 v0.11.0
+   Compiling icu_collections v1.5.0
+   Compiling byteorder v1.5.0
+   Compiling base64 v0.22.1
+   Compiling siphasher v1.0.3
+   Compiling utf8parse v0.2.2
+   Compiling fallible-iterator v0.2.0
+   Compiling regex-syntax v0.8.11
+   Compiling postgres-protocol v0.6.12
+   Compiling phf_shared v0.13.1
+   Compiling anstyle-parse v1.0.0
+   Compiling icu_properties v1.5.1
+   Compiling num-rational v0.4.2
+   Compiling zerocopy v0.8.56
+   Compiling icu_normalizer_data v1.5.1
+   Compiling num-iter v0.1.46
+   Compiling entity-surface v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-surface)
+   Compiling num-complex v0.4.6
+   Compiling entity-shell v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-shell)
+   Compiling aho-corasick v1.1.5
+   Compiling colorchoice v1.0.5
+   Compiling futures-task v0.3.34
+   Compiling anstyle-query v1.1.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling utf16_iter v1.0.5
+   Compiling utf8_iter v1.0.4
+   Compiling anstyle v1.0.14
+   Compiling write16 v1.0.0
+   Compiling icu_normalizer v1.5.0
+   Compiling anstream v1.0.0
+   Compiling futures-util v0.3.34
+   Compiling regex-automata v0.4.18
+   Compiling ref-cast v1.0.27
+   Compiling ahash v0.8.12
+   Compiling num v0.4.3
+   Compiling libsqlite3-sys v0.38.2
+   Compiling phf v0.13.1
+   Compiling postgres-types v0.2.14
+   Compiling tokio-util v0.7.19
+   Compiling futures-channel v0.3.34
+   Compiling entity-executor v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-executor)
+   Compiling hashlink v0.12.2
+   Compiling whoami v2.1.3
+   Compiling borrow-or-share v0.2.4
+   Compiling bit-vec v0.8.0
+   Compiling fallible-iterator v0.3.0
+   Compiling lazy_static v1.5.0
+   Compiling log v0.4.34
+   Compiling clap_lex v1.1.0
+   Compiling strsim v0.11.1
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling rusqlite v0.40.2
+   Compiling clap_builder v4.6.6
+   Compiling tokio-postgres v0.7.18
+   Compiling fraction v0.15.4
+   Compiling bit-set v0.8.0
+   Compiling fluent-uri v0.4.1
+   Compiling idna_adapter v1.2.0
+   Compiling entity-query v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-query)
+   Compiling bytecount v0.6.9
+   Compiling micromap v0.3.0
+   Compiling num-cmp v0.1.0
+   Compiling outref v0.5.2
+   Compiling vsimd v0.8.0
+   Compiling jsonschema-value v0.49.9
+   Compiling referencing v0.49.9
+   Compiling uuid-simd v0.8.0
+   Compiling clap v4.6.6
+   Compiling strum v0.28.0
+   Compiling idna v1.1.0
+   Compiling fancy-regex v0.19.0
+   Compiling postgres v0.19.14
+   Compiling unicode-general-category v1.1.0
+   Compiling regex v1.13.1
+   Compiling entity-mcp v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-mcp)
+   Compiling jsonschema-regex v0.49.9
+   Compiling email_address v0.2.9
+   Compiling data-encoding v2.11.1
+   Compiling entity-sqlite v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-sqlite)
+   Compiling jsonschema v0.49.9
+   Compiling entity-postgres v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-postgres)
+   Compiling entity-remote v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-remote)
+   Compiling entity-cli v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-cli)
+   Compiling entity-xtask v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-xtask)
+    Finished `test` profile [unoptimized] target(s) in 1m 42s
+     Running unittests src/main.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity-868d362b79b2b1e7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/cli-c393d9b112cbb407)
+
+running 28 tests
+test an_unparsable_definition_is_a_usage_error_with_exit_two_where_one_is_expected ... ok
+test graph_dot_quotes_a_name_that_would_otherwise_close_the_string ... ok
+test an_instance_carrying_a_state_the_definition_does_not_declare_is_refused_by_name ... ok
+test a_validation_refusal_lists_every_error ... ok
+test an_unobservable_refusal_names_every_address_nobody_observed ... ok
+test graph_mermaid_uses_state_notation_with_inert_labels ... ok
+test json_escapes_that_yaml_rejects_are_read_as_json ... ok
+test create_refuses_to_guess_between_two_definitions_and_says_how_to_choose ... ok
+test two_definitions_of_the_same_type_and_version_are_refused ... ok
+test inspect_and_graph_describe_the_definition ... ok
+test two_flags_cannot_both_read_standard_input ... ok
+test mcp_command_keeps_stdout_as_json_rpc_and_lists_definition_derived_tools ... ok
+test validate_names_the_defect_and_exits_one ... ok
+test validate_reports_every_file_and_a_broken_one_is_a_finding_not_a_usage_error ... ok
+test validate_prints_every_defect_of_a_file_not_only_the_first ... ok
+test validate_accepts_the_example_and_exits_zero ... ok
+test create_then_execute_through_a_pipe_and_a_refusal_with_its_typed_reason ... ok
+test implement_records_the_evidence_it_was_decided_on ... ok
+test generated_documentation_is_complete_and_replaces_only_generator_owned_output ... ok
+test skill_stdout_and_file_are_identical_and_replacement_is_explicit ... ok
+test file_store_migration_is_out_of_place_and_dry_run_writes_nothing ... ok
+test a_second_creation_of_one_identity_is_refused_by_the_store ... ok
+test a_store_carries_the_instance_from_create_to_execute ... ok
+test execute_with_a_stale_expected_revision_is_refused_before_the_kernel_runs ... ok
+test a_retry_with_the_same_record_id_but_different_intent_is_a_record_conflict ... ok
+test list_says_what_a_store_holds_and_nothing_for_a_type_nobody_stored ... ok
+test an_exact_execute_retry_through_the_store_returns_the_original_record_after_state_has_advanced ... ok
+test generated_rust_cli_compiles_and_executes_definition_specific_commands ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 25.31s
+
+     Running tests/version.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/version-83f7d165c8262528)
+
+running 3 tests
+test the_heading_reader_ignores_unreleased_and_finds_the_first_number ... ok
+test every_path_dependency_names_the_workspace_version ... ok
+test the_binary_reports_the_version_the_changelog_announces ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_core-7769500590c6c8bc)
+
+running 25 tests
+test identity::tests::a_json_identity_has_no_address_and_says_so_rather_than_inventing_one ... ok
+test identity::tests::a_text_address_is_never_empty_or_whitespace_however_empty_its_identity_is ... ok
+test identity::tests::a_composite_address_sorts_keys_quotes_text_and_normalizes_numbers_at_every_depth ... ok
+test identity::tests::the_three_numeric_kinds_share_one_canonical_spelling ... ok
+test identity::tests::an_unvalidated_value_receives_a_named_error_rather_than_an_invented_address ... ok
+test observed::tests::an_underflowing_token_is_falsy_because_the_carried_binary_is_zero ... ok
+test observed::tests::a_token_outside_the_source_domain_is_absent_rather_than_saturated ... ok
+test observed::tests::exact_ordering_holds_across_scales_and_signs ... ok
+test observed::tests::negative_zero_and_zero_are_one_observed_value_with_one_canonical_text ... ok
+test number::tests::integers_and_decimals_compare_without_losing_precision ... ok
+test observed::tests::the_literal_door_keeps_an_authored_decimal_only_where_the_source_keeps_it ... ok
+test observed::tests::the_literal_door_keeps_an_authored_integer_past_the_binary64_span ... ok
+test observed::tests::one_value_has_one_canonical_text_however_it_was_spelled ... ok
+test observed::tests::the_wire_door_reads_an_integer_token_exactly_and_never_through_a_binary64 ... ok
+test observed::tests::the_wire_door_reads_the_witness_token_as_the_source_cli_profile ... ok
+test replay::tests::event_changes_delete_before_they_insert ... ok
+test timestamp::tests::impossible_calendar_dates_and_non_ascii_clock_tails_are_refused_without_panicking ... ok
+test timestamp::tests::a_date_and_a_datetime_both_read_and_order ... ok
+test timestamp::tests::what_it_cannot_read_it_says_nothing_about ... ok
+test truth::tests::false_dominates_conjunction_and_true_dominates_disjunction ... ok
+test timestamp::tests::nothing_panics_however_wrong_the_input ... ok
+test truth::tests::kleene_agrees_with_boolean_logic_wherever_nothing_is_unknown ... ok
+test truth::tests::negation_cannot_turn_nobody_looked_into_it_is_wrong ... ok
+test truth::tests::only_true_satisfies_a_rule ... ok
+test truth::tests::the_connectives_are_commutative_and_associative ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/operation_field_fulfillment.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/operation_field_fulfillment-24395b69c9141893)
+
+running 6 tests
+test registration_accumulates_every_fulfillment_placement_and_presence_defect ... ok
+test invariants_judge_the_post_action_map_and_event_only_service_3_history_is_refused ... ok
+test selection_refusal_preconditions_and_exact_subject_finish_before_any_fulfillment ... ok
+test preserve_keeps_loaded_presence_while_every_wrong_action_coordinate_is_typed ... ok
+test update_and_move_outcomes_record_removal_with_zero_one_and_many_events ... ok
+test set_preserve_and_remove_apply_once_and_share_the_result_with_event_response_and_replay ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/operation_fulfillment_final_correction.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/operation_fulfillment_final_correction-1615367546fa142e)
+
+running 4 tests
+test honest_empty_removal_kernel_creation_and_multi_event_history_still_fold ... ok
+test kernel_creation_refuses_present_absent_and_unknown_removal_coordinates ... ok
+test kernel_operation_refuses_present_absent_and_unknown_removal_coordinates ... ok
+test every_member_of_a_multi_event_kernel_revision_refuses_removal_evidence ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/operation_fulfillment_review_2.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/operation_fulfillment_review_2-aad3c72574d9fb87)
+
+running 1 test
+test a_kernel_event_cannot_invent_service_3_removal_evidence ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/purity.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/purity-299c7a8d5e9f3596)
+
+running 4 tests
+test the_kernel_depends_on_serialisation_and_nothing_else ... ok
+test the_scan_does_not_fire_on_prose_or_lookalikes ... ok
+test the_scan_sees_every_evasion_it_is_meant_to_see ... ok
+test the_kernel_reaches_no_clock_filesystem_network_or_random_source ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/replay.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/replay-91220256feb820b3)
+
+running 43 tests
+test a_creation_event_into_a_state_that_is_not_the_initial_one_is_refused ... ok
+test a_forged_field_of_the_wrong_type_is_refused_by_the_schema_not_the_invariant_that_reads_it ... ok
+test a_creation_event_whose_changed_differs_from_its_recorded_fields_is_refused ... ok
+test a_creation_event_of_a_type_the_definition_does_not_emit_on_creation_is_refused ... ok
+test a_history_cannot_begin_for_a_definition_that_emits_nothing_on_creation ... ok
+test a_forged_event_carrying_an_argument_its_operation_does_not_declare_is_refused ... ok
+test an_empty_history_is_refused_rather_than_producing_an_empty_instance ... ok
+test a_forged_event_whose_changed_contradicts_what_its_own_arguments_would_have_set_is_refused ... ok
+test an_event_carrying_a_field_of_the_wrong_type_is_refused ... ok
+test an_event_carrying_a_field_the_schema_does_not_declare_is_refused ... ok
+test a_forged_payload_on_an_operation_event_is_refused ... ok
+test an_event_missing_its_arguments_is_refused_when_parsed ... ok
+test a_second_creation_event_partway_through_a_history_is_refused ... ok
+test a_history_missing_one_of_the_two_events_a_decision_emitted_is_refused ... ok
+test a_create_and_two_operations_fold_back_into_the_instance_they_produced ... ok
+test a_duplicated_event_at_one_revision_is_refused ... ok
+test a_forged_payload_on_the_creation_event_is_refused ... ok
+test a_history_with_a_gap_is_refused_rather_than_folded_over ... ok
+test a_history_whose_revisions_skip_a_number_is_refused ... ok
+test a_trailing_silent_decision_leaves_the_fold_one_decision_short_with_nothing_to_refuse ... ok
+test a_history_belonging_to_another_instance_is_refused ... ok
+test a_forged_payload_on_the_last_event_of_a_revision_is_refused ... ok
+test a_replayed_event_whose_arguments_would_not_have_satisfied_the_preconditions_is_refused ... ok
+test a_silent_decision_followed_by_an_emitting_one_makes_the_history_unfoldable_from_there ... ok
+test an_event_naming_a_transition_no_operation_declares_is_refused ... ok
+test an_event_whose_transition_the_lifecycle_does_not_permit_is_refused ... ok
+test a_history_folding_to_an_instance_a_declared_invariant_refuses_is_refused ... ok
+test an_honest_history_of_an_operation_emitting_two_events_folds_to_the_executed_instance ... ok
+test an_event_records_the_arguments_it_was_decided_on_and_a_creation_records_its_fields ... ok
+test an_event_whose_type_no_operation_emits_on_its_transition_is_refused ... ok
+test an_honest_history_of_the_first_of_two_payload_distinguished_operations_folds ... ok
+test an_event_of_another_entity_at_the_second_slot_of_a_revision_is_refused ... ok
+test an_honest_history_of_the_second_of_two_payload_distinguished_operations_folds ... ok
+test an_event_naming_an_unknown_state_at_the_second_slot_of_a_revision_is_refused ... ok
+test an_event_of_another_instance_at_the_second_slot_of_a_revision_is_refused ... ok
+test two_events_at_one_revision_that_describe_different_decisions_are_refused ... ok
+test an_honest_history_of_three_events_at_one_revision_folds ... ok
+test complete_decision_records_recompute_the_instance_from_genesis ... ok
+test two_creation_events_at_revision_one_are_refused ... ok
+test three_events_at_one_revision_in_the_wrong_order_are_refused ... ok
+test changing_the_to_state_of_the_second_event_of_a_revision_is_refused ... ok
+test changing_any_recorded_result_is_refused_instead_of_becoming_state ... ok
+test an_honest_history_through_set_defaults_and_invariants_folds_to_the_executed_instance ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/requirements.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/requirements-3f79b3054b9ff578)
+
+running 71 tests
+test a_condition_carrying_two_operators_or_an_unknown_one_is_refused ... ok
+test a_broken_ladder_is_reported_once_and_does_not_cascade_through_every_transition ... ok
+test a_definition_with_an_unknown_initial_state_is_refused ... ok
+test a_definition_with_duplicate_states_is_refused ... ok
+test a_definition_without_a_version_defaults_to_one ... ok
+test a_failed_invariant_at_creation_yields_no_decision ... ok
+test a_definition_with_a_zero_version_or_an_empty_name_is_refused ... ok
+test a_misspelled_definition_key_is_refused_rather_than_ignored ... ok
+test a_rule_referencing_an_undeclared_field_is_refused ... ok
+test a_constraint_that_does_not_apply_to_its_kind_is_refused ... ok
+test a_failed_precondition_yields_no_decision_and_names_the_rule ... ok
+test a_ref_declares_the_entity_it_points_at_or_it_is_not_a_ref ... ok
+test a_failed_invariant_after_an_operation_yields_no_decision_and_no_events ... ok
+test a_transition_through_an_undeclared_state_is_refused ... ok
+test a_nested_reference_path_is_checked_against_the_schema ... ok
+test a_refusal_leaves_the_caller_owned_instance_untouched ... ok
+test a_reference_is_an_identity_and_the_kernel_checks_nothing_else_about_it ... ok
+test an_empty_event_type_is_refused ... ok
+test a_present_null_is_not_a_value_for_either_kind_of_question ... ok
+test a_before_or_after_rule_reading_a_literal_instant_against_a_reference_registers_and_decides ... ok
+test an_empty_all_or_any_is_refused ... ok
+test a_default_declared_inside_an_object_is_applied ... ok
+test an_enum_without_values_and_an_array_without_items_are_refused ... ok
+test an_invalid_default_is_refused_at_registration ... ok
+test a_precondition_may_not_read_state_and_an_invariant_may_not_read_the_transition ... ok
+test an_empty_identity_is_refused ... ok
+test a_rule_without_a_message_reports_a_default ... ok
+test an_operation_without_transitions_is_refused ... ok
+test an_instance_claiming_a_state_the_definition_does_not_declare_is_refused ... ok
+test an_instance_of_another_definition_is_refused ... ok
+test a_before_or_after_rule_with_a_literal_the_kernel_cannot_read_is_refused_at_registration ... ok
+test an_invariant_may_not_read_arguments_or_previous_state ... ok
+test an_invariant_contradicted_after_an_operation_is_a_violation_not_an_unobservable ... ok
+test a_template_the_scope_cannot_resolve_is_refused_at_registration ... ok
+test a_precondition_may_read_the_arguments_and_the_transition ... ok
+test a_written_acyclic_is_refused_on_a_kind_it_does_not_govern ... ok
+test a_prefix_or_suffix_condition_takes_two_operands_whose_references_are_checked ... ok
+test an_integer_beyond_i64_is_compared_numerically_not_wrapped ... ok
+test an_unobservable_refusal_names_every_unresolved_reference_not_the_first ... ok
+test definition_validation_reports_every_defect_not_the_first ... ok
+test every_field_kind_is_checked ... ok
+test mutually_referencing_types_register_in_either_order_and_validate_as_a_set ... ok
+test comparing_a_defect_list_to_one_defect_holds_only_when_it_is_the_only_one ... ok
+test an_operation_not_declared_from_the_current_state_is_refused_before_its_preconditions ... ok
+test definitions_are_registered_from_data_and_keyed_by_entity_and_version ... ok
+test an_unresolvable_template_reference_is_an_error_not_a_null ... ok
+test create_enters_the_initial_state_at_revision_one_and_emits_the_creation_event ... ok
+test an_instant_this_kernel_cannot_read_is_unobservable_and_the_refusal_names_it ... ok
+test a_transition_may_start_from_several_states ... ok
+test fields_are_ordered_by_name_so_two_identical_decisions_serialise_alike ... ok
+test create_applies_defaults_then_validates ... ok
+test fields_and_arguments_must_be_objects ... ok
+test validate_all_names_every_reference_whose_type_nobody_registered ... ok
+test set_may_only_write_declared_fields ... ok
+test two_transitions_from_one_state_in_one_operation_are_ambiguous ... ok
+test contains_and_in_cover_arrays_strings_objects_and_membership ... ok
+test validation_accumulates_every_field_error ... ok
+test fields_are_revalidated_after_set ... ok
+test registering_over_an_existing_definition_is_refused_and_replace_is_how_to_mean_it ... ok
+test zero_bounds_order_positive_and_negative_fractions_mathematically ... ok
+test every_successful_operation_increments_the_revision_by_one ... ok
+test unknown_fields_are_allowed_only_when_the_schema_says_so ... ok
+test operation_arguments_are_defaulted_and_validated ... ok
+test templates_resolve_recursively_and_escape_a_literal_dollar ... ok
+test set_assignments_read_the_pre_operation_fields_whatever_their_order ... ok
+test equality_is_numeric_so_an_integer_equals_the_same_number_written_with_a_decimal_point ... ok
+test the_same_inputs_produce_the_same_decision_byte_for_byte ... ok
+test before_and_after_order_two_instants_the_shell_supplied ... ok
+test numeric_comparisons_are_numeric_and_compare_false_otherwise ... ok
+test a_value_question_over_a_missing_reference_is_unobservable_and_exists_stays_two_valued ... ok
+test starts_with_and_ends_with_test_a_string_prefix_and_suffix_byte_for_byte ... ok
+
+test result: ok. 71 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/selected_creation_identity.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/selected_creation_identity-1e9d28ef9b629c5a)
+
+running 5 tests
+test derivation_requires_a_declared_logical_identity ... ok
+test pre_address_id_in_a_selector_or_selected_assignment_is_explicitly_circular ... ok
+test runtime_exposes_the_same_derived_capability_without_a_candidate_address ... ok
+test each_selected_creation_branch_derives_and_publishes_its_own_identity ... ok
+test derived_and_supplied_creation_are_one_decision_and_replay_contract ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_binding_boundary.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_binding_boundary-a1fc691aec08727f)
+
+running 15 tests
+test a_state_guard_is_not_evaluated_before_the_subject_is_loaded ... ok
+test a_preload_scan_stops_at_the_first_subject_dependent_branch ... ok
+test an_unknown_input_guard_refuses_without_trying_a_later_default ... ok
+test a_nonpositive_payment_refuses_before_any_subject_load ... ok
+test a_positive_payment_requires_the_exact_subject_and_continues_in_er ... ok
+test kernel_1_and_service_1_keep_their_definitions_decisions_and_refusal_order ... ok
+test unloaded_subject_existence_is_not_confused_with_an_absent_field ... ok
+test a_prepared_operation_binds_definition_input_operation_and_identity ... ok
+test one_optional_argument_reuses_one_presence_and_value_across_state_event_and_response ... ok
+test kleene_dominating_guards_refuse_without_loading_an_unknown_subject ... ok
+test preload_quantifiers_preserve_empty_collections_and_available_binders ... ok
+test conditional_presence_distinguishes_absent_present_and_null_in_all_output_positions ... ok
+test implicit_kernel_and_branchless_service_operations_preload_then_match_direct_decide ... ok
+test service_2_replay_recomputes_presence_and_refuses_every_tampered_position ... ok
+test conditional_presence_refuses_wrong_types_and_missing_required_neighbors_before_selection ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_binding_review_one.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_binding_review_one-c6e0f2318ecec857)
+
+running 3 tests
+test preparation_keeps_registry_identity_operation_and_argument_error_precedence ... ok
+test outer_kleene_domination_settles_a_quantifier_whose_collection_needs_subject ... ok
+test service_2_operation_conditional_outputs_preserve_absent_present_and_null ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_identity.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_identity-76a44db19756d448)
+
+running 33 tests
+test a_binary64_identity_whose_value_is_not_finite_is_refused_at_the_field_kind ... ok
+test a_json_field_the_identity_does_not_name_is_untouched_by_the_recursion ... ok
+test a_composite_identity_containing_a_binary64_member_addresses_recursively ... ok
+test a_non_optional_references_one_carrier_lowers_to_required_true ... ok
+test a_many_owns_relation_carried_by_an_array_field_is_refused ... ok
+test a_references_many_relation_requires_an_array_of_the_targets_identity_kind ... ok
+test a_references_target_that_declares_no_logical_identity_still_carries_whatever_it_declares ... ok
+test a_reference_to_an_empty_logical_text_identity_preserves_the_declared_carrier ... ok
+test a_json_leaf_is_refused_as_an_identity_at_every_depth_of_every_composite ... ok
+test a_second_owner_of_one_entity_is_refused_by_validate_all ... ok
+test a_list_identity_is_carried_by_a_list_on_every_row ... ok
+test a_binary64_identity_addresses_by_its_canonical_text_and_negative_zero_is_one_address ... ok
+test a_composite_identity_without_a_json_leaf_still_registers_and_addresses ... ok
+test an_optional_references_one_carrier_lowers_to_required_false_and_registers ... ok
+test an_identity_field_that_is_unknown_or_optional_or_untyped_is_refused_at_registration ... ok
+test a_references_many_carrier_of_a_list_identity_is_one_array_deeper_than_the_identity ... ok
+test a_struct_identity_addresses_by_canonical_json_with_sorted_keys_and_normalized_numbers ... ok
+test an_unregistered_relation_target_is_refused_by_validate_all ... ok
+test an_owns_relation_is_validated_against_the_targets_field_and_not_the_declarers ... ok
+test an_optional_owns_or_references_many_carrier_is_refused ... ok
+test an_unset_optional_reference_answers_unknown_rather_than_false ... ok
+test a_relation_carrier_and_an_event_payload_publish_the_logical_identity_not_the_address ... ok
+test two_numeric_identity_spellings_of_one_value_are_one_address ... ok
+test an_owns_relation_carrier_is_typed_as_the_owners_identity_kind_not_always_as_a_ref ... ok
+test one_field_carrying_two_relations_is_refused_by_validate_all ... ok
+test an_integer_identity_addresses_by_its_canonical_decimal_and_replays ... ok
+test the_declaring_definition_still_answers_the_half_it_can_see_about_a_references_carrier ... ok
+test a_text_identity_addresses_with_the_s_prefix_and_an_empty_string_identity_is_admitted ... ok
+test an_identity_field_that_stops_mirroring_the_id_after_set_is_refused ... ok
+test open_object_identity_members_are_untyped_json_at_every_depth ... ok
+test an_owns_carrier_is_the_owners_identity_once_on_both_cardinalities ... ok
+test identity_equality_and_the_address_agree_for_every_numeric_identity_kind ... ok
+test every_references_row_compares_its_carrier_against_the_targets_identity_kind ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_review_one.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_review_one-f83270686c997740)
+
+running 7 tests
+test a_leading_plus_ordinal_is_refused_at_registration_so_the_runtime_reading_is_unreachable ... ok
+test a_quantifier_binder_named_after_a_fixed_root_shadows_it_inside_the_body ... ok
+test a_references_many_carrier_whose_elements_are_not_the_targets_identity_kind_is_refused ... ok
+test a_references_one_carrier_of_the_wrong_kind_is_refused ... ok
+test an_unobservable_numeric_literal_is_refused_wherever_it_is_written ... ok
+test a_creation_branch_guarded_on_a_state_the_creation_cannot_be_in_is_skipped ... ok
+test service_equality_and_membership_read_an_authored_literal_through_the_literal_door ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_review_two.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_review_two-2e290ca60ea97277)
+
+running 3 tests
+test a_json_member_of_a_composite_identity_is_refused_at_every_depth ... ok
+test an_unobservable_numeric_bound_is_refused_at_definition_admission_like_an_unobservable_default ... ok
+test a_map_declared_as_a_union_variant_still_addresses_its_size_and_not_its_count_key ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_semantics.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_semantics-09eddc4a02acccb0)
+
+running 43 tests
+test a_creation_selector_free_default_that_is_not_last_is_still_refused_beside_a_state_guard ... ok
+test a_creation_whose_only_branch_is_guarded_on_another_state_selects_nothing ... ok
+test a_branch_that_leaves_a_required_response_field_undetermined_is_refused_at_registration ... ok
+test a_kernel_1_creation_event_payload_still_cannot_read_args ... ok
+test a_creation_branch_guarded_on_the_initial_state_still_evaluates_its_own_when ... ok
+test a_creation_set_may_not_read_fields ... ok
+test a_pre_service_reader_refuses_a_service_1_definition_by_naming_its_unknown_field ... ok
+test a_kernel_1_creation_that_emits_nothing_still_validates_and_still_creates ... ok
+test a_matching_in_state_branch_with_no_when_is_taken ... ok
+test a_kernel_1_definition_using_a_service_operator_is_refused_at_registration ... ok
+test a_non_matching_in_state_branch_is_skipped_without_evaluating_its_when ... ok
+test a_matching_in_state_branch_whose_when_is_false_is_skipped ... ok
+test a_kernel_1_definition_and_record_serialize_to_the_bytes_they_serialized_to_before_branches ... ok
+test a_refusing_branch_produces_no_record_no_event_no_response_and_no_revision ... ok
+test a_creation_branch_emits_zero_one_or_many_events_in_declaration_order ... ok
+test a_creation_state_guard_is_tested_against_the_lifecycles_initial_state ... ok
+test a_creation_branch_with_the_creates_effect_and_no_events_is_admitted_and_records_created ... ok
+test a_creation_branch_event_payload_reads_a_creation_argument_no_field_stores ... ok
+test a_creation_branch_response_reads_a_creation_argument_and_a_post_set_field ... ok
+test a_declared_response_is_materialised_from_the_selected_branch_and_replays_byte_for_byte ... ok
+test a_selected_move_branch_with_no_wrong_state_branch_still_answers_invalid_transition ... ok
+test a_selected_move_branch_whose_from_excludes_the_state_answers_the_wrong_state_branch ... ok
+test a_selector_free_branch_that_is_not_last_is_refused ... ok
+test a_selector_free_default_is_still_separate_from_a_bare_state_guard ... ok
+test a_state_guard_naming_a_state_its_move_does_not_start_from_is_refused ... ok
+test a_refusing_branch_that_declares_responds_is_refused_at_registration ... ok
+test a_wrong_state_branch_whose_moves_cover_every_state_is_refused_at_registration ... ok
+test an_operation_mixing_a_state_guard_and_a_wrong_state_branch_is_refused_at_registration ... ok
+test an_unobservable_guard_refuses_the_command_instead_of_taking_the_next_branch ... ok
+test an_input_guard_answers_before_the_held_state_is_tested ... ok
+test an_outcome_selector_may_not_read_to_state ... ok
+test renumbering_a_service_1_run_against_the_legacy_column_recovers_the_twelve_step_order ... ok
+test branches_are_tried_in_declared_order_and_the_first_applicable_one_is_taken ... ok
+test the_wrong_state_set_is_the_complement_of_every_move_source_not_of_the_selected_branch ... ok
+test the_close_ticket_witness_registers_and_refuses_only_the_state_input_pair_the_source_leaves_open ... ok
+test an_accepted_branch_that_changes_nothing_still_advances_one_revision_with_zero_events ... ok
+test a_service_1_operation_runs_the_sixteen_steps_in_the_numbered_order ... ok
+test a_service_1_history_is_refused_by_rehydrate_before_any_event_arg_is_read ... ok
+test a_service_1_decision_frames_as_er_record_2_and_its_request_carries_arguments_not_fields ... ok
+test an_update_branch_keeps_its_state_and_records_updated_without_a_transition ... ok
+test the_identity_mirror_runs_before_the_invariants_and_the_response_after_the_events ... ok
+test every_complete_branch_decision_replays_byte_for_byte_from_its_record ... ok
+test the_kernel_checks_entity_mismatch_before_unknown_state_and_both_documents_say_so ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/service_values.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_values-4c71a87b9547ab0c)
+
+running 46 tests
+test a_binary64_underflow_token_is_falsy_and_is_still_stored_unrounded ... ok
+test a_decimal_binary64_does_not_carry_answers_ne_false_and_its_negation_true ... ok
+test a_binary64_field_keeps_the_sign_of_its_zero_through_creation_event_and_replay ... ok
+test a_collection_count_resolves_under_service_1_and_resolves_to_nothing_under_kernel_1 ... ok
+test a_map_field_types_its_values_and_refuses_an_untyped_member ... ok
+test a_map_with_an_integer_key_refuses_a_key_that_is_not_integer_text ... ok
+test a_quantifier_body_reading_an_address_outside_its_scope_is_refused_at_registration ... ok
+test a_timestamp_comparison_with_no_declared_scale_is_unknown_and_not_false ... ok
+test a_nominal_invariant_inside_a_list_lowers_to_a_for_all_over_that_path ... ok
+test a_binary64_predicate_is_admitted_and_negative_zero_equals_zero ... ok
+test a_service_integer_beyond_the_i64_range_is_refused_while_kernel_1_still_admits_it ... ok
+test an_empty_any_of_is_unknown_when_unobserved_and_false_when_observed ... ok
+test a_record_replays_under_the_number_observation_its_definition_snapshot_names ... ok
+test a_timestamp_comparison_inside_a_declared_scale_answers_by_rank ... ok
+test a_condition_nested_past_thirty_two_is_refused_with_its_limit ... ok
+test a_union_field_accepts_the_adjacent_tagged_form_and_refuses_an_unknown_tag ... ok
+test a_quantifier_body_reads_the_fixed_roots_its_binder_does_not_name ... ok
+test a_readable_bound_the_order_check_and_every_kernel_1_bound_are_untouched ... ok
+test an_array_ordinal_address_resolves_under_service_1_only ... ok
+test a_nested_quantifier_body_reaches_the_outer_element_and_an_inner_binder_shadows_it ... ok
+test a_declared_map_is_addressed_by_its_size_whichever_field_declares_it ... ok
+test a_union_tagged_value_reads_its_content_under_content ... ok
+test an_unobservable_schema_bound_is_refused_at_definition_admission_on_both_limits ... ok
+test a_variants_declared_kind_survives_nesting_and_a_quantifier_body ... ok
+test an_unobservable_bound_is_refused_at_every_depth_and_on_every_admitted_schema_surface ... ok
+test compare_answers_unknown_where_gt_answers_false_for_two_non_numbers ... ok
+test an_exact_decimal_survives_creation_set_event_and_replay_unrounded ... ok
+test compare_over_a_resolved_array_operand_is_unknown ... ok
+test for_all_over_an_unobserved_collection_is_unknown_rather_than_vacuously_true ... ok
+test for_all_over_a_map_walks_its_values_in_canonical_key_order ... ok
+test two_declared_scales_that_disagree_about_one_pair_answer_unknown ... ok
+test kernel_1_number_operators_and_bounds_answer_exactly_what_they_answer_today ... ok
+test two_adjacent_integers_past_2_53_are_distinguished_on_the_exact_integer_path ... ok
+test that_same_token_is_stored_and_replayed_byte_for_byte_after_answering_equal ... ok
+test the_declared_scales_are_snapshotted_into_the_record_and_replay_reads_the_snapshot ... ok
+test the_versioned_observation_matches_the_actual_source_cli_profile ... ok
+test an_unobservable_numeric_literal_is_refused_in_every_service_1_operator_and_at_every_depth ... ok
+test for_all_over_an_empty_collection_is_true_and_for_any_is_false ... ok
+test truthy_over_text_is_true_unless_empty_or_the_word_false ... ok
+test service_numeric_equality_membership_and_bounds_all_use_the_observation_rule ... ok
+test truthy_over_a_number_is_the_zero_test_and_over_nothing_is_unknown ... ok
+test the_billing_invoice_entity_lowers_with_every_field_typed_and_none_refused ... ok
+test a_prefix_or_suffix_is_answered_alike_under_kernel_1_and_service_1 ... ok
+test the_variant_the_tag_names_is_the_kind_the_walk_continues_under ... ok
+test nested_union_payload_names_preserve_adjacent_bytes_through_create_update_and_replay ... ok
+test service_equality_and_membership_read_each_operand_through_its_own_door ... ok
+
+test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/string_affix_adversary.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/string_affix_adversary-1461c4ae230f580f)
+
+running 5 tests
+test an_escaped_dollar_is_a_literal_prefix_not_a_reference ... ok
+test a_prefix_or_suffix_literal_that_is_not_a_string_is_refused_at_registration ... ok
+test a_prefix_test_on_a_quantifier_binder_registers_and_decides ... ok
+test a_prefix_or_suffix_guard_over_the_subject_waits_for_the_load ... ok
+test a_prefix_guard_over_the_arguments_routes_before_any_load ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_eventlog-b595e16e1026024b)
+
+running 28 tests
+test adapter::forked_append::a_provider_fork_refusal_of_a_stream_the_append_does_not_write_is_integrity ... ok
+test adapter::forked_append::a_provider_fork_refusal_of_a_written_subject_is_that_subjects_fork ... ok
+test adapter::tests::every_eventlog_append_error_has_an_explicit_er_classification ... ok
+test adapter::tests::every_guard_refusal_has_a_stable_code_and_typed_match ... ok
+test adapter::tests::the_blob_and_append_mappings_agree_on_the_only_variant_put_blob_documents ... ok
+test encoding::tests::a_digest_is_bound_to_its_exact_domain ... ok
+test encoding::tests::closed_binding_decode_refuses_unknown_fields_and_noncanonical_order ... ok
+test encoding::tests::literal_reference_vectors_pin_framing_domains_lengths_and_escaping ... ok
+test encoding::tests::source_bound_anchor_refuses_a_contradictory_envelope_source ... ok
+test adapter::seeded_open::a_batch_whose_stored_bytes_are_not_their_own_canonical_rendering_is_refused ... ok
+test encoding::tests::source_bound_anchor_version_preserves_old_bytes_and_old_reader_refusal ... ok
+test adapter::seeded_open::a_member_expectation_carrying_a_field_of_its_own_is_refused ... ok
+test adapter::seeded_open::a_batch_is_parsed_once_rather_than_once_for_every_member_as_well ... ok
+test adapter::seeded_open::seeded_open_measurement ... ok
+test adapter::seeded_open::a_batch_member_that_does_not_reproduce_its_own_record_is_refused ... ok
+test adapter::seeded_open::the_batch_key_expectation_and_member_wires_admit_exactly_one_shape_each ... ok
+test adapter::seeded_open::a_remembered_history_is_not_the_answer_for_one_that_differs_in_a_single_expectation ... ok
+test adapter::seeded_open::a_remembered_digest_does_not_admit_other_bytes_under_it ... ok
+test adapter::seeded_open::an_advanced_subject_is_verified_from_its_verified_state_and_refused_where_it_breaks ... ok
+test adapter::seeded_open::a_memory_of_the_sound_store_admits_no_forgery_of_it ... ok
+test adapter::seeded_open::a_blob_named_under_two_domains_is_refused_without_being_hashed_twice ... ok
+test adapter::seeded_open::a_store_of_named_batches_written_at_base_reads_into_the_base_model ... ok
+test adapter::seeded_open::a_capture_is_hashed_once_over_rather_than_several_times_over ... ok
+test adapter::seeded_open::every_carried_digest_is_the_digest_of_the_bytes_the_model_holds ... ok
+test adapter::memory::tests::a_memory_forgets_before_what_it_actually_retains_passes_its_cap ... ok
+test adapter::seeded_open::every_bound_domain_is_still_refused_when_its_blob_is_not_its_digest ... ok
+test adapter::seeded_open::the_model_is_byte_identical_to_the_verifying_path ... ok
+test adapter::seeded_open::a_model_advanced_by_appended_events_is_the_model_a_whole_build_produces ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.68s
+
+     Running tests/adversary_guarded_write_races.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_guarded_write_races-a0d4e2bfe660637d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/adversary_observation_heads.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_observation_heads-a75bf625ca078e49)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/adversary_r2_per_entity_reads.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_r2_per_entity_reads-b284c84940f0d480)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/adversary_two_batch_capture_limit.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_two_batch_capture_limit-8f900bf9e5db2e56)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/adversary_two_partial_overlap.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_two_partial_overlap-5c67c613ba699501)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/adversary_two_port_default_document.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_two_port_default_document-3ca832ed9bbd2361)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fault_acceptance.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/fault_acceptance-37fd4fa763ecc61e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/guarded_write_blob_binding.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/guarded_write_blob_binding-35939de3a8b2a83f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/import_batch_blob_binding.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/import_batch_blob_binding-48b7f3604d550509)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/import_batch_record_identity.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/import_batch_record_identity-b0bc26fec9800d52)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/import_batch_retry_admission.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/import_batch_retry_admission-410c77b131b953b0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/per_entity_reads.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/per_entity_reads-c860c6ec41b5a238)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/provider_facades.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/provider_facades-2eb91b102c39030b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/providers.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/providers-a03a5a2076a940d9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/reviewer_binding_unknown_conflict.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/reviewer_binding_unknown_conflict-557e2bff20f8e16b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_3_composition.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_3_composition-c0b9fdccab353fc1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tree_branches.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/tree_branches-73d95a60bbf84942)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tree_text_blobs.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/tree_text_blobs-e0c709dd62962871)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_executor-f1ce0af85c9df160)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/async_recorded_contract.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/async_recorded_contract-6f70c38a8953e008)
+
+running 9 tests
+test exact_imported_retry_is_historical_and_missing_matching_facts_are_not_success ... ok
+test stale_observation_in_a_mixed_batch_rolls_back_every_record_and_receipt ... ok
+test global_record_ids_duplicate_requests_and_empty_batches_are_closed_before_writes ... ok
+test changed_expectation_or_provenance_conflicts_with_the_original_retry ... ok
+test mixed_batches_use_ordered_local_state_and_observations_do_not_advance_revision ... ok
+test complete_decisions_keep_duplicate_events_and_observations_keep_explicit_null_provenance ... ok
+test retry_uses_saved_definition_and_verified_prefix_before_current_authority ... ok
+test named_and_single_retries_preserve_original_receipt_coordinates ... ok
+test commit_then_uncertain_and_dropped_response_recover_one_effect_and_receipt ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/operation_fulfillment_review_1.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/operation_fulfillment_review_1-b428e479fc04dc7a)
+
+running 1 test
+test an_older_service_retry_does_not_ignore_new_fulfillment_coordinates ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_2_retry.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_2_retry-8f008135f1db6d9d)
+
+running 1 test
+test service_2_retry_distinguishes_absent_and_present_optional_arguments ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_3_fulfillment_retry.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_3_fulfillment_retry-e6ca58c143efadd1)
+
+running 2 tests
+test retry_restart_and_verified_history_preserve_set_and_removal_actions ... ok
+test legacy_request_domains_compare_new_actions_in_single_and_batch_recovery ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/service_binding_review_one.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_binding_review_one-675ff8cb2e81156a)
+
+running 1 test
+test service_2_retry_replays_the_same_present_value_after_canonical_normalization ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_branchless_retry.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_branchless_retry-5f813a5e736203f1)
+
+running 3 tests
+test a_branchless_service_1_retry_reads_the_normalized_input_defaults_included ... ok
+test a_branchless_service_1_retry_carrying_other_input_is_not_the_request_already_committed ... ok
+test two_branchless_service_1_creations_in_one_batch_keep_their_own_requests ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_graph-0ed40443901a285c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/boundary.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/boundary-a8c93aac24ca444a)
+
+running 3 tests
+test the_renderer_depends_on_the_kernel_and_nothing_else ... ok
+test the_scan_sees_what_the_one_it_replaced_could_not ... ok
+test the_renderer_reaches_no_clock_filesystem_network_random_source_or_float ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/drawing.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/drawing-829dd5e4a72b89cf)
+
+running 12 tests
+test a_lifecycle_that_is_one_closed_loop_still_lays_out ... ok
+test a_control_character_cannot_reach_the_document ... ok
+test a_duplicate_node_id_is_read_the_same_way_by_the_layout_and_the_renderer ... ok
+test a_name_that_would_close_the_string_it_is_written_into_is_escaped_in_every_format ... ok
+test a_lifecycle_draws_its_states_its_way_in_and_the_rungs_nothing_leaves ... ok
+test an_empty_graph_draws_nothing_and_does_not_panic ... ok
+test a_rung_that_goes_back_up_the_ladder_is_classified_and_does_not_break_the_layering ... ok
+test a_self_loop_is_drawn_rather_than_collapsed_to_nothing ... ok
+test lifecycle_and_reference_graphs_use_the_mermaid_notation_that_matches_them ... ok
+test two_references_that_read_the_same_are_two_edges ... ok
+test references_draw_the_types_as_boxes_and_the_ref_fields_as_edges ... ok
+test every_format_is_the_same_bytes_twice ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_mcp-f08d9faf461fd8f8)
+
+running 4 tests
+test tests::a_single_version_still_refuses_an_explicit_unknown_version ... ok
+test tests::both_protocol_eras_discover_the_same_sorted_tools ... ok
+test tests::a_stale_tool_call_is_actionable_and_changes_nothing ... ok
+test tests::overlapping_versions_accept_valid_requests_and_creation_checks_the_selected_version ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_postgres-064d19637d060034)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/conformance.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/conformance-8caffa21c6a9c51f)
+
+running 13 tests
+test a_broken_copy_of_the_provider_is_caught ... ok
+test a_caught_session_batch_conflict_rolls_back_its_prefix_but_keeps_the_transaction_usable ... ok
+test legacy_acquisition_retains_exact_available_postgres_evidence ... ok
+test concurrent_identical_decisions_and_observations_are_idempotent ... ok
+test a_server_that_does_not_answer_is_unreachable_and_never_an_empty_store ... ok
+test memory_and_postgres_match_equivalent_numeric_json_values ... ok
+test a_session_reserves_disjoint_sequence_ranges_and_reads_its_events ... ok
+test migrate_is_idempotent_and_a_store_survives_being_reopened ... ok
+test postgres_document_queries_bind_serialized_containment_as_text ... ok
+test two_creators_of_one_identity_leave_exactly_one_accepted ... ok
+test two_writers_from_one_revision_leave_exactly_one_accepted ... ok
+test the_postgres_provider_conforms ... ok
+test session_events_include_recorded_and_plain_writes_in_revision_order ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/eventlog_facade.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/eventlog_facade-e6f580f7324ed80a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_query-4bdd17641255ee96)
+
+running 4 tests
+test tests::a_cursor_is_bound_to_the_query_that_emitted_it ... ok
+test tests::nested_document_matching_has_the_same_containment_meaning_as_jsonb ... ok
+test tests::containment_compares_numeric_values_across_json_representations ... ok
+test tests::page_limits_are_bounded ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_remote-693d74005c7809f8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/hybrid.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/hybrid-e8beb56ca4971e32)
+
+running 23 tests
+test a_stale_read_that_found_nothing_is_unreachable_rather_than_absent ... ok
+test a_divergence_survives_the_process_that_recorded_it ... ok
+test catch_up_keeps_what_it_could_not_replay_rather_than_reporting_success ... ok
+test catch_up_keeps_a_divergence_whose_local_side_cannot_be_read ... ok
+test a_laptop_that_wrote_while_the_replica_was_down_catches_up_when_it_returns ... ok
+test a_silent_remote_refuses_rather_than_answering_absent ... ok
+test refusing_on_divergence_leaves_the_authority_untouched ... ok
+test refusing_on_divergence_lets_no_write_stand_unreplicated ... ok
+test catch_up_refuses_to_overwrite_a_replica_that_moved_on_its_own ... ok
+test with_the_local_store_as_authority_a_losing_replica_write_is_recorded_and_not_swallowed ... ok
+test serving_a_stale_copy_is_a_choice_and_the_answer_says_it_was_stale ... ok
+test catch_up_appends_only_what_the_replica_has_not_seen ... ok
+test catch_up_replays_what_the_local_store_holds_now_and_not_the_write_that_diverged ... ok
+test with_the_remote_as_authority_a_refused_local_write_is_recorded_and_not_swallowed ... ok
+test an_unreachable_authority_lists_unreachable_never_nothing ... ok
+test a_recorded_commit_the_replica_accepted_and_the_authority_refused_is_recorded_as_a_divergence ... ok
+test under_local_authority_and_refuse_a_replica_that_accepted_while_the_authority_refused_is_recorded_as_a_divergence ... ok
+test with_the_remote_as_authority_a_refused_remote_write_never_reaches_the_local_copy ... ok
+test equal_state_does_not_hide_a_missing_observation ... ok
+test missing_evidence_behind_the_destination_keeps_its_divergence_for_repair ... ok
+test catch_up_preserves_exact_recorded_envelopes_and_observations_between_revisions ... ok
+test a_hybrid_with_the_local_store_as_authority_conforms_like_any_other_store ... ok
+test a_hybrid_with_the_remote_as_authority_conforms_like_any_other_store ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/remote.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/remote-20a8a575b010a2dc)
+
+running 9 tests
+test a_peer_at_the_previous_wire_version_is_refused_by_name ... ok
+test a_version_refusal_is_not_reported_as_unreachable ... ok
+test a_request_at_a_wire_version_this_build_does_not_know_is_refused_by_name ... ok
+test an_unreachable_store_on_the_far_side_stays_unreachable_on_this_one ... ok
+test a_remote_that_did_not_answer_is_unreachable_and_never_absent ... ok
+test ids_cross_the_wire_intact ... ok
+test events_cross_the_wire_intact ... ok
+test a_conflict_crosses_the_wire_as_a_conflict_and_not_as_a_failure ... ok
+test a_remote_store_conforms_like_a_local_one ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_shell-8cd2d082763e4fd6)
+
+running 2 tests
+test tests::stale_agent_intent_is_refused_before_the_kernel_or_store_changes_anything ... ok
+test tests::an_exact_execute_retry_returns_the_original_commit_after_state_has_advanced ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_sqlite-4af4d6b4a9838374)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/conformance.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/conformance-8fa956a85dfdf8ab)
+
+running 3 tests
+test the_sqlite_provider_conforms ... ok
+test it_survives_being_closed_and_reopened ... ok
+test a_refused_commit_rolls_back_both_halves ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s
+
+     Running tests/eventlog_facade.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/eventlog_facade-89b9de5c63cb3f8b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/legacy_acquisition.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/legacy_acquisition-6cc104420bc26569)
+
+running 2 tests
+test sqlite_acquisition_refuses_evidence_without_terminal_state ... ok
+test sqlite_acquisition_retains_mixed_history_without_inventing_event_order ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_store-92af47a3cf350e12)
+
+running 21 tests
+test asynchronous::tests::async_ports_are_object_safe_and_return_send_futures ... ok
+test asynchronous::tests::canonical_comparison_bytes_pin_exact_numbers_nulls_and_coordinate_identities ... ok
+test asynchronous::tests::all_revision_bearing_imported_evidence_is_bounded_before_publication ... ok
+test asynchronous::tests::bare_imported_decisions_and_events_must_name_the_anchor_subject ... ok
+test asynchronous::tests::the_verifier_that_trusts_its_caller_says_so_in_its_name_and_first_line ... ok
+test asynchronous::tests::partial_prior_imported_evidence_remains_allowed_across_all_typed_variants ... ok
+test asynchronous::tests::imported_evidence_reserves_ids_without_inventing_receipts_or_global_order ... ok
+test envelope::tests::an_envelope_missing_an_optional_key_is_refused_rather_than_defaulted ... ok
+test envelope::tests::an_envelope_round_trips_with_explicit_absence ... ok
+test envelope::tests::invalid_time_and_blank_identity_are_refused ... ok
+test asynchronous::tests::refused_public_request_preserves_authority_and_a_later_exact_retry ... ok
+test asynchronous::tests::public_writer_revalidates_every_request_shape_and_member ... ok
+test asynchronous::tests::editable_complete_markers_never_replace_a_direct_provider_capture ... ok
+test asynchronous::tests::explicit_set_assurance_names_its_scope_subjects_and_import_boundaries ... ok
+test asynchronous::tests::whole_batch_position_overflow_refuses_without_publishing_a_prefix ... ok
+test asynchronous::tests::record_and_receipt_component_mismatches_are_integrity_refusals ... ok
+test asynchronous::tests::reference_store_commits_complete_records_atomically_and_verifies_them ... ok
+test asynchronous::tests::a_decoded_history_meets_every_check_but_the_two_its_reader_already_made ... ok
+test asynchronous::encoding::tests::the_reordering_pass_a_preserve_order_build_encodes_with_is_the_oracle ... ok
+test asynchronous::tests::a_verified_prefix_is_extended_by_exactly_the_checks_its_suffix_would_meet ... ok
+test asynchronous::encoding::tests::canonical_bytes_are_byte_identical_to_the_cloning_encoder_they_replaced ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/async_recorded_adversary.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/async_recorded_adversary-5cd0044d2603b41c)
+
+running 2 tests
+test imported_envelope_cannot_be_later_than_its_anchor_revision ... ok
+test a_partial_transcript_cannot_be_relabelled_as_a_complete_provider_snapshot ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/async_recorded_adversary_pass2.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/async_recorded_adversary_pass2-345743b8fd142823)
+
+running 1 test
+test the_writer_rechecks_duplicate_global_ids_in_a_public_append_request ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/both_providers.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/both_providers-78437c4330a60dd9)
+
+running 7 tests
+test every_provider_answers_absent_for_something_nobody_stored ... ok
+test every_provider_leaves_a_refused_commit_with_no_trace ... ok
+test a_retried_commit_appends_its_events_once ... ok
+test a_committed_instance_reads_back_with_its_events ... ok
+test the_file_store_survives_being_reopened ... ok
+test every_provider_lists_what_it_holds_sorted ... ok
+test every_provider_refuses_a_stale_write_the_same_way ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running tests/concurrency.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/concurrency-cf2cbc6e42b39626)
+
+running 5 tests
+test an_instance_nobody_stored_is_absent_rather_than_an_error ... ok
+test a_creation_expects_nothing_and_a_second_creation_of_the_same_identity_is_refused ... ok
+test a_refused_commit_changes_nothing ... ok
+test state_and_events_arrive_together ... ok
+test two_executions_from_one_revision_leave_exactly_one_accepted ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/conformance.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/conformance-e8c70ddc3d66ed22)
+
+running 3 tests
+test a_broken_provider_is_caught ... ok
+test the_memory_provider_conforms ... ok
+test the_file_provider_conforms ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.58s
+
+     Running tests/file_record_index.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/file_record_index-57a5d3cee878331a)
+
+running 7 tests
+test a_fresh_handle_finds_a_record_id_another_handle_wrote_and_refuses_its_reuse ... ok
+test abandoned_subject_temporary_files_do_not_hide_ids_or_block_recorded_writes ... ok
+test parent_and_marker_symlinks_are_refused_on_reads ... ok
+test a_handle_remembers_its_own_writes_without_rereading_the_store ... ok
+test an_existing_handle_invalidates_its_index_after_another_writer ... ok
+test separate_processes_serialize_revision_checks_and_survive_a_killed_lock_holder ... ok
+test separate_writers_preserve_exactly_one_winning_revision_and_all_its_records ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+     Running tests/legacy_acquisition.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/legacy_acquisition-a1e71e84a533ef0e)
+
+running 4 tests
+test acquiring_an_absent_file_source_creates_no_bytes ... ok
+test file_acquisition_refuses_a_stale_publication_intent ... ok
+test acquisition_document_refuses_one_global_record_identity_in_two_subjects ... ok
+test file_acquisition_retains_complete_envelopes_and_only_known_order ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+     Running tests/projections.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/projections-ae32aa1ae93a71c9)
+
+running 5 tests
+test a_projection_naming_a_state_the_lifecycle_does_not_have_is_refused_at_registration ... ok
+test a_projection_naming_a_field_the_schema_does_not_have_is_refused_at_registration ... ok
+test an_instance_whose_key_resolves_to_nothing_is_left_out_rather_than_filed_under_an_empty_key ... ok
+test a_sequence_of_decisions_produces_the_declared_read_model ... ok
+test a_projection_is_the_same_bytes_every_run ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_2_framing.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_2_framing-402c3ce5e5092580)
+
+running 5 tests
+test an_er_record_2_reader_refuses_er_record_3_before_reading_its_payload ... ok
+test an_er_request_2_reader_refuses_er_request_3_before_reading_its_payload ... ok
+test existing_record_and_request_literal_tags_are_unchanged ... ok
+test service_2_uses_literal_record_3_and_request_3_framing ... ok
+test mixed_record_domains_remain_members_of_er_batch_1 ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_3_framing.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_3_framing-70814c7a4c69e621)
+
+running 2 tests
+test old_readers_refuse_record_and_request_4_at_the_literal_tag ... ok
+test service_3_uses_record_4_and_request_4_with_exact_ordered_actions ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_binding_review_one.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_binding_review_one-55de979f90c7eb7d)
+
+running 2 tests
+test service_2_execute_reconstructs_request_3_with_normalized_arguments ... ok
+test branchless_service_2_creation_reconstructs_the_exact_request_under_request_3 ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_framing.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_framing-2a1c30a982098c01)
+
+running 8 tests
+test a_kernel_1_decision_still_frames_as_er_record_1_and_er_request_1 ... ok
+test a_service_1_decision_frames_as_er_record_2_and_its_request_carries_arguments_not_fields ... ok
+test a_branchless_service_1_creation_reconstructs_the_normalized_input_the_caller_sent ... ok
+test a_service_1_creation_record_whose_arguments_do_not_produce_its_fields_is_refused ... ok
+test a_derived_identity_keeps_the_existing_record_and_original_request_bytes ... ok
+test an_er_record_1_reader_refuses_an_er_record_2_document_by_naming_the_framing ... ok
+test a_batch_of_kernel_1_records_keeps_its_er_batch_1_bytes_while_a_service_member_refuses_at_the_record_tag ... ok
+test the_framing_the_creation_path_replay_and_the_verifier_read_one_service_1_test ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_review_one.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_review_one-0a8f6046f4a36027)
+
+running 1 test
+test a_service_1_creation_without_branches_reconstructs_the_request_the_caller_sent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_surface-0fbf3df85fe9c0e5)
+
+running 4 tests
+test tests::unsafe_names_never_become_paths_or_markup ... ok
+test tests::one_projection_feeds_docs_openapi_and_asyncapi ... ok
+test tests::punctuation_case_and_composed_names_never_alias_contract_components ... ok
+test tests::overlapping_emitters_accept_real_events_in_the_projected_schema ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_xtask-7bd760d77e6c7ec2)
+
+running 1 test
+test tests::an_aep_version_line_is_extracted_without_accepting_partial_numbers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_yaml-547bbbdc97f78afd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/aep_lifecycles.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/aep_lifecycles-2cc34046a90abd59)
+
+running 14 tests
+test every_pinned_lifecycle_has_a_definition_and_every_definition_a_pinned_lifecycle ... ok
+test a_story_cannot_reach_implemented_without_passing_through_the_ladder ... ok
+test an_archived_artifact_has_no_move_left_to_make ... ok
+test a_story_cannot_reach_implemented_without_the_evidence_its_ladder_asks_for ... ok
+test a_story_walks_the_ladder_and_every_move_is_a_fact ... ok
+test a_rung_the_pinned_ladder_charges_for_is_charged_for_here_too ... ok
+test each_definition_yields_exactly_the_edges_the_pinned_transitions_map_yields ... ok
+test status_is_not_a_field_so_nobody_can_move_an_artifact_by_editing_it ... ok
+test a_rung_the_pinned_ladder_dates_is_dated_here_too ... ok
+test each_definition_declares_exactly_the_states_the_pinned_ladder_declares ... ok
+test each_definition_starts_where_the_pinned_ladder_starts ... ok
+test no_operation_leaves_a_state_the_pinned_ladder_ends_at ... ok
+test each_definition_is_named_for_the_kind_it_carries ... ok
+test every_definition_registers_so_no_ladder_is_ambiguous_or_unreachable ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/kernel_bytes.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/kernel_bytes-b7a6424f41b1eefe)
+
+running 1 test
+test every_kernel_1_fixture_id_and_ref_value_is_byte_identical_after_this_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/runtime.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/runtime-8b884270ac894131)
+
+running 8 tests
+test duplicate_dynamic_keys_and_yaml_merges_are_refused_before_validation ... ok
+test definition_rejects_operation_only_reference_in_invariant ... ok
+test entity_invariant_is_checked_after_create ... ok
+test entity_invariant_is_checked_after_operation_before_events_escape ... ok
+test invalid_transition_is_rejected_without_a_new_decision ... ok
+test operation_arguments_are_schema_validated ... ok
+test operation_precondition_blocks_mutation_and_event_emission ... ok
+test yaml_definition_drives_lifecycle_and_events ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_numbers.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_numbers-5e91ad2ae95dab09)
+
+running 3 tests
+test the_duplicate_and_merge_key_refusals_still_hold_beside_a_wide_integer ... ok
+test an_integer_past_the_128_bit_carriers_is_still_read_as_a_float_and_says_so ... ok
+test an_authored_integer_is_one_value_from_yaml_and_from_json_at_every_admitted_width ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/service_review_two.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_review_two-7d4e62f0a362daa4)
+
+running 1 test
+test a_service_1_numeric_literal_is_one_value_from_yaml_and_from_json ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/scan_support-a3e870d5feb8470a)
+
+running 4 tests
+test tests::a_string_literal_and_a_line_comment_are_not_code ... ok
+test tests::the_scanner_sees_past_a_char_literal_and_a_block_comment ... ok
+test tests::every_dependency_table_is_read_not_only_the_literal_heading ... ok
+test tests::words_splits_on_paths_so_a_substring_cannot_fire ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_core
+
+running 4 tests
+test crates/entity-core/src/runtime.rs - runtime::PreparedOperation (line 301) - compile fail ... ok
+test crates/entity-core/src/runtime.rs - runtime::PreparedOperation (line 309) - compile fail ... ok
+test crates/entity-core/src/runtime.rs - runtime::PreparedOperation (line 294) - compile fail ... ok
+test crates/entity-core/src/lib.rs - (line 20) ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+   Doc-tests entity_eventlog
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_executor
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_graph
+
+running 1 test
+test crates/entity-graph/src/lib.rs - (line 15) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+   Doc-tests entity_mcp
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_postgres
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_query
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_remote
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_shell
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_sqlite
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_store
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_surface
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests entity_yaml
+
+running 1 test
+test crates/entity-yaml/src/lib.rs - (line 8) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+   Doc-tests scan_support
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+task: [doc-check] cargo doc --workspace --no-deps --locked
+    Checking serde v1.0.229
+    Checking serde_json v1.0.151
+    Checking hashbrown v0.17.1
+    Checking entity-core v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-core)
+    Checking indexmap v2.14.0
+    Checking serde_yaml_ng v0.10.0
+    Checking entity-store v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-store)
+    Checking smallvec v1.15.2
+    Checking entity-graph v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-graph)
+    Checking tokio v1.53.1
+    Checking parking_lot_core v0.9.12
+    Checking parking_lot v0.12.5
+    Checking entity-shell v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-shell)
+    Checking entity-surface v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-surface)
+    Checking hashlink v0.12.2
+    Checking bitflags v2.13.1
+    Checking rusqlite v0.40.2
+    Checking eventlog-core v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+    Checking tokio-util v0.7.19
+    Checking tokio-postgres v0.7.18
+    Checking entity-mcp v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-mcp)
+    Checking entity-query v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-query)
+    Checking entity-yaml v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-yaml)
+ Documenting entity-cli v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-cli)
+ Documenting entity-eventlog v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-eventlog)
+    Checking postgres v0.19.14
+ Documenting entity-postgres v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-postgres)
+ Documenting entity-sqlite v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-sqlite)
+ Documenting entity-xtask v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-xtask)
+ Documenting entity-mcp v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-mcp)
+ Documenting entity-remote v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-remote)
+ Documenting entity-executor v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-executor)
+ Documenting entity-query v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-query)
+ Documenting entity-shell v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-shell)
+ Documenting entity-surface v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-surface)
+ Documenting entity-yaml v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-yaml)
+ Documenting entity-graph v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-graph)
+ Documenting entity-store v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-store)
+ Documenting entity-core v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-core)
+ Documenting scan-support v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/scan-support)
+    Finished `dev` profile [unoptimized] target(s) in 9.46s
+   Generated EVIDENCE_CACHE/er-ess-contracts/build/doc/entity/index.html and 15 other files
+task: [example-check] cargo run -q -p entity-cli --locked -- validate examples/*.yaml
+examples/order.yaml: valid (order v1)
+examples/refund.yaml: valid (refund v1)
+2 file(s), 0 invalid
+task: [example-check] cargo run -q -p entity-cli --locked -- validate examples/aep/*.yaml
+examples/aep/architecture-decision-record.yaml: valid (architecture-decision-record v1)
+examples/aep/blocker.yaml: valid (blocker v1)
+examples/aep/design.yaml: valid (design v1)
+examples/aep/epic.yaml: valid (epic v1)
+examples/aep/executable-system-specification.yaml: valid (executable-system-specification v1)
+examples/aep/initiative.yaml: valid (initiative v1)
+examples/aep/obligation.yaml: valid (obligation v1)
+examples/aep/outbound-claim.yaml: valid (outbound-claim v1)
+examples/aep/review-result.yaml: valid (review-result v1)
+examples/aep/specification.yaml: valid (specification v1)
+examples/aep/story.yaml: valid (story v1)
+examples/aep/task.yaml: valid (task v1)
+examples/aep/vision.yaml: valid (vision v1)
+13 file(s), 0 invalid
+task: [example-check] cargo run -q -p entity-cli --locked -- validate examples/references/*.yaml
+examples/references/epic.yaml: valid (epic v1)
+examples/references/story.yaml: valid (story v1)
+2 file(s), 0 invalid
+task: [req-check] python3 scripts/check-requirements.py
+125 requirement(s), 714 test function(s) under crates/, 0 finding(s)
+task: [pin-check] python3 scripts/check-pin.py
+1 pin(s), 13 pinned file(s), 0 finding(s)
+task: [postgres-check] scripts/postgres-check.sh
+postgres-check: skipped, ENTITY_POSTGRES_URL unset
+task: [eventlog-runtime-check] cargo +1.91.0 test -p entity-eventlog --all-features --locked
+   Compiling libc v0.2.189
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling cfg-if v1.0.4
+   Compiling typenum v1.20.1
+   Compiling syn v3.0.4
+   Compiling serde_core v1.0.229
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.11
+   Compiling cc v1.4.4
+   Compiling zmij v1.0.23
+   Compiling memchr v2.8.3
+   Compiling serde_json v1.0.151
+   Compiling rand_core v0.10.1
+   Compiling itoa v1.0.18
+   Compiling getrandom v0.4.3
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling hybrid-array v0.4.14
+   Compiling bytes v1.12.1
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+   Compiling pin-project-lite v0.2.17
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.2
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling deranged v0.5.8
+   Compiling tokio-macros v2.7.2
+   Compiling mio v1.2.2
+   Compiling socket2 v0.6.5
+   Compiling num-conv v0.2.2
+   Compiling powerfmt v0.2.0
+   Compiling time-core v0.1.9
+   Compiling const-oid v0.10.2
+   Compiling time v0.3.55
+   Compiling digest v0.11.3
+   Compiling tokio v1.53.1
+   Compiling uuid v1.26.1
+   Compiling ring v0.17.14
+   Compiling cpufeatures v0.3.1
+   Compiling tinyvec_macros v0.1.1
+   Compiling smallvec v1.15.2
+   Compiling tinyvec v1.12.0
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling thiserror v2.0.20
+   Compiling digest v0.10.7
+   Compiling unicode-normalization v0.1.25
+   Compiling chacha20 v0.10.2
+   Compiling thiserror-impl v2.0.20
+   Compiling getrandom v0.2.17
+   Compiling syn v2.0.119
+   Compiling pkg-config v0.3.34
+   Compiling unicode-properties v0.1.4
+   Compiling vcpkg v0.2.15
+   Compiling zeroize v1.9.0
+   Compiling bitflags v2.13.1
+   Compiling cpufeatures v0.2.17
+   Compiling futures-core v0.3.34
+   Compiling parking_lot_core v0.9.12
+   Compiling futures-sink v0.3.34
+   Compiling untrusted v0.9.0
+   Compiling unicode-bidi v0.3.18
+   Compiling stringprep v0.1.5
+   Compiling der_derive v0.7.3
+   Compiling sha2 v0.10.9
+   Compiling rustls-pki-types v1.15.1
+   Compiling libsqlite3-sys v0.38.2
+   Compiling rand v0.10.2
+   Compiling sha2 v0.11.0
+   Compiling hmac v0.13.0
+   Compiling md-5 v0.11.0
+   Compiling flagset v0.4.7
+   Compiling once_cell v1.21.4
+   Compiling scopeguard v1.2.0
+   Compiling base64 v0.22.1
+   Compiling siphasher v1.0.3
+   Compiling cfg_aliases v0.2.2
+   Compiling const-oid v0.9.6
+   Compiling byteorder v1.5.0
+   Compiling foldhash v0.2.0
+   Compiling rustls v0.23.45
+   Compiling fallible-iterator v0.2.0
+   Compiling der v0.7.10
+   Compiling postgres-protocol v0.6.12
+   Compiling hashbrown v0.17.1
+   Compiling nix v0.30.1
+   Compiling phf_shared v0.13.1
+   Compiling lock_api v0.4.14
+   Compiling eventlog-core v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+   Compiling rustls-webpki v0.103.15
+   Compiling futures-task v0.3.34
+   Compiling subtle v2.6.1
+   Compiling futures-util v0.3.34
+   Compiling parking_lot v0.12.5
+   Compiling phf v0.13.1
+   Compiling hashlink v0.12.2
+   Compiling spki v0.7.3
+   Compiling postgres-types v0.2.14
+   Compiling tokio-util v0.7.19
+   Compiling futures-channel v0.3.34
+   Compiling entity-core v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-core)
+   Compiling async-trait v0.1.92
+   Compiling fs2 v0.4.3
+   Compiling whoami v2.1.3
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling fallible-iterator v0.3.0
+   Compiling percent-encoding v2.3.2
+   Compiling log v0.4.34
+   Compiling tokio-postgres v0.7.18
+   Compiling entity-store v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-store)
+   Compiling rusqlite v0.40.2
+   Compiling tokio-rustls v0.26.5
+   Compiling x509-cert v0.2.5
+   Compiling rustix v1.1.4
+   Compiling getrandom v0.3.4
+   Compiling tokio-postgres-rustls v0.14.0
+   Compiling eventlog-sqlite v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+   Compiling linux-raw-sys v0.12.1
+   Compiling eventlog-tree v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+   Compiling eventlog-postgres v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+   Compiling entity-query v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-query)
+   Compiling entity-executor v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-executor)
+   Compiling eventlog-file v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling entity-eventlog v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-eventlog)
+    Finished `test` profile [unoptimized] target(s) in 53.19s
+     Running unittests src/lib.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/entity_eventlog-4ce3cff0c517686c)
+
+running 66 tests
+test adapter::batch_read_tests::sequential_decisions_measurement ... ok
+test adapter::forked_append::a_provider_fork_refusal_of_a_stream_the_append_does_not_write_is_integrity ... ok
+test adapter::forked_append::a_provider_fork_refusal_of_a_written_subject_is_that_subjects_fork ... ok
+test adapter::seeded_open::a_batch_whose_stored_bytes_are_not_their_own_canonical_rendering_is_refused ... ok
+test adapter::seeded_open::a_member_expectation_carrying_a_field_of_its_own_is_refused ... ok
+test adapter::seeded_open::seeded_open_measurement ... ok
+test adapter::seeded_open::a_batch_is_parsed_once_rather_than_once_for_every_member_as_well ... ok
+test adapter::seeded_open::a_batch_member_that_does_not_reproduce_its_own_record_is_refused ... ok
+test adapter::seeded_open::the_batch_key_expectation_and_member_wires_admit_exactly_one_shape_each ... ok
+test adapter::seeded_open::a_remembered_history_is_not_the_answer_for_one_that_differs_in_a_single_expectation ... ok
+test adapter::seeded_open::a_memory_of_the_sound_store_admits_no_forgery_of_it ... ok
+test adapter::seeded_open::a_remembered_digest_does_not_admit_other_bytes_under_it ... ok
+test adapter::small_store_cost::small_store_open_and_batch_measurement ... ok
+test adapter::tests::every_eventlog_append_error_has_an_explicit_er_classification ... ok
+test adapter::tests::every_guard_refusal_has_a_stable_code_and_typed_match ... ok
+test adapter::tests::the_blob_and_append_mappings_agree_on_the_only_variant_put_blob_documents ... ok
+test encoding::tests::a_digest_is_bound_to_its_exact_domain ... ok
+test encoding::tests::closed_binding_decode_refuses_unknown_fields_and_noncanonical_order ... ok
+test encoding::tests::literal_reference_vectors_pin_framing_domains_lengths_and_escaping ... ok
+test encoding::tests::source_bound_anchor_refuses_a_contradictory_envelope_source ... ok
+test encoding::tests::source_bound_anchor_version_preserves_old_bytes_and_old_reader_refusal ... ok
+test sync::tests::an_expired_dispatched_write_retains_its_original_key_as_uncertain ... ok
+test sync::tests::an_expired_queued_call_is_cancelled_before_dispatch ... ok
+test sync::tests::completion_after_a_dispatched_waiter_times_out_is_safe ... ok
+test sync::tests::completion_wins_a_deadline_race_without_reclassification ... ok
+test sync::tests::dispatch_deadline_cas_has_one_winner_and_cancelled_work_never_calls_the_driver ... ok
+test adapter::seeded_open::an_advanced_subject_is_verified_from_its_verified_state_and_refused_where_it_breaks ... ok
+test sync::tests::drain_finishes_in_order_and_escalation_cancels_only_queued_work ... ok
+test sync::tests::drop_after_shutdown_timeout_escalates_and_never_waits_for_the_worker ... ok
+test sync::tests::drop_requests_closure_without_waiting_for_an_active_future ... ok
+test sync::tests::outer_worker_panic_marks_finished_and_preserves_a_retirement_failure ... ok
+test sync::tests::panicked_or_stopped_worker_keeps_dispatched_write_uncertainty ... ok
+test sync::tests::panics_after_dispatch_keep_read_and_write_classification ... ok
+test sync::tests::production_worker_calls_are_runtime_independent_and_reentrant_safe ... ok
+test sync::tests::production_worker_enforces_capacity_and_discards_cancelled_queue_cells ... ok
+test adapter::batch_read_tests::lost_append_reply_recovers_with_a_fresh_verified_capture ... ok
+test sync::tests::production_worker_startup_owns_and_drops_the_driver_on_its_thread ... ok
+test sync::tests::provider_errors_pass_through_without_bridge_reclassification ... ok
+test sync::tests::queue_capacity_and_closed_admission_are_deterministic ... ok
+test sync::tests::production_worker_preserves_every_driver_error_classification ... ok
+test sync::tests::queued_shutdown_cancellation_returns_closed_for_reads_and_writes ... ok
+test sync::tests::reentrant_admission_is_rejected_before_queue_accounting ... ok
+test sync::tests::shutdown_joins_once_and_caches_provider_retirement_failure ... ok
+test sync::tests::retirement_timeout_later_joins_once_and_preserves_provider_failure ... ok
+test sync::tests::timed_out_shutdown_reports_in_flight_identity_and_can_escalate ... ok
+test adapter::batch_read_tests::stale_preflight_is_guarded_and_replayed_append_recovers_from_fresh_capture ... ok
+test sync::tests::worker_panics_cancel_real_queued_cells_without_stranding_waiters ... ok
+test adapter::batch_read_tests::a_head_another_writer_moved_forces_a_whole_build_that_sees_it ... ok
+test adapter::batch_read_tests::reads_of_an_unmoved_head_reuse_the_model_the_handle_already_verified ... ok
+test adapter::seeded_open::a_store_of_named_batches_written_at_base_reads_into_the_base_model ... ok
+test adapter::seeded_open::a_blob_named_under_two_domains_is_refused_without_being_hashed_twice ... ok
+test sync::tests::timed_out_caller_does_not_cancel_commit_and_same_key_retry_recovers_it ... ok
+test adapter::batch_read_tests::one_per_entity_read_serves_each_preflight_and_is_never_reused_across_calls ... ok
+test adapter::seeded_open::a_capture_is_hashed_once_over_rather_than_several_times_over ... ok
+test adapter::batch_read_tests::a_decision_this_handle_commits_advances_its_model_by_its_own_records_only ... ok
+test adapter::seeded_open::every_carried_digest_is_the_digest_of_the_bytes_the_model_holds ... ok
+test sync::tests::worker_panic_closes_admission_before_terminal_drain_and_wakes_late_accepted_caller ... ok
+test adapter::memory::tests::a_memory_forgets_before_what_it_actually_retains_passes_its_cap ... ok
+test adapter::seeded_open::every_bound_domain_is_still_refused_when_its_blob_is_not_its_digest ... ok
+test adapter::small_store_cost::adversary_every_bound_blob_is_sorted_key_json_under_either_map_backend ... ok
+test sync::tests::every_executor_write_keeps_its_original_key_after_dispatch_deadline ... ok
+test adapter::seeded_open::the_model_is_byte_identical_to_the_verifying_path ... ok
+test adapter::small_store_cost::a_cold_open_decodes_and_replays_each_record_once ... ok
+test adapter::small_store_cost::a_warm_handle_decodes_and_replays_only_the_records_a_batch_adds ... ok
+test adapter::small_store_cost::adversary_a_warm_handle_answers_every_rewritten_capture_as_a_cold_build ... ok
+test adapter::seeded_open::a_model_advanced_by_appended_events_is_the_model_a_whole_build_produces ... ok
+
+test result: ok. 66 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.25s
+
+     Running tests/adversary_guarded_write_races.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_guarded_write_races-c1f1216cba706430)
+
+running 4 tests
+test adversary_a_raced_import_through_the_override_reports_what_the_unraced_import_reports ... ok
+test adversary_a_raced_import_reports_the_same_refusal_through_override_and_fallback ... ok
+test adversary_a_fallback_refused_append_counts_its_orphaned_blobs_against_the_read_bound ... ok
+test adversary_a_batch_key_raced_by_another_command_is_refused_alike_through_override_and_fallback ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/adversary_observation_heads.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_observation_heads-e9e618c42e31d27e)
+
+running 4 tests
+test a_stale_observation_recorded_after_the_other_branch_decided_does_not_break_the_merge ... ok
+test a_batch_observing_then_deciding_on_a_multi_tip_subject_commits ... ok
+test a_batch_writing_a_multi_tip_subject_twice_commits ... ok
+test an_observation_on_a_three_tip_unforked_subject_commits_and_serves_the_decision ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+     Running tests/adversary_r2_per_entity_reads.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_r2_per_entity_reads-9b7b1e034bb73896)
+
+running 4 tests
+test a_read_through_a_forgotten_tenant_does_not_mint_it_a_new_identity ... ok
+test r151_a_command_read_is_per_entity_and_a_handle_read_is_one_complete_capture ... ok
+test a_handle_does_not_commit_commands_it_can_no_longer_read_back ... ok
+test an_honest_concurrent_writer_is_a_revision_conflict_not_provider_integrity ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/adversary_two_batch_capture_limit.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_two_batch_capture_limit-8147ad5356a9604d)
+
+running 1 test
+test a_batch_commits_no_more_than_its_own_handle_can_read_back ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/adversary_two_partial_overlap.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_two_partial_overlap-e0d3baa2409d46c9)
+
+running 2 tests
+test a_partially_overlapping_group_reports_the_member_that_is_actually_occupied ... ok
+test a_partially_overlapping_group_commits_no_part_of_itself ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/adversary_two_port_default_document.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/adversary_two_port_default_document-91b9e2ef063c0831)
+
+running 2 tests
+test the_sqlite_override_commits_a_group_with_its_blob_and_a_refused_guard_binds_neither ... ok
+test the_port_default_fails_closed_and_binds_no_blob ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fault_acceptance.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/fault_acceptance-f7777c761725892f)
+
+running 26 tests
+test postgres_provider_recovers_commit_before_lost_response_when_assigned ... ok
+test file_provider_recovers_commit_before_lost_response ... ok
+test provision_unknown_rollback_and_unavailable_recovery_remain_uncertain ... ok
+test provision_recovery_is_absent_then_unavailable_while_the_append_is_in_flight ... ok
+test provision_preserves_exact_tuple_conflict ... ok
+test provision_recovers_commit_before_lost_response_with_original_coordinates ... ok
+test append_unknown_rollback_with_unavailable_recovery_retains_the_batch_key ... ok
+test import_unknown_rollback_and_malformed_reply_keep_subject_uncertainty ... ok
+test import_recovers_committed_lost_reply_and_restart_with_fresh_context ... ok
+test append_recovers_committed_lost_reply_and_preserves_the_original_receipt ... ok
+test append_retries_a_false_physical_conflict_but_refuses_a_malformed_commit_reply ... ok
+test unknown_commit_with_corrupt_recovery_keeps_the_original_uncertainty ... ok
+test reads_reject_missing_tampered_and_colliding_record_indexes ... ok
+test append_never_trusts_a_guard_code_without_the_typed_transaction_slot ... ok
+test import_refuses_after_each_individual_blob_upload_boundary ... ok
+test competing_provisioners_are_atomic_in_both_winner_orders ... ok
+test absent_global_record_race_is_atomic_in_both_winner_orders ... ok
+test ordinary_and_import_record_identity_race_is_atomic_in_both_winner_orders ... ok
+test append_refuses_after_each_individual_blob_upload_boundary ... ok
+test a_verified_head_is_never_reused_for_a_capture_that_differs_from_it ... ok
+test returned_backend_or_unknown_commit_wins_after_a_real_guard_refusal_rollback ... ok
+test rebuild_propagates_provider_failure_and_revalidates_the_fresh_capture ... ok
+test binding_recovery_validates_the_complete_foreign_model_before_conflict ... ok
+test binding_recovery_rejects_missing_malformed_and_substituted_capture_authority ... ok
+test open_rejects_every_mutated_authoritative_capture_shape ... ok
+test real_projector_failures_before_and_after_apply_roll_back_append_and_import ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/guarded_write_blob_binding.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/guarded_write_blob_binding-12748e3554946d4f)
+
+running 10 tests
+test a_binding_lost_to_a_rival_binds_no_blob_on_sqlite_and_file ... ok
+test a_failed_fallback_upload_keeps_each_writes_blob_error ... ok
+test a_guard_refused_import_binds_no_blob_on_sqlite_and_file ... ok
+test a_guard_refused_append_binds_no_blob_on_sqlite_and_file ... ok
+test every_guarded_write_binds_its_blobs_with_its_group_on_sqlite_and_file ... ok
+test every_guarded_write_commits_through_the_fallback ... ok
+test an_import_raced_by_a_batch_hears_the_guard_through_override_and_fallback ... ok
+test a_refused_append_does_not_count_its_unbound_blobs_against_the_read_bound ... ok
+test a_re_admitted_retry_of_each_guarded_write_is_answered_as_its_commit ... ok
+test a_guard_refused_append_reports_the_same_refusal_through_the_fallback ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/import_batch_blob_binding.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/import_batch_blob_binding-6b144cdfa60a69e6)
+
+running 1 test
+test a_guard_refused_batch_binds_no_blob_on_the_sqlite_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/import_batch_record_identity.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/import_batch_record_identity-606a365acaad8817)
+
+running 2 tests
+test a_batch_refuses_a_record_identity_two_of_its_members_share ... ok
+test a_batch_naming_one_subject_twice_settles_as_two_singular_calls_settle ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/import_batch_retry_admission.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/import_batch_retry_admission-f7cfcecb8d046f9d)
+
+running 5 tests
+test one_anchor_naming_a_record_identity_twice_is_refused ... ok
+test the_guard_refuses_a_subject_another_writer_answered_for_under_different_bytes ... ok
+test the_guard_refuses_a_record_identity_another_writer_committed_after_the_pre_capture ... ok
+test a_batch_bearing_retry_is_admitted_over_the_commit_it_already_made ... ok
+test the_guard_refuses_a_subject_its_anchor_started_and_something_has_since_appended_to ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/per_entity_reads.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/per_entity_reads-827006b31f0b0b03)
+
+running 7 tests
+test a_command_refuses_a_substituted_stream_identity_on_the_sqlite_provider ... ok
+test a_command_refuses_a_substituted_stream_identity_on_the_tree_provider ... ok
+test a_command_refuses_a_forged_index_row_of_its_own_subject_on_the_sqlite_provider ... ok
+test a_command_on_one_subject_reads_only_its_own_stream_on_the_sqlite_provider ... ok
+test a_command_refuses_a_forged_index_row_of_its_own_subject_on_the_tree_provider ... ok
+test a_command_on_one_subject_reads_only_its_own_stream_on_the_tree_provider ... ok
+test a_command_on_one_subject_reads_only_its_own_stream_on_the_file_provider ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/provider_facades.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/provider_facades-d10b0bc6889ee66b)
+
+running 11 tests
+test opening_an_absent_file_authority_does_not_create_provider_bytes ... ok
+test opening_an_absent_sqlite_authority_does_not_create_provider_bytes ... ok
+test legacy_import_revalidates_the_complete_source_before_any_destination_write ... ok
+test opening_native_stores_without_er_bindings_preserves_provider_authority ... ok
+test legacy_import_refuses_a_different_source_identity_for_an_identical_bare_boundary ... ok
+test sqlite_memory_facade_uses_the_same_complete_surface ... ok
+test sqlite_file_provision_returns_the_exact_reopen_authority ... ok
+test legacy_import_retains_settled_progress_and_refuses_a_changed_source_boundary ... ok
+test legacy_file_import_is_exact_resumable_and_provider_verified ... ok
+test file_facade_preserves_atomic_groups_queries_retries_and_restart ... ok
+test file_facade_groups_are_process_atomic_and_survive_a_publication_crash ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.56s
+
+     Running tests/providers.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/providers-17851d86e4fcec66)
+
+running 15 tests
+test postgres_provider_provisions_replays_opens_and_rebuilds_when_assigned ... ok
+test postgres_bridge_awaits_worker_owned_provider_retirement_when_assigned ... ok
+test an_empty_batch_reaches_no_provider ... ok
+test a_batch_naming_one_subject_twice_with_different_anchors_is_refused_before_any_write ... ok
+test synchronous_bridge_owns_reopened_provider_and_reports_retirement ... ok
+test synchronous_bridge_operates_inside_a_multithread_runtime ... ok
+test synchronous_bridge_operates_without_a_caller_runtime ... ok
+test a_refused_member_leaves_no_part_of_the_batch_committed ... ok
+test synchronous_bridge_startup_refuses_missing_drifted_and_dirty_projection_admission ... ok
+test a_batch_import_commits_through_the_port_default_on_the_sqlite_provider ... ok
+test a_batch_import_writes_the_same_bytes_as_singular_imports_from_one_capture ... ok
+test sqlite_memory_provider_provisions_replays_opens_and_rebuilds ... ok
+test sqlite_file_provider_provisions_replays_opens_and_rebuilds ... ok
+test tree_provider_provisions_replays_opens_and_rebuilds ... ok
+test file_provider_provisions_replays_opens_and_rebuilds ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running tests/reviewer_binding_unknown_conflict.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/reviewer_binding_unknown_conflict-2e4359d2795ffeb3)
+
+running 2 tests
+test a_foreign_binding_is_not_a_conflict_until_its_derived_row_is_validated ... ok
+test unknown_commit_recovery_preserves_a_conclusive_foreign_binding_conflict ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/service_3_composition.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/service_3_composition-fdc176ac749b3022)
+
+running 5 tests
+test postgres_provider_preserves_complete_service_3_composition_when_assigned ... ok
+test sqlite_bridge_crosses_service_3_retry_history_and_reopen ... ok
+test sqlite_file_provider_preserves_complete_service_3_composition ... ok
+test sqlite_memory_provider_preserves_complete_service_3_composition ... ok
+test file_provider_preserves_complete_service_3_composition ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+     Running tests/tree_branches.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/tree_branches-ad39dd5d7a509dd8)
+
+running 10 tests
+test two_branches_that_recorded_different_subjects_merge_into_one_store ... ok
+test an_observation_on_one_branch_and_a_decision_on_the_other_do_not_fork_the_subject ... ok
+test two_branches_that_only_observed_one_revision_do_not_fork_the_subject ... ok
+test a_decision_after_an_observation_merged_beside_a_decision_extends_the_subject ... ok
+test a_subject_both_branches_changed_is_forked_and_the_rest_of_the_store_still_serves ... ok
+test a_decision_on_each_branch_still_forks_and_its_heads_are_the_decisions ... ok
+test a_merge_decision_joins_a_forked_subject_and_it_serves_again_after_reopening ... ok
+test a_refused_command_is_recorded_once_and_changes_no_subject ... ok
+test a_fork_whose_observation_replays_after_the_other_branch_still_opens_as_forked ... ok
+test an_observation_after_a_merge_decision_attaches_to_the_merge ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running tests/tree_text_blobs.rs (EVIDENCE_CACHE/er-ess-contracts/build/debug/deps/tree_text_blobs-1622d1da1cc4a119)
+
+running 1 test
+test a_first_layout_store_reads_the_same_after_its_texts_are_kept_once_and_keeps_recording ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+   Doc-tests entity_eventlog
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+task: [eventlog-runtime-check] cargo +1.91.0 clippy -p entity-eventlog --all-targets --all-features --no-deps --locked -- -D warnings
+    Checking libc v0.2.189
+    Checking cfg-if v1.0.4
+    Checking typenum v1.20.1
+    Checking serde_core v1.0.229
+    Checking memchr v2.8.3
+    Checking zmij v1.0.23
+    Checking itoa v1.0.18
+    Checking rand_core v0.10.1
+    Checking getrandom v0.4.3
+    Checking serde_json v1.0.151
+    Checking hybrid-array v0.4.14
+    Checking bytes v1.12.1
+    Checking pin-project-lite v0.2.17
+    Checking cmov v0.5.4
+    Checking serde v1.0.229
+    Checking ctutils v0.4.2
+    Checking generic-array v0.14.7
+    Checking crypto-common v0.2.2
+    Checking block-buffer v0.12.1
+    Checking deranged v0.5.8
+    Checking mio v1.2.2
+    Checking socket2 v0.6.5
+    Checking const-oid v0.10.2
+    Checking time-core v0.1.9
+    Checking powerfmt v0.2.0
+    Checking num-conv v0.2.2
+    Checking digest v0.11.3
+    Checking time v0.3.55
+    Checking tokio v1.53.1
+    Checking uuid v1.26.1
+    Checking smallvec v1.15.2
+    Checking cpufeatures v0.3.1
+    Checking tinyvec_macros v0.1.1
+    Checking tinyvec v1.12.0
+    Checking block-buffer v0.10.4
+    Checking crypto-common v0.1.7
+    Checking digest v0.10.7
+    Checking unicode-normalization v0.1.25
+    Checking chacha20 v0.10.2
+    Checking getrandom v0.2.17
+    Checking futures-sink v0.3.34
+    Checking zeroize v1.9.0
+    Checking untrusted v0.9.0
+    Checking unicode-bidi v0.3.18
+    Checking unicode-properties v0.1.4
+    Checking bitflags v2.13.1
+    Checking futures-core v0.3.34
+    Checking cpufeatures v0.2.17
+    Checking stringprep v0.1.5
+    Checking sha2 v0.10.9
+    Checking rustls-pki-types v1.15.1
+    Checking ring v0.17.14
+    Checking thiserror v2.0.20
+    Checking rand v0.10.2
+    Checking sha2 v0.11.0
+    Checking hmac v0.13.0
+    Checking md-5 v0.11.0
+    Checking fallible-iterator v0.2.0
+    Checking base64 v0.22.1
+    Checking once_cell v1.21.4
+    Checking flagset v0.4.7
+    Checking scopeguard v1.2.0
+    Checking byteorder v1.5.0
+    Checking foldhash v0.2.0
+    Checking const-oid v0.9.6
+    Checking siphasher v1.0.3
+    Checking phf_shared v0.13.1
+    Checking hashbrown v0.17.1
+    Checking der v0.7.10
+    Checking postgres-protocol v0.6.12
+    Checking lock_api v0.4.14
+    Checking rustls-webpki v0.103.15
+    Checking eventlog-core v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+    Checking parking_lot_core v0.9.12
+    Checking futures-task v0.3.34
+    Checking subtle v2.6.1
+    Checking futures-util v0.3.34
+    Checking rustls v0.23.45
+    Checking parking_lot v0.12.5
+    Checking libsqlite3-sys v0.38.2
+    Checking spki v0.7.3
+    Checking postgres-types v0.2.14
+    Checking hashlink v0.12.2
+    Checking phf v0.13.1
+    Checking tokio-util v0.7.19
+    Checking futures-channel v0.3.34
+    Checking entity-core v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-core)
+    Checking whoami v2.1.3
+    Checking fs2 v0.4.3
+    Checking percent-encoding v2.3.2
+    Checking log v0.4.34
+    Checking fallible-iterator v0.3.0
+    Checking fallible-streaming-iterator v0.1.9
+    Checking rusqlite v0.40.2
+    Checking entity-store v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-store)
+    Checking tokio-postgres v0.7.18
+    Checking tokio-rustls v0.26.5
+    Checking nix v0.30.1
+    Checking x509-cert v0.2.5
+    Checking eventlog-sqlite v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+    Checking tokio-postgres-rustls v0.14.0
+    Checking linux-raw-sys v0.12.1
+    Checking eventlog-postgres v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+    Checking rustix v1.1.4
+    Checking eventlog-tree v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+    Checking getrandom v0.3.4
+    Checking entity-query v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-query)
+    Checking entity-executor v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-executor)
+    Checking eventlog-file v0.6.0 (https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a048463)
+    Checking fastrand v2.5.0
+    Checking tempfile v3.27.0
+    Checking entity-eventlog v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-eventlog)
+    Finished `dev` profile [unoptimized] target(s) in 28.48s
+task: [notes-check] python3 scripts/changelog-section.py --self-test
+changelog-section: 7/7 shapes hold
+task: [ess-check] cargo fmt --manifest-path checks/ess-conformance/Cargo.toml -- --check
+task: [ess-check] cargo clippy --manifest-path checks/ess-conformance/Cargo.toml --all-targets --locked -- -D warnings
+   Compiling unicode-ident v1.0.26
+    Checking serde_core v1.0.229
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling syn v3.0.6
+   Compiling serde_json v1.0.151
+   Compiling syn v2.0.119
+   Compiling serde_derive v1.0.229
+    Checking hashbrown v0.17.1
+    Checking serde v1.0.229
+    Checking indexmap v2.14.2
+   Compiling serde_derive_internals v0.29.1
+    Checking hybrid-array v0.4.15
+   Compiling thiserror v2.0.21
+   Compiling schemars v0.8.22
+   Compiling typenum v1.20.1
+   Compiling schemars_derive v0.8.22
+   Compiling generic-array v0.14.7
+   Compiling thiserror-impl v2.0.21
+    Checking dyn-clone v1.0.20
+    Checking crypto-common v0.2.2
+    Checking block-buffer v0.12.1
+    Checking serde_yaml v0.9.34+deprecated
+    Checking cfg-if v1.0.5
+    Checking digest v0.11.3
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+    Checking entity-core v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-core)
+    Checking ess-primitives v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+   Compiling pulldown-cmark v0.13.4
+    Checking sha2 v0.11.0
+    Checking ess-domain v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+    Checking entity-store v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-store)
+   Compiling digest v0.10.7
+    Checking pulldown-cmark-escape v0.11.0
+    Checking bitflags v2.13.2
+    Checking unicase v2.9.0
+   Compiling sha2 v0.10.9
+    Checking clap_lex v1.1.1
+    Checking clap_builder v4.6.7
+    Checking ess-compiler v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+   Compiling clap_derive v4.6.7
+    Checking ess-gen v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+   Compiling er-ess-conformance v0.1.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/checks/ess-conformance)
+    Checking clap v4.6.7
+    Checking entity-executor v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-executor)
+    Checking entity-query v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-query)
+    Checking entity-shell v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-shell)
+    Checking serde_yaml_ng v0.10.0
+    Checking ess-conformance v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+    Finished `dev` profile [unoptimized] target(s) in 18.55s
+task: [ess-check] cargo run --manifest-path checks/ess-conformance/Cargo.toml --locked -- check
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.151
+   Compiling indexmap v2.14.2
+   Compiling hybrid-array v0.4.15
+   Compiling dyn-clone v1.0.20
+   Compiling schemars v0.8.22
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling thiserror v2.0.21
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling digest v0.11.3
+   Compiling entity-core v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-core)
+   Compiling ess-primitives v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+   Compiling sha2 v0.11.0
+   Compiling entity-store v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-store)
+   Compiling ess-domain v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+   Compiling bitflags v2.13.2
+   Compiling unicase v2.9.0
+   Compiling pulldown-cmark-escape v0.11.0
+   Compiling pulldown-cmark v0.13.4
+   Compiling clap_lex v1.1.1
+   Compiling clap_builder v4.6.7
+   Compiling er-ess-conformance v0.1.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/checks/ess-conformance)
+   Compiling sha2 v0.10.9
+   Compiling clap v4.6.7
+   Compiling entity-query v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-query)
+   Compiling entity-shell v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-shell)
+   Compiling entity-executor v0.25.0 (WORKTREE_ROOT/entity-runtime/er-ess-contracts-integration/crates/entity-executor)
+   Compiling ess-compiler v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+   Compiling serde_yaml_ng v0.10.0
+   Compiling ess-gen v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+   Compiling ess-conformance v0.37.0 (https://github.com/beyond10x/ess?rev=9d488e266b7ffd910f46bdce730957a8b555a0c3#9d488e26)
+    Finished `dev` profile [unoptimized] target(s) in 24.54s
+     Running `EVIDENCE_CACHE/er-ess-contracts/build/debug/er-ess-conformance check`
+{"total":414,"passed":414,"failed":0,"error":0,"unsupported":0,"skipped":0}

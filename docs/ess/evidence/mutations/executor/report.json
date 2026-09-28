@@ -1,0 +1,60 @@
+{
+  "completed_at": 1700000000300,
+  "conformance_status": "failed",
+  "counts": {
+    "error": 0,
+    "failed": 1,
+    "passed": 0,
+    "skipped": 0,
+    "total": 1,
+    "unsupported": 0
+  },
+  "coverage": {
+    "counts": {
+      "authored": 1,
+      "generated": 0,
+      "outside": 141,
+      "refused": 0
+    },
+    "knowledge": "complete_inventory",
+    "refused": [],
+    "selection": {
+      "filter": {
+        "ids": [
+          "entity.executor/authored/saved-definition-retry-precedes-current-authority"
+        ],
+        "kind": "explicit",
+        "parent": {
+          "digest": "sha256:da95551c27742409c35b9f87b6fb36048ea50433b03499547488f9b514a2aea0",
+          "digest_profile": "sha256-json-bytes/1",
+          "version": "ess-conformance/27"
+        }
+      },
+      "origins": "generated_and_authored",
+      "scope": {
+        "kind": "system"
+      }
+    }
+  },
+  "execution_status": "failed",
+  "format": "ess-conformance-report/2",
+  "implementation": "entity-runtime source-sha256:cbde79ce978747c42455ce17eb2e351f0502d9a724baeb71d245b6b159d9e033",
+  "outcomes": {
+    "error": [],
+    "failed": [
+      "entity.executor/authored/saved-definition-retry-precedes-current-authority"
+    ],
+    "passed": [],
+    "skipped": [],
+    "unsupported": []
+  },
+  "policy": "complete-selection/1",
+  "producer_profile": "rust-scenario-status/1",
+  "spec_digest": "df6896d6bf6932a0f5a4e23dfc070121c46520610335e1c0be72e9eac10ddc78",
+  "specification": "entity/v1",
+  "suite": {
+    "digest": "sha256:37421eba56f9ee7dba617b37a93ef97430f6237393b0f62b57a1f68513c82144",
+    "digest_profile": "sha256-json-bytes/1",
+    "version": "ess-conformance/27"
+  }
+}

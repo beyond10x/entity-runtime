@@ -1,0 +1,13 @@
+diff --git a/crates/entity-query/src/lib.rs b/crates/entity-query/src/lib.rs
+index 90e415f3..e9b08c4a 100644
+--- a/crates/entity-query/src/lib.rs
++++ b/crates/entity-query/src/lib.rs
+@@ -252,7 +252,7 @@ pub fn query_ordered_instances(
+ fn contains(actual: &Value, expected: &Value) -> bool {
+     match (actual, expected) {
+         (Value::Number(actual), Value::Number(expected)) => {
+-            entity_core::compare_numbers(actual, expected).is_eq()
++            actual == expected
+         }
+         (Value::Object(actual), Value::Object(expected)) => expected.iter().all(|(key, value)| {
+             actual

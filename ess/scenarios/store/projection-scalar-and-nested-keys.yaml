@@ -1,0 +1,14 @@
+type: ess-scenario/4
+domain: entity.store
+scenario: projection-scalar-and-nested-keys
+summary: Projection keys preserve exact numeric and boolean spellings, resolve nested objects, and omit null or structural keys.
+timeline:
+  - at: 2026-09-28T00:00:00Z
+    command: entity.store.Project
+    input:
+      request: '{"definition":{"entity":"ticket","version":1,"schema":{"fields":{"flag":{"type":"boolean"},"score":{"type":"number"},"data":{"type":"object","properties":{"name":{"type":"string"}}},"label":{"type":"string"}}},"lifecycle":{"initial":"open","states":["open"]},"projections":{"flags":{"key":"$fields.flag"},"scores":{"key":"$fields.score"},"nested":{"key":"$fields.data.name"},"structural":{"key":"$fields.data"},"labels":{"key":"$fields.label"}}},"instances":[{"entity":"ticket","version":1,"id":"a","lifecycle_state":"open","revision":1,"fields":{"flag":false,"score":9007199254740993,"data":{"name":"nested"},"label":null}},{"entity":"ticket","version":1,"id":"b","lifecycle_state":"open","revision":1,"fields":{"flag":true,"score":1.0000000000000000001,"data":{}}}]} '
+    outcome: returned
+    response:
+      status: ok
+      error: ''
+      value: '{"flags":{"false":["a"],"true":["b"]},"labels":{},"nested":{"nested":["a"]},"scores":{"1.0000000000000000001":["b"],"9007199254740993":["a"]},"structural":{}}'

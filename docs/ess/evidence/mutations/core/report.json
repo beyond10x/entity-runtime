@@ -1,0 +1,60 @@
+{
+  "completed_at": 1700000000300,
+  "conformance_status": "failed",
+  "counts": {
+    "error": 0,
+    "failed": 1,
+    "passed": 0,
+    "skipped": 0,
+    "total": 1,
+    "unsupported": 0
+  },
+  "coverage": {
+    "counts": {
+      "authored": 1,
+      "generated": 0,
+      "outside": 381,
+      "refused": 0
+    },
+    "knowledge": "complete_inventory",
+    "refused": [],
+    "selection": {
+      "filter": {
+        "ids": [
+          "entity.core/authored/exact-number-38"
+        ],
+        "kind": "explicit",
+        "parent": {
+          "digest": "sha256:81146021cf2d5d3b5b45562d3852812ad712151c3b6996f7c97e1d157778797a",
+          "digest_profile": "sha256-json-bytes/1",
+          "version": "ess-conformance/27"
+        }
+      },
+      "origins": "generated_and_authored",
+      "scope": {
+        "kind": "system"
+      }
+    }
+  },
+  "execution_status": "failed",
+  "format": "ess-conformance-report/2",
+  "implementation": "entity-runtime source-sha256:48eccfe259826e6fe6f31e026a407f3fde9c145245ea7153ab2e0b62adbeee60;executable-sha256:6f67b67009db83024ec93d61586afc2a57d87b283d9716fc247825082818e32b",
+  "outcomes": {
+    "error": [],
+    "failed": [
+      "entity.core/authored/exact-number-38"
+    ],
+    "passed": [],
+    "skipped": [],
+    "unsupported": []
+  },
+  "policy": "complete-selection/1",
+  "producer_profile": "rust-scenario-status/1",
+  "spec_digest": "36be70a6a78819b731469e046e709011a99be9a1a286d09967f01e2b7e419b6e",
+  "specification": "entity/v1",
+  "suite": {
+    "digest": "sha256:c0beb9f13b908d9f828084dc9187cff8ebeffea264aa975e938bf93fee768e0a",
+    "digest_profile": "sha256-json-bytes/1",
+    "version": "ess-conformance/27"
+  }
+}

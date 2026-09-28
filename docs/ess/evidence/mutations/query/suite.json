@@ -1,0 +1,1331 @@
+{
+  "coverage": {
+    "authored": [
+      "entity.query/authored/numeric-values-remain-exact"
+    ],
+    "authored_sources": {
+      "scenarios/query/consumed-descending-identity-refuses.yaml": {
+        "digest": "sha256:79d751bda7b9c7866e144c2e95176a424cbad59bd7441fdebb9a3746d8bf0dc9",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/consumed-descending-identity-refuses"
+      },
+      "scenarios/query/consumed-duplicate-identity-refuses.yaml": {
+        "digest": "sha256:e3e7b99c96903a6d7643b3185a9d8aa2aeacc48fd22bca0f611d1d8051476e65",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/consumed-duplicate-identity-refuses"
+      },
+      "scenarios/query/consumed-foreign-entity-refuses.yaml": {
+        "digest": "sha256:1706007becda706bdde9cab51eb1573c858da77050004b1410edd460c3cad141",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/consumed-foreign-entity-refuses"
+      },
+      "scenarios/query/consumed-prefix-before-cursor-is-validated.yaml": {
+        "digest": "sha256:ff8dbfaec9af1ab4317d54f3246f8ebb44231719a72a6d6aa6368e24f4061ea8",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/consumed-prefix-before-cursor-is-validated"
+      },
+      "scenarios/query/fixed-dataset-complete-traversal.yaml": {
+        "digest": "sha256:718efdbba9dd3994f2d8d85db89b6bd97f0a65b83e4341206f2dd6e78bdb1147",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/fixed-dataset-complete-traversal"
+      },
+      "scenarios/query/foreign-entity-cursor-refuses.yaml": {
+        "digest": "sha256:4e99041f2a352cae0eb6826bc5e093a304339525cf20905e84c1dfc8aceba2b6",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/foreign-entity-cursor-refuses"
+      },
+      "scenarios/query/foreign-predicate-cursor-refuses.yaml": {
+        "digest": "sha256:416b850744fe09f677f23bb2f599475264a8b9ad315e8e293fe2ce140bc38fdd",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/foreign-predicate-cursor-refuses"
+      },
+      "scenarios/query/malformed-cursors-are-typed-refusals.yaml": {
+        "digest": "sha256:0b28b768109a6072b7f39249391c68a192071258ff46e48ddaf49a27afe3dc8f",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/malformed-cursors-are-typed-refusals"
+      },
+      "scenarios/query/matching-pages-skip-nonmatches.yaml": {
+        "digest": "sha256:dde2c67d56450ae0b873742de9fa7b46d6a010a108026e3f1b701a3b91384f24",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/matching-pages-skip-nonmatches"
+      },
+      "scenarios/query/nested-numeric-containment.yaml": {
+        "digest": "sha256:09e4b4712a01bd9faa709241c5d338a516056c2c0283a182bfe02fe814b4eea9",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/nested-numeric-containment"
+      },
+      "scenarios/query/numeric-values-remain-exact.yaml": {
+        "digest": "sha256:3661b8d328117f5baf4c7bc5d6896d2d562a23af04421477c57b60817eef2e48",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/numeric-values-remain-exact"
+      },
+      "scenarios/query/ordered-api-stops-after-matching-lookahead.yaml": {
+        "digest": "sha256:334752f2bdeb4a74707b61e9977bf866d6f5e47e46246c7db217da1baca8801b",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/ordered-api-stops-after-matching-lookahead"
+      },
+      "scenarios/query/page-builder-truncates-matches.yaml": {
+        "digest": "sha256:4d378169c5f21bfc2ac28b5d5e1b225f414fab9c1331056fb0c3095d0ffca3cb",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/page-builder-truncates-matches"
+      },
+      "scenarios/query/page-limit-boundaries.yaml": {
+        "digest": "sha256:92cde996afc1081e7abf07df49387f0efa028170595380e391bc8ceee7a0593e",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/page-limit-boundaries"
+      },
+      "scenarios/query/query-document-keys-are-closed.yaml": {
+        "digest": "sha256:a5b961ebd145795ada9d06660d01bc18e4dbbdf5bf07341ef3afe860cce52990",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/query-document-keys-are-closed"
+      },
+      "scenarios/query/recursive-containment.yaml": {
+        "digest": "sha256:3968ddf7c782ca1fb1d34b50e4da081624e8227227b54190fe5e80e31f3f758d",
+        "disposition": "accepted",
+        "scenario": "entity.query/authored/recursive-containment"
+      },
+      "scenarios/shell/file-changed-retry-conflicts.yaml": {
+        "digest": "sha256:275072aba77bee99d96f0058e0614906faefc5dbada2f55be3b95edeb599f7f9",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-changed-retry-conflicts"
+      },
+      "scenarios/shell/file-create-retry-after-advancement.yaml": {
+        "digest": "sha256:b9dff8b8c2d086bb3e39c8a57fab9b2161b1770b60f7564537bf1fad8c9ee348",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-create-retry-after-advancement"
+      },
+      "scenarios/shell/file-invalid-recording-publishes-nothing.yaml": {
+        "digest": "sha256:dd7391bbb0c459ddc9a7cb6c76b0e966434c55055d1b23205202de365afe6a20",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-invalid-recording-publishes-nothing"
+      },
+      "scenarios/shell/file-missing-subjects.yaml": {
+        "digest": "sha256:96e44a57ac68ad853006376dc09ef724702aa7b6e439cd0668532a0efc00d9f6",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-missing-subjects"
+      },
+      "scenarios/shell/file-provider-failures-preserve-classification.yaml": {
+        "digest": "sha256:0ce89a2e5d770883250f4f8f93c67421566e20459963755acedac8935945565b",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-provider-failures-preserve-classification"
+      },
+      "scenarios/shell/file-retry-uses-original-record.yaml": {
+        "digest": "sha256:e5e04222bb9aa4c5c1bb125e877058b46cbcb243e33d59e0f51d6ba3051379ed",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-retry-uses-original-record"
+      },
+      "scenarios/shell/file-revision-rechecked-at-commit.yaml": {
+        "digest": "sha256:6864b3d0ef414d51b89b87586b3ee72d0f2846785bdae713d43222f9a89459e0",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-revision-rechecked-at-commit"
+      },
+      "scenarios/shell/file-round-trip.yaml": {
+        "digest": "sha256:018e00f33013a960e0ebfa15dc4a2edb5357219ea1869f8b9596af3a687391cb",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-round-trip"
+      },
+      "scenarios/shell/file-stale-intent-precedes-kernel.yaml": {
+        "digest": "sha256:45002fe8e4fe4e54d75d27989724f8d8feeb998c98b34516f6e3b20bd4e3291a",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/file-stale-intent-precedes-kernel"
+      },
+      "scenarios/shell/kernel-refusal-precedes-recording-validation.yaml": {
+        "digest": "sha256:0ccd19532460eab59b42293d33d2e71ea3195f79b9f741886cbee0b48c62d9d2",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/kernel-refusal-precedes-recording-validation"
+      },
+      "scenarios/shell/memory-changed-retry-conflicts.yaml": {
+        "digest": "sha256:68e0fccb26ffd10a726ea22b7dc612ed50a0521f8d0455be972ba36acce85ba3",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-changed-retry-conflicts"
+      },
+      "scenarios/shell/memory-create-retry-after-advancement.yaml": {
+        "digest": "sha256:d04653781d2fba3599784a18b484ae3fb36f52b5b7125e4b398827b0b35284d0",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-create-retry-after-advancement"
+      },
+      "scenarios/shell/memory-invalid-recording-publishes-nothing.yaml": {
+        "digest": "sha256:4200da86c4e8050041e8285f02d19a5668feb355deb568ff975b9d62957f0c8c",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-invalid-recording-publishes-nothing"
+      },
+      "scenarios/shell/memory-missing-subjects.yaml": {
+        "digest": "sha256:616cc33fcd0a5e0c05cb079521d69b5dd80bb57f6ff3b6b4580fbea407f5c7b6",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-missing-subjects"
+      },
+      "scenarios/shell/memory-retry-uses-original-record.yaml": {
+        "digest": "sha256:96e930badc6a295b6e477bebc2b2ca0ce19dd34a4e997781ab9c3fcbe2a28a7c",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-retry-uses-original-record"
+      },
+      "scenarios/shell/memory-revision-rechecked-at-commit.yaml": {
+        "digest": "sha256:cbfb6f88eb557cf1c6a2e6beb6d87f6e429fbc0e6080bba2c8fed1abdc38dd14",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-revision-rechecked-at-commit"
+      },
+      "scenarios/shell/memory-round-trip.yaml": {
+        "digest": "sha256:73f2ec4c5a46ec0a3fdeefb7f1d2783d56cac72dab40e815efe2e2f560964a12",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-round-trip"
+      },
+      "scenarios/shell/memory-stale-intent-precedes-kernel.yaml": {
+        "digest": "sha256:56a5c6f897027a7499825c79b03a1006a5a0089566a8bbfacc5dfb9ef0b72f99",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/memory-stale-intent-precedes-kernel"
+      },
+      "scenarios/shell/provider-failures-preserve-classification.yaml": {
+        "digest": "sha256:c7b8bd71cd52f0c3b035016e16bc44a319f77ae9925763365ed8599734be1af9",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/provider-failures-preserve-classification"
+      },
+      "scenarios/shell/retry-does-not-hide-read-failure.yaml": {
+        "digest": "sha256:8b46ad641fb24d6aef9727ef100ce65cbdc24b1ec8876bf28aa493686c049873",
+        "disposition": "accepted",
+        "scenario": "entity.shell/authored/retry-does-not-hide-read-failure"
+      }
+    },
+    "counts": {
+      "authored": 1,
+      "generated": 0,
+      "outside": 57,
+      "refused": 0
+    },
+    "generated": [],
+    "knowledge": "complete_inventory",
+    "outside": [
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Continue/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.DecodeCursor/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Limit/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Ordered/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Page/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Query/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.query.Seed/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/consumed-descending-identity-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/consumed-duplicate-identity-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/consumed-foreign-entity-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/consumed-prefix-before-cursor-is-validated"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/fixed-dataset-complete-traversal"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/foreign-entity-cursor-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/foreign-predicate-cursor-refuses"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/malformed-cursors-are-typed-refusals"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/matching-pages-skip-nonmatches"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/nested-numeric-containment"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/ordered-api-stops-after-matching-lookahead"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/page-builder-truncates-matches"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/page-limit-boundaries"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/query-document-keys-are-closed"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.query/authored/recursive-containment"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Calls/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.ClearCalls/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.ClearRegistry/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Create/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Events/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Execute/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Fault/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Get/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.List/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Open/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Race/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Records/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Register/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Reopen/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "generated",
+        "reason": "selection_filter",
+        "scenario": "entity.shell.Replace/outcome/returned"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-changed-retry-conflicts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-create-retry-after-advancement"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-invalid-recording-publishes-nothing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-missing-subjects"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-provider-failures-preserve-classification"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-retry-uses-original-record"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-revision-rechecked-at-commit"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-round-trip"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/file-stale-intent-precedes-kernel"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/kernel-refusal-precedes-recording-validation"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-changed-retry-conflicts"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-create-retry-after-advancement"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-invalid-recording-publishes-nothing"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-missing-subjects"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-retry-uses-original-record"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-revision-rechecked-at-commit"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-round-trip"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/memory-stale-intent-precedes-kernel"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/provider-failures-preserve-classification"
+      },
+      {
+        "needs": [],
+        "origin": "authored",
+        "reason": "selection_filter",
+        "scenario": "entity.shell/authored/retry-does-not-hide-read-failure"
+      }
+    ],
+    "refused": [],
+    "selection": {
+      "filter": {
+        "ids": [
+          "entity.query/authored/numeric-values-remain-exact"
+        ],
+        "kind": "explicit",
+        "parent": {
+          "digest": "sha256:2b56f5434a9524c107e1e2834e5074d8e8f28fc5f93eebd3fc71b67d2c822b89",
+          "digest_profile": "sha256-json-bytes/1",
+          "version": "ess-conformance/27"
+        }
+      },
+      "origins": "generated_and_authored",
+      "scope": {
+        "kind": "system"
+      }
+    }
+  },
+  "provenance": {
+    "contract_digest": "28948a66bf80334bbbe484239d24e03bd5bf502c7ab23c7153d416217f623739",
+    "spec_digest": "d6a9a00deccc8060b0fb48640dd4a3351ad9b2e29b3ff4602737c9aa8a5785ba",
+    "specification_version": "v1",
+    "suite_version": "ess-conformance/27",
+    "system": "entity"
+  },
+  "scenarios": {
+    "entity.query/authored/numeric-values-remain-exact": {
+      "purpose": "Numeric containment keeps mathematical equality across representations and distinction beyond binary64 precision and exponent bounds.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.query"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.query.Cursor"
+        },
+        {
+          "kind": "type",
+          "name": "entity.query.QueryDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.query.Query"
+        },
+        {
+          "kind": "command",
+          "name": "entity.query.Seed"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.query.Query",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.query.Seed",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.query.Seed",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"docs\",\"lifecycle\":{\"initial\":\"ready\",\"states\":[\"ready\"]},\"schema\":{\"fields\":{\"data\":{\"type\":\"json\"}}}}"
+            },
+            "subjects": {
+              "kind": "literal",
+              "value": "[{\"fields\":{\"data\":100},\"id\":\"a\"},{\"fields\":{\"data\":0},\"id\":\"b\"},{\"fields\":{\"data\":0.1},\"id\":\"c\"},{\"fields\":{\"data\":9007199254740992},\"id\":\"d\"},{\"fields\":{\"data\":9007199254740993},\"id\":\"e\"},{\"fields\":{\"data\":1e+9223372036854775808},\"id\":\"f\"},{\"fields\":{\"data\":100e+9999999999999999999999999},\"id\":\"g\"}]"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.query.Seed",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.query.Seed",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              },
+              "entity.query.Cursor": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "ok": true
+            },
+            "fields": [
+              {
+                "name": "ok",
+                "type": "Boolean"
+              },
+              {
+                "name": "kind",
+                "type": "String"
+              },
+              {
+                "name": "detail",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "ids",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "count",
+                "type": "Integer"
+              },
+              {
+                "name": "has_next",
+                "type": "Boolean"
+              },
+              {
+                "name": "cursor",
+                "type": "entity.query.Cursor"
+              },
+              {
+                "name": "after",
+                "type": "String"
+              }
+            ],
+            "outcome": {
+              "command": "entity.query.Seed",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.query.Query",
+          "input": {
+            "query": {
+              "kind": "literal",
+              "value": "{\"entity\":\"docs\",\"matching\":{\"data\":100.0}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.query.Query",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.query.Query",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              },
+              "entity.query.Cursor": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "ids": "[\"a\"]",
+              "ok": true
+            },
+            "fields": [
+              {
+                "name": "ok",
+                "type": "Boolean"
+              },
+              {
+                "name": "kind",
+                "type": "String"
+              },
+              {
+                "name": "detail",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "ids",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "count",
+                "type": "Integer"
+              },
+              {
+                "name": "has_next",
+                "type": "Boolean"
+              },
+              {
+                "name": "cursor",
+                "type": "entity.query.Cursor"
+              },
+              {
+                "name": "after",
+                "type": "String"
+              }
+            ],
+            "outcome": {
+              "command": "entity.query.Query",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.query.Query",
+          "input": {
+            "query": {
+              "kind": "literal",
+              "value": "{\"entity\":\"docs\",\"matching\":{\"data\":-0.0}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.query.Query",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.query.Query",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              },
+              "entity.query.Cursor": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "ids": "[\"b\"]",
+              "ok": true
+            },
+            "fields": [
+              {
+                "name": "ok",
+                "type": "Boolean"
+              },
+              {
+                "name": "kind",
+                "type": "String"
+              },
+              {
+                "name": "detail",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "ids",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "count",
+                "type": "Integer"
+              },
+              {
+                "name": "has_next",
+                "type": "Boolean"
+              },
+              {
+                "name": "cursor",
+                "type": "entity.query.Cursor"
+              },
+              {
+                "name": "after",
+                "type": "String"
+              }
+            ],
+            "outcome": {
+              "command": "entity.query.Query",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.query.Query",
+          "input": {
+            "query": {
+              "kind": "literal",
+              "value": "{\"entity\":\"docs\",\"matching\":{\"data\":1e-1}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.query.Query",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.query.Query",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              },
+              "entity.query.Cursor": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "ids": "[\"c\"]",
+              "ok": true
+            },
+            "fields": [
+              {
+                "name": "ok",
+                "type": "Boolean"
+              },
+              {
+                "name": "kind",
+                "type": "String"
+              },
+              {
+                "name": "detail",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "ids",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "count",
+                "type": "Integer"
+              },
+              {
+                "name": "has_next",
+                "type": "Boolean"
+              },
+              {
+                "name": "cursor",
+                "type": "entity.query.Cursor"
+              },
+              {
+                "name": "after",
+                "type": "String"
+              }
+            ],
+            "outcome": {
+              "command": "entity.query.Query",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.query.Query",
+          "input": {
+            "query": {
+              "kind": "literal",
+              "value": "{\"entity\":\"docs\",\"matching\":{\"data\":9007199254740992}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.query.Query",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.query.Query",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              },
+              "entity.query.Cursor": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "ids": "[\"d\"]",
+              "ok": true
+            },
+            "fields": [
+              {
+                "name": "ok",
+                "type": "Boolean"
+              },
+              {
+                "name": "kind",
+                "type": "String"
+              },
+              {
+                "name": "detail",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "ids",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "count",
+                "type": "Integer"
+              },
+              {
+                "name": "has_next",
+                "type": "Boolean"
+              },
+              {
+                "name": "cursor",
+                "type": "entity.query.Cursor"
+              },
+              {
+                "name": "after",
+                "type": "String"
+              }
+            ],
+            "outcome": {
+              "command": "entity.query.Query",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.query.Query",
+          "input": {
+            "query": {
+              "kind": "literal",
+              "value": "{\"entity\":\"docs\",\"matching\":{\"data\":9007199254740993}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.query.Query",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.query.Query",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              },
+              "entity.query.Cursor": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "ids": "[\"e\"]",
+              "ok": true
+            },
+            "fields": [
+              {
+                "name": "ok",
+                "type": "Boolean"
+              },
+              {
+                "name": "kind",
+                "type": "String"
+              },
+              {
+                "name": "detail",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "ids",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "count",
+                "type": "Integer"
+              },
+              {
+                "name": "has_next",
+                "type": "Boolean"
+              },
+              {
+                "name": "cursor",
+                "type": "entity.query.Cursor"
+              },
+              {
+                "name": "after",
+                "type": "String"
+              }
+            ],
+            "outcome": {
+              "command": "entity.query.Query",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.query.Query",
+          "input": {
+            "query": {
+              "kind": "literal",
+              "value": "{\"entity\":\"docs\",\"matching\":{\"data\":1e9223372036854775808}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.query.Query",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.query.Query",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              },
+              "entity.query.Cursor": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "ids": "[\"f\"]",
+              "ok": true
+            },
+            "fields": [
+              {
+                "name": "ok",
+                "type": "Boolean"
+              },
+              {
+                "name": "kind",
+                "type": "String"
+              },
+              {
+                "name": "detail",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "ids",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "count",
+                "type": "Integer"
+              },
+              {
+                "name": "has_next",
+                "type": "Boolean"
+              },
+              {
+                "name": "cursor",
+                "type": "entity.query.Cursor"
+              },
+              {
+                "name": "after",
+                "type": "String"
+              }
+            ],
+            "outcome": {
+              "command": "entity.query.Query",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.query.Query",
+          "input": {
+            "query": {
+              "kind": "literal",
+              "value": "{\"entity\":\"docs\",\"matching\":{\"data\":1e10000000000000000000000001}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.query.Query",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.query.Query",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              },
+              "entity.query.Cursor": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "ids": "[\"g\"]",
+              "ok": true
+            },
+            "fields": [
+              {
+                "name": "ok",
+                "type": "Boolean"
+              },
+              {
+                "name": "kind",
+                "type": "String"
+              },
+              {
+                "name": "detail",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "ids",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "count",
+                "type": "Integer"
+              },
+              {
+                "name": "has_next",
+                "type": "Boolean"
+              },
+              {
+                "name": "cursor",
+                "type": "entity.query.Cursor"
+              },
+              {
+                "name": "after",
+                "type": "String"
+              }
+            ],
+            "outcome": {
+              "command": "entity.query.Query",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.query.Query",
+          "input": {
+            "query": {
+              "kind": "literal",
+              "value": "{\"entity\":\"docs\",\"matching\":{\"data\":1e-9999999999999999999999999}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.query.Query",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.query.Query",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              },
+              "entity.query.Cursor": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "ids": "[]",
+              "ok": true
+            },
+            "fields": [
+              {
+                "name": "ok",
+                "type": "Boolean"
+              },
+              {
+                "name": "kind",
+                "type": "String"
+              },
+              {
+                "name": "detail",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "ids",
+                "type": "entity.core.JsonDocument"
+              },
+              {
+                "name": "count",
+                "type": "Integer"
+              },
+              {
+                "name": "has_next",
+                "type": "Boolean"
+              },
+              {
+                "name": "cursor",
+                "type": "entity.query.Cursor"
+              },
+              {
+                "name": "after",
+                "type": "String"
+              }
+            ],
+            "outcome": {
+              "command": "entity.query.Query",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    }
+  }
+}

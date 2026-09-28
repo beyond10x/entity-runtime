@@ -1,0 +1,14 @@
+domain: entity.store
+scenario: canonical-byte-encoding-preserves-exact-number-tokens
+summary: Canonical framing sorts objects, retains nulls and preserves numbers beyond binary64 precision.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.CanonicalBytes
+  input:
+    request: '{"domain":"er.example/1","value":{"a":null,"n":1.0000000000000000001,"z":9007199254740993}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '"[\"er.example/1\",{\"a\":null,\"n\":1.0000000000000000001,\"z\":9007199254740993}]"'
+type: ess-scenario/4

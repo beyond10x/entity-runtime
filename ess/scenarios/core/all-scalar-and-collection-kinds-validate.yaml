@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "all-scalar-and-collection-kinds-validate",
+  "summary": "all scalar and collection kinds validate.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"value\",\"version\":1,\"schema\":{\"fields\":{\"a\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"b\":{\"type\":\"boolean\"},\"e\":{\"type\":\"enum\",\"values\":[\"red\",\"blue\"]},\"n\":{\"type\":\"number\"},\"o\":{\"type\":\"object\",\"properties\":{\"s\":{\"type\":\"string\"}}},\"r\":{\"type\":\"ref\",\"entity\":\"unregistered\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "v-1",
+        "fields": "{\"a\":[1,2],\"b\":true,\"e\":\"red\",\"n\":1.25,\"o\":{\"s\":\"x\"},\"r\":\"other-1\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"value\",\"version\":1,\"id\":\"v-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"a\":[1,2],\"b\":true,\"e\":\"red\",\"n\":1.25,\"o\":{\"s\":\"x\"},\"r\":\"other-1\"}}"
+      }
+    }
+  ]
+}

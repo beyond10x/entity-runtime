@@ -1,0 +1,39 @@
+{
+  "components": [
+    {
+      "component": "entity-core",
+      "summary": "Pure kernel APIs and scenario-local replay fixtures.",
+      "owns": {
+        "domains": [
+          "entity.core"
+        ]
+      },
+      "accepts": {
+        "commands": [
+          "entity.core.Register",
+          "entity.core.Replace",
+          "entity.core.Registry",
+          "entity.core.ValidateRegistry",
+          "entity.core.ValidateDefinition",
+          "entity.core.Create",
+          "entity.core.CreateDerived",
+          "entity.core.Execute",
+          "entity.core.NormalizeArguments",
+          "entity.core.Prepare",
+          "entity.core.Fulfill",
+          "entity.core.Replay",
+          "entity.core.Rehydrate",
+          "entity.core.CompareNumbers",
+          "entity.core.Address",
+          "entity.core.Timestamp",
+          "entity.core.ReplayReturned",
+          "entity.core.ReplayTampered",
+          "entity.core.RuntimeCreate",
+          "entity.core.RuntimeExecute",
+          "entity.core.Continue"
+        ]
+      },
+      "reached_by": "in_process"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+domain: entity.store
+scenario: file-stale-write-preserves-state
+summary: A stale recorded write reports the revision conflict and leaves all stored evidence unchanged.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.CommitRecorded
+  input:
+    request: '{"commit":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{"title":"a"},"command":{"command":"create","fields":{"title":"a"}},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":null,"id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1},"revision":1,"to_state":"open"},"record_id":"create-a","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}},"expect":null,"provider":"File"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.CommitRecorded
+  input:
+    request: '{"commit":{"envelope":{"actor":null,"causation":null,"correlation":null,"record":{"changed":{},"command":{"arguments":{},"command":"execute","operation":"close"},"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1},"entity":"ticket","events":[],"from_state":"open","id":"a","result":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"closed","revision":2,"version":1},"revision":2,"to_state":"closed"},"record_id":"bad","recorded_at":"2026-09-28T00:00:00Z"},"instance":{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"closed","revision":2,"version":1}},"expect":2,"provider":"File"}'
+  outcome: returned
+  response:
+    error: RevisionConflict
+    status: error
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.Load
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"File"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}'
+- at: 2026-09-28T00:00:03Z
+  command: entity.store.Events
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"File"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+- at: 2026-09-28T00:00:04Z
+  command: entity.store.Ids
+  input:
+    request: '{"entity":"ticket","provider":"File"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '["a"]'
+type: ess-scenario/4

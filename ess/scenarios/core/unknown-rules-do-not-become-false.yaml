@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "unknown-rules-do-not-become-false",
+  "summary": "unknown rules do not become false.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"value\":{\"type\":\"json\"},\"other\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"both\",\"assert\":{\"all\":[{\"eq\":[\"$fields.value\",1]},{\"eq\":[\"$fields.other\",2]}]}}]}",
+        "id": "p-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable"
+      }
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+domain: entity.shell
+scenario: file-invalid-recording-publishes-nothing
+summary: Every invalid provenance field refuses without a record, event or state update.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.shell.Open
+  input:
+    provider: File
+  outcome: returned
+  response:
+    ok: true
+- at: 2026-09-28T00:00:01Z
+  command: entity.shell.Register
+  input:
+    definition: '{"entity":"thing","lifecycle":{"initial":"open","states":["open","done"]},"operations":{"advance":{"arguments":{"fields":{"n":{"default":7,"type":"integer"}}},"emits":[{"payload":{"n":"$fields.n"},"type":"Advanced"},{"payload":{"n":"$fields.n"},"type":"Advanced"}],"set":{"n":"$args.n"},"transitions":[{"from":"open","to":"open"}]},"finish":{"transitions":[{"from":"open","to":"done"}]}},"schema":{"fields":{"n":{"required":true,"type":"integer"}}}}'
+  outcome: returned
+  response:
+    count: 1
+    ok: true
+- at: 2026-09-28T00:00:02Z
+  command: entity.shell.Create
+  input:
+    request: '{"entity":"thing","fields":{"n":0},"id":"one","recording":{"actor":"tester","causation":null,"correlation":null,"record_id":"created","recorded_at":"2026-09-28T00:00:00Z"},"version":1}'
+  outcome: returned
+  response:
+    count: 0
+    fields: '{"n":0}'
+    ok: true
+    record_id: created
+    revision: 1
+    state: open
+- at: 2026-09-28T00:00:03Z
+  command: entity.shell.Execute
+  input:
+    request: '{"arguments":{},"entity":"thing","expected_revision":1,"id":"one","operation":"advance","recording":{"actor":"tester","causation":null,"correlation":null,"record_id":" ","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    boundary: input
+    kind: invalid_recording
+    ok: false
+    variant: Recording
+- at: 2026-09-28T00:00:04Z
+  command: entity.shell.Execute
+  input:
+    request: '{"arguments":{},"entity":"thing","expected_revision":1,"id":"one","operation":"advance","recording":{"actor":"tester","causation":null,"correlation":null,"record_id":"bad-recording","recorded_at":"not-a-time"}}'
+  outcome: returned
+  response:
+    boundary: input
+    kind: invalid_recording
+    ok: false
+    variant: Recording
+- at: 2026-09-28T00:00:05Z
+  command: entity.shell.Execute
+  input:
+    request: '{"arguments":{},"entity":"thing","expected_revision":1,"id":"one","operation":"advance","recording":{"actor":"tester","causation":null,"correlation":" ","record_id":"bad-recording","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    boundary: input
+    kind: invalid_recording
+    ok: false
+    variant: Recording
+- at: 2026-09-28T00:00:06Z
+  command: entity.shell.Execute
+  input:
+    request: '{"arguments":{},"entity":"thing","expected_revision":1,"id":"one","operation":"advance","recording":{"actor":"tester","causation":" ","correlation":null,"record_id":"bad-recording","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    boundary: input
+    kind: invalid_recording
+    ok: false
+    variant: Recording
+- at: 2026-09-28T00:00:07Z
+  command: entity.shell.Execute
+  input:
+    request: '{"arguments":{},"entity":"thing","expected_revision":1,"id":"one","operation":"advance","recording":{"actor":" ","causation":null,"correlation":null,"record_id":"bad-recording","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    boundary: input
+    kind: invalid_recording
+    ok: false
+    variant: Recording
+- at: 2026-09-28T00:00:08Z
+  command: entity.shell.Create
+  input:
+    request: '{"entity":"thing","fields":{"n":0},"id":"two","recording":{"actor":"tester","causation":null,"correlation":null,"record_id":"","recorded_at":"2026-09-28T00:00:00Z"},"version":1}'
+  outcome: returned
+  response:
+    boundary: input
+    kind: invalid_recording
+    ok: false
+- at: 2026-09-28T00:00:09Z
+  command: entity.shell.Get
+  input:
+    request: '{"entity":"thing","id":"one"}'
+  outcome: returned
+  response:
+    ok: true
+    revision: 1
+- at: 2026-09-28T00:00:10Z
+  command: entity.shell.List
+  input:
+    entity: thing
+  outcome: returned
+  response:
+    ids: '["one"]'
+    ok: true
+- at: 2026-09-28T00:00:11Z
+  command: entity.shell.Records
+  input:
+    request: '{"entity":"thing","id":"one"}'
+  outcome: returned
+  response:
+    count: 1
+    ok: true
+- at: 2026-09-28T00:00:12Z
+  command: entity.shell.Events
+  input:
+    request: '{"entity":"thing","id":"one"}'
+  outcome: returned
+  response:
+    count: 0
+    ok: true
+type: ess-scenario/4

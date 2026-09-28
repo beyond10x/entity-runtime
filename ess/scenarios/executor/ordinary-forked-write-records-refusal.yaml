@@ -1,0 +1,46 @@
+domain: entity.executor
+scenario: ordinary-forked-write-records-refusal
+summary: A supplied forked-state port refuses an ordinary execute and forwards the actual heads to the optional recorder.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Register
+  input:
+    request: '{"definition":{"create":{"emit":null},"entity":"ticket","invariants":[],"lifecycle":{"initial":"open","states":["open","closed"]},"operations":{"close":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"closed"}]},"touch":{"arguments":{"additional_fields":false,"fields":{}},"emits":[],"preconditions":[],"set":{},"transitions":[{"from":"open","to":"open"}]}},"projections":{},"schema":{"additional_fields":false,"fields":{"title":{"acyclic":null,"additional_properties":false,"entity":null,"inverse":null,"items":null,"max":null,"max_length":null,"min":null,"min_length":null,"properties":{},"required":true,"type":"string","values":[]}}},"version":1}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.RecordingRefusals
+  input:
+    request: '{"enabled":true}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.SupplyLoadFailure
+  input:
+    request: '{"entity":"ticket","heads":["left","right"],"id":"a","kind":"Forked"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:03Z
+  command: entity.executor.Execute
+  input:
+    request: '{"arguments":{},"entity":"ticket","expected_revision":2,"id":"a","operation":"touch","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"ordinary","recorded_at":"2026-09-28T00:00:00Z"}}'
+  outcome: returned
+  response:
+    error: Forked
+    status: error
+- at: 2026-09-28T00:00:04Z
+  command: entity.executor.RefusalReasons
+  input:
+    request: '{}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[{"heads":["left","right"],"kind":"Forked","subject":{"entity":"ticket","id":"a"}}]'
+type: ess-scenario/4

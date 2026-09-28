@@ -1,0 +1,13 @@
+domain: entity.query
+scenario: query-document-keys-are-closed
+summary: Deserialization refuses misspelled query fields rather than silently changing the question.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","limti":1}'
+  outcome: returned
+  response:
+    kind: decode
+    ok: false
+type: ess-scenario/4

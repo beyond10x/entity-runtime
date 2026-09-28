@@ -1,0 +1,24 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-bare-state-guard-is-a-selector",
+  "summary": "service1 bare state guard is a selector.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"guarded\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"value\":{\"type\":\"integer\"}}},\"lifecycle\":{\"initial\":\"A\",\"states\":[\"A\",\"B\"]},\"operations\":{\"Check\":{\"response\":{\"fields\":{\"picked\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"state-b\",\"in_state\":\"B\",\"responds\":{\"picked\":\"B\"}},{\"name\":\"fallback\",\"responds\":{\"picked\":\"A\"}}]}}}",
+        "instance": "{\"entity\":\"guarded\",\"version\":1,\"id\":\"g-1\",\"lifecycle_state\":\"B\",\"revision\":1,\"fields\":{}}",
+        "operation": "Check",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "state-b",
+        "response": "{\"picked\":\"B\"}"
+      }
+    }
+  ]
+}

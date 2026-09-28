@@ -1,0 +1,32 @@
+domain: entity.store
+scenario: coordinates-retain-opaque-subjects-and-disjoint-batch-namespaces
+summary: Coordinate encodings preserve unusual opaque identities and separate named from single-record keys.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.SubjectCoordinate
+  input:
+    request: '{"entity":"a/b","id":"x\"y"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '"[\"a/b\",\"x\\\"y\"]"'
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.BatchCoordinate
+  input:
+    request: '{"key":{"single_record":"same"}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '"[\"single_record\",\"same\"]"'
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.BatchCoordinate
+  input:
+    request: '{"key":{"named":"same"}}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '"[\"named\",\"same\"]"'
+type: ess-scenario/4

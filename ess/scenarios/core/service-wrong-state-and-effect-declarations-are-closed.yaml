@@ -1,0 +1,113 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service-wrong-state-and-effect-declarations-are-closed",
+  "summary": "Service registration rejects wrong-state misuse, unreachable complements and misplaced creation/move effects.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"created\",\"effect\":\"creates\"}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "creates_effect_on_operation"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"create\":{\"outcomes\":[{\"name\":\"wrong\",\"wrong_state\":true,\"refuses\":{\"error\":\"Denied\"}}]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "wrong_state_on_create"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"move\",\"effect\":{\"moves\":{\"from\":\"Open\",\"to\":\"Closed\"}}},{\"name\":\"wrong\",\"wrong_state\":true,\"when\":true,\"refuses\":{\"error\":\"Denied\"}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "wrong_state_with_selector"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"move\",\"effect\":{\"moves\":{\"from\":\"Open\",\"to\":\"Closed\"}}},{\"name\":\"wrong\",\"wrong_state\":true,\"refuses\":{\"error\":\"Denied\"}},{\"name\":\"another\",\"wrong_state\":true,\"refuses\":{\"error\":\"Denied\"}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "duplicate_wrong_state_outcome"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"move\",\"effect\":{\"moves\":{\"from\":[\"Open\",\"Closed\"],\"to\":\"Closed\"}}},{\"name\":\"wrong\",\"wrong_state\":true,\"refuses\":{\"error\":\"Denied\"}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "wrong_state_unreachable"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"move\",\"in_state\":\"Closed\",\"effect\":{\"moves\":{\"from\":\"Open\",\"to\":\"Closed\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "guard_state_outside_move"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:06Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"},\"extra\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"semantics\":\"service/1\",\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"move\",\"in_state\":\"Open\",\"effect\":{\"moves\":{\"from\":\"Open\",\"to\":\"Closed\"}}},{\"name\":\"wrong\",\"wrong_state\":true,\"refuses\":{\"error\":\"Denied\"}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "wrong_state_with_state_guard"
+        ]
+      }
+    }
+  ]
+}

@@ -35,6 +35,19 @@ its name promises.
 
 ## Which documents are normative
 
+The executable contract for `entity-core`, `entity-store`, `entity-executor`, `entity-shell` and
+`entity-query` is composed by [`ess/ess-inputs.yaml`](ess/ess-inputs.yaml). Its
+[traceability registers and execution guide](docs/ess/README.md) connect named ESS scenarios to
+the requirements, designs, public APIs and static Rust obligations. `task check` runs the
+standalone Rust checker and refuses generated drift, unreviewed scenario-contract changes or
+incomplete execution. Keep the specification and implementation evidence together when changing
+these libraries; record disagreements as AEP blockers rather than weakening assertions.
+
+Normative authority adoption remains pending
+[`blocker:er-ess-suite27-evidence`](.engineering/planning/blocker/er-ess-suite27-evidence.md): AEP
+must admit the exact new ESS suite and report before the specification can become `conforming`.
+Until that acceptance, the following design authority continues to resolve disagreements.
+
 * [`docs/requirements.md`](docs/requirements.md) — the register. Every row names a test, a type or
   a manifest that pins it; `design` alone marks a gap and is a story.
 * [`docs/design/kernel-v0.1.md`](docs/design/kernel-v0.1.md) — the kernel's semantics. Where code

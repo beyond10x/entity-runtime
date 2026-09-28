@@ -1,0 +1,26 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "preload-validates-input-before-refusal",
+  "summary": "preload validates input before refusal.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Prepare",
+      "input": {
+        "definition": "{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\",\"Issued\",\"Paid\",\"Cancelled\"]},\"operations\":{\"PayInvoice\":{\"arguments\":{\"fields\":{\"amount\":{\"type\":\"integer\",\"required\":true}}},\"outcomes\":[{\"name\":\"settled\",\"when\":{\"gt\":[\"$args.amount\",0]},\"effect\":{\"moves\":{\"from\":\"Issued\",\"to\":\"Paid\"}},\"emits\":[{\"type\":\"InvoicePaid\",\"payload\":{\"amount\":\"$args.amount\"}}]},{\"name\":\"rejected\",\"refuses\":{\"error\":\"InvalidAmount\"}},{\"name\":\"wrong-state\",\"wrong_state\":true,\"refuses\":{\"error\":\"InvoiceStateConflict\"}}]}}}",
+        "id": "unknown",
+        "operation": "PayInvoice",
+        "arguments": "{\"amount\":\"bad\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "arguments.amount"
+        ]
+      }
+    }
+  ]
+}

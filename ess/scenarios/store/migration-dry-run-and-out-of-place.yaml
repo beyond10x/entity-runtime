@@ -1,0 +1,66 @@
+domain: entity.store
+scenario: migration-dry-run-and-out-of-place
+summary: Dry run writes no destination; migration preserves source bytes and creates readable legacy state.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.store.WriteFileFixture
+  input:
+    request: '{"bytes":"{\"entity\":\"ticket\",\"fields\":{\"title\":\"a\"},\"id\":\"a\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1}","path":"legacy/ticket/a.json"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+- at: 2026-09-28T00:00:01Z
+  command: entity.store.MigrateFile
+  input:
+    request: '{"destination":"file","dry_run":true,"source":"legacy"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"dry_run":true,"events":0,"subjects":1}'
+- at: 2026-09-28T00:00:02Z
+  command: entity.store.FileExists
+  input:
+    request: '{"path":"file"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'false'
+- at: 2026-09-28T00:00:03Z
+  command: entity.store.MigrateFile
+  input:
+    request: '{"destination":"file","dry_run":false,"source":"legacy"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"dry_run":false,"events":0,"subjects":1}'
+- at: 2026-09-28T00:00:04Z
+  command: entity.store.ReadFileFixture
+  input:
+    request: '{"path":"legacy/ticket/a.json"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '"{\"entity\":\"ticket\",\"fields\":{\"title\":\"a\"},\"id\":\"a\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1}"'
+- at: 2026-09-28T00:00:05Z
+  command: entity.store.Load
+  input:
+    request: '{"entity":"ticket","id":"a","provider":"File"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '{"entity":"ticket","fields":{"title":"a"},"id":"a","lifecycle_state":"open","revision":1,"version":1}'
+- at: 2026-09-28T00:00:06Z
+  command: entity.store.MigrateFile
+  input:
+    request: '{"destination":"file","dry_run":false,"source":"legacy"}'
+  outcome: returned
+  response:
+    error: Backend
+    status: error
+type: ess-scenario/4

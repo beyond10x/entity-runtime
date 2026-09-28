@@ -1,0 +1,23 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "operation-cannot-change-identity-mirror",
+  "summary": "operation cannot change identity mirror.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"keyed\",\"version\":1,\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"},\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Rename\":{\"arguments\":{\"fields\":{\"to\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"renamed\",\"effect\":\"updates\",\"set\":{\"key\":\"$args.to\"}}]}}}",
+        "instance": "{\"entity\":\"keyed\",\"version\":1,\"id\":\"s:A\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"key\":\"A\"}}",
+        "operation": "Rename",
+        "arguments": "{\"to\":\"B\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "identity_mismatch"
+      }
+    }
+  ]
+}

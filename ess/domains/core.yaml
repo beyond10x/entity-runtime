@@ -1,0 +1,1831 @@
+{
+  "domain": "entity.core",
+  "summary": "Public pure Rust registration, creation, evaluation, exact number comparison, identity and replay APIs. JSON documents are lossless serialized public values; no persistence or publication is implied.",
+  "types": [
+    {
+      "name": "entity.core.JsonDocument",
+      "kind": "newtype",
+      "of": "String"
+    },
+    {
+      "name": "entity.core.DefinitionDocument",
+      "kind": "newtype",
+      "of": "entity.core.JsonDocument"
+    },
+    {
+      "name": "entity.core.InstanceDocument",
+      "kind": "newtype",
+      "of": "entity.core.JsonDocument"
+    },
+    {
+      "name": "entity.core.DecisionDocument",
+      "kind": "newtype",
+      "of": "entity.core.JsonDocument"
+    },
+    {
+      "name": "entity.core.RecordDocument",
+      "kind": "newtype",
+      "of": "entity.core.JsonDocument"
+    }
+  ],
+  "commands": [
+    {
+      "name": "entity.core.Register",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Replace",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Registry",
+      "input": [],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.ValidateRegistry",
+      "input": [],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.ValidateDefinition",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Create",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        },
+        {
+          "name": "id",
+          "type": "String"
+        },
+        {
+          "name": "fields",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.CreateDerived",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        },
+        {
+          "name": "fields",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Execute",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        },
+        {
+          "name": "instance",
+          "type": "entity.core.InstanceDocument"
+        },
+        {
+          "name": "operation",
+          "type": "String"
+        },
+        {
+          "name": "arguments",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.NormalizeArguments",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        },
+        {
+          "name": "operation",
+          "type": "String"
+        },
+        {
+          "name": "arguments",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Prepare",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        },
+        {
+          "name": "id",
+          "type": "String"
+        },
+        {
+          "name": "operation",
+          "type": "String"
+        },
+        {
+          "name": "arguments",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Fulfill",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        },
+        {
+          "name": "id",
+          "type": "String"
+        },
+        {
+          "name": "operation",
+          "type": "String"
+        },
+        {
+          "name": "arguments",
+          "type": "String"
+        },
+        {
+          "name": "instance",
+          "type": "entity.core.InstanceDocument"
+        },
+        {
+          "name": "actions",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Replay",
+      "input": [
+        {
+          "name": "records",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Rehydrate",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        },
+        {
+          "name": "events",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.CompareNumbers",
+      "input": [
+        {
+          "name": "left",
+          "type": "String"
+        },
+        {
+          "name": "right",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Address",
+      "input": [
+        {
+          "name": "kind",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Timestamp",
+      "input": [
+        {
+          "name": "value",
+          "type": "String"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.ReplayReturned",
+      "input": [],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.ReplayTampered",
+      "input": [
+        {
+          "name": "patch",
+          "type": "entity.core.JsonDocument"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.RuntimeCreate",
+      "input": [
+        {
+          "name": "entity",
+          "type": "String"
+        },
+        {
+          "name": "version",
+          "type": "entity.core.JsonDocument"
+        },
+        {
+          "name": "id",
+          "type": "String"
+        },
+        {
+          "name": "fields",
+          "type": "entity.core.JsonDocument"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.RuntimeExecute",
+      "input": [
+        {
+          "name": "instance",
+          "type": "entity.core.JsonDocument"
+        },
+        {
+          "name": "operation",
+          "type": "String"
+        },
+        {
+          "name": "arguments",
+          "type": "entity.core.JsonDocument"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    },
+    {
+      "name": "entity.core.Continue",
+      "input": [
+        {
+          "name": "definition",
+          "type": "entity.core.DefinitionDocument"
+        },
+        {
+          "name": "id",
+          "type": "String"
+        },
+        {
+          "name": "operation",
+          "type": "String"
+        },
+        {
+          "name": "arguments",
+          "type": "String"
+        },
+        {
+          "name": "instance",
+          "type": "entity.core.InstanceDocument"
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "instance",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "events",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "record",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "response",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_kind",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "details",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "outcome",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "error_name",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "requirements",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "subject",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "arguments",
+          "type": "Optional<String>"
+        },
+        {
+          "name": "paths",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "defect_kinds",
+          "type": "Optional<List<String>>"
+        },
+        {
+          "name": "unresolved",
+          "type": "Optional<List<String>>"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "returns": true
+        }
+      ]
+    }
+  ]
+}

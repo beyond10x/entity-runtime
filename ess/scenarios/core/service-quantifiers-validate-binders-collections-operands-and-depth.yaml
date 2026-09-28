@@ -1,0 +1,94 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service-quantifiers-validate-binders-collections-operands-and-depth",
+  "summary": "service quantifiers validate binders collections operands and depth.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"lines\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"quantity\":{\"type\":\"integer\"}}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"for_all\":{\"in\":\"$fields.lines\",\"as\":\"line\",\"that\":{\"compare\":{\"left\":\"$line.absent\",\"op\":\"gt\",\"right\":0}}}}}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "quantifier_body_scope"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"lines\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"quantity\":{\"type\":\"integer\"}}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"for_all\":{\"in\":\"$fields.lines\",\"as\":\"a.b\",\"that\":true}}}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "quantifier_bind_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"lines\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"quantity\":{\"type\":\"integer\"}}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"for_all\":{\"in\":\"$fields.lines.count\",\"as\":\"e\",\"that\":true}}}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "quantifier_over_not_collection"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"lines\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"quantity\":{\"type\":\"integer\"}}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"compare\":{\"left\":[1],\"op\":\"eq\",\"right\":1}}}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "compare_operand_not_addressable"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"lines\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"quantity\":{\"type\":\"integer\"}}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":true}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "condition_too_deep"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:05Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"lines\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"quantity\":{\"type\":\"integer\"}}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"invariants\":[{\"assert\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":{\"not\":true}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    }
+  ]
+}

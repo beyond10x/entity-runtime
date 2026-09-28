@@ -1,0 +1,75 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "preload-quantifiers-preserve-vacuity-and-dominating-truth",
+  "summary": "preload quantifiers preserve vacuity and dominating truth.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Prepare",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}},\"outcomes\":[{\"name\":\"all\",\"when\":{\"for_all\":{\"in\":\"$args.items\",\"as\":\"item\",\"that\":{\"any\":[{\"gt\":[\"$item\",0]},{\"eq\":[\"$fields.note\",\"x\"]}]}}},\"refuses\":{\"error\":\"All\"}},{\"name\":\"later\",\"refuses\":{\"error\":\"Later\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{\"items\":[]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "refused",
+        "outcome": "all",
+        "error_name": "All",
+        "value": "null"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Prepare",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}},\"outcomes\":[{\"name\":\"all\",\"when\":{\"for_all\":{\"in\":\"$args.items\",\"as\":\"item\",\"that\":{\"any\":[{\"gt\":[\"$item\",0]},{\"eq\":[\"$fields.note\",\"x\"]}]}}},\"refuses\":{\"error\":\"All\"}},{\"name\":\"later\",\"refuses\":{\"error\":\"Later\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{\"items\":[1]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "refused",
+        "outcome": "all",
+        "error_name": "All",
+        "value": "null"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.Prepare",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}},\"outcomes\":[{\"name\":\"all\",\"when\":{\"for_all\":{\"in\":\"$args.items\",\"as\":\"item\",\"that\":{\"any\":[{\"gt\":[\"$item\",0]},{\"eq\":[\"$fields.note\",\"x\"]}]}}},\"refuses\":{\"error\":\"All\"}},{\"name\":\"later\",\"refuses\":{\"error\":\"Later\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{\"items\":[0]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "load",
+        "arguments": "{\"items\":[0]}",
+        "subject": "{\"entity\":\"probe\",\"id\":\"p-1\",\"version\":1}"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Prepare",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}},\"outcomes\":[{\"name\":\"all\",\"when\":{\"for_any\":{\"in\":\"$args.items\",\"as\":\"item\",\"that\":{\"any\":[{\"gt\":[\"$item\",0]},{\"eq\":[\"$fields.note\",\"x\"]}]}}},\"refuses\":{\"error\":\"All\"}},{\"name\":\"later\",\"refuses\":{\"error\":\"Later\"}}]}}}",
+        "id": "p-1",
+        "operation": "act",
+        "arguments": "{\"items\":[]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "refused",
+        "outcome": "later",
+        "error_name": "Later",
+        "value": "null"
+      }
+    }
+  ]
+}

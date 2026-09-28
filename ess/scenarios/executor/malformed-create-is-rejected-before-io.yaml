@@ -1,0 +1,31 @@
+domain: entity.executor
+scenario: malformed-create-is-rejected-before-io
+summary: A zero definition version is invalid before any identity or state reads.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.executor.Create
+  input:
+    request: '{"entity":"ticket","fields":{"title":"a"},"id":"a","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"one","recorded_at":"2026-09-28T00:00:00Z"},"version":0}'
+  outcome: returned
+  response:
+    error: InvalidInput
+    status: error
+- at: 2026-09-28T00:00:01Z
+  command: entity.executor.Trace
+  input:
+    request: '{}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: '[]'
+- at: 2026-09-28T00:00:02Z
+  command: entity.executor.LookupRecord
+  input:
+    request: '{"record_id":"one"}'
+  outcome: returned
+  response:
+    error: ''
+    status: ok
+    value: 'null'
+type: ess-scenario/4

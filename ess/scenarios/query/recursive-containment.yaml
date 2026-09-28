@@ -1,0 +1,78 @@
+domain: entity.query
+scenario: recursive-containment
+summary: Objects require every requested member; arrays use recursive containment independent of order and multiplicity.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Seed
+  input:
+    definition: '{"entity":"docs","lifecycle":{"initial":"ready","states":["ready"]},"schema":{"fields":{"data":{"type":"json"}}}}'
+    subjects: '[{"fields":{"data":{"array":[{"a":1,"b":2},"x",7],"object":{"one":1,"two":2}}},"id":"b"},{"fields":{"data":{"array":["y"],"object":{"one":2}}},"id":"a"},{"fields":{"data":null},"id":"c"},{"fields":{},"id":"d"}]'
+  outcome: returned
+  response:
+    ok: true
+- at: 2026-09-28T00:00:01Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":{"object":{"one":1}}}}'
+  outcome: returned
+  response:
+    count: 1
+    ids: '["b"]'
+    ok: true
+- at: 2026-09-28T00:00:02Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":{"array":["x",{"a":1},"x"]}}}'
+  outcome: returned
+  response:
+    ids: '["b"]'
+    ok: true
+- at: 2026-09-28T00:00:03Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":{"array":[{"b":3}]}}}'
+  outcome: returned
+  response:
+    ids: '[]'
+    ok: true
+- at: 2026-09-28T00:00:04Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":{"object":{"missing":null}}}}'
+  outcome: returned
+  response:
+    ids: '[]'
+    ok: true
+- at: 2026-09-28T00:00:05Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":null}}'
+  outcome: returned
+  response:
+    ids: '["c"]'
+    ok: true
+- at: 2026-09-28T00:00:06Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"missing":null}}'
+  outcome: returned
+  response:
+    ids: '[]'
+    ok: true
+- at: 2026-09-28T00:00:07Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":{"object":{"one":1}},"missing":true}}'
+  outcome: returned
+  response:
+    ids: '[]'
+    ok: true
+- at: 2026-09-28T00:00:08Z
+  command: entity.query.Query
+  input:
+    query: '{"entity":"docs","matching":{"data":{"array":[]}}}'
+  outcome: returned
+  response:
+    ids: '["a","b"]'
+    ok: true
+type: ess-scenario/4

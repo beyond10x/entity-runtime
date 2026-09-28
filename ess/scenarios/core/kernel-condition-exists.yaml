@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "kernel-condition-exists",
+  "summary": "kernel condition exists.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"value\":{\"type\":\"json\"},\"other\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"rule\",\"assert\":{\"exists\":\"$fields.value\"},\"message\":\"rule\"}]}",
+        "id": "p-1",
+        "fields": "{\"value\":null}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_violation"
+      }
+    }
+  ]
+}

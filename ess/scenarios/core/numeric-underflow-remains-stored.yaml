@@ -1,0 +1,22 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "numeric-underflow-remains-stored",
+  "summary": "numeric underflow remains stored.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"numeric\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"big\":{\"type\":\"number\"},\"same\":{\"type\":\"number\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"rule\",\"assert\":{\"not\":{\"truthy\":\"$fields.big\"}}}]}",
+        "id": "n-1",
+        "fields": "{\"big\":1e-10000}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"numeric\",\"version\":1,\"id\":\"n-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"big\":1e-10000}}"
+      }
+    }
+  ]
+}

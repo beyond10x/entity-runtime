@@ -1,0 +1,17 @@
+domain: entity.query
+scenario: page-builder-truncates-matches
+summary: The public page builder returns the requested prefix and an actual continuation when an extra match exists.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Page
+  input:
+    instances: '[{"entity":"docs","fields":{"data":1},"id":"a","lifecycle_state":"ready","revision":1,"version":1},{"entity":"docs","fields":{"data":2},"id":"b","lifecycle_state":"ready","revision":1,"version":1}]'
+    query: '{"entity":"docs","limit":1}'
+  outcome: returned
+  response:
+    count: 1
+    cursor: 5b22646f6373222c7b7d5d.61
+    has_next: true
+    ids: '["a"]'
+    ok: true
+type: ess-scenario/4

@@ -1,0 +1,15 @@
+domain: entity.query
+scenario: consumed-prefix-before-cursor-is-validated
+summary: Ordering and entity checks apply even to consumed inputs below the continuation bound.
+timeline:
+- at: 2026-09-28T00:00:00Z
+  command: entity.query.Ordered
+  input:
+    instances: '[{"entity":"docs","fields":{"data":1},"id":"b","lifecycle_state":"ready","revision":1,"version":1},{"entity":"docs","fields":{"data":2},"id":"a","lifecycle_state":"ready","revision":1,"version":1}]'
+    query: '{"entity":"docs","after":"5b22646f6373222c7b7d5d.7a"}'
+  outcome: returned
+  response:
+    detail: query input is not strictly ordered by identity
+    kind: invalid
+    ok: false
+type: ess-scenario/4

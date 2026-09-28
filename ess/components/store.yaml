@@ -1,0 +1,51 @@
+components:
+  - component: entity-store
+    summary: Public Rust library contract for entity-store.
+    owns:
+      domains: [entity.store]
+    reached_by: in_process
+    accepts:
+      commands:
+        - entity.store.Commit
+        - entity.store.CommitRecorded
+        - entity.store.Observe
+        - entity.store.Load
+        - entity.store.Ids
+        - entity.store.Events
+        - entity.store.Records
+        - entity.store.Observations
+        - entity.store.AtomicBatch
+        - entity.store.Reopen
+        - entity.store.WriteFileFixture
+        - entity.store.ReadFileFixture
+        - entity.store.FileExists
+        - entity.store.Project
+        - entity.store.MigrateFile
+        - entity.store.AcquireLegacy
+        - entity.store.Seal
+        - entity.store.ValidateEnvelope
+        - entity.store.CheckExpectation
+        - entity.store.Append
+        - entity.store.SeedImported
+        - entity.store.LookupRecord
+        - entity.store.LookupBatch
+        - entity.store.History
+        - entity.store.VerifyComplete
+        - entity.store.VerifySubject
+        - entity.store.VerifyExplicit
+        - entity.store.BranchHeads
+        - entity.store.BranchTips
+        - entity.store.Trace
+        - entity.store.ClearTrace
+        - entity.store.SetPosition
+        - entity.store.Tamper
+        - entity.store.CanonicalBytes
+        - entity.store.ValidateRecordedCommit
+        - entity.store.ValidateObservation
+        - entity.store.RecordFraming
+        - entity.store.ReadRecordDomain
+        - entity.store.RecordDomains
+        - entity.store.RequestBytes
+        - entity.store.SubjectCoordinate
+        - entity.store.BatchCoordinate
+        - entity.store.MemberCoordinate

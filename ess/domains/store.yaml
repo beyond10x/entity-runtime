@@ -1,0 +1,399 @@
+domain: entity.store
+summary: Public storage calls preserve explicit expectations, complete records, provider capabilities and assurance boundaries.
+# Each RequestDocument is lossless JSON for the named Rust call. The traceability register
+# identifies its exact fields and separates filesystem fixture arrangement from public APIs.
+# Refused Rust Results are returned values, never a fabricated domain event or state change.
+types:
+  - {name: entity.store.Provider, kind: enum, variants: [Memory, File, RecordedMemory]}
+  - {name: entity.store.Expectation, kind: enum, variants: [Absent, Revision]}
+  - {name: entity.store.RequestDocument, kind: newtype, of: entity.core.JsonDocument}
+  - {name: entity.store.HistoryDocument, kind: newtype, of: entity.core.JsonDocument}
+  - {name: entity.store.ReceiptDocument, kind: newtype, of: entity.core.JsonDocument}
+commands:
+  - name: entity.store.Commit
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.CommitRecorded
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Observe
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Load
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Ids
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Events
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Records
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Observations
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.AtomicBatch
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Reopen
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.WriteFileFixture
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.ReadFileFixture
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.FileExists
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Project
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.MigrateFile
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.AcquireLegacy
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Seal
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.ValidateEnvelope
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.CheckExpectation
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Append
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.SeedImported
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.LookupRecord
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.LookupBatch
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.History
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.VerifyComplete
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.VerifySubject
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.VerifyExplicit
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.BranchHeads
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.BranchTips
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Trace
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.ClearTrace
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.SetPosition
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.Tamper
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.CanonicalBytes
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.ValidateRecordedCommit
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.ValidateObservation
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.RecordFraming
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.ReadRecordDomain
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.RecordDomains
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.RequestBytes
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.SubjectCoordinate
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.BatchCoordinate
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity.store.MemberCoordinate
+    input:
+      - {name: request, type: entity.store.RequestDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity.core.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}

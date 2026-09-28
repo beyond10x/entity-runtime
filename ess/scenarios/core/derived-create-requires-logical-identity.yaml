@@ -1,0 +1,21 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "derived-create-requires-logical-identity",
+  "summary": "derived create requires logical identity.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.CreateDerived",
+      "input": {
+        "definition": "{\"entity\":\"empty\",\"version\":1,\"schema\":{\"fields\":{},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{}}",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "creation_identity_unavailable"
+      }
+    }
+  ]
+}

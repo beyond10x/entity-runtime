@@ -1,0 +1,21 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "exact-number-38",
+  "summary": "exact number 38.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.CompareNumbers",
+      "input": {
+        "left": "9007199254740992",
+        "right": "9007199254740993"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "Less"
+      }
+    }
+  ]
+}

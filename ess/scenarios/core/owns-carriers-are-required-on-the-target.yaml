@@ -1,0 +1,64 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "owns-carriers-are-required-on-the-target",
+  "summary": "owns carriers are required on the target.",
+  "timeline": [
+    {
+      "at": "2026-09-28T00:00:00Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"child\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"owner\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:01Z",
+      "command": "entity.core.Register",
+      "input": {
+        "definition": "{\"entity\":\"owner\",\"semantics\":\"service/1\",\"identity\":{\"field\":\"key\"},\"schema\":{\"fields\":{\"key\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"relations\":{\"children\":{\"kind\":\"owns\",\"target\":\"child\",\"cardinality\":\"many\",\"via\":\"owner\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:02Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "relation_carrier_optionality"
+        ]
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:03Z",
+      "command": "entity.core.Replace",
+      "input": {
+        "definition": "{\"entity\":\"child\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"owner\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-09-28T00:00:04Z",
+      "command": "entity.core.ValidateRegistry",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "null"
+      }
+    }
+  ]
+}
