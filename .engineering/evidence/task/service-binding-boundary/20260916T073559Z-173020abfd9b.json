@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T07:35:59Z",
+  "actor": "human:timo",
+  "artifact": "task:service-binding-boundary",
+  "kind": "task",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Design diagnostic model validated and compiled with installed ESS CLI; not runtime acceptance",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/service-binding-boundary-design/READY.md"
+  }
+}

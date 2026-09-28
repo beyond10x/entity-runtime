@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-08T23:40:28Z",
+  "actor": "human:timo",
+  "artifact": "story:the-store-keeps-the-envelope",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "conformance verify_recorded on Memory, File, SQLite and PostgreSQL providers ok; an_envelope_round_trips_with_explicit_absence ok; gate / Gate on main 0e61dde: https://github.com/beyond10x/entity-runtime/actions/runs/34290829734",
+    "reference": "crates/entity-store/src/conformance.rs"
+  }
+}

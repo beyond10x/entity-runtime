@@ -5,7 +5,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-const MINIMUM_AEP_PROTOCOL: (u64, u64, u64) = (0, 26, 0);
+const MINIMUM_AEP_PROTOCOL: (u64, u64, u64) = (0, 63, 1);
 
 #[derive(Debug, Parser)]
 #[command(name = "entity-xtask")]
@@ -17,7 +17,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Check {
-    /// Refuse an `aep` command too old for the planning journal.
+    /// Refuse an `aep` command too old for the Git-native planning store.
     AepVersion {
         /// The `aep` the caller's shell resolves — `$(command -v aep)` in the Taskfile. Passed in
         /// because `cargo run` prepends its own directories to this process's PATH, so a lookup

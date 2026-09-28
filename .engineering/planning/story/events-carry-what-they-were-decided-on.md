@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:events-carry-what-they-were-decided-on
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: DomainEvent gains args — what the rules read when they permitted the 
 relations:
 - decomposes: epic:the-store-an-adopter-runs-on
 revision: 7
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-28T15:29:19Z", actor: "human:operator", revision: 4, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-28T15:29:19Z", actor: "human:operator", revision: 5, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-28T15:29:55Z", actor: "human:operator", revision: 7, imported: true}
 ---
 # Story: An event records the arguments the operation was decided on
 

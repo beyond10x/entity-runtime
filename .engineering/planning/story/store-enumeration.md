@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:store-enumeration
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: StateProvider::ids — every identity a store holds for an entity type 
 relations:
 - decomposes: epic:the-store-an-adopter-runs-on
 revision: 7
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-28T14:23:05Z", actor: "human:operator", revision: 4, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-28T14:23:05Z", actor: "human:operator", revision: 5, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-28T14:54:08Z", actor: "human:operator", revision: 7, imported: true}
 ---
 # Story: A provider can say what it holds
 

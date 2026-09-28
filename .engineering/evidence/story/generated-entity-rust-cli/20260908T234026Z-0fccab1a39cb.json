@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-08T23:40:26Z",
+  "actor": "human:timo",
+  "artifact": "story:generated-entity-rust-cli",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "generated_rust_cli_compiles_and_executes_definition_specific_commands ok (relative build dir, CARGO_TARGET_DIR and host CARGO_BUILD_TARGET set); gate / Gate on main 0e61dde: https://github.com/beyond10x/entity-runtime/actions/runs/34290829734",
+    "reference": "crates/entity-cli/tests/cli.rs"
+  }
+}

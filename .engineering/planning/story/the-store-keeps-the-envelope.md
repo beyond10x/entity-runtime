@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:the-store-keeps-the-envelope
 kind: story
 status: implemented
@@ -9,6 +9,10 @@ relations:
 - decomposes: epic:the-store-an-adopter-runs-on
 - serves: vision:O2
 revision: 8
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-08T23:39:14Z", actor: "human:timo", revision: 6, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-08T23:39:15Z", actor: "human:timo", revision: 7, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-08T23:40:28Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 # Story: The store keeps the decision envelope
 

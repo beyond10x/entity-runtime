@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:multi-format-entity-graphs
 kind: story
 status: implemented
@@ -9,6 +9,10 @@ relations:
 - derived_from: epic:generated-entity-surfaces
 - serves: vision:O2
 revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-08T23:39:12Z", actor: "human:timo", revision: 4, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-08T23:39:12Z", actor: "human:timo", revision: 5, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-08T23:40:27Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 # Story: Render entity graphs for terminals, Mermaid and Graphviz
 

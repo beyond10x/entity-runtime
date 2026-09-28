@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:aep-move-through-kernel
 kind: story
 status: implemented
@@ -10,6 +10,10 @@ relations:
 - depends_on: story:three-valued-conditions
 - depends_on: story:aep-lifecycles-as-definitions
 revision: 9
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T01:36:31Z", actor: "timo", revision: 7, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T01:36:31Z", actor: "timo", revision: 8, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T01:36:45Z", actor: "timo", revision: 9, decided_on: {"recorded":{"test_result":1,"artifact":1}}, imported: true}
 ---
 # Story: Phase 2 — protocol artifact move evaluated by the kernel
 

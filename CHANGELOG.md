@@ -4,6 +4,23 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.25.1] — 2026-09-28
+
+### Added
+
+- Executable ESS contracts for `entity-core`, `entity-store`, `entity-executor`, `entity-shell`
+  and `entity-query`, checked against their real Rust implementations by the local and CI gates.
+  Retained evidence includes exact suites, reports, implementation identities, traceability and
+  deliberate behavioral mutations. The checker is isolated from production dependencies.
+
+### Changed
+
+- Repository planning uses AEP's verified Git-native store, preserving existing artifacts,
+  transitions and evidence. The local planning check requires AEP 0.63.1 or newer; CI pins its
+  compatible source revision.
+- Release automation produces a verified bundle after all required builds and checks. The bot
+  publishes its archives, checksums and changelog notes under the organization App identity.
+
 ## [0.25.0] — 2026-09-27
 
 ### Changed

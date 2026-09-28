@@ -1,0 +1,14 @@
+{
+  "at": "2026-09-20T23:27:03Z",
+  "actor": "human:timo",
+  "artifact": "task:eventlog-provider-pin-verify-once",
+  "kind": "task",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "F1 Taskfile.yml CONFIRMED pre-existing warning: no gate step compiles entity-sqlite/entity-postgres --features eventlog-facade or entity-cli --features eventlog-providers; red at 8b175736 too (crates/entity-xtask/tests/gate_sees_pinned_git_features.rs:133 exit 101). Routed to story:one-git-url-one-rev-across-the-workspace, whose Acceptance now names the three feature builds (rev 2)",
+    "review": "review-result:er-eventlog-pin-review-1",
+    "outcome": "no-op"
+  }
+}

@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:typed-references
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: A field kind ref naming an entity type, with the checking boundary (ker
 relations:
 - derived_from: epic:kernel
 revision: 7
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T01:36:11Z", actor: "timo", revision: 5, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T01:36:31Z", actor: "timo", revision: 6, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T01:36:45Z", actor: "timo", revision: 7, decided_on: {"recorded":{"test_result":1,"artifact":1}}, imported: true}
 ---
 # Story: Typed references between entities
 

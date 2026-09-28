@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: task:service-semantic-contract
 kind: task
 status: implemented
@@ -11,6 +11,10 @@ relations:
 - decomposes: initiative:entity-runtime
 - serves: vision:O2
 revision: 10
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-15T22:45:01Z", actor: "human:timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-15T22:45:02Z", actor: "human:timo", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-16T00:05:14Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 ## Approved requirement and evidence gap
 

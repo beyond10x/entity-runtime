@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-16T06:27:43Z",
+  "actor": "human:timo",
+  "artifact": "task:pure-service-semantics",
+  "kind": "task",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "Final review G2 disposition and correction",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/service-source-correction-2/integration.md",
+    "review": "review-result:pure-service-semantics-source-pass-2",
+    "outcome": "fixed"
+  }
+}

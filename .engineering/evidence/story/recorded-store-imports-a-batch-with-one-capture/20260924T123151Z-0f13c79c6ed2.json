@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-24T12:31:51Z",
+  "actor": "human:timo",
+  "artifact": "story:recorded-store-imports-a-batch-with-one-capture",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "ER 0.19.0 task check: 688 passed",
+    "reference": "git:beyond10x/entity-runtime@13f88d98"
+  }
+}

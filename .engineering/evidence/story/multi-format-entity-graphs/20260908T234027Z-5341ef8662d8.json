@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-08T23:40:27Z",
+  "actor": "human:timo",
+  "artifact": "story:multi-format-entity-graphs",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "tests/drawing.rs 12 passed; graph_mermaid_uses_state_notation_with_inert_labels ok; gate / Gate on main 0e61dde: https://github.com/beyond10x/entity-runtime/actions/runs/34290829734",
+    "reference": "crates/entity-graph/tests/drawing.rs"
+  }
+}

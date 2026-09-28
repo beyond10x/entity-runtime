@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:static-template-validation
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: A set value or event payload that references an undeclared field or arg
 relations:
 - derived_from: epic:kernel
 revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T01:36:31Z", actor: "timo", revision: 3, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T01:36:31Z", actor: "timo", revision: 4, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T01:36:46Z", actor: "timo", revision: 5, decided_on: {"recorded":{"test_result":1,"artifact":1}}, imported: true}
 ---
 # Story: Template paths are validated at registration
 

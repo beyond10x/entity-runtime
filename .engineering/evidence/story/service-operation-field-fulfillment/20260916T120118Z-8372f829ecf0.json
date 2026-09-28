@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-16T12:01:18Z",
+  "actor": "human:timo",
+  "artifact": "story:service-operation-field-fulfillment",
+  "kind": "story",
+  "revision": 23,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:operation-field-fulfillment-source-pass-1",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/operation-field-fulfillment-correction-1/report.md",
+    "review": "review-result:operation-field-fulfillment-source-pass-1",
+    "outcome": "fixed"
+  }
+}

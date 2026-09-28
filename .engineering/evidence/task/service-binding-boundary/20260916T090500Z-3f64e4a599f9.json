@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-16T09:05:00Z",
+  "actor": "human:timo",
+  "artifact": "task:service-binding-boundary",
+  "kind": "task",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:service-binding-boundary-source-pass-1",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/service-binding-source-review-1/report.md",
+    "review": "review-result:service-binding-boundary-source-pass-1",
+    "outcome": "no-op"
+  }
+}

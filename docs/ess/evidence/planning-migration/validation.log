@@ -1,0 +1,9 @@
+120 file(s) in <ER>/.engineering/planning: 120 artifact(s)
+6 review(s) recorded no findings block:
+  - review-result:er-core-checker-correction-recheck states its findings as prose only — nothing can enumerate what it found, so                  the next review starts from nowhere
+  - review-result:er-recorded-contract-pass-2 states its findings as prose only — nothing can enumerate what it found, so                  the next review starts from nowhere
+  - review-result:er-shell-query-adversary states its findings as prose only — nothing can enumerate what it found, so                  the next review starts from nowhere
+  - review-result:er-store-executor-adversary states its findings as prose only — nothing can enumerate what it found, so                  the next review starts from nowhere
+  - review-result:service-binding-boundary-design-pass-2 states its findings as prose only — nothing can enumerate what it found, so                  the next review starts from nowhere
+  - review-result:service-binding-boundary-source-pass-1 states its findings as prose only — nothing can enumerate what it found, so                  the next review starts from nowhere
+valid

@@ -43,15 +43,15 @@ standalone Rust checker and refuses generated drift, unreviewed scenario-contrac
 incomplete execution. Keep the specification and implementation evidence together when changing
 these libraries; record disagreements as AEP blockers rather than weakening assertions.
 
-Normative authority adoption remains pending
-[`blocker:er-ess-suite27-evidence`](.engineering/planning/blocker/er-ess-suite27-evidence.md): AEP
-must admit the exact new ESS suite and report before the specification can become `conforming`.
-Until that acceptance, the following design authority continues to resolve disagreements.
+AEP admitted the exact [release evidence](docs/ess/evidence/final/release/README.md) after complete
+execution and the repository gate. Authority adoption remains pending the specification
+lifecycle's acceptance of current typed coverage evidence. The following requirements and designs
+retain their existing authority until that transition succeeds.
 
 * [`docs/requirements.md`](docs/requirements.md) — the register. Every row names a test, a type or
   a manifest that pins it; `design` alone marks a gap and is a story.
-* [`docs/design/kernel-v0.1.md`](docs/design/kernel-v0.1.md) — the kernel's semantics. Where code
-  and this document disagree, the document wins until a later revision says otherwise.
+* [`docs/design/kernel-v0.1.md`](docs/design/kernel-v0.1.md) — the kernel's semantic rationale,
+  traced to the executable core contract. Record any disagreement as a governed blocker.
 * [`docs/design/kernel-v0.2.md`](docs/design/kernel-v0.2.md) and
   [`docs/design/store-v0.2.md`](docs/design/store-v0.2.md) — validated execution handles,
   verifiable decision records, recorded provider history and File Store v2. They supersede the
@@ -294,6 +294,13 @@ requirements registers, versioned designs or reviews. `task site-build` runs the
 
 ## Planning artifacts
 
+This repository uses `aep.project/5` with `store: {git: {}}`. Artifact files are the authority;
+transitions live in their frontmatter and evidence is stored under `.engineering/evidence/`.
+Use a current AEP CLI (at least 0.63.1); `.github/workflows/planning.yml` pins the exact compatible
+source revision for CI. The verified conversion from the retired Eventlog layout is recorded in
+`docs/ess/evidence/planning-migration/`. Do not recreate the removed Eventlog store or use the
+retired `validate --against` option.
+
 Plan items are markdown files under `.engineering/planning/<kind>/<slug>.md`: YAML frontmatter the
 `aep` CLI owns, and a body the agent and operator own. The repository-local skill at
 `.agents/skills/planning/SKILL.md` carries the full model and store conventions.
@@ -357,9 +364,17 @@ commit that delivered the work, and its `CHANGELOG.md` heading matches the versi
 Pushing the tag queues the release: `.github/workflows/release.yml` runs the gate concurrently with
 building the
 `entity` command for Linux (x86_64, aarch64), macOS (x86_64, arm64) and Windows (x86_64), and
-creates the GitHub Release only after both succeed, with the archives, a `SHA256SUMS` file and the tag's `CHANGELOG.md`
-section as its notes. The provenance job refuses a tag unless the tag, workspace version and dated
+retains a `release-bundle-<tag>` artifact only after both succeed, with the archives, a
+`SHA256SUMS` file and the tag's `CHANGELOG.md` section as its notes. The provenance job refuses a tag unless the tag, workspace version and dated
 changelog heading agree. There is no generated-notes fallback: cut the section first.
+
+After the exact tag's release run succeeds, download its named bundle, verify every archive
+against `SHA256SUMS`, and publish through the bot-authenticated Gates delivery tools. Create a
+draft release through `b10x-gates api`, upload the verified assets through Gates' bot delivery,
+then publish the draft after verifying the complete asset set. Verify `b10x-bot[bot]` as the
+release author and the tag's reachability from `origin/main`. CI holds read-only permissions;
+its Actions identity must not create the release. A successful build alone is still queued
+until the published release and all required artifacts have been verified.
 
 ```console
 task check

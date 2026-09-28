@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:replay-from-events
 kind: story
 status: implemented
@@ -10,6 +10,10 @@ relations:
 - decomposes: epic:the-shell
 - depends_on: story:event-envelope
 revision: 7
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T02:45:33Z", actor: "timo", revision: 5, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T02:45:33Z", actor: "timo", revision: 6, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T02:45:33Z", actor: "timo", revision: 7, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 # Story: Rehydrate an instance from its events
 

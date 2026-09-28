@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-26T01:36:32Z",
+  "actor": "timo",
+  "artifact": "story:aep-evidence-preconditions",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "artifact",
+    "source": "code read 2026-08-26",
+    "reference": "engineering-protocols 0.15.0 - requires: on a rung, evaluated by this kernel over $args.evidence.*"
+  }
+}

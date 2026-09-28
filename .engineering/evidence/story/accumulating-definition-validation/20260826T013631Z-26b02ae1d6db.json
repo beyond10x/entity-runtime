@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-26T01:36:31Z",
+  "actor": "timo",
+  "artifact": "story:accumulating-definition-validation",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "artifact",
+    "source": "code read 2026-08-26",
+    "reference": "crates/entity-core/src/validation.rs - the Defects collector"
+  }
+}

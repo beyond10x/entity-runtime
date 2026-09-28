@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:async-recorded-contract-executor
 kind: story
 status: implemented
@@ -41,6 +41,10 @@ scope:
 - confidence: cited
   path: ess/recorded-execution/
 revision: 14
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-15T03:06:46Z", actor: "human:timo", revision: 4, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-15T03:06:48Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":6}}, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-15T03:06:51Z", actor: "human:timo", revision: 14, decided_on: {"recorded":{"test_result":1,"review_outcome":9}}, imported: true}
 ---
 ## Outcome
 

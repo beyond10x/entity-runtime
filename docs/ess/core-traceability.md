@@ -2,7 +2,8 @@
 
 This register maps the scoped `entity-core` behavior to the existing requirement IDs, normative
 design, public Rust APIs, implementation, ESS declarations and named scenarios. It describes the
-current integration inputs; final conformance evidence and authority adoption remain pending.
+current integration inputs; admitted conformance evidence is recorded in
+[`evidence/final/release/`](evidence/final/release/README.md).
 The [canonical manifest](../../ess/ess-inputs.yaml) composes
 [`entity.core`](../../ess/domains/core.yaml) with its
 [`entity-core` component](../../ess/components/core.yaml). Scenario names below resolve to

@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-28T20:34:07Z",
+  "actor": "human:operator",
+  "artifact": "task:roadmap-page-is-current",
+  "kind": "task",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "static_analysis",
+    "source": "npm run build in website/ exit 0; task pin-check 11 files 0 findings; task plan-check 40 artifacts valid, 2026-08-28",
+    "reference": "docs/roadmap.md"
+  }
+}

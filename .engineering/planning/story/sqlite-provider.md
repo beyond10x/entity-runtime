@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:sqlite-provider
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: entity-sqlite writes state and events in one transaction, which is the 
 relations:
 - decomposes: epic:the-shell
 revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T02:51:08Z", actor: "timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T02:51:08Z", actor: "timo", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T02:51:08Z", actor: "timo", revision: 4, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 # Story: A second provider, so the SPI has two implementors rather than one
 

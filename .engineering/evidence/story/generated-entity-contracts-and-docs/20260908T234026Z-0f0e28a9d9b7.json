@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-08T23:40:26Z",
+  "actor": "human:timo",
+  "artifact": "story:generated-entity-contracts-and-docs",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "one_projection_feeds_docs_openapi_and_asyncapi ok; generated_documentation_is_complete_and_replaces_only_generator_owned_output ok; gate / Gate on main 0e61dde: https://github.com/beyond10x/entity-runtime/actions/runs/34290829734",
+    "reference": "crates/entity-surface/src/lib.rs"
+  }
+}

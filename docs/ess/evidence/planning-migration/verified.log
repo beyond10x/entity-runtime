@@ -1,0 +1,5 @@
+writes 120 document(s) as `aep.planning-md/3` carrying 218 transition(s), and 111 evidence file(s)
+not carried (Git history holds them): 190 body_replaced, 94 created, 144 related, 1 unrelated
+<ER>/.engineering/project.yaml now selects `aep.project/5`: 120 document(s), 218 transition(s), 111 evidence file(s) written
+removed <ER>/.engineering/state; Git history holds it
+verified 120 artifact(s): status, revision, title, relations, body, transitions and evidence equal what the old store answered

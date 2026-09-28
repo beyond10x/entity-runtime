@@ -2,8 +2,8 @@
 
 [`ess/ess-inputs.yaml`](../../ess/ess-inputs.yaml) is the canonical composition entry point for
 the selected Entity Runtime library contracts. It lists the source declarations and every
-authored scenario explicitly. This guide describes the integration; it does not declare the
-specification conforming or replace repository authority before the final evidence is accepted.
+authored scenario explicitly. [Release evidence](evidence/final/release/README.md) has been admitted;
+authority adoption waits for the specification lifecycle to accept current typed coverage evidence.
 Requirement IDs and design documents retain their traceability and rationale.
 
 | Behavioral domain | In-process component | Contract register |
@@ -37,7 +37,7 @@ This does **not** claim native ESS `Binary64` admission: the document contract p
 actual wire input and asserts literal actual output. Unsupported native ESS numeric semantics
 must not be replaced with a weaker numeric assertion.
 
-Source declarations use `ess/16`; authored scenarios use `ess-scenario/4` and typed `response`
+Source declarations use `ess/17`; authored scenarios use `ess-scenario/4` and typed `response`
 assertions. Each library command's `returned` outcome means that the Rust function returned its
 result, including a typed error or refusal. The returned fields distinguish success, refusal,
 decode failure and the concrete public error. A malformed synthesized document is observed as
@@ -75,9 +75,10 @@ matching ESS CLI when inspecting these declarations:
 cargo install --locked --git https://github.com/beyond10x/ess --rev PIN_FROM_CHECKER_MANIFEST ess-cli
 ```
 
-The initial integration baseline was ESS
-0.37.0; the pinned revision includes the governed direct-return and response-resource
-extensions. No ESS dependency is added to a production crate. New executable tooling is Rust;
+The initial integration baseline was ESS 0.37.0. The current pin ports its governed direct-return
+extension onto ESS 0.38.0 with fresh source and suite versions, preserving the released formats.
+Historical prototype suites retain their original identities under `evidence/prototype-0.37/`;
+current execution uses inventory suite/29. No ESS dependency is added to a production crate. New executable tooling is Rust;
 the checker's command line uses clap derive.
 
 Run commands from the repository root. Regeneration compiles the full manifest, combines

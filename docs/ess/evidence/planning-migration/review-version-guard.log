@@ -1,0 +1,16 @@
+CASE reject-pre-git-store-aep
+exit=1
+stdout=
+stderr=aep at $HOME/.cache/er-ess-tools/aep reports 0.61.1; this store needs at least 0.63.1
+
+CASE accept-current-aep
+exit=0
+stdout=aep implements protocol 0.63.1 at $HOME/.local/bin/aep (needs 0.63.1)
+
+stderr=
+CASE reject-missing-shell-resolution
+exit=2
+stdout=
+stderr=aep is not on the shell's PATH; install the AEP CLI, which is what reads and writes this store
+
+3 cases passed

@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:provider-conformance
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: One suite, in the crate that owns the traits, run against every impleme
 relations:
 - decomposes: epic:the-shell
 revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T02:51:08Z", actor: "timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T02:51:09Z", actor: "timo", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T02:51:09Z", actor: "timo", revision: 4, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 # Story: Black-box suites a provider runs against itself
 

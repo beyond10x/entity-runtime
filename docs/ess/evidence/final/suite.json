@@ -1958,7 +1958,7 @@
     "contract_digest": "1efb8e62512c9759d48077f333f607469ecf4a27fd6189701c8fa6e50c16a144",
     "spec_digest": "a13e6c07be82c913363ea52b8042c6e379343acfda7fcc03a212c0942569da5d",
     "specification_version": "v1",
-    "suite_version": "ess-conformance/27",
+    "suite_version": "ess-conformance/29",
     "system": "entity"
   },
   "scenarios": {

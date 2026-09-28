@@ -1,0 +1,14 @@
+{
+  "at": "2026-09-20T23:27:03Z",
+  "actor": "human:timo",
+  "artifact": "task:eventlog-provider-pin-verify-once",
+  "kind": "task",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "N3 brief-review-1.md:37 CONFIRMED undecided note: the brief and the first commit message said seven rev sites; there are eight (entity-eventlog 4, entity-sqlite 1, entity-postgres 2, entity-cli 1), counted by grep. The change itself was right. Corrected in the body of bot commit e535aded9970d41ba16349e9eccf110df29d08c3 and in WAVE.md and this task's Acceptance",
+    "review": "review-result:er-eventlog-pin-review-1",
+    "outcome": "fixed"
+  }
+}

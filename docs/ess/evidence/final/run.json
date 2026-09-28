@@ -32,7 +32,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "`entity.core.CompareNumbers` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.core.CompareNumbers/outcome/returned",
       "status": "passed"
@@ -68,7 +68,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "`entity.core.Create` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.core.Create/outcome/returned",
       "status": "passed"
@@ -104,7 +104,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "`entity.core.Execute` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.core.Execute/outcome/returned",
       "status": "passed"
@@ -248,7 +248,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "`entity.core.Replay` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.core.Replay/outcome/returned",
       "status": "passed"
@@ -410,7 +410,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "all scalar and collection kinds validate.",
       "scenario": "entity.core/authored/all-scalar-and-collection-kinds-validate",
       "status": "passed"
@@ -446,7 +446,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "assignments read one pre operation map.",
       "scenario": "entity.core/authored/assignments-read-one-pre-operation-map",
       "status": "passed"
@@ -512,7 +512,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "condition documents have one known nonempty operator.",
       "scenario": "entity.core/authored/condition-documents-have-one-known-nonempty-operator",
       "status": "passed"
@@ -650,7 +650,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "conditional presence registration requires one typed optional leaf.",
       "scenario": "entity.core/authored/conditional-presence-registration-requires-one-typed-optional-leaf",
       "status": "passed"
@@ -772,7 +772,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 4,
       "purpose": "Public continuation follows direct implicit paths, returns early input refusal and requests fulfillment after loading.",
       "scenario": "entity.core/authored/continuation-keeps-implicit-paths-refusals-and-fulfillment-boundary",
       "status": "passed"
@@ -808,7 +808,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "creation applies defaults and returns an exact event.",
       "scenario": "entity.core/authored/creation-applies-defaults-and-returns-an-exact-event",
       "status": "passed"
@@ -874,7 +874,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "default version multiple transition sources and object arguments.",
       "scenario": "entity.core/authored/default-version-multiple-transition-sources-and-object-arguments",
       "status": "passed"
@@ -992,7 +992,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "derived creation refuses circular assignment.",
       "scenario": "entity.core/authored/derived-creation-refuses-circular-assignment",
       "status": "passed"
@@ -1038,7 +1038,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "derived creation selects first identity.",
       "scenario": "entity.core/authored/derived-creation-selects-first-identity",
       "status": "passed"
@@ -1256,7 +1256,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "exact number 40.",
       "scenario": "entity.core/authored/exact-number-40",
       "status": "passed"
@@ -1432,7 +1432,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "fulfillment registration closes placement identity and action shapes.",
       "scenario": "entity.core/authored/fulfillment-registration-closes-placement-identity-and-action-shapes",
       "status": "passed"
@@ -1506,7 +1506,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "identity address 43.",
       "scenario": "entity.core/authored/identity-address-43",
       "status": "passed"
@@ -1776,7 +1776,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "kernel condition any.",
       "scenario": "entity.core/authored/kernel-condition-any",
       "status": "passed"
@@ -1830,7 +1830,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "kernel condition eq.",
       "scenario": "entity.core/authored/kernel-condition-eq",
       "status": "passed"
@@ -1884,7 +1884,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "kernel condition gte.",
       "scenario": "entity.core/authored/kernel-condition-gte",
       "status": "passed"
@@ -1920,7 +1920,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "kernel condition lt.",
       "scenario": "entity.core/authored/kernel-condition-lt",
       "status": "passed"
@@ -2204,7 +2204,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "kernel rejects service only declaration families.",
       "scenario": "entity.core/authored/kernel-rejects-service-only-declaration-families",
       "status": "passed"
@@ -2406,7 +2406,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "legacy event rehydration refuses service3.",
       "scenario": "entity.core/authored/legacy-event-rehydration-refuses-service3",
       "status": "passed"
@@ -2554,7 +2554,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "missing and null references differ from literal null.",
       "scenario": "entity.core/authored/missing-and-null-references-differ-from-literal-null",
       "status": "passed"
@@ -2690,7 +2690,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "numeric two wire doors.",
       "scenario": "entity.core/authored/numeric-two-wire-doors",
       "status": "passed"
@@ -2802,7 +2802,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "owns carriers are required on the target.",
       "scenario": "entity.core/authored/owns-carriers-are-required-on-the-target",
       "status": "passed"
@@ -2874,7 +2874,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "preload payment positive.",
       "scenario": "entity.core/authored/preload-payment-positive",
       "status": "passed"
@@ -2940,7 +2940,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "preload quantifiers preserve vacuity and dominating truth.",
       "scenario": "entity.core/authored/preload-quantifiers-preserve-vacuity-and-dominating-truth",
       "status": "passed"
@@ -3066,7 +3066,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 4,
       "purpose": "prepared continuation binds subject and matches direct result.",
       "scenario": "entity.core/authored/prepared-continuation-binds-subject-and-matches-direct-result",
       "status": "passed"
@@ -3114,7 +3114,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "Projection registration rejects absent/nested scalar fields, operation arguments and undeclared lifecycle states.",
       "scenario": "entity.core/authored/projection-references-and-state-are-validated",
       "status": "passed"
@@ -3356,7 +3356,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "registry duplicate and invalid replacement preserve definition.",
       "scenario": "entity.core/authored/registry-duplicate-and-invalid-replacement-preserve-definition",
       "status": "passed"
@@ -3404,7 +3404,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "registry mutual nested and argument references resolve together.",
       "scenario": "entity.core/authored/registry-mutual-nested-and-argument-references-resolve-together",
       "status": "passed"
@@ -3462,7 +3462,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "registry refuses two owners of one entity.",
       "scenario": "entity.core/authored/registry-refuses-two-owners-of-one-entity",
       "status": "passed"
@@ -3520,7 +3520,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "registry relations check carrier on target.",
       "scenario": "entity.core/authored/registry-relations-check-carrier-on-target",
       "status": "passed"
@@ -3684,7 +3684,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "relation carrier optionality and single claim are enforced.",
       "scenario": "entity.core/authored/relation-carrier-optionality-and-single-claim-are-enforced",
       "status": "passed"
@@ -3720,7 +3720,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "replay rejects fields tampering.",
       "scenario": "entity.core/authored/replay-rejects-fields-tampering",
       "status": "passed"
@@ -3848,7 +3848,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "returned kernel1 decisions replay and reject tampering.",
       "scenario": "entity.core/authored/returned-kernel1-decisions-replay-and-reject-tampering",
       "status": "passed"
@@ -3896,7 +3896,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "returned service1 decisions replay and reject tampering.",
       "scenario": "entity.core/authored/returned-service1-decisions-replay-and-reject-tampering",
       "status": "passed"
@@ -3934,7 +3934,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 2,
       "purpose": "returned service2 decisions replay and reject tampering.",
       "scenario": "entity.core/authored/returned-service2-decisions-replay-and-reject-tampering",
       "status": "passed"
@@ -3982,7 +3982,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 4,
+      "duration_ms": 6,
       "purpose": "returned service3 decisions replay and reject tampering.",
       "scenario": "entity.core/authored/returned-service3-decisions-replay-and-reject-tampering",
       "status": "passed"
@@ -4056,7 +4056,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "runtime executes the exact instance definition.",
       "scenario": "entity.core/authored/runtime-executes-the-exact-instance-definition",
       "status": "passed"
@@ -4114,7 +4114,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "runtime refuses missing registry version.",
       "scenario": "entity.core/authored/runtime-refuses-missing-registry-version",
       "status": "passed"
@@ -4310,7 +4310,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "service map and union declarations and outer values are closed.",
       "scenario": "entity.core/authored/service-map-and-union-declarations-and-outer-values-are-closed",
       "status": "passed"
@@ -4388,7 +4388,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "Service branch declarations require unique names, an unambiguous last default and observable exclusive refusal behavior.",
       "scenario": "entity.core/authored/service-outcome-names-defaults-and-observability",
       "status": "passed"
@@ -4734,7 +4734,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "service1 compare ranked text.",
       "scenario": "entity.core/authored/service1-compare-ranked-text",
       "status": "passed"
@@ -4878,7 +4878,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "service1 map count not count key.",
       "scenario": "entity.core/authored/service1-map-count-not-count-key",
       "status": "passed"
@@ -4914,7 +4914,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "service1 map quantified values.",
       "scenario": "entity.core/authored/service1-map-quantified-values",
       "status": "passed"
@@ -5004,7 +5004,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "service1 selection fallback.",
       "scenario": "entity.core/authored/service1-selection-fallback",
       "status": "passed"
@@ -5022,7 +5022,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "service1 selection fast.",
       "scenario": "entity.core/authored/service1-selection-fast",
       "status": "passed"
@@ -5202,7 +5202,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "service2 presence null.",
       "scenario": "entity.core/authored/service2-presence-null",
       "status": "passed"
@@ -5310,7 +5310,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "service3 fulfillment missing coordinate.",
       "scenario": "entity.core/authored/service3-fulfillment-missing-coordinate",
       "status": "passed"
@@ -5364,7 +5364,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 2,
       "purpose": "service3 fulfillment set remove.",
       "scenario": "entity.core/authored/service3-fulfillment-set-remove",
       "status": "passed"
@@ -5612,7 +5612,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "unknown state precedes unknown operation.",
       "scenario": "entity.core/authored/unknown-state-precedes-unknown-operation",
       "status": "passed"
@@ -5640,7 +5640,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "Both invariant and precondition refusals retain every unresolved address in sorted duplicate-free order.",
       "scenario": "entity.core/authored/unobservable-rules-report-sorted-unique-addresses",
       "status": "passed"
@@ -6036,7 +6036,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "`entity.executor.SupplyHistory` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.executor.SupplyHistory/outcome/returned",
       "status": "passed"
@@ -6072,7 +6072,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "`entity.executor.Tamper` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.executor.Tamper/outcome/returned",
       "status": "passed"
@@ -6108,7 +6108,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "`entity.executor.VerifyComplete` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.executor.VerifyComplete/outcome/returned",
       "status": "passed"
@@ -6146,7 +6146,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 5,
+      "duration_ms": 4,
       "purpose": "Reversing an existing named batch cannot create a new history under its old identity.",
       "scenario": "entity.executor/authored/changed-batch-order-conflicts",
       "status": "passed"
@@ -6214,7 +6214,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 6,
+      "duration_ms": 5,
       "purpose": "Changed provenance or predecessor cannot recover a committed identity as an exact retry.",
       "scenario": "entity.executor/authored/changed-request-conflicts",
       "status": "passed"
@@ -6492,7 +6492,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "An empty action list ignores an invalid blank batch key and reaches no provider.",
       "scenario": "entity.executor/authored/empty-batches-perform-no-io",
       "status": "passed"
@@ -6578,7 +6578,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 4,
       "purpose": "One global record ID cannot be reused as another subject's creation or an observation.",
       "scenario": "entity.executor/authored/global-record-identities-span-subjects-and-kinds",
       "status": "passed"
@@ -6606,7 +6606,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "An exact imported observation returns Historical with explicit boundary assurance and preserved evidence.",
       "scenario": "entity.executor/authored/historical-observation-has-no-committed-receipt",
       "status": "passed"
@@ -6654,7 +6654,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "Available imported envelopes can prove historical retry without fabricated committed receipt coordinates.",
       "scenario": "entity.executor/authored/imported-exact-retry-is-historical",
       "status": "passed"
@@ -6702,7 +6702,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "An imported envelope lacking its saved definition cannot report historical retry success.",
       "scenario": "entity.executor/authored/imported-missing-definition-cannot-prove-retry",
       "status": "passed"
@@ -6808,7 +6808,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "A zero definition version is invalid before any identity or state reads.",
       "scenario": "entity.executor/authored/malformed-create-is-rejected-before-io",
       "status": "passed"
@@ -6856,7 +6856,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 6,
+      "duration_ms": 5,
       "purpose": "A merge follows every stream tip including an observation after the selected decision head.",
       "scenario": "entity.executor/authored/merge-appends-over-observation-tips",
       "status": "passed"
@@ -7030,7 +7030,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 7,
+      "duration_ms": 6,
       "purpose": "A batch observes the creation revision, then advances state once for a silent decision.",
       "scenario": "entity.executor/authored/mixed-batch-orders-decisions-and-observations",
       "status": "passed"
@@ -7088,7 +7088,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 10,
+      "duration_ms": 9,
       "purpose": "An exact named retry preserves all coordinates; a single retry of its second member retains the original batch index.",
       "scenario": "entity.executor/authored/named-and-single-retries-keep-original-receipts",
       "status": "passed"
@@ -7410,7 +7410,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 7,
+      "duration_ms": 6,
       "purpose": "A service/1 retry verifies its saved definition before current state or registry.",
       "scenario": "entity.executor/authored/service-1-saved-definition-retry",
       "status": "passed"
@@ -7566,7 +7566,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 9,
+      "duration_ms": 10,
       "purpose": "Actual asynchronous execution retains Set and Remove actions, verifies history, and refuses changed fulfillment on retry.",
       "scenario": "entity.executor/authored/service-3-fulfillment-retry",
       "status": "passed"
@@ -7662,7 +7662,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "A stale later observation prevents every decision, identity and receipt in the batch.",
       "scenario": "entity.executor/authored/stale-observation-rolls-back-whole-batch",
       "status": "passed"
@@ -7720,7 +7720,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 5,
+      "duration_ms": 3,
       "purpose": "Commit-then-uncertain is recovered by verified identity without repeating effects.",
       "scenario": "entity.executor/authored/uncertain-response-recovers-one-original-receipt",
       "status": "passed"
@@ -7786,7 +7786,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "`entity.query.Continue` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.query.Continue/outcome/returned",
       "status": "passed"
@@ -7876,7 +7876,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "`entity.query.Query` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.query.Query/outcome/returned",
       "status": "passed"
@@ -8072,7 +8072,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "A genuine emitted cursor cannot be reused for a different query identity.",
       "scenario": "entity.query/authored/foreign-entity-cursor-refuses",
       "status": "passed"
@@ -8110,7 +8110,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "A genuine emitted cursor cannot be reused for a different query identity.",
       "scenario": "entity.query/authored/foreign-predicate-cursor-refuses",
       "status": "passed"
@@ -8392,7 +8392,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 4,
+      "duration_ms": 3,
       "purpose": "Numeric containment keeps mathematical equality across representations and distinction beyond binary64 precision and exponent bounds.",
       "scenario": "entity.query/authored/numeric-values-remain-exact",
       "status": "passed"
@@ -8410,7 +8410,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "Only the consumed prefix is validated: limit plus one matches terminate consumption.",
       "scenario": "entity.query/authored/ordered-api-stops-after-matching-lookahead",
       "status": "passed"
@@ -8692,7 +8692,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "`entity.shell.Events` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.shell.Events/outcome/returned",
       "status": "passed"
@@ -8746,7 +8746,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "`entity.shell.Get` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.shell.Get/outcome/returned",
       "status": "passed"
@@ -9020,7 +9020,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 17,
+      "duration_ms": 16,
       "purpose": "Every immutable request or provenance change conflicts with the saved record.",
       "scenario": "entity.shell/authored/file-changed-retry-conflicts",
       "status": "passed"
@@ -9118,7 +9118,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 7,
+      "duration_ms": 9,
       "purpose": "A repeated recorded creation returns its original result after execution advances state; changed provenance and fresh duplicate creation refuse.",
       "scenario": "entity.shell/authored/file-create-retry-after-advancement",
       "status": "passed"
@@ -9702,7 +9702,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 14,
+      "duration_ms": 15,
       "purpose": "Real shell calls propagate injected provider-edge failures without substituting absence or success.",
       "scenario": "entity.shell/authored/file-provider-failures-preserve-classification",
       "status": "passed"
@@ -9918,7 +9918,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 9,
+      "duration_ms": 10,
       "purpose": "A real competing commit wins after the read; shell expectation prevents overwriting it.",
       "scenario": "entity.shell/authored/file-revision-rechecked-at-commit",
       "status": "passed"
@@ -10026,7 +10026,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 12,
+      "duration_ms": 13,
       "purpose": "The supplied provider keeps actual shell state, ordered duplicate events and complete records.",
       "scenario": "entity.shell/authored/file-round-trip",
       "status": "passed"
@@ -10114,7 +10114,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 4,
+      "duration_ms": 5,
       "purpose": "A stale observed revision refuses before kernel evaluation or a commit call.",
       "scenario": "entity.shell/authored/file-stale-intent-precedes-kernel",
       "status": "passed"
@@ -10172,7 +10172,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "The shared shell evaluates the kernel before sealing recording metadata.",
       "scenario": "entity.shell/authored/kernel-refusal-precedes-recording-validation",
       "status": "passed"
@@ -10418,7 +10418,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 5,
       "purpose": "A repeated recorded creation returns its original result after execution advances state; changed provenance and fresh duplicate creation refuse.",
       "scenario": "entity.shell/authored/memory-create-retry-after-advancement",
       "status": "passed"
@@ -10556,7 +10556,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 6,
       "purpose": "Every invalid provenance field refuses without a record, event or state update.",
       "scenario": "entity.shell/authored/memory-invalid-recording-publishes-nothing",
       "status": "passed"
@@ -10752,7 +10752,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 5,
+      "duration_ms": 7,
       "purpose": "Exact old retries normalize against saved definitions and return the old result without changing current state.",
       "scenario": "entity.shell/authored/memory-retry-uses-original-record",
       "status": "passed"
@@ -10840,7 +10840,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 8,
       "purpose": "A real competing commit wins after the read; shell expectation prevents overwriting it.",
       "scenario": "entity.shell/authored/memory-revision-rechecked-at-commit",
       "status": "passed"
@@ -10948,7 +10948,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 4,
+      "duration_ms": 8,
       "purpose": "The supplied provider keeps actual shell state, ordered duplicate events and complete records.",
       "scenario": "entity.shell/authored/memory-round-trip",
       "status": "passed"
@@ -11036,7 +11036,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "A stale observed revision refuses before kernel evaluation or a commit call.",
       "scenario": "entity.shell/authored/memory-stale-intent-precedes-kernel",
       "status": "passed"
@@ -11404,7 +11404,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 6,
+      "duration_ms": 9,
       "purpose": "Real shell calls propagate injected provider-edge failures without substituting absence or success.",
       "scenario": "entity.shell/authored/provider-failures-preserve-classification",
       "status": "passed"
@@ -11502,7 +11502,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 4,
       "purpose": "Synchronous retry first loads state and then reads history; either failure remains a typed failure.",
       "scenario": "entity.shell/authored/retry-does-not-hide-read-failure",
       "status": "passed"
@@ -11646,7 +11646,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "`entity.store.CheckExpectation` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.store.CheckExpectation/outcome/returned",
       "status": "passed"
@@ -11808,7 +11808,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "`entity.store.LookupBatch` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.store.LookupBatch/outcome/returned",
       "status": "passed"
@@ -11934,7 +11934,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "`entity.store.ReadFileFixture` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.store.ReadFileFixture/outcome/returned",
       "status": "passed"
@@ -12006,7 +12006,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "`entity.store.Records` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.store.Records/outcome/returned",
       "status": "passed"
@@ -12042,7 +12042,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "`entity.store.RequestBytes` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.store.RequestBytes/outcome/returned",
       "status": "passed"
@@ -12150,7 +12150,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "`entity.store.Trace` answers `returned` for an input no other branch's guard claims",
       "scenario": "entity.store.Trace/outcome/returned",
       "status": "passed"
@@ -12370,7 +12370,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 4,
       "purpose": "Editable completeness markers are refused; direct provider snapshots establish the precise scope.",
       "scenario": "entity.store/authored/complete-assurance-requires-provider-capture",
       "status": "passed"
@@ -12436,7 +12436,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "Valid envelopes retain null provenance and a missing provenance key fails deserialization.",
       "scenario": "entity.store/authored/envelope-null-provenance-is-explicit",
       "status": "passed"
@@ -12532,7 +12532,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "Missing state, events, records and observations are distinct empty public results.",
       "scenario": "entity.store/authored/file-absence",
       "status": "passed"
@@ -12618,7 +12618,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 4,
       "purpose": "A complete record's exact retry preserves the newer state and appends no duplicate.",
       "scenario": "entity.store/authored/file-exact-retry-after-state-advances",
       "status": "passed"
@@ -12666,7 +12666,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 4,
       "purpose": "A record identity cannot be reused across subjects or decision and observation kinds.",
       "scenario": "entity.store/authored/file-global-record-identity",
       "status": "passed"
@@ -12820,7 +12820,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 6,
       "purpose": "Recorded observations preserve revision and their exact retry after a decision does not append evidence twice.",
       "scenario": "entity.store/authored/file-observations-do-not-advance",
       "status": "passed"
@@ -12878,7 +12878,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 6,
       "purpose": "Complete recorded commits retain ordered duplicate events, and exact retries append none.",
       "scenario": "entity.store/authored/file-ordered-duplicate-events",
       "status": "passed"
@@ -12984,7 +12984,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "A stale recorded write reports the revision conflict and leaves all stored evidence unchanged.",
       "scenario": "entity.store/authored/file-stale-write-preserves-state",
       "status": "passed"
@@ -13126,7 +13126,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 4,
       "purpose": "File acquisition retains complete decision and observation envelopes with separate per-kind positions, no invented interleaving.",
       "scenario": "entity.store/authored/legacy-acquisition-preserves-only-known-order",
       "status": "passed"
@@ -13154,7 +13154,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 4,
       "purpose": "The real history verifier reports independent decision heads in digest order.",
       "scenario": "entity.store/authored/lineage-decisions-produce-two-heads",
       "status": "passed"
@@ -13240,7 +13240,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "Later members see earlier transaction-local state.",
       "scenario": "entity.store/authored/memory-atomic-order",
       "status": "passed"
@@ -13412,7 +13412,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "A record identity cannot be reused across subjects or decision and observation kinds.",
       "scenario": "entity.store/authored/memory-global-record-identity",
       "status": "passed"
@@ -13566,7 +13566,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "Recorded observations preserve revision and their exact retry after a decision does not append evidence twice.",
       "scenario": "entity.store/authored/memory-observations-do-not-advance",
       "status": "passed"
@@ -13624,7 +13624,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "Complete recorded commits retain ordered duplicate events, and exact retries append none.",
       "scenario": "entity.store/authored/memory-ordered-duplicate-events",
       "status": "passed"
@@ -13682,7 +13682,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "A stale recorded write reports the revision conflict and leaves all stored evidence unchanged.",
       "scenario": "entity.store/authored/memory-stale-write-preserves-state",
       "status": "passed"
@@ -13760,7 +13760,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "Dry run writes no destination; migration preserves source bytes and creates readable legacy state.",
       "scenario": "entity.store/authored/migration-dry-run-and-out-of-place",
       "status": "passed"
@@ -13864,7 +13864,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 4,
+      "duration_ms": 7,
       "purpose": "An observation after a fork head becomes a stream tip while decision heads remain unchanged.",
       "scenario": "entity.store/authored/observations-are-tips-but-not-decision-heads",
       "status": "passed"
@@ -13902,7 +13902,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "A reader that does not know the new domain refuses at its tag even when the rest of the document is truncated.",
       "scenario": "entity.store/authored/older-framing-reader-refuses-before-payload",
       "status": "passed"
@@ -13956,7 +13956,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 1,
       "purpose": "The definition's explicit semantics selects the record and request framing domains without numeric coercion.",
       "scenario": "entity.store/authored/record-domain-kernel-1",
       "status": "passed"
@@ -14066,7 +14066,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 3,
+      "duration_ms": 5,
       "purpose": "Mixed recorded entries use ordered state while observations occupy physical entries without advancing entity revision.",
       "scenario": "entity.store/authored/recorded-memory-atomic-observation-order",
       "status": "passed"
@@ -14114,7 +14114,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "A stale mixed observation rolls back all state, global identities and batch claims.",
       "scenario": "entity.store/authored/recorded-memory-atomic-rollback",
       "status": "passed"
@@ -14152,7 +14152,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 1,
+      "duration_ms": 2,
       "purpose": "A duplicate inserted after construction is refused at the writer and reserves no identity.",
       "scenario": "entity.store/authored/recorded-memory-writer-revalidates-public-members",
       "status": "passed"
@@ -14190,7 +14190,7 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 3,
       "purpose": "Checked store-coordinate allocation rejects overflow without publishing the first member.",
       "scenario": "entity.store/authored/recorded-position-overflow-is-atomic",
       "status": "passed"
@@ -14228,15 +14228,15 @@
           "status": "passed"
         }
       ],
-      "duration_ms": 2,
+      "duration_ms": 4,
       "purpose": "Changing a stored result while retaining its identity is a history-integrity failure.",
       "scenario": "entity.store/authored/tampered-complete-history-is-rejected",
       "status": "passed"
     }
   ],
-  "started_at": 1790566975640,
+  "started_at": 1790584170960,
   "summary": {
-    "completed_at": 1790566976787,
+    "completed_at": 1790584172168,
     "conformance_status": "passed",
     "counts": {
       "error": 0,
@@ -14267,7 +14267,7 @@
     },
     "execution_status": "passed",
     "format": "ess-conformance-report/2",
-    "implementation": "entity-runtime source-sha256:2b9a8454988895cc9b8edaf247198acfc51cc67e055f3d894c37c355cebed4e2;executable-sha256:ddbfea94701259a8d8860fc51969ebea2945cd3c20c896f9c96d4c725c90b950",
+    "implementation": "entity-runtime source-sha256:567200cbb0faefbaa6efaa7ad849393b7088e60e151c21405e114dbbac07f92c;executable-sha256:bd5c26f239e4964992491d2a35840f14fef345ccedd70f968296d8005d392880",
     "outcomes": {
       "error": [],
       "failed": [],
@@ -14695,9 +14695,9 @@
     "spec_digest": "a13e6c07be82c913363ea52b8042c6e379343acfda7fcc03a212c0942569da5d",
     "specification": "entity/v1",
     "suite": {
-      "digest": "sha256:74e4a50672108495af65f0ca1009963e51f00b916894260c334314dca53706e6",
+      "digest": "sha256:a6f8ceb64b95f76d33f75c741fb3b67770ad6130243504b77761921be6832548",
       "digest_profile": "sha256-json-bytes/1",
-      "version": "ess-conformance/27"
+      "version": "ess-conformance/29"
     }
   }
 }

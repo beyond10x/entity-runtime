@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:er-shell-query-contracts
 kind: story
 status: implemented
@@ -20,7 +20,11 @@ scope:
   path: ess/scenarios/query
 - confidence: cited
   path: ess/scenarios/shell
-revision: 6
+revision: 8
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-28T02:06:57Z", actor: "human:timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-28T02:07:03Z", actor: "human:timo", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-28T03:25:19Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":2,"review_outcome":1}}, imported: true}
 ---
 # Shell and query executable contracts
 
@@ -30,4 +34,4 @@ Shell scenarios cover create/get/list/events/execute, missing subjects, stale in
 
 The adapters preserve lossless JSON and expose actual API results. Scenario state and FileStore directories are isolated. `docs/ess/evidence/mutations/shell/` and `query/` retain exact production mutations that fail their named scenarios; production files were restored. The worker's restored complete suite passes. Integrated reports are retained under `docs/ess/evidence/final/`; independent review is retained under `docs/ess/evidence/review/`.
 
-Acceptance requires the full repository gate and complete declared execution, with no failure, error, unsupported observation or skip. AEP suite/27 evidence admission and final normative adoption remain explicitly blocked by blocker:er-ess-suite27-evidence; this implementation does not change ER behavior or add other provider scope.
+The full repository gate and complete declared execution passed, with no failure, error, unsupported observation or skip. AEP admitted the final suite/29 and report under `docs/ess/evidence/final/release/`. The original format blocker is cleared; normative adoption now waits for blocker:current-coverage-lifecycle-admission; this implementation does not change ER behavior or add other provider scope.

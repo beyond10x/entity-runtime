@@ -1,0 +1,14 @@
+{
+  "at": "2026-09-20T23:27:03Z",
+  "actor": "human:timo",
+  "artifact": "task:eventlog-provider-pin-verify-once",
+  "kind": "task",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "F2 CHANGELOG.md:80 CONFIRMED introduced warning: the entry claimed a read-path benefit. Measured 230.2/245.2 ms per read at c698923 vs 249.7/237.2 ms at f802eb8 (no effect) and 48 commits in 29.97/53.22 s vs 74.86/65.54 s. Fixed in bot commit e535aded9970d41ba16349e9eccf110df29d08c3: the entry now names the write path and carries the numbers; task check exit 0 after the edit",
+    "review": "review-result:er-eventlog-pin-review-1",
+    "outcome": "fixed"
+  }
+}

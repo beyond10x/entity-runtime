@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:service-binding-boundary
 kind: story
 status: implemented
@@ -32,6 +32,10 @@ scope:
 - confidence: cited
   path: docs/requirements.md
 revision: 8
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-16T07:51:38Z", actor: "human:timo", revision: 3, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-16T07:51:39Z", actor: "human:timo", revision: 4, imported: true}
+- {from: "active", to: "implemented", at: "2026-09-16T09:05:20Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 ## Approved requirement and concrete gap
 

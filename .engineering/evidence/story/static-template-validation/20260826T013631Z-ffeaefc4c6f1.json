@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-26T01:36:31Z",
+  "actor": "timo",
+  "artifact": "story:static-template-validation",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "artifact",
+    "source": "code read 2026-08-26",
+    "reference": "docs/requirements.md R-64 - an unresolvable template reference is refused at registration"
+  }
+}

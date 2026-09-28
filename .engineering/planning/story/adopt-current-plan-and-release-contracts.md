@@ -1,21 +1,41 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:adopt-current-plan-and-release-contracts
 kind: story
-status: draft
+status: active
 title: Adopt current planning storage and release executable ER contracts
 relations:
 - decomposes: initiative:entity-runtime
+- serves: vision:O2
 scope:
 - confidence: cited
   path: .engineering
 - confidence: cited
   path: .github/workflows/planning.yml
 - confidence: cited
+  path: .github/workflows/release.yml
+- confidence: cited
+  path: AGENTS.md
+- confidence: cited
+  path: Cargo.lock
+- confidence: cited
+  path: Cargo.toml
+- confidence: cited
+  path: Taskfile.yml
+- confidence: cited
   path: checks/ess-conformance
 - confidence: cited
+  path: crates
+- confidence: cited
+  path: crates/entity-xtask
+- confidence: cited
+  path: docs/ess
+- confidence: cited
   path: ess
-revision: 5
+revision: 15
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-28T07:50:10Z", actor: "human:timo", revision: 6}
+- {from: "proposed", to: "active", at: "2026-09-28T07:50:10Z", actor: "human:timo", revision: 7}
 ---
 ## Acceptance
 

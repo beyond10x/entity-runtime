@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-16T12:23:49Z",
+  "actor": "human:timo",
+  "artifact": "story:service-operation-field-fulfillment",
+  "kind": "story",
+  "revision": 25,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check, strict checks and minimum Rust on accepted 250f699",
+    "reference": "local-evidence:ess-evolution/waves/0009-service-convergence/operation-field-fulfillment-integration/integration.md"
+  }
+}

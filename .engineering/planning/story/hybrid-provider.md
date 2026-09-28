@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:hybrid-provider
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: One Store implementation over two, whose behaviour is entirely the decl
 relations:
 - decomposes: epic:centralized-and-hybrid-storage
 revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T02:56:10Z", actor: "timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T02:56:10Z", actor: "timo", revision: 3, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T02:56:10Z", actor: "timo", revision: 4, decided_on: {"recorded":{"test_result":1}}, imported: true}
 ---
 # Story: A composite over a local provider and a remote one
 

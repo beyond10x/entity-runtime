@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:three-valued-conditions
 kind: story
 status: implemented
@@ -8,6 +8,10 @@ summary: A missing reference makes a rule Unknown, never False; a rule holds onl
 relations:
 - derived_from: epic:kernel
 revision: 8
+transitions:
+- {from: "draft", to: "proposed", at: "2026-08-26T01:36:31Z", actor: "timo", revision: 6, imported: true}
+- {from: "proposed", to: "active", at: "2026-08-26T01:36:31Z", actor: "timo", revision: 7, imported: true}
+- {from: "active", to: "implemented", at: "2026-08-26T01:36:45Z", actor: "timo", revision: 8, decided_on: {"recorded":{"test_result":1,"artifact":1}}, imported: true}
 ---
 # Story: Three-valued rule evaluation — unknown is not false
 

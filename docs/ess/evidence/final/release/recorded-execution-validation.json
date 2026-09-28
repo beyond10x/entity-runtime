@@ -1,0 +1,11 @@
+{
+  "valid": true,
+  "system": "entity",
+  "version": "v1",
+  "files_read": 2,
+  "domains": 1,
+  "commands": 0,
+  "events": 0,
+  "components": 0,
+  "unresolved_references": []
+}

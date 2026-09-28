@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-18T23:11:31Z",
+  "actor": "human:timo",
+  "artifact": "story:eventlog-recorded-adapter-and-bridge",
+  "kind": "story",
+  "revision": 37,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Final qualified runtime task check, actual PostgreSQL facade acceptance, pure minimum and common verification at 8b175736",
+    "reference": "~/beyond10x/.ess-evolution/waves/0007-er-eventlog-adapter/final-integration-20260918/acceptance.md"
+  }
+}

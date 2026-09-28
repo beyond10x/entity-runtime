@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: dependency-blocker:native-eventlog-capture-and-provider-qualification
 kind: dependency-blocker
 status: cleared
@@ -11,6 +11,8 @@ relations:
 - blocks: story:eventlog-recorded-adapter-and-bridge
 withholds: test_result
 revision: 8
+transitions:
+- {from: "open", to: "cleared", at: "2026-09-18T22:44:48Z", actor: "human:timo", revision: 8, imported: true}
 ---
 # Native administration dependency cleared
 

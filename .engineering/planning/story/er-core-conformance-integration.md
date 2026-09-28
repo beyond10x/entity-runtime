@@ -1,5 +1,5 @@
 ---
-format: aep.planning-md/2
+format: aep.planning-md/3
 id: story:er-core-conformance-integration
 kind: story
 status: active
@@ -24,7 +24,10 @@ scope:
   path: ess/ess-inputs.yaml
 - confidence: cited
   path: ess/scenarios/core
-revision: 5
+revision: 7
+transitions:
+- {from: "draft", to: "proposed", at: "2026-09-28T02:06:30Z", actor: "human:timo", revision: 2, imported: true}
+- {from: "proposed", to: "active", at: "2026-09-28T02:06:38Z", actor: "human:timo", revision: 3, imported: true}
 ---
 # Core contracts and admitted conformance integration
 
@@ -34,6 +37,6 @@ The accepted ER plan covers kernel/1 and service/1–3 through actual Rust libra
 
 `docs/ess/core-traceability.md` connects requirement IDs, design clauses, public APIs, implementation and named scenarios. The clause audit added registration, default/constraint/reference, service branch, exact numeric/identity, precondition/invariant, fulfillment, direct/prepared continuation, deterministic record and complete/legacy replay cases. Static purity and dependency checks remain in the existing Rust suite.
 
-`docs/ess/evidence/mutations/core/` retains the exact red production mutation. `docs/ess/evidence/review/` retains the independent initial review and successful correction recheck: stale sources refuse execution, always-refusing Rehydrate fails a successful replay scenario, and removing an assertion without changing its ID requires coverage review. `docs/ess/evidence/final/` is the intended final full-suite evidence location. `task check` and CI run deterministic regeneration and all admitted scenarios, with independent MSRV coverage for the checker.
+`docs/ess/evidence/mutations/core/` retains the exact red production mutation. `docs/ess/evidence/review/` retains the independent initial review and successful correction recheck: stale sources refuse execution, always-refusing Rehydrate fails a successful replay scenario, and removing an assertion without changing its ID requires coverage review. `docs/ess/evidence/final/release/` retains the final full-suite evidence. `task check` and CI run deterministic regeneration and all admitted scenarios, with independent MSRV coverage for the checker.
 
-Final acceptance requires the full repository gate and the declared complete conformance report. AEP suite/27 admission is blocked by blocker:er-ess-suite27-evidence. This body does not claim authority adoption or a conforming specification until that evidence can be admitted. Native ESS Binary64 remains unsupported; the runtime's actual exact JSON inputs and returns are the explicit lossless document contract, not weakened native numeric assertions.
+The full repository gate and complete declared execution passed; AEP admitted the exact final suite/29 and report. The original format blocker is cleared. Authority adoption waits for blocker:current-coverage-lifecycle-admission; no conforming claim is made before that typed transition succeeds. Native ESS Binary64 remains unsupported; the runtime's actual exact JSON inputs and returns are the explicit lossless document contract, not weakened native numeric assertions.
