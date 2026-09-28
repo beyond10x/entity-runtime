@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: beyond10x/aep
-          ref: 582b5b407e36b791d022d10f8ed08d1fcec9b737 # Current AEP with exact ESS coverage lifecycle admission; Git-native store
+          ref: 18a18a3f1cfa110dc5c9a675b3e9956f74c29bb7 # Current AEP with exact ESS coverage and committed-history guards; Git-native store
           path: aep
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable

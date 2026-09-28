@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-28T10:12:35Z",
+  "actor": "human:timo",
+  "artifact": "story:adopt-current-plan-and-release-contracts",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "AEP 18a18a3f1 committed-history safeguards validate all 123 ER artifacts; full ER CI at d0d76fe7 passed Gate, MSRV 1.85, Eventlog 1.91, planning, security and documentation checks",
+    "reference": "https://github.com/beyond10x/entity-runtime/actions/runs/36407162545"
+  }
+}

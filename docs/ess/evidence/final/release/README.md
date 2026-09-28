@@ -29,5 +29,9 @@ from the unchanged `ess_conformance_coverage_v1` records. No legacy success reco
 The original admission log retains its original reader identity; lifecycle admission used the
 reviewed AEP bridge identified separately in `toolchain.json`.
 
+AEP subsequently added committed status, evidence and review-history safeguards. The final pin
+includes those guards. `planning-history-validation.log` retains successful validation of ER's
+migrated store by that build; the earlier `planning-validation.log` retains its original identity.
+
 These are source verification records. Publication, mainline integration and release asset
 verification are tracked separately by `story:adopt-current-plan-and-release-contracts`.

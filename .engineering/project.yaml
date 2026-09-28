@@ -2,7 +2,7 @@
   "planning_scope": "entity-runtime",
   "profile": "development.standard",
   "protocol": "adp/1",
-  "protocols": "git+https://github.com/beyond10x/aep.git#582b5b407e36b791d022d10f8ed08d1fcec9b737",
+  "protocols": "git+https://github.com/beyond10x/aep.git#18a18a3f1cfa110dc5c9a675b3e9956f74c29bb7",
   "store": {
     "git": {}
   },
