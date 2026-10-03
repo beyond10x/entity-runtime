@@ -156,3 +156,18 @@ jobs:
 
       - name: Lint every Eventlog provider and bridge
         run: cargo clippy -p entity-eventlog --all-targets --all-features --no-deps --locked -- -D warnings
+
+      - name: Executable SQLite provider contracts
+        run: |
+          cargo clippy --manifest-path checks/ess-conformance/Cargo.toml --features eventlog --all-targets --locked -- -D warnings
+          cargo run --manifest-path checks/ess-conformance/Cargo.toml --features eventlog --locked -- --spec-root ess/provider-tracking check --reports target/provider-ess-conformance
+
+      - name: Retain exact provider conformance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: er-provider-ess-conformance
+          path: |
+            target/provider-ess-conformance/
+            ess/provider-tracking/generated/
+            ess/provider-tracking/coverage.json

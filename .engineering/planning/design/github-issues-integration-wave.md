@@ -8,7 +8,7 @@ relations:
 - designs: story:declared-refusal-before-fulfillment-validation
 - designs: story:executor-input-refusal-before-existence
 - designs: story:bounded-batch-and-facade-reads
-revision: 15
+revision: 16
 ---
 ## Stage and authority
 
@@ -353,3 +353,7 @@ Per-step result: fmt-check0, clippy0, test0, doc-check0, example-check0, req-che
 Agent counts: unit49 executor17→22, unit50 executor22→38, unit51 runtime library66→74/package186; Eventlog focused176→199 and final complete persistence545. Agent tokens, tool counts and per-agent wall duration are unknown because this harness did not expose them. Final performance medians11.532148/13.049370/13.568977ms at55/601/1203events. Detailed evidence stays in the immutable records and recovery archives.
 
 The approved endpoint remains one PR from fix/github-issues-49-51 to main. Primary checkouts remain unchanged. Publication is followed by managed archive/finish/gc of only this wave's trees, preserving raw evidence privately. No main merge or release is authorized by this completion record.
+
+## PR delivery and CI parity
+
+PR52 is open at https://github.com/beyond10x/entity-runtime/pull/52 under b10x-bot[bot]. The reusable CI workflow carries its own step list; final delivery review added the same already-passing provider checker commands to its Rust1.91 job, with retained exact reports/generated suite/coverage. This closes local/CI gate drift. Source and Cargo hashes remain unchanged; no executable implementation changed. Follow-up common checks and GitHub checks judge the final workflow commit. Raw/private evidence remains outside published source.

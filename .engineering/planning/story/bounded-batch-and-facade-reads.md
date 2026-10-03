@@ -12,6 +12,8 @@ relations:
 - informed_by: story:commands-read-their-entities-and-observations-do-not-fork
 scope:
 - confidence: cited
+  path: .github/workflows/gate.yml
+- confidence: cited
   path: AGENTS.md
 - confidence: cited
   path: CHANGELOG.md
@@ -59,7 +61,7 @@ scope:
   path: docs/requirements.md
 - confidence: cited
   path: ess/provider-tracking
-revision: 19
+revision: 20
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-03T15:35:45Z", actor: "human:timo", revision: 10}
 - {from: "proposed", to: "active", at: "2026-10-03T15:35:45Z", actor: "human:timo", revision: 11}
