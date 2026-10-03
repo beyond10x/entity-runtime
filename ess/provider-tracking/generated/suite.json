@@ -1,0 +1,3976 @@
+{
+  "coverage": {
+    "authored": [
+      "entity-provider.tracking/authored/multi-subject-histories-one-scope",
+      "entity-provider.tracking/authored/unchanged-capture-retains-verified-state",
+      "entity-provider.tracking/authored/unchanged-head-blob-tamper",
+      "entity-provider.tracking/authored/unchanged-head-delete-blob-tamper",
+      "entity-provider.tracking/authored/unchanged-head-event-tamper",
+      "entity-provider.tracking/authored/unchanged-head-identity-tamper",
+      "entity-provider.tracking/authored/unchanged-head-projection-tamper"
+    ],
+    "authored_sources": {
+      "scenarios/multi-subject-histories-one-scope.yaml": {
+        "digest": "sha256:4dbfdea3e31a94baf8773e0880f5259c2c9df3ecb5dd734e40201fdd95177200",
+        "disposition": "accepted",
+        "scenario": "entity-provider.tracking/authored/multi-subject-histories-one-scope"
+      },
+      "scenarios/unchanged-capture-retains-verified-state.yaml": {
+        "digest": "sha256:d84557f115a114ad3fe3d4aa7c9dc6d9de94f2a7d86bf61c317b2c698a2dddbe",
+        "disposition": "accepted",
+        "scenario": "entity-provider.tracking/authored/unchanged-capture-retains-verified-state"
+      },
+      "scenarios/unchanged-head-blob-tamper.yaml": {
+        "digest": "sha256:a49c0980b9810135e756e9112c582d9937f5bd3522823af53f7af9af7454e7fc",
+        "disposition": "accepted",
+        "scenario": "entity-provider.tracking/authored/unchanged-head-blob-tamper"
+      },
+      "scenarios/unchanged-head-delete-blob-tamper.yaml": {
+        "digest": "sha256:7c3e50c962926e48882c1e8b05da660eb2f6c1eb1c2936d941011e66c33f9c5f",
+        "disposition": "accepted",
+        "scenario": "entity-provider.tracking/authored/unchanged-head-delete-blob-tamper"
+      },
+      "scenarios/unchanged-head-event-tamper.yaml": {
+        "digest": "sha256:c4806eabc95a2eda23ed452c93ac2e8bd0153e2c6cd370e06932204831b88157",
+        "disposition": "accepted",
+        "scenario": "entity-provider.tracking/authored/unchanged-head-event-tamper"
+      },
+      "scenarios/unchanged-head-identity-tamper.yaml": {
+        "digest": "sha256:081646374902439d2b45b7f84ddfbeedb04ed5e782dbe4f660dd41f9afa23127",
+        "disposition": "accepted",
+        "scenario": "entity-provider.tracking/authored/unchanged-head-identity-tamper"
+      },
+      "scenarios/unchanged-head-projection-tamper.yaml": {
+        "digest": "sha256:7c42f2cf77cdb639f092861e4037c1baee291006d8c546dfdaed78a373dc4e12",
+        "disposition": "accepted",
+        "scenario": "entity-provider.tracking/authored/unchanged-head-projection-tamper"
+      }
+    },
+    "counts": {
+      "authored": 7,
+      "generated": 10,
+      "outside": 0,
+      "refused": 0
+    },
+    "generated": [
+      "entity-provider.tracking.Batch/outcome/returned",
+      "entity-provider.tracking.Create/outcome/returned",
+      "entity-provider.tracking.Histories/outcome/returned",
+      "entity-provider.tracking.Load/outcome/returned",
+      "entity-provider.tracking.LookupBatch/outcome/returned",
+      "entity-provider.tracking.Provision/outcome/returned",
+      "entity-provider.tracking.Register/outcome/returned",
+      "entity-provider.tracking.Reopen/outcome/returned",
+      "entity-provider.tracking.Snapshot/outcome/returned",
+      "entity-provider.tracking.SqlMutate/outcome/returned"
+    ],
+    "knowledge": "complete_inventory",
+    "outside": [],
+    "refused": [],
+    "selection": {
+      "filter": {
+        "kind": "all"
+      },
+      "origins": "generated_and_authored",
+      "scope": {
+        "kind": "system"
+      }
+    }
+  },
+  "provenance": {
+    "contract_digest": "beb32d6f1713c8112707fde7a29fcd08085bc2e510383007639eab6e1a3dbe80",
+    "spec_digest": "ef6eb41f4dac9a7d51a5c0dc675933062d24096f195456a1dafe88ff8de672ac",
+    "specification_version": "v1",
+    "suite_version": "ess-conformance/29",
+    "system": "entity-provider"
+  },
+  "scenarios": {
+    "entity-provider.tracking.Batch/outcome/returned": {
+      "purpose": "`entity-provider.tracking.Batch` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Batch"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Batch",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Batch",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Batch",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Batch",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Batch",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking.Create/outcome/returned": {
+      "purpose": "`entity-provider.tracking.Create` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Create"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Create",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking.Histories/outcome/returned": {
+      "purpose": "`entity-provider.tracking.Histories` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Histories"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Histories",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Histories",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Histories",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Histories",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Histories",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking.Load/outcome/returned": {
+      "purpose": "`entity-provider.tracking.Load` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Load"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Load",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Load",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Load",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Load",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Load",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking.LookupBatch/outcome/returned": {
+      "purpose": "`entity-provider.tracking.LookupBatch` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.LookupBatch"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.LookupBatch",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.LookupBatch",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.LookupBatch",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.LookupBatch",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.LookupBatch",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking.Provision/outcome/returned": {
+      "purpose": "`entity-provider.tracking.Provision` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Provision"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Provision",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Provision",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Provision",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking.Register/outcome/returned": {
+      "purpose": "`entity-provider.tracking.Register` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Register"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Register",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking.Reopen/outcome/returned": {
+      "purpose": "`entity-provider.tracking.Reopen` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Reopen"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Reopen",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Reopen",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Reopen",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking.Snapshot/outcome/returned": {
+      "purpose": "`entity-provider.tracking.Snapshot` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Snapshot"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking.SqlMutate/outcome/returned": {
+      "purpose": "`entity-provider.tracking.SqlMutate` answers `returned` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.SqlMutate"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.SqlMutate",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "request"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {},
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.SqlMutate",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking/authored/multi-subject-histories-one-scope": {
+      "purpose": "A scoped facade read preserves requested order, duplicate and missing subjects, exact record identities and revisions, and transitioned state after an atomic multi-subject batch.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity-provider.tracking"
+        },
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Batch"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Histories"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Load"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.LookupBatch"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Provision"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Register"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Reopen"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Snapshot"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Batch",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Histories",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Load",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.LookupBatch",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"ticket\",\"version\":1,\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"Close\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"emits\":[]}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Register",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Provision",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Provision",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Provision",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\",\"version\":1,\"fields\":{},\"recording\":{\"record_id\":\"create-a\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Create",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Batch",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"key\":{\"named\":\"pair\"},\"actions\":[{\"kind\":\"execute\",\"entity\":\"ticket\",\"id\":\"a\",\"expected_revision\":1,\"operation\":\"Close\",\"arguments\":{},\"recording\":{\"record_id\":\"close-a\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}},{\"kind\":\"create\",\"entity\":\"ticket\",\"id\":\"b\",\"version\":1,\"fields\":{},\"recording\":{\"record_id\":\"create-b\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Batch",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Batch",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Batch",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Histories",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"subjects\":[{\"entity\":\"ticket\",\"id\":\"b\"},{\"entity\":\"ticket\",\"id\":\"a\"},{\"entity\":\"ticket\",\"id\":\"b\"},{\"entity\":\"ticket\",\"id\":\"missing\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Histories",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Histories",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "[{\"entity\":\"ticket\",\"id\":\"b\",\"records\":[{\"record_id\":\"create-b\",\"revision\":1}]},{\"entity\":\"ticket\",\"id\":\"a\",\"records\":[{\"record_id\":\"create-a\",\"revision\":1},{\"record_id\":\"close-a\",\"revision\":2}]},{\"entity\":\"ticket\",\"id\":\"b\",\"records\":[{\"record_id\":\"create-b\",\"revision\":1}]},{\"entity\":\"ticket\",\"id\":\"missing\",\"records\":[]}]"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Histories",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Load",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Load",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Load",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"ticket\",\"fields\":{},\"id\":\"a\",\"lifecycle_state\":\"Closed\",\"revision\":2,\"version\":1}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Load",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.LookupBatch",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"key\":{\"named\":\"pair\"}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.LookupBatch",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.LookupBatch",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"present\":true}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.LookupBatch",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Histories",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"subjects\":[]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Histories",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Histories",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "[]"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Histories",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Reopen",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"FullVerification\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Reopen",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Reopen",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "[{\"entity\":\"ticket\",\"id\":\"a\",\"records\":[{\"record_id\":\"create-a\",\"revision\":1},{\"record_id\":\"close-a\",\"revision\":2}]},{\"entity\":\"ticket\",\"id\":\"b\",\"records\":[{\"record_id\":\"create-b\",\"revision\":1}]}]"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Load",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Load",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Load",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"ticket\",\"fields\":{},\"id\":\"a\",\"lifecycle_state\":\"Closed\",\"revision\":2,\"version\":1}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Load",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking/authored/unchanged-capture-retains-verified-state": {
+      "purpose": "Repeated complete reads preserve exact record identities and revisions, and transitioned state matches a full-verification reopen.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity-provider.tracking"
+        },
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Batch"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Load"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Provision"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Register"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Reopen"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Snapshot"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Batch",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Load",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"ticket\",\"version\":1,\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\",\"Closed\"]},\"operations\":{\"Close\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Closed\"}],\"emits\":[]}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Register",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Provision",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Provision",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Provision",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\",\"version\":1,\"fields\":{},\"recording\":{\"record_id\":\"create-a\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Create",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Batch",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"key\":{\"named\":\"close\"},\"actions\":[{\"kind\":\"execute\",\"entity\":\"ticket\",\"id\":\"a\",\"expected_revision\":1,\"operation\":\"Close\",\"arguments\":{},\"recording\":{\"record_id\":\"close-a\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Batch",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Batch",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Batch",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Load",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Load",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Load",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"ticket\",\"fields\":{},\"id\":\"a\",\"lifecycle_state\":\"Closed\",\"revision\":2,\"version\":1}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Load",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "[{\"entity\":\"ticket\",\"id\":\"a\",\"records\":[{\"record_id\":\"create-a\",\"revision\":1},{\"record_id\":\"close-a\",\"revision\":2}]}]"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "[{\"entity\":\"ticket\",\"id\":\"a\",\"records\":[{\"record_id\":\"create-a\",\"revision\":1},{\"record_id\":\"close-a\",\"revision\":2}]}]"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Reopen",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"FullVerification\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Reopen",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Reopen",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "[{\"entity\":\"ticket\",\"id\":\"a\",\"records\":[{\"record_id\":\"create-a\",\"revision\":1},{\"record_id\":\"close-a\",\"revision\":2}]}]"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Load",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Load",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Load",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"ticket\",\"fields\":{},\"id\":\"a\",\"lifecycle_state\":\"Closed\",\"revision\":2,\"version\":1}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Load",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking/authored/unchanged-head-blob-tamper": {
+      "purpose": "A second SQLite connection changes blob content without advancing the event head; a warm tracked read and reopen refuse.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity-provider.tracking"
+        },
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Provision"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Register"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Reopen"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Snapshot"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.SqlMutate"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"ticket\",\"version\":1,\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"Touch\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"emits\":[]}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Register",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Provision",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Provision",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Provision",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\",\"version\":1,\"fields\":{},\"recording\":{\"record_id\":\"create-a\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Create",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.SqlMutate",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"kind\":\"blob\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"changed\":1,\"same_event_head\":true}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.SqlMutate",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Reopen",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Reopen",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Reopen",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking/authored/unchanged-head-delete-blob-tamper": {
+      "purpose": "A second SQLite connection changes delete-blob content without advancing the event head; a warm tracked read and reopen refuse.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity-provider.tracking"
+        },
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Provision"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Register"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Reopen"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Snapshot"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.SqlMutate"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"ticket\",\"version\":1,\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"Touch\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"emits\":[]}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Register",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Provision",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Provision",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Provision",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\",\"version\":1,\"fields\":{},\"recording\":{\"record_id\":\"create-a\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Create",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.SqlMutate",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"kind\":\"delete-blob\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"changed\":1,\"same_event_head\":true}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.SqlMutate",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Reopen",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Reopen",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Reopen",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking/authored/unchanged-head-event-tamper": {
+      "purpose": "A second SQLite connection changes event content without advancing the event head; a warm tracked read and reopen refuse.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity-provider.tracking"
+        },
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Provision"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Register"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Reopen"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Snapshot"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.SqlMutate"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"ticket\",\"version\":1,\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"Touch\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"emits\":[]}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Register",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Provision",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Provision",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Provision",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\",\"version\":1,\"fields\":{},\"recording\":{\"record_id\":\"create-a\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Create",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.SqlMutate",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"kind\":\"event\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"changed\":1,\"same_event_head\":true}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.SqlMutate",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Reopen",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Reopen",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Reopen",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking/authored/unchanged-head-identity-tamper": {
+      "purpose": "A second SQLite connection changes identity content without advancing the event head; a warm tracked read and reopen refuse.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity-provider.tracking"
+        },
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Provision"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Register"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Reopen"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Snapshot"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.SqlMutate"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"ticket\",\"version\":1,\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"Touch\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"emits\":[]}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Register",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Provision",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Provision",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Provision",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\",\"version\":1,\"fields\":{},\"recording\":{\"record_id\":\"create-a\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Create",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.SqlMutate",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"kind\":\"identity\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"changed\":1,\"same_event_head\":true}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.SqlMutate",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Reopen",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Reopen",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Reopen",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity-provider.tracking/authored/unchanged-head-projection-tamper": {
+      "purpose": "A second SQLite connection changes projection content without advancing the event head; a warm tracked read and reopen refuse.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity-provider.tracking"
+        },
+        {
+          "kind": "type",
+          "name": "entity-provider.tracking.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Provision"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Register"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Reopen"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.Snapshot"
+        },
+        {
+          "kind": "command",
+          "name": "entity-provider.tracking.SqlMutate"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity-provider.tracking.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"ticket\",\"version\":1,\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"Touch\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"emits\":[]}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Register",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Provision",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Provision",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Provision",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Provision",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"ticket\",\"id\":\"a\",\"version\":1,\"fields\":{},\"recording\":{\"record_id\":\"create-a\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"actor\":null,\"correlation\":null,\"causation\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Create",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.SqlMutate",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"kind\":\"projection\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.SqlMutate",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"changed\":1,\"same_event_head\":true}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.SqlMutate",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Snapshot",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Snapshot",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Snapshot",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Snapshot",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity-provider.tracking.Reopen",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"policy\":\"ProviderTracked\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity-provider.tracking.Reopen",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity-provider.tracking.Reopen",
+            "declarations": {
+              "entity-provider.tracking.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "ProviderIntegrity",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity-provider.tracking.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity-provider.tracking.Reopen",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    }
+  }
+}

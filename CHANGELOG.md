@@ -4,6 +4,27 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-10-03
+
+### Added
+
+- Opt-in `CapturePolicy::ProviderTracked` reuses a fully verified provider observation when
+  SQLite proves it is unchanged, or verifies only a proven append suffix. SQL changes from
+  other connections invalidate reuse. Every open still verifies the complete store; raw file
+  edits bypassing SQLite are outside the warm tracking guarantee.
+- Scoped recorded-facade reads, including one-call `read_histories` that preserves requested
+  order and duplicate subjects. Existing constructors retain full verification.
+- `Executor::execute_versioned` and `batch_versioned` let callers select an exact definition
+  version and receive input-guarded refusals before subject existence or revision checks.
+  Existing execution methods keep selecting the definition from the loaded subject.
+
+### Fixed
+
+- Preserve a declared service refusal when a command supplies fulfillment keys for its success
+  outcome, including guards that inspect the loaded subject.
+- Return a declared creation refusal before an existing-subject conflict. Exact retries still
+  recover their original result before evaluating a new decision.
+
 ## [0.25.1] — 2026-09-28
 
 ### Added

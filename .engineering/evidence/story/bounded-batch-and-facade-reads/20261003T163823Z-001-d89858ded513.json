@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T16:38:23Z",
+  "actor": "human:timo",
+  "artifact": "story:bounded-batch-and-facade-reads",
+  "kind": "story",
+  "revision": 16,
+  "change": {
+    "change": "evidence",
+    "kind": "metric_observation",
+    "source": "Published-pin release probe exit 0, one test; medians 11.532148/13.049370/13.568977 ms at 55/601/1203 events, ratios 1.132/1.177 under unchanged 2x assertion",
+    "reference": "docs/ess/evidence/provider-tracking/performance-final.txt"
+  }
+}

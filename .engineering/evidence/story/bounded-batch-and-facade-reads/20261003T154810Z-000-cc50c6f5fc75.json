@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T15:48:10Z",
+  "actor": "human:timo",
+  "artifact": "story:bounded-batch-and-facade-reads",
+  "kind": "story",
+  "revision": 11,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "Release baseline shared-clock probe failed its 2x bound: medians at55/601/1203 events 92.517484ms/7.038153041s/12.449723852s; all fixture shape/history/revision assertions passed; exit101",
+    "reference": "crates/entity-eventlog/tests/shared_clock_cost.rs"
+  }
+}

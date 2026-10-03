@@ -381,3 +381,41 @@ Select exact accepted Eventlog pins after those dependencies qualify; runtime fe
 bridge companion. Add old/new-reader fixtures before parser extensions and independently review
 the complete contract before implementation. These proposals close no provider, adapter, facade
 or migration outcome, and no generic in-memory test replaces actual three-provider qualification.
+
+## Explicit provider-tracked verification (R-151)
+
+`CapturePolicy::FullVerification` remains the default of existing constructors.
+`EventlogRecordedStore::open_with_policy(backend, authority, limits, policy)` additionally admits
+`ProviderTracked`. Both policies fully verify the native capture on open. The tracked policy
+subsequently accepts only provider-owned proof of an unchanged observation or a complete,
+contiguous acknowledged append suffix. It never treats an unchanged event head as that proof.
+
+The optional Eventlog `capture_tenant_since` capability binds an opaque, nonserializable checkpoint
+to the provider instance, tenant generation, ordered projection specifications and complete-capture
+limits. Unsupported providers, foreign or expired checkpoints, lost journal continuity and
+unaccounted mutations return a complete capture. SQLite samples external commits, its own changes
+and schema changes under its connection mutex and native transaction boundary. The operator
+accepted this SQL-visible integrity boundary: writes through other SQLite connections invalidate
+warm reuse, including altered old blob bytes with an unchanged event head. Raw database-file edits
+that bypass SQLite are outside the warm guarantee; a newly opened handle still verifies content.
+
+The runtime retains an already verified model. An unchanged proof permits direct reads from it.
+A linear recorded-entry suffix verifies every new complete batch, exact physical positions,
+global record/batch identities, predecessor replay and all affected projection rows, including
+required rows omitted from the supplied delta. Before-values must match the verified base and
+final rows must match the authoritative events. Only then may the cache checkpoint advance.
+Imports, lineage and unsupported changes use complete verification. A reader holding the old model
+keeps that immutable observation; a concurrent advance may rebuild instead of copying the model.
+Failed tentative advancement discards the candidate and asks the complete verifier for its result.
+
+Fixed-size warm batches avoid replaying, sorting or cloning the old shared-clock history. Full
+open remains proportional to store content, and requesting a complete snapshot or history remains
+proportional to returned data. The release probe `shared_clock_cost` separately measures open,
+fixed-size batch, scoped history, batch lookup and snapshot costs at 55, 601 and 1,203 events.
+The 2x assertion applies to the warm fixed-size shared-clock batch. It is not a constant-time
+promise for reopening a growing store or returning its whole history.
+
+The separate `ess/provider-tracking` contract executes real SQLite/facade calls and unchanged-head
+SQL tampering controls. The original five-library ESS composition is unchanged. Runtime
+regressions additionally compare incremental and full models, inject omitted/forged suffix
+coordinates and verify that unchanged reads and own appends do not re-enter complete capture.

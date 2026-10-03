@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T15:23:45Z",
+  "actor": "human:timo",
+  "artifact": "story:executor-input-refusal-before-existence",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "Original two RevisionConflict reproductions red before fix; 38 package tests green after implementation and independent review",
+    "reference": "review-result:issue-50-adversary"
+  }
+}

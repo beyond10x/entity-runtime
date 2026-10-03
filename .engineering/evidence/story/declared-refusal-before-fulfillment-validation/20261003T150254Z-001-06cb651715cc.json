@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T15:02:54Z",
+  "actor": "human:timo",
+  "artifact": "story:declared-refusal-before-fulfillment-validation",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p entity-executor --locked: 22 passed, 0 failed; fmt and clippy exited 0",
+    "reference": "c6164443df9f303f4898f1de1abfc1c899e8c921"
+  }
+}

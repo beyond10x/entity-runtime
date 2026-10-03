@@ -1,0 +1,59 @@
+type: ess-scenario/4
+domain: entity-provider.tracking
+scenario: unchanged-capture-retains-verified-state
+summary: Repeated complete reads preserve exact record identities and revisions, and transitioned state matches a full-verification reopen.
+# This is semantic/integrity evidence; retained-path cost is measured by runtime counters and performance tests.
+timeline:
+  - at: 2026-10-03T00:00:00Z
+    command: entity-provider.tracking.Register
+    input:
+      request: '{"definition":{"entity":"ticket","version":1,"schema":{"fields":{}},"lifecycle":{"initial":"Open","states":["Open","Closed"]},"operations":{"Close":{"transitions":[{"from":"Open","to":"Closed"}],"emits":[]}}}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:01Z
+    command: entity-provider.tracking.Provision
+    input: {request: '{"policy":"ProviderTracked"}'}
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:02Z
+    command: entity-provider.tracking.Create
+    input:
+      request: '{"entity":"ticket","id":"a","version":1,"fields":{},"recording":{"record_id":"create-a","recorded_at":"2026-10-03T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:03Z
+    command: entity-provider.tracking.Batch
+    input:
+      request: '{"key":{"named":"close"},"actions":[{"kind":"execute","entity":"ticket","id":"a","expected_revision":1,"operation":"Close","arguments":{},"recording":{"record_id":"close-a","recorded_at":"2026-10-03T00:00:00Z","actor":null,"correlation":null,"causation":null}}]}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:04Z
+    command: entity-provider.tracking.Load
+    input: {request: '{"entity":"ticket","id":"a"}'}
+    outcome: returned
+    response: {status: ok, value: '{"entity":"ticket","fields":{},"id":"a","lifecycle_state":"Closed","revision":2,"version":1}'}
+  - at: 2026-10-03T00:00:05Z
+    command: entity-provider.tracking.Snapshot
+    input: {request: '{}'}
+    outcome: returned
+    response: {status: ok, value: '[{"entity":"ticket","id":"a","records":[{"record_id":"create-a","revision":1},{"record_id":"close-a","revision":2}]}]'}
+  - at: 2026-10-03T00:00:06Z
+    command: entity-provider.tracking.Snapshot
+    input: {request: '{}'}
+    outcome: returned
+    response: {status: ok, value: '[{"entity":"ticket","id":"a","records":[{"record_id":"create-a","revision":1},{"record_id":"close-a","revision":2}]}]'}
+  - at: 2026-10-03T00:00:07Z
+    command: entity-provider.tracking.Reopen
+    input: {request: '{"policy":"FullVerification"}'}
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:08Z
+    command: entity-provider.tracking.Snapshot
+    input: {request: '{}'}
+    outcome: returned
+    response: {status: ok, value: '[{"entity":"ticket","id":"a","records":[{"record_id":"create-a","revision":1},{"record_id":"close-a","revision":2}]}]'}
+  - at: 2026-10-03T00:00:09Z
+    command: entity-provider.tracking.Load
+    input: {request: '{"entity":"ticket","id":"a"}'}
+    outcome: returned
+    response: {status: ok, value: '{"entity":"ticket","fields":{},"id":"a","lifecycle_state":"Closed","revision":2,"version":1}'}

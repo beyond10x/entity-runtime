@@ -9,6 +9,7 @@ use entity_core::{EntityDefinition, EntityInstance, Registry};
 use entity_executor::{
     test_support::{block_on, poll_once},
     BatchAction, CreateRequest, ExecuteRequest, ExecutionError, Executor, MergeRequest,
+    VersionedBatchAction,
 };
 use entity_store::{
     asynchronous::{
@@ -178,9 +179,18 @@ impl Target {
             "Create" => Ok(store::outcome(
                 block_on(self.executor().create(create(request)?)).map_err(execution_error)?,
             )),
-            "Execute" => Ok(store::outcome(
-                block_on(self.executor().execute(execute(request)?)).map_err(execution_error)?,
-            )),
+            "Execute" => {
+                let result =
+                    if request.get("definition_version").is_some() {
+                        block_on(self.executor().execute_versioned(
+                            execute(request)?,
+                            read(request, "definition_version")?,
+                        ))
+                    } else {
+                        block_on(self.executor().execute(execute(request)?))
+                    };
+                Ok(store::outcome(result.map_err(execution_error)?))
+            }
             "Observe" => Ok(store::outcome(
                 block_on(
                     self.executor()
@@ -188,16 +198,23 @@ impl Target {
                 )
                 .map_err(execution_error)?,
             )),
-            "Batch" => Ok(store::outcome(
-                block_on(
-                    self.executor()
-                        .batch(read(request, "key")?, actions(request)?),
-                )
-                .map_err(execution_error)?,
-            )),
+            "Batch" => Ok(store::outcome(block_on(self.run_batch(request))?)),
             "CancelBatch" => {
+                let key = read(request, "key")?;
+                let versioned = versioned_actions(request)?;
+                let legacy = if versioned.is_none() {
+                    actions(request)?
+                } else {
+                    Vec::new()
+                };
                 let executor = self.executor();
-                let mut future = Box::pin(executor.batch(read(request, "key")?, actions(request)?));
+                let mut future = Box::pin(async move {
+                    match versioned {
+                        Some(actions) => executor.batch_versioned(key, actions).await,
+                        None => executor.batch(key, legacy).await,
+                    }
+                    .map_err(execution_error)
+                });
                 if !read::<bool>(request, "poll")? {
                     drop(future);
                     return Ok(json!({"poll":"Unpolled"}));
@@ -207,9 +224,9 @@ impl Target {
                         drop(future);
                         Ok(json!({"poll":"Pending"}))
                     }
-                    Poll::Ready(result) => Ok(
-                        json!({"poll":"Ready","outcome":store::outcome(result.map_err(execution_error)?)}),
-                    ),
+                    Poll::Ready(result) => {
+                        Ok(json!({"poll":"Ready","outcome":store::outcome(result?)}))
+                    }
                 }
             }
             "Load" => serialize(block_on(self.ports.load(&subject(request)?))?),
@@ -331,16 +348,24 @@ impl Target {
             )),
         }
     }
+    async fn run_batch(&self, request: &Value) -> Result<a::AppendOutcome> {
+        let key = read(request, "key")?;
+        let result = match versioned_actions(request)? {
+            Some(actions) => self.executor().batch_versioned(key, actions).await,
+            None => self.executor().batch(key, actions(request)?).await,
+        };
+        result.map_err(execution_error)
+    }
 }
 
-fn execution_error(error: ExecutionError) -> Failure {
+pub(super) fn execution_error(error: ExecutionError) -> Failure {
     match error {
         ExecutionError::Core(e) => Failure::debug(e),
         ExecutionError::Store(e) => e.into(),
         ExecutionError::Write(e) => e.into(),
     }
 }
-fn create(v: &Value) -> Result<CreateRequest> {
+pub(super) fn create(v: &Value) -> Result<CreateRequest> {
     Ok(CreateRequest {
         subject: subject(v)?,
         definition_version: read(v, "version")?,
@@ -358,7 +383,7 @@ fn execute(v: &Value) -> Result<ExecuteRequest> {
         recording: recording(&v["recording"])?,
     })
 }
-fn actions(v: &Value) -> Result<Vec<BatchAction>> {
+pub(super) fn actions(v: &Value) -> Result<Vec<BatchAction>> {
     read::<Vec<Value>>(v, "actions")?
         .iter()
         .map(|a| match read::<String>(a, "kind")?.as_str() {
@@ -372,6 +397,44 @@ fn actions(v: &Value) -> Result<Vec<BatchAction>> {
             _ => Err(Failure::named("Deserialize", "unknown batch action")),
         })
         .collect()
+}
+
+fn versioned_actions(v: &Value) -> Result<Option<Vec<VersionedBatchAction>>> {
+    let raw = read::<Vec<Value>>(v, "actions")?;
+    if !raw
+        .iter()
+        .any(|action| action.get("definition_version").is_some())
+    {
+        return Ok(None);
+    }
+    raw.iter()
+        .map(|action| {
+            let kind = read::<String>(action, "kind")?;
+            match kind.as_str() {
+                "execute" => Ok(VersionedBatchAction::Execute {
+                    definition_version: read(action, "definition_version")?,
+                    request: execute(action)?,
+                }),
+                "merge" => Ok(VersionedBatchAction::Merge {
+                    definition_version: read(action, "definition_version")?,
+                    request: MergeRequest {
+                        execute: execute(action)?,
+                        first: read(action, "first")?,
+                    },
+                }),
+                "create" | "observe" if action.get("definition_version").is_some() => {
+                    Err(Failure::named(
+                        "Deserialize",
+                        "definition_version is only valid for execute or merge",
+                    ))
+                }
+                "create" => Ok(VersionedBatchAction::Create(create(action)?)),
+                "observe" => Ok(VersionedBatchAction::Observe(read(action, "observation")?)),
+                _ => Err(Failure::named("Deserialize", "unknown batch action")),
+            }
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
 }
 
 fn reason(reason: &a::RefusalReason) -> Value {

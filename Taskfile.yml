@@ -16,6 +16,15 @@ tasks:
       - task: eventlog-runtime-check
       - task: notes-check
       - task: ess-check
+      - task: provider-ess-check
+
+  provider-ess-check:
+    desc: SQLite tracked-provider contract against real facade calls and external SQL mutations
+    env:
+      CARGO_TARGET_DIR: '{{.ER_ESS_TARGET_DIR | default "checks/ess-conformance/target"}}'
+    cmds:
+      - cargo +1.91.0 clippy --manifest-path checks/ess-conformance/Cargo.toml --features eventlog --all-targets --locked -- -D warnings
+      - cargo +1.91.0 run --manifest-path checks/ess-conformance/Cargo.toml --features eventlog --locked -- --spec-root ess/provider-tracking check --reports target/provider-ess-conformance
 
   ess-check:
     desc: Deterministic ESS compilation, reviewed scenario coverage and actual library conformance

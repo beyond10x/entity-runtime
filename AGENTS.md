@@ -173,7 +173,8 @@ what it records, in both directions — a moved copy and an unpinned file beside
 against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they did not run) ·
 `eventlog-runtime-check` (`entity-eventlog`'s tests and Clippy with `--all-features` on the
 `+1.91.0` toolchain) · `notes-check` · `ess-check` (canonical regeneration, reviewed scenario
-contracts and complete execution against the selected libraries). Every cargo step runs `--locked`, so the gate judges the dependency
+contracts and complete execution against the selected libraries) · `provider-ess-check`
+(the separate SQLite tracking/facade contract on Rust 1.91). Every cargo step runs `--locked`, so the gate judges the dependency
 set the repository committed rather than one cargo re-resolved on the way past.
 
 The local `pin-check` holds the AEP lifecycle fixture against its own `PIN.md`.

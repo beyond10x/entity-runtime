@@ -2,9 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use entity_core::{OperationFieldAction, Registry};
+use entity_core::{CoreError, OperationFieldAction, Registry};
 use entity_executor::{
-    test_support::block_on, BatchAction, CreateRequest, ExecuteRequest, Executor,
+    test_support::block_on, BatchAction, CreateRequest, ExecuteRequest, ExecutionError, Executor,
 };
 use entity_store::{
     asynchronous::{
@@ -109,6 +109,137 @@ fn legacy_execute(entity: &str, record_id: &str) -> ExecuteRequest {
         arguments: json!({"title": "new"}),
         fulfillments: BTreeMap::new(),
         recording: recording(record_id),
+    }
+}
+
+fn guarded_registry(selector: serde_json::Value, fulfills: serde_json::Value) -> Registry {
+    let mut registry = Registry::new();
+    registry
+        .register(serde_json::from_value(json!({
+            "entity": "invoice", "version": 1, "semantics": "service/3",
+            "schema": { "fields": {
+                "issued_at": { "type": "string", "required": true },
+                "note": { "type": "string" }
+            }},
+            "lifecycle": { "initial": "Draft", "states": ["Draft"] },
+            "operations": { "Issue": {
+                "arguments": { "fields": { "accept": { "type": "boolean", "required": true } } },
+                "outcomes": [
+                    { "name": "rejected", "when": selector,
+                      "refuses": { "error": "NotAccepted", "message": "Invoice cannot be issued" } },
+                    { "name": "issued", "effect": "updates", "fulfills": fulfills }
+                ]
+            }}
+        })).expect("guarded definition parses"))
+        .expect("guarded definition validates");
+    registry
+}
+
+fn seed_guarded_invoice(executor: &Executor<'_>) {
+    block_on(executor.create(CreateRequest {
+        subject: Subject::new("invoice", "i-1").unwrap(),
+        definition_version: 1,
+        fields: json!({"issued_at": "pending", "note": "remove"}),
+        recording: recording("r-1"),
+    }))
+    .expect("creation commits");
+}
+
+fn assert_refusal_preserves_state(selector: serde_json::Value) {
+    let registry = guarded_registry(
+        selector,
+        json!({
+            "issued_at": { "actions": "required" }, "note": { "actions": "optional" }
+        }),
+    );
+    let store = MemoryRecordedStore::new();
+    let executor = Executor::new(&registry, &store);
+    seed_guarded_invoice(&executor);
+    let subject = Subject::new("invoice", "i-1").unwrap();
+    let before = block_on(store.load(&subject)).unwrap();
+    let history = block_on(store.history(&subject)).unwrap();
+    let mut request = execute(fulfill("must not be stored"));
+    request.arguments = json!({"accept": false});
+    let original_request = request.clone();
+    let batch_key = BatchKey::Named("refused-batch".to_owned());
+    for batched in [false, true] {
+        let result = if batched {
+            block_on(executor.batch(
+                batch_key.clone(),
+                vec![BatchAction::Execute(request.clone())],
+            ))
+        } else {
+            block_on(executor.execute(request.clone()))
+        };
+        let error = result.expect_err("declared refusal survives supplied success actions");
+        assert!(
+            matches!(error, ExecutionError::Core(CoreError::Refused {
+            ref outcome, ref error, ref message
+        }) if outcome == "rejected" && error == "NotAccepted"
+            && message.as_deref() == Some("Invoice cannot be issued")),
+            "{error:?}"
+        );
+        assert_eq!(request, original_request);
+        assert_eq!(block_on(store.load(&subject)).unwrap(), before);
+        assert_eq!(block_on(store.history(&subject)).unwrap(), history);
+        assert!(block_on(store.lookup_record("r-2")).unwrap().is_none());
+        assert!(block_on(store.lookup_batch(&batch_key)).unwrap().is_none());
+    }
+}
+
+#[test]
+fn refusal_ignores_success_fulfillments() {
+    assert_refusal_preserves_state(json!({"eq": ["$args.accept", false]}));
+}
+
+#[test]
+fn subject_refusal_ignores_success_fulfillments() {
+    assert_refusal_preserves_state(json!({"eq": ["$fields.issued_at", "pending"]}));
+}
+
+#[test]
+fn accepted_outcomes_still_require_exact_fulfillment_keys() {
+    for (requirements, actions, missing, extra) in [
+        (
+            json!({}),
+            fulfill("issued"),
+            vec![],
+            vec!["issued_at", "note"],
+        ),
+        (
+            json!({"issued_at": {"actions": "required"}}),
+            BTreeMap::new(),
+            vec!["issued_at"],
+            vec![],
+        ),
+        (
+            json!({"issued_at": {"actions": "required"}}),
+            fulfill("issued"),
+            vec![],
+            vec!["note"],
+        ),
+    ] {
+        let registry = guarded_registry(json!(false), requirements);
+        let store = MemoryRecordedStore::new();
+        let executor = Executor::new(&registry, &store);
+        seed_guarded_invoice(&executor);
+        let subject = Subject::new("invoice", "i-1").unwrap();
+        let before = block_on(store.load(&subject)).unwrap();
+        let history = block_on(store.history(&subject)).unwrap();
+        let mut request = execute(actions);
+        request.arguments = json!({"accept": true});
+        let error =
+            block_on(executor.execute(request)).expect_err("success contract remains exact");
+        assert!(
+            matches!(error, ExecutionError::Core(CoreError::FulfillmentKeysMismatch {
+            ref operation, ref outcome, missing: ref actual_missing, extra: ref actual_extra
+        }) if operation == "Issue" && outcome == "issued"
+            && actual_missing == &missing && actual_extra == &extra),
+            "{error:?}"
+        );
+        assert_eq!(block_on(store.load(&subject)).unwrap(), before);
+        assert_eq!(block_on(store.history(&subject)).unwrap(), history);
+        assert!(block_on(store.lookup_record("r-2")).unwrap().is_none());
     }
 }
 

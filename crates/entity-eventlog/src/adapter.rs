@@ -49,6 +49,8 @@ use crate::{
 
 mod memory;
 mod scoped;
+mod tracked;
+pub use tracked::CapturePolicy;
 #[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
 mod small_store_cost;
 
@@ -856,7 +858,7 @@ pub struct StoreCalls {
     pub captures: usize,
     /// Verified models built from a whole capture: every event, blob, history and row checked.
     pub model_builds: usize,
-    /// Verified models advanced by only the events this handle itself committed.
+    /// Verified models advanced by an attested append suffix instead of rebuilt from all events.
     pub model_advances: usize,
     /// Complete records decoded and re-encoded to their canonical bytes while verifying.
     pub records_decoded: usize,
@@ -887,6 +889,8 @@ pub struct EventlogRecordedStore {
     /// Blobs and subject histories this handle has verified, under exactly what it verified, so
     /// that a later read of the same bytes is not hashed, decoded and replayed again.
     memory: Mutex<VerifiedMemory>,
+    policy: CapturePolicy,
+    tracked: Mutex<tracked::Cache>,
 }
 
 /// What one write adds to the tenant: events, index rows, and the blobs it binds.
@@ -945,6 +949,19 @@ impl EventlogRecordedStore {
         authority: Authority,
         limits: CaptureLimits,
     ) -> Result<Self, AsyncStoreError> {
+        Self::open_with_policy(backend, authority, limits, CapturePolicy::FullVerification).await
+    }
+
+    /// Opens with an explicit provider-continuity policy after complete initial verification.
+    ///
+    /// # Errors
+    /// The same authority and integrity refusals as [`Self::open`].
+    pub async fn open_with_policy(
+        backend: Arc<dyn EventlogBackend>,
+        authority: Authority,
+        limits: CaptureLimits,
+        policy: CapturePolicy,
+    ) -> Result<Self, AsyncStoreError> {
         authority.validate()?;
         let tenant = TenantId::new(authority.tenant.clone()).map_err(input_eventlog)?;
         if !backend.is_inline(PROJECTOR_NAME).await {
@@ -964,6 +981,8 @@ impl EventlogRecordedStore {
             held: Mutex::new(CaptureHeld::default()),
             own_events: Mutex::new(BTreeSet::new()),
             memory: Mutex::new(VerifiedMemory::default()),
+            policy,
+            tracked: Mutex::new(tracked::Cache::default()),
         };
         let model = store.capture_model().await?;
         if model.binding.is_none() {
@@ -1021,6 +1040,9 @@ impl EventlogRecordedStore {
     /// is the verified one plus events this handle's own appends returned is advanced by exactly
     /// those events; every other capture is built and verified whole, as before.
     async fn capture_model(&self) -> Result<Arc<CapturedModel>, AsyncStoreError> {
+        if self.policy == CapturePolicy::ProviderTracked {
+            return self.tracked_model().await;
+        }
         let capture = self.capture().await?;
         self.model_of(capture)
     }
@@ -1189,6 +1211,9 @@ impl EventlogRecordedStore {
 
     /// Records the events one of this handle's own committed appends returned.
     fn remember_own(&self, result: &eventlog_core::AppendGroupResult) {
+        if self.policy == CapturePolicy::ProviderTracked {
+            return;
+        }
         if let Ok(mut own) = self.own_events.lock() {
             for append in &result.appends {
                 for event in &append.events {
@@ -1580,7 +1605,11 @@ impl EventlogOperationStore<'_> {
             if !heads.contains_key(&member.entry.subject())
                 && let Some(history) = model.histories.get(&member.entry.subject())
             {
-                let tips = branch_tips(history);
+                let tips = if model.lineage_subjects.contains(&member.entry.subject()) {
+                    branch_tips(history)
+                } else {
+                    Vec::new()
+                };
                 if tips.len() > 1 {
                     joins.insert(member.entry.subject(), tips);
                 }
@@ -3648,6 +3677,10 @@ struct CapturedModel {
     anchor_blob_digests: BTreeMap<Subject, String>,
     /// Complete records this model's construction decoded, each a full canonical re-encoding.
     decoded: usize,
+    /// Subjects needing the complete lineage verifier rather than a linear suffix.
+    lineage_subjects: BTreeSet<Subject>,
+    /// Last state-producing record, so observations do not require a backwards history scan.
+    state_records: BTreeMap<Subject, String>,
 }
 
 struct PendingRecord {
@@ -4257,6 +4290,21 @@ fn insert_committed(
             model
                 .record_physical
                 .insert(receipt.record_id.clone(), physical(&record.event));
+            if saved.lineage.is_some() {
+                model.lineage_subjects.insert(subject.clone());
+            }
+            if matches!(
+                saved.entry,
+                entity_store::asynchronous::RecordedEntry::Decision(_)
+            ) && model
+                .state_records
+                .get(&subject)
+                .is_none_or(|id| model.record_physical[id].global_seq < record.event.global_seq)
+            {
+                model
+                    .state_records
+                    .insert(subject.clone(), receipt.record_id.clone());
+            }
             let history =
                 model
                     .histories

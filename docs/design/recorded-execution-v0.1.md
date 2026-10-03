@@ -238,3 +238,30 @@ Later bounded owner units are Eventlog recorded adapter, explicit sync bridge, S
 and PostgreSQL facade/import. They consume this full contract and preserve command sessions,
 indexed queries, identity locks and sequence semantics. They are not considered implemented by
 the reference store. AEP owns the one planning-store migration story and the six actual cutovers.
+
+## Input refusals before subject existence
+
+Creation already carries an exact definition version. For a fresh request, a declared creation
+refusal is selected before loading or checking the subject. Other creation errors retain their
+existing ordering relative to an existing-subject conflict.
+
+Execution that must select an input refusal before loading uses an explicit caller-selected
+definition version. The additive `execute_versioned` and `batch_versioned` entry points carry
+that version with execute and merge actions. Existing request structs and batch actions retain
+their shapes; legacy execution continues to obtain its version from the loaded row. No entry
+point silently chooses the latest or only registered definition.
+
+Shape validation and verified identity recovery still precede a fresh decision. A fresh
+versioned action runs the kernel's `decide_before_load` before that action's subject or merge
+history read. A declared input refusal wins over existence, revision and merge checks. A result
+requiring loaded state retains those checks and must match the selected definition. Batch members
+are decided in order, and no append occurs until all members succeed.
+
+An explicit version on retry must match the saved decision's version, including imported
+evidence. Exact retries continue to use the saved definition after registry removal; a changed
+version is a record conflict. The canonical `er.request/*` formats are unchanged. Refusal
+recording includes the explicit caller version so its request retains the selected authority.
+
+A selected declared refusal also precedes validation of success-outcome fulfillment keys.
+Successful outcomes continue to require their exact fulfillment contract. This applies at the
+executor boundary as well as the kernel boundary.

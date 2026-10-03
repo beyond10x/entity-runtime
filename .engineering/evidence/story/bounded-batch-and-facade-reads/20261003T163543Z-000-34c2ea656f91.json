@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T16:35:43Z",
+  "actor": "human:timo",
+  "artifact": "story:bounded-batch-and-facade-reads",
+  "kind": "story",
+  "revision": 16,
+  "change": {
+    "change": "evidence",
+    "kind": "ess_conformance_coverage_v1",
+    "source": "{\"completed_at\":\"1791045343826\",\"conformance_status\":\"passed\",\"counts\":{\"error\":0,\"failed\":0,\"passed\":17,\"skipped\":0,\"total\":17,\"unsupported\":0},\"coverage\":{\"counts\":{\"authored\":7,\"generated\":10,\"outside\":0,\"refused\":0},\"knowledge\":\"complete_inventory\",\"refused\":[],\"selection\":{\"filter\":{\"kind\":\"all\"},\"origins\":\"generated_and_authored\",\"scope\":{\"kind\":\"system\"}}},\"execution_status\":\"passed\",\"format\":\"ess-conformance-report/2\",\"implementation\":\"entity-runtime source-sha256:50edd1c86b576122b432d4d9d820d818712531ce4fa167d020bbf44ba83ee7e2;executable-sha256:a5e300d731bf76d39d7b322ad766f7142cc3afd5ce1a64701c88829841067ceb\",\"input_transport\":\"wrapped_raw_suite\",\"policy\":\"complete-selection/1\",\"producer_profile\":\"rust-scenario-status/1\",\"report_input\":\"target/provider-ess-conformance/report.json\",\"selected_ids\":[\"entity-provider.tracking.Batch/outcome/returned\",\"entity-provider.tracking.Create/outcome/returned\",\"entity-provider.tracking.Histories/outcome/returned\",\"entity-provider.tracking.Load/outcome/returned\",\"entity-provider.tracking.LookupBatch/outcome/returned\",\"entity-provider.tracking.Provision/outcome/returned\",\"entity-provider.tracking.Register/outcome/returned\",\"entity-provider.tracking.Reopen/outcome/returned\",\"entity-provider.tracking.Snapshot/outcome/returned\",\"entity-provider.tracking.SqlMutate/outcome/returned\",\"entity-provider.tracking/authored/multi-subject-histories-one-scope\",\"entity-provider.tracking/authored/unchanged-capture-retains-verified-state\",\"entity-provider.tracking/authored/unchanged-head-blob-tamper\",\"entity-provider.tracking/authored/unchanged-head-delete-blob-tamper\",\"entity-provider.tracking/authored/unchanged-head-event-tamper\",\"entity-provider.tracking/authored/unchanged-head-identity-tamper\",\"entity-provider.tracking/authored/unchanged-head-projection-tamper\"],\"selection\":{\"filter\":{\"kind\":\"all\"},\"origins\":\"generated_and_authored\",\"scope\":{\"kind\":\"system\"}},\"spec_digest\":\"ef6eb41f4dac9a7d51a5c0dc675933062d24096f195456a1dafe88ff8de672ac\",\"specification\":\"entity-provider/v1\",\"suite\":{\"digest\":\"sha256:7ed494f22f60f90f908dcc1050a915c2c8de1551a582f028b05e12aa879ebc99\",\"digest_profile\":\"sha256-json-bytes/1\",\"version\":\"ess-conformance/29\"},\"suite_input\":\"ess/provider-tracking/generated/suite.json\"}",
+    "reference": "target/provider-ess-conformance/report.json"
+  }
+}

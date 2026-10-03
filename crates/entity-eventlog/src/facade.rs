@@ -159,9 +159,36 @@ impl RecordedProviderFacade {
         owner: EventlogRecordedStoreOwner,
         config: BridgeConfig,
     ) -> Result<Self, BridgeStartError> {
+        Self::start_with_read_policy(
+            registry,
+            owner,
+            config,
+            crate::CapturePolicy::FullVerification,
+        )
+    }
+
+    /// Opens with an explicit capture policy after complete initial authority verification.
+    ///
+    /// # Errors
+    /// The same provider-open refusals as [`Self::start`].
+    pub fn start_with_read_policy(
+        registry: Registry,
+        owner: EventlogRecordedStoreOwner,
+        config: BridgeConfig,
+        policy: crate::CapturePolicy,
+    ) -> Result<Self, BridgeStartError> {
         let authority = owner.authority().clone();
-        let bridge = RecordedEventlogBridge::start(registry, owner, config)?;
+        let bridge =
+            RecordedEventlogBridge::start_with_read_policy(registry, owner, config, policy)?;
         Ok(Self { authority, bridge })
+    }
+
+    /// Reads only an explicitly named scope, with whole-batch evidence for that scope.
+    #[must_use]
+    pub fn scoped(&self) -> ScopedRecordedProviderFacade<'_> {
+        ScopedRecordedProviderFacade {
+            bridge: &self.bridge,
+        }
     }
 
     /// Explicitly provisions the fixed projections and immutable binding before opening.
@@ -636,5 +663,97 @@ fn sync_read_error(error: SyncReadError) -> StoreError {
             provider: "entity-eventlog bridge".to_owned(),
             detail: format!("read result lost after dispatch: {outcome:?}"),
         },
+    }
+}
+
+/// Explicitly scoped reads through a live recorded provider facade.
+///
+/// Full verification uses the ordinary scoped verifier. Provider tracking reuses a complete
+/// verified model only under provider authority; unsupported tracking takes a fresh complete
+/// capture. The view owns no independent worker and retains its parent's capture policy.
+pub struct ScopedRecordedProviderFacade<'a> {
+    bridge: &'a RecordedEventlogBridge,
+}
+
+impl ScopedRecordedProviderFacade<'_> {
+    /// Loads one subject's verified state.
+    pub fn load_recorded(
+        &self,
+        subject: &Subject,
+        wait: CallWait,
+    ) -> Result<Option<EntityInstance>, SyncReadError> {
+        let crate::sync::ScopedAnswer::State(state) = self.bridge.scoped_read(
+            crate::sync::ScopedRead::Load(subject.clone()),
+            crate::sync::BridgeReadKind::Load,
+            wait,
+        )?
+        else {
+            unreachable!("typed scoped state request")
+        };
+        Ok(state)
+    }
+
+    /// Reads one subject's complete mixed history within its verified scope.
+    pub fn read_history(
+        &self,
+        subject: &Subject,
+        wait: CallWait,
+    ) -> Result<SubjectHistory, SyncReadError> {
+        Ok(self
+            .read_histories(std::slice::from_ref(subject), wait)?
+            .remove(0))
+    }
+
+    /// Reads all named histories with one worker request and one verified scope.
+    ///
+    /// Output preserves input order and duplicates; absent subjects have empty genesis histories.
+    pub fn read_histories(
+        &self,
+        subjects: &[Subject],
+        wait: CallWait,
+    ) -> Result<Vec<SubjectHistory>, SyncReadError> {
+        let crate::sync::ScopedAnswer::Histories(histories) = self.bridge.scoped_read(
+            crate::sync::ScopedRead::Histories(subjects.to_vec()),
+            crate::sync::BridgeReadKind::History,
+            wait,
+        )?
+        else {
+            unreachable!("typed scoped histories request")
+        };
+        Ok(histories)
+    }
+
+    /// Looks up one original global record identity through scoped verification.
+    pub fn lookup_record(
+        &self,
+        id: &str,
+        wait: CallWait,
+    ) -> Result<Option<RecordLookup>, SyncReadError> {
+        let crate::sync::ScopedAnswer::Record(record) = self.bridge.scoped_read(
+            crate::sync::ScopedRead::Record(id.into()),
+            crate::sync::BridgeReadKind::LookupRecord,
+            wait,
+        )?
+        else {
+            unreachable!("typed scoped record request")
+        };
+        Ok(*record)
+    }
+
+    /// Looks up one batch, verifying every member of the claimed batch.
+    pub fn lookup_batch(
+        &self,
+        key: &BatchKey,
+        wait: CallWait,
+    ) -> Result<Option<StoredBatch>, SyncReadError> {
+        let crate::sync::ScopedAnswer::Batch(batch) = self.bridge.scoped_read(
+            crate::sync::ScopedRead::Batch(key.clone()),
+            crate::sync::BridgeReadKind::LookupBatch,
+            wait,
+        )?
+        else {
+            unreachable!("typed scoped batch request")
+        };
+        Ok(batch)
     }
 }

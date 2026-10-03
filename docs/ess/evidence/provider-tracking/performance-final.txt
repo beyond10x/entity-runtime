@@ -1,0 +1,34 @@
+running 1 test
+seed events=55 recorded_entries=54 groups=27 blob_bytes=2846892
+unchanged events=55 elapsed=2.474634ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 }
+seed_and_verify events=55 elapsed=585.043127ms
+sample events=55 round=0 batch=14.556882ms history=1.191689ms lookup=158.489µs snapshot=2.509212ms
+sample events=55 round=1 batch=11.639524ms history=627.525µs lookup=114.908µs snapshot=1.594789ms
+sample events=55 round=2 batch=11.582753ms history=641.615µs lookup=94.285µs snapshot=1.936809ms
+sample events=55 round=3 batch=10.049362ms history=550.86µs lookup=40.806µs snapshot=1.67534ms
+sample events=55 round=4 batch=11.532148ms history=641.767µs lookup=44.298µs snapshot=1.878407ms
+sample events=55 round=5 batch=10.854834ms history=536.837µs lookup=60.607µs snapshot=1.176457ms
+median initial_events=55 open=93.944214ms batch=11.532148ms history=627.525µs lookup=60.607µs snapshot=1.67534ms
+seed events=601 recorded_entries=600 groups=300 blob_bytes=31641002
+unchanged events=601 elapsed=27.588126ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 }
+seed_and_verify events=601 elapsed=6.338161219s
+sample events=601 round=0 batch=17.232166ms history=10.988649ms lookup=150.966µs snapshot=28.851549ms
+sample events=601 round=1 batch=11.674245ms history=5.560104ms lookup=95.065µs snapshot=17.265898ms
+sample events=601 round=2 batch=14.411778ms history=7.701056ms lookup=126.041µs snapshot=17.606226ms
+sample events=601 round=3 batch=11.938936ms history=5.620425ms lookup=182.614µs snapshot=13.085607ms
+sample events=601 round=4 batch=13.239059ms history=6.838991ms lookup=95.633µs snapshot=11.202798ms
+sample events=601 round=5 batch=13.04937ms history=5.635716ms lookup=152.568µs snapshot=11.701499ms
+median initial_events=601 open=981.221356ms batch=13.04937ms history=5.635716ms lookup=126.041µs snapshot=13.085607ms
+seed events=1203 recorded_entries=1202 groups=601 blob_bytes=63391084
+unchanged events=1203 elapsed=55.311302ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 }
+seed_and_verify events=1203 elapsed=13.099031919s
+sample events=1203 round=0 batch=15.522732ms history=21.529834ms lookup=177.619µs snapshot=55.759246ms
+sample events=1203 round=1 batch=16.485452ms history=11.702935ms lookup=124.087µs snapshot=38.87472ms
+sample events=1203 round=2 batch=13.519375ms history=10.451956ms lookup=94.512µs snapshot=35.866736ms
+sample events=1203 round=3 batch=13.568977ms history=9.808887ms lookup=184.847µs snapshot=35.543147ms
+sample events=1203 round=4 batch=14.32953ms history=9.99339ms lookup=104.844µs snapshot=34.838364ms
+sample events=1203 round=5 batch=11.088883ms history=10.945009ms lookup=194.498µs snapshot=21.465093ms
+median initial_events=1203 open=1.854794335s batch=13.568977ms history=10.451956ms lookup=124.087µs snapshot=35.543147ms
+test warm_shared_clock_batches_remain_within_twice_small_store_cost ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.02s
