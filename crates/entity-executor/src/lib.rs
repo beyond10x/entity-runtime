@@ -67,6 +67,83 @@ pub enum BatchAction {
     Merge(MergeRequest),
 }
 
+/// A batch action whose operation definition is selected before reading subject state.
+///
+/// Explicit versions never select the latest registry definition. Existing [`BatchAction`]
+/// callers retain their row-derived definition authority.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VersionedBatchAction {
+    /// Create using the version already carried by the request.
+    Create(CreateRequest),
+    /// Execute under the caller's exact definition version.
+    Execute {
+        /// Positive registered definition version.
+        definition_version: u32,
+        /// Operation and predecessor supplied by the caller.
+        request: ExecuteRequest,
+    },
+    /// Append non-state-changing evidence at an exact revision.
+    Observe(RecordedObservation),
+    /// Select input refusals before reading the merge's history.
+    Merge {
+        /// Positive registered definition version.
+        definition_version: u32,
+        /// Operation and merge head supplied by the caller.
+        request: MergeRequest,
+    },
+}
+
+struct BoundAction {
+    action: BatchAction,
+    definition_version: Option<u32>,
+}
+
+impl std::ops::Deref for BoundAction {
+    type Target = BatchAction;
+
+    fn deref(&self) -> &Self::Target {
+        &self.action
+    }
+}
+
+impl From<BatchAction> for BoundAction {
+    fn from(action: BatchAction) -> Self {
+        Self {
+            action,
+            definition_version: None,
+        }
+    }
+}
+
+impl From<VersionedBatchAction> for BoundAction {
+    fn from(action: VersionedBatchAction) -> Self {
+        match action {
+            VersionedBatchAction::Create(request) => BatchAction::Create(request).into(),
+            VersionedBatchAction::Observe(observation) => BatchAction::Observe(observation).into(),
+            VersionedBatchAction::Execute {
+                definition_version,
+                request,
+            } => Self {
+                action: BatchAction::Execute(request),
+                definition_version: Some(definition_version),
+            },
+            VersionedBatchAction::Merge {
+                definition_version,
+                request,
+            } => Self {
+                action: BatchAction::Merge(request),
+                definition_version: Some(definition_version),
+            },
+        }
+    }
+}
+
+#[derive(Default)]
+struct PreparedAction<'a> {
+    operation: Option<entity_core::PreparedOperation<'a>>,
+    creation: Option<Result<Evaluation, CoreError>>,
+}
+
 /// One merge decision over a forked subject.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MergeRequest {
@@ -242,12 +319,57 @@ impl<'a> Executor<'a> {
 
     /// Executes and records one operation under its record-id single namespace.
     ///
+    /// The loaded row selects the definition version. Use [`Self::execute_versioned`] when
+    /// input refusals must precede subject existence and revision checks.
+    ///
     /// # Errors
     ///
     /// Invalid input, kernel refusal, conflicting or corrupt evidence, or append failure.
     pub async fn execute(&self, request: ExecuteRequest) -> Result<AppendOutcome, ExecutionError> {
         let key = BatchKey::SingleRecord(request.recording.record_id.clone());
         self.batch(key, vec![BatchAction::Execute(request)]).await
+    }
+
+    /// Executes with an explicit definition, deciding input refusals before loading state.
+    ///
+    /// Exact retries use their saved definition before consulting the current registry.
+    ///
+    /// # Errors
+    ///
+    /// Invalid version or input, kernel refusal, definition/predecessor mismatch, conflicting
+    /// or corrupt recorded identity, or append failure.
+    pub async fn execute_versioned(
+        &self,
+        request: ExecuteRequest,
+        definition_version: u32,
+    ) -> Result<AppendOutcome, ExecutionError> {
+        let key = BatchKey::SingleRecord(request.recording.record_id.clone());
+        self.batch_versioned(
+            key,
+            vec![VersionedBatchAction::Execute {
+                definition_version,
+                request,
+            }],
+        )
+        .await
+    }
+
+    /// Executes an atomic batch with caller-selected operation definition versions.
+    ///
+    /// Each fresh operation's input refusal is evaluated before its state or merge-history
+    /// read. Empty batches are inert; saved identities are recovered before current definitions.
+    ///
+    /// # Errors
+    ///
+    /// Invalid version or input, kernel refusal, definition/predecessor mismatch, conflicting
+    /// or corrupt recorded identity, or append failure.
+    pub async fn batch_versioned(
+        &self,
+        key: BatchKey,
+        actions: Vec<VersionedBatchAction>,
+    ) -> Result<AppendOutcome, ExecutionError> {
+        self.batch_bound(key, actions.into_iter().map(BoundAction::from).collect())
+            .await
     }
 
     /// Records one non-state-changing observation under its record-id single namespace.
@@ -268,6 +390,8 @@ impl<'a> Executor<'a> {
     ///
     /// Identity and batch retries are recovered and verified before current state or registry
     /// lookup. An empty batch is inert and does not validate or consume `key`.
+    /// Operations derive their definition versions from loaded rows; use
+    /// [`Self::batch_versioned`] for input refusals independent of subject existence.
     ///
     /// # Errors
     ///
@@ -277,6 +401,15 @@ impl<'a> Executor<'a> {
         key: BatchKey,
         actions: Vec<BatchAction>,
     ) -> Result<AppendOutcome, ExecutionError> {
+        self.batch_bound(key, actions.into_iter().map(BoundAction::from).collect())
+            .await
+    }
+
+    async fn batch_bound(
+        &self,
+        key: BatchKey,
+        actions: Vec<BoundAction>,
+    ) -> Result<AppendOutcome, ExecutionError> {
         if actions.is_empty() {
             return Ok(AppendOutcome::Empty);
         }
@@ -284,6 +417,12 @@ impl<'a> Executor<'a> {
         let mut ids = std::collections::BTreeSet::new();
         for action in &actions {
             action.validate_shape()?;
+            if action.definition_version == Some(0) {
+                return Err(AsyncStoreError::InvalidInput(
+                    "execute requires a positive definition version".to_owned(),
+                )
+                .into());
+            }
             if !ids.insert(action.record_id()) {
                 return Err(ExecutionError::Store(AsyncStoreError::DuplicateRecordId {
                     record_id: action.record_id().to_owned(),
@@ -307,8 +446,10 @@ impl<'a> Executor<'a> {
             if let Some(reason) = refusal_reason(error) {
                 let refusal = RecordedRefusal {
                     key: key.clone(),
-                    subjects: actions.iter().map(BatchAction::subject).collect(),
-                    request: serde_json::Value::Array(actions.iter().map(action_value).collect()),
+                    subjects: actions.iter().map(|action| action.subject()).collect(),
+                    request: serde_json::Value::Array(
+                        actions.iter().map(bound_action_value).collect(),
+                    ),
                     recording: first_recording(&actions[0]),
                     reason,
                 };
@@ -321,22 +462,84 @@ impl<'a> Executor<'a> {
         decided
     }
 
+    fn prepare(&self, action: &BoundAction) -> Result<PreparedAction<'_>, ExecutionError> {
+        match &action.action {
+            BatchAction::Create(request) => {
+                let creation = Runtime::new(self.registry).decide_create(
+                    &request.subject.entity,
+                    request.definition_version,
+                    request.subject.id.clone(),
+                    request.fields.clone(),
+                );
+                if let Ok(Evaluation::Refused(refusal)) = creation {
+                    return Err(CoreError::Refused {
+                        outcome: refusal.outcome,
+                        error: refusal.error,
+                        message: refusal.message,
+                    }
+                    .into());
+                }
+                // Only declared refusals precede existence. Preserve other creation errors'
+                // existing ordering, and reuse this decision if the subject is absent.
+                Ok(PreparedAction {
+                    creation: Some(creation),
+                    operation: None,
+                })
+            }
+            BatchAction::Execute(request)
+            | BatchAction::Merge(MergeRequest {
+                execute: request, ..
+            }) => {
+                let Some(version) = action.definition_version else {
+                    return Ok(PreparedAction::default());
+                };
+                let definition = self
+                    .registry
+                    .get(&request.subject.entity, version)
+                    .ok_or_else(|| CoreError::EntityNotRegistered {
+                        entity: request.subject.entity.clone(),
+                        version,
+                    })?;
+                match entity_core::decide_before_load(
+                    definition,
+                    request.subject.id.clone(),
+                    &request.operation,
+                    request.arguments.clone(),
+                )? {
+                    PreloadDecision::Load(operation) => Ok(PreparedAction {
+                        operation: Some(operation),
+                        creation: None,
+                    }),
+                    PreloadDecision::Refused(refusal) => Err(CoreError::Refused {
+                        outcome: refusal.outcome,
+                        error: refusal.error,
+                        message: refusal.message,
+                    }
+                    .into()),
+                }
+            }
+            BatchAction::Observe(_) => Ok(PreparedAction::default()),
+        }
+    }
+
     /// Decides every action on the state the store holds and appends the result as one batch.
     async fn decide_and_append(
         &self,
         key: &BatchKey,
-        actions: &[BatchAction],
+        actions: &[BoundAction],
     ) -> Result<AppendOutcome, ExecutionError> {
         let key = key.clone();
         let mut overlay: BTreeMap<Subject, Option<EntityInstance>> = BTreeMap::new();
         let mut members = Vec::with_capacity(actions.len());
         for action in actions {
+            let prepared = self.prepare(action)?;
             let subject = action.subject();
-            if let BatchAction::Merge(request) = action {
+            if let BatchAction::Merge(request) = &action.action {
                 let merge = self.merge_base(request).await?;
                 let (expect, entry) = self.decide(
                     &BatchAction::Execute(request.execute.clone()),
                     Some(&merge.base),
+                    prepared,
                 )?;
                 let request_bytes = request_comparison_bytes(
                     &BatchAction::Execute(request.execute.clone()),
@@ -356,7 +559,7 @@ impl<'a> Executor<'a> {
                 .get(&subject)
                 .expect("subject was loaded before decision")
                 .as_ref();
-            let (expect, entry) = self.decide(action, current)?;
+            let (expect, entry) = self.decide(action, current, prepared)?;
             let request_bytes = request_comparison_bytes(action, &entry)?;
             let next = match &entry {
                 RecordedEntry::Decision(commit) => Some(commit.instance.clone()),
@@ -433,6 +636,7 @@ impl<'a> Executor<'a> {
         &self,
         action: &BatchAction,
         current: Option<&EntityInstance>,
+        prepared: PreparedAction<'_>,
     ) -> Result<(Expect, RecordedEntry), ExecutionError> {
         match action {
             BatchAction::Create(request) => {
@@ -443,12 +647,10 @@ impl<'a> Executor<'a> {
                         found: Some(current.revision),
                     }));
                 }
-                let decision = Runtime::new(self.registry).create(
-                    &request.subject.entity,
-                    request.definition_version,
-                    request.subject.id.clone(),
-                    request.fields.clone(),
-                )?;
+                let decision = prepared
+                    .creation
+                    .expect("create was prepared")?
+                    .into_decision()?;
                 let commit =
                     RecordedCommit::new(decision, &request.recording).map_err(|error| {
                         ExecutionError::Store(AsyncStoreError::InvalidInput(error.to_string()))
@@ -471,22 +673,25 @@ impl<'a> Executor<'a> {
                     }));
                 }
                 let runtime = Runtime::new(self.registry);
-                let prepared = match runtime.decide_before_load(
-                    &request.subject.entity,
-                    current.version,
-                    request.subject.id.clone(),
-                    &request.operation,
-                    request.arguments.clone(),
-                )? {
-                    PreloadDecision::Load(prepared) => prepared,
-                    PreloadDecision::Refused(refusal) => {
-                        return Err(CoreError::Refused {
-                            outcome: refusal.outcome,
-                            error: refusal.error,
-                            message: refusal.message,
+                let prepared = match prepared.operation {
+                    Some(prepared) => prepared,
+                    None => match runtime.decide_before_load(
+                        &request.subject.entity,
+                        current.version,
+                        request.subject.id.clone(),
+                        &request.operation,
+                        request.arguments.clone(),
+                    )? {
+                        PreloadDecision::Load(prepared) => prepared,
+                        PreloadDecision::Refused(refusal) => {
+                            return Err(CoreError::Refused {
+                                outcome: refusal.outcome,
+                                error: refusal.error,
+                                message: refusal.message,
+                            }
+                            .into())
                         }
-                        .into())
-                    }
+                    },
                 };
                 let evaluation = match prepared.select_with(current)? {
                     LoadedDecision::Complete(evaluation) => {
@@ -517,9 +722,11 @@ impl<'a> Executor<'a> {
                     RecordedEntry::Decision(commit),
                 ))
             }
-            BatchAction::Merge(request) => {
-                self.decide(&BatchAction::Execute(request.execute.clone()), current)
-            }
+            BatchAction::Merge(request) => self.decide(
+                &BatchAction::Execute(request.execute.clone()),
+                current,
+                prepared,
+            ),
             BatchAction::Observe(observation) => {
                 let subject = action.subject();
                 let current = current.ok_or_else(|| {
@@ -547,7 +754,7 @@ impl<'a> Executor<'a> {
     async fn recover_existing(
         &self,
         key: &BatchKey,
-        actions: &[BatchAction],
+        actions: &[BoundAction],
     ) -> Result<Option<AppendOutcome>, ExecutionError> {
         if let Some(batch) = self.store.lookup_batch(key).await? {
             validate_stored_batch(key, actions.len(), &batch)?;
@@ -622,9 +829,10 @@ impl<'a> Executor<'a> {
 
     fn match_committed(
         &self,
-        action: &BatchAction,
+        action: &BoundAction,
         stored: &StoredRecord,
     ) -> Result<(), ExecutionError> {
+        match_saved_version(action, &stored.entry)?;
         let subject = action.subject();
         let requested = request_comparison_bytes(action, &stored.entry)
             .map_err(|error| map_retry_error(&subject, action.record_id(), error, false))?;
@@ -638,9 +846,10 @@ impl<'a> Executor<'a> {
 
     fn match_imported(
         &self,
-        action: &BatchAction,
+        action: &BoundAction,
         evidence: &entity_store::asynchronous::ImportedRecordEvidence,
     ) -> Result<(), ExecutionError> {
+        match_saved_version(action, &evidence.entry)?;
         let subject = action.subject();
         let requested = request_comparison_bytes(action, &evidence.entry)
             .map_err(|error| map_retry_error(&subject, action.record_id(), error, true))?;
@@ -685,6 +894,38 @@ impl<'a> Executor<'a> {
         let history = self.store.history(&subject).await?;
         verify_imported_record(&history, evidence).map_err(ExecutionError::Store)
     }
+}
+
+fn match_saved_version(action: &BoundAction, entry: &RecordedEntry) -> Result<(), ExecutionError> {
+    if let Some(version) = action.definition_version {
+        let matches = match entry {
+            RecordedEntry::Decision(commit) => {
+                commit.instance.version == version
+                    && commit
+                        .envelope
+                        .record
+                        .definition
+                        .as_ref()
+                        .is_none_or(|definition| definition.version == version)
+            }
+            RecordedEntry::Observation(_) => false,
+        };
+        if !matches {
+            return Err(AsyncStoreError::RecordConflict {
+                record_id: action.record_id().to_owned(),
+            }
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn bound_action_value(action: &BoundAction) -> Value {
+    let mut value = action_value(action);
+    if let Some(version) = action.definition_version {
+        value["definition_version"] = version.into();
+    }
+    value
 }
 
 fn validate_stored_batch(

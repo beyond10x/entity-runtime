@@ -1,0 +1,47 @@
+type: ess-scenario/4
+domain: entity.executor
+scenario: executor_input_refusal_existing_create
+summary: A declared creation refusal precedes existence and leaves the original row and history intact.
+timeline:
+  - at: 2026-10-03T00:00:00Z
+    command: entity.executor.Register
+    input:
+      request: '{"definition":{"entity":"invoice","version":1,"semantics":"service/3","schema":{"fields":{}},"lifecycle":{"initial":"Open","states":["Open"]},"create":{"arguments":{"fields":{"accept":{"type":"boolean","required":true}}},"outcomes":[{"name":"rejected","when":{"eq":["$args.accept",false]},"refuses":{"error":"InputRejected","message":"Input was refused"}},{"name":"created","effect":"creates"}]}}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:01Z
+    command: entity.executor.Create
+    input:
+      request: '{"entity":"invoice","id":"a","version":1,"fields":{"accept":true},"recording":{"record_id":"created","recorded_at":"2026-10-03T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:02Z
+    command: entity.executor.ClearTrace
+    input: {request: '{}'}
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:03Z
+    command: entity.executor.Create
+    input:
+      request: '{"entity":"invoice","id":"a","version":1,"fields":{"accept":false},"recording":{"record_id":"refused","recorded_at":"2026-10-03T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response:
+      status: error
+      error: Refused
+      value: >-
+        {"detail":"outcome 'rejected' refuses with 'InputRejected': Input was refused"}
+  - at: 2026-10-03T00:00:04Z
+    command: entity.executor.Trace
+    input: {request: '{}'}
+    outcome: returned
+    response: {status: ok, value: '["lookup_batch","lookup_record:refused"]'}
+  - at: 2026-10-03T00:00:05Z
+    command: entity.executor.Load
+    input: {request: '{"entity":"invoice","id":"a"}'}
+    outcome: returned
+    response: {status: ok, value: '{"entity":"invoice","fields":{},"id":"a","lifecycle_state":"Open","revision":1,"version":1}'}
+  - at: 2026-10-03T00:00:06Z
+    command: entity.executor.LookupRecord
+    input: {request: '{"record_id":"refused"}'}
+    outcome: returned
+    response: {status: ok, value: 'null'}

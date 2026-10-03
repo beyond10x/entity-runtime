@@ -1,0 +1,36 @@
+type: ess-scenario/4
+domain: entity.executor
+scenario: issue-50-batch-refusal-is-atomic
+summary: A version-bound input refusal leaves an earlier transaction-local creation uncommitted.
+timeline:
+  - at: 2026-10-03T00:00:00Z
+    command: entity.executor.Register
+    input:
+      request: '{"definition":{"entity":"invoice","version":1,"semantics":"service/3","schema":{"fields":{}},"lifecycle":{"initial":"Open","states":["Open"]},"operations":{"Pay":{"arguments":{"fields":{"accept":{"type":"boolean","required":true}}},"outcomes":[{"name":"rejected","when":{"eq":["$args.accept",false]},"refuses":{"error":"InputRejected","message":"Input was refused"}},{"name":"paid","effect":"updates"}]}}}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:01Z
+    command: entity.executor.Batch
+    input:
+      request: '{"key":{"named":"atomic"},"actions":[{"kind":"create","entity":"invoice","id":"a","version":1,"fields":{},"recording":{"record_id":"created","recorded_at":"2026-10-03T00:00:00Z","actor":null,"correlation":null,"causation":null}},{"kind":"execute","entity":"invoice","id":"a","definition_version":1,"expected_revision":1,"operation":"Pay","arguments":{"accept":false},"recording":{"record_id":"refused","recorded_at":"2026-10-03T00:00:00Z","actor":null,"correlation":null,"causation":null}}]}'
+    outcome: returned
+    response:
+      status: error
+      error: Refused
+      value: >-
+        {"detail":"outcome 'rejected' refuses with 'InputRejected': Input was refused"}
+  - at: 2026-10-03T00:00:02Z
+    command: entity.executor.Load
+    input: {request: '{"entity":"invoice","id":"a"}'}
+    outcome: returned
+    response: {status: ok, value: 'null'}
+  - at: 2026-10-03T00:00:03Z
+    command: entity.executor.LookupRecord
+    input: {request: '{"record_id":"created"}'}
+    outcome: returned
+    response: {status: ok, value: 'null'}
+  - at: 2026-10-03T00:00:04Z
+    command: entity.executor.LookupRecord
+    input: {request: '{"record_id":"refused"}'}
+    outcome: returned
+    response: {status: ok, value: 'null'}
