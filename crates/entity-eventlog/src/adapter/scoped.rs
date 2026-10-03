@@ -19,7 +19,7 @@
 //! the rows the append guard later decides on under the provider's lock.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::Ordering;
+use std::sync::{Arc, atomic::Ordering};
 
 use entity_store::asynchronous::{AppendRequest, AsyncStoreError, BatchKey, Subject};
 use eventlog_core::{
@@ -118,7 +118,7 @@ pub(super) struct ScopedModel {
     /// batch reads, which share one read across a command, ask what a read covers.
     #[cfg(feature = "sync-bridge")]
     pub(super) covered: ReadScope,
-    pub(super) model: CapturedModel,
+    pub(super) model: Arc<CapturedModel>,
 }
 
 #[cfg(feature = "sync-bridge")]
@@ -149,6 +149,13 @@ impl EventlogRecordedStore {
         &self,
         scope: &ReadScope,
     ) -> Result<ScopedModel, AsyncStoreError> {
+        if self.policy == super::CapturePolicy::ProviderTracked {
+            return Ok(ScopedModel {
+                #[cfg(feature = "sync-bridge")]
+                covered: scope.clone(),
+                model: self.tracked_model().await?,
+            });
+        }
         for _ in 0..ATTEMPTS {
             self.scoped_reads.fetch_add(1, Ordering::Relaxed);
             match self.scoped_once(scope).await {
@@ -174,7 +181,7 @@ impl EventlogRecordedStore {
                     .collect(),
                 ..scope.clone()
             },
-            model: (*complete).clone(),
+            model: complete,
         })
     }
 
@@ -335,7 +342,7 @@ impl EventlogRecordedStore {
                 subjects: read,
                 ..scope.clone()
             },
-            model,
+            model: Arc::new(model),
         })
     }
 

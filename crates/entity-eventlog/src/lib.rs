@@ -13,7 +13,7 @@ mod projection;
 pub mod sync;
 
 pub use adapter::{
-    AsyncBindingProvisioner, AsyncImportedAnchorWriter, EventlogBackend,
+    AsyncBindingProvisioner, AsyncImportedAnchorWriter, CapturePolicy, EventlogBackend,
     EventlogBindingProvisioner, EventlogOperationContext, EventlogOperationStore,
     EventlogRecordedStore, ImportAnchorFailure, ImportAnchorOutcome, ImportAnchorUncertainty,
     ProvisionBindingFailure, ProvisionBindingOutcome, ProvisionBindingUncertainty, StoreCalls,
@@ -22,5 +22,7 @@ pub use encoding::{Authority, PhysicalRef};
 #[cfg(all(feature = "sync-bridge", feature = "file"))]
 pub use facade::EventlogFileStore;
 #[cfg(feature = "sync-bridge")]
-pub use facade::{LegacyImportError, LegacyImportReport, RecordedProviderFacade};
+pub use facade::{
+    LegacyImportError, LegacyImportReport, RecordedProviderFacade, ScopedRecordedProviderFacade,
+};
 pub use projection::{ErRecordedProjector, projection_specs};

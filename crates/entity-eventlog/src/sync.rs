@@ -251,7 +251,10 @@ impl EventlogRecordedStoreOwner {
         }
     }
 
-    async fn open(self) -> Result<(EventlogRecordedStore, OwnedBackend), AsyncStoreError> {
+    async fn open_with_policy(
+        self,
+        policy: crate::CapturePolicy,
+    ) -> Result<(EventlogRecordedStore, OwnedBackend), AsyncStoreError> {
         match self {
             #[cfg(feature = "tree")]
             Self::Tree {
@@ -278,7 +281,8 @@ impl EventlogRecordedStoreOwner {
                 );
                 let backend: Arc<dyn EventlogBackend> = concrete.clone();
                 Ok((
-                    EventlogRecordedStore::open(backend, authority, limits).await?,
+                    EventlogRecordedStore::open_with_policy(backend, authority, limits, policy)
+                        .await?,
                     OwnedBackend::Tree(concrete),
                 ))
             }
@@ -299,7 +303,8 @@ impl EventlogRecordedStoreOwner {
                     .map_err(store_open)?;
                 let backend: Arc<dyn EventlogBackend> = concrete.clone();
                 Ok((
-                    EventlogRecordedStore::open(backend, authority, limits).await?,
+                    EventlogRecordedStore::open_with_policy(backend, authority, limits, policy)
+                        .await?,
                     OwnedBackend::File(concrete),
                 ))
             }
@@ -321,7 +326,8 @@ impl EventlogRecordedStoreOwner {
                     .map_err(store_open)?;
                 let backend: Arc<dyn EventlogBackend> = concrete.clone();
                 Ok((
-                    EventlogRecordedStore::open(backend, authority, limits).await?,
+                    EventlogRecordedStore::open_with_policy(backend, authority, limits, policy)
+                        .await?,
                     OwnedBackend::Sqlite(concrete),
                 ))
             }
@@ -342,7 +348,8 @@ impl EventlogRecordedStoreOwner {
                     .map_err(store_open)?;
                 let backend: Arc<dyn EventlogBackend> = concrete.clone();
                 Ok((
-                    EventlogRecordedStore::open(backend, authority, limits).await?,
+                    EventlogRecordedStore::open_with_policy(backend, authority, limits, policy)
+                        .await?,
                     OwnedBackend::Sqlite(concrete),
                 ))
             }
@@ -368,7 +375,8 @@ impl EventlogRecordedStoreOwner {
                     .map_err(store_open)?;
                 let backend: Arc<dyn EventlogBackend> = concrete.clone();
                 Ok((
-                    EventlogRecordedStore::open(backend, authority, limits).await?,
+                    EventlogRecordedStore::open_with_policy(backend, authority, limits, policy)
+                        .await?,
                     OwnedBackend::Postgres(concrete),
                 ))
             }
@@ -399,7 +407,8 @@ impl EventlogRecordedStoreOwner {
                     .map_err(store_open)?;
                 let backend: Arc<dyn EventlogBackend> = concrete.clone();
                 Ok((
-                    EventlogRecordedStore::open(backend, authority, limits).await?,
+                    EventlogRecordedStore::open_with_policy(backend, authority, limits, policy)
+                        .await?,
                     OwnedBackend::Postgres(concrete),
                 ))
             }
@@ -631,6 +640,16 @@ impl OwnedBackend {
 }
 
 trait WorkerDriver: Send {
+    fn scoped<'a>(
+        &'a self,
+        _read: &'a ScopedRead,
+    ) -> BoxFuture<'a, Result<ScopedAnswer, AsyncStoreError>> {
+        Box::pin(async {
+            Err(AsyncStoreError::Backend(
+                "scoped reads are unavailable".into(),
+            ))
+        })
+    }
     fn load<'a>(
         &'a self,
         subject: &'a Subject,
@@ -693,6 +712,33 @@ struct ProductionDriver {
 }
 
 impl WorkerDriver for ProductionDriver {
+    fn scoped<'a>(
+        &'a self,
+        read: &'a ScopedRead,
+    ) -> BoxFuture<'a, Result<ScopedAnswer, AsyncStoreError>> {
+        Box::pin(async move {
+            match read {
+                ScopedRead::Load(subject) => self
+                    .store
+                    .scoped_state(subject)
+                    .await
+                    .map(ScopedAnswer::State),
+                ScopedRead::Record(id) => self
+                    .store
+                    .scoped_record(id)
+                    .await
+                    .map(|record| ScopedAnswer::Record(Box::new(record))),
+                ScopedRead::Batch(key) => {
+                    self.store.scoped_batch(key).await.map(ScopedAnswer::Batch)
+                }
+                ScopedRead::Histories(subjects) => self
+                    .store
+                    .scoped_histories(subjects)
+                    .await
+                    .map(ScopedAnswer::Histories),
+            }
+        })
+    }
     fn load<'a>(
         &'a self,
         subject: &'a Subject,
@@ -1000,7 +1046,26 @@ impl<T> Cell<T> {
     }
 }
 
+pub(crate) enum ScopedRead {
+    Load(Subject),
+    Record(String),
+    Batch(BatchKey),
+    Histories(Vec<Subject>),
+}
+
+pub(crate) enum ScopedAnswer {
+    State(Option<EntityInstance>),
+    Record(Box<Option<RecordLookup>>),
+    Batch(Option<StoredBatch>),
+    Histories(Vec<SubjectHistory>),
+}
+
 enum Request {
+    Scoped(
+        ScopedRead,
+        BridgeReadKind,
+        Arc<Cell<Result<ScopedAnswer, SyncReadError>>>,
+    ),
     Load(
         Subject,
         Arc<Cell<Result<Option<EntityInstance>, SyncReadError>>>,
@@ -1061,6 +1126,7 @@ enum Request {
 impl Request {
     fn phase(&self) -> Option<&AtomicU8> {
         match self {
+            Self::Scoped(_, _, c) => Some(&c.phase),
             Self::Load(_, c) => Some(&c.phase),
             Self::LookupRecord(_, c) => Some(&c.phase),
             Self::LookupBatch(_, c) => Some(&c.phase),
@@ -1077,6 +1143,7 @@ impl Request {
     }
     fn identity(&self) -> Option<BridgeOperationIdentity> {
         match self {
+            Self::Scoped(_, kind, _) => Some(BridgeOperationIdentity::Read(*kind)),
             Self::Load(..) => Some(BridgeOperationIdentity::Read(BridgeReadKind::Load)),
             Self::LookupRecord(..) => {
                 Some(BridgeOperationIdentity::Read(BridgeReadKind::LookupRecord))
@@ -1101,6 +1168,9 @@ impl Request {
     }
     fn cancel_closed(self) {
         match self {
+            Self::Scoped(_, _, c) => {
+                c.complete(Err(SyncReadError::Rejected(BridgeRejection::Closed)))
+            }
             Self::Load(_, c) => c.complete(Err(SyncReadError::Rejected(BridgeRejection::Closed))),
             Self::LookupRecord(_, c) => {
                 c.complete(Err(SyncReadError::Rejected(BridgeRejection::Closed)))
@@ -1133,6 +1203,7 @@ impl Request {
     fn cancel_stopped(self) {
         let rejection = BridgeRejection::WorkerStoppedBeforeDispatch;
         match self {
+            Self::Scoped(_, _, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
             Self::Load(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
             Self::LookupRecord(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
             Self::LookupBatch(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
@@ -1151,6 +1222,9 @@ impl Request {
     #[cfg(test)]
     fn cancel_after_dispatch_stopped(self) {
         match self {
+            Self::Scoped(_, _, c) => c.complete(Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerStopped,
+            ))),
             Self::Load(_, c) => c.complete(Err(SyncReadError::AfterDispatch(
                 BridgeAfterDispatch::WorkerStopped,
             ))),
@@ -1215,9 +1289,24 @@ impl RecordedEventlogBridge {
         owner: EventlogRecordedStoreOwner,
         config: BridgeConfig,
     ) -> Result<Self, BridgeStartError> {
+        Self::start_with_read_policy(
+            registry,
+            owner,
+            config,
+            crate::CapturePolicy::FullVerification,
+        )
+    }
+
+    /// Starts with an explicit read-integrity policy; opening always verifies the whole authority.
+    pub fn start_with_read_policy(
+        registry: Registry,
+        owner: EventlogRecordedStoreOwner,
+        config: BridgeConfig,
+        policy: crate::CapturePolicy,
+    ) -> Result<Self, BridgeStartError> {
         Self::start_with(config, move |runtime| {
             let (store, backend) = runtime
-                .block_on(owner.open())
+                .block_on(owner.open_with_policy(policy))
                 .map_err(BridgeStartError::Open)?;
             Ok(Box::new(ProductionDriver {
                 registry,
@@ -1415,6 +1504,21 @@ impl RecordedEventlogBridge {
             &cell,
             wait,
             BridgeOperationIdentity::Read(BridgeReadKind::CompleteSnapshot),
+        )
+    }
+
+    pub(crate) fn scoped_read(
+        &self,
+        read: ScopedRead,
+        kind: BridgeReadKind,
+        wait: CallWait,
+    ) -> Result<ScopedAnswer, SyncReadError> {
+        let cell = Cell::new();
+        self.submit(
+            Request::Scoped(read, kind, cell.clone()),
+            &cell,
+            wait,
+            BridgeOperationIdentity::Read(kind),
         )
     }
 
@@ -2008,6 +2112,7 @@ fn drive_request(
     request: Request,
 ) -> bool {
     match request {
+        Request::Scoped(read, _, c) => poll_read(c, || runtime.block_on(driver.scoped(&read))),
         Request::Load(v, c) => poll_read(c, || runtime.block_on(driver.load(&v))),
         Request::LookupRecord(v, c) => poll_read(c, || runtime.block_on(driver.lookup_record(&v))),
         Request::LookupBatch(v, c) => poll_read(c, || runtime.block_on(driver.lookup_batch(&v))),

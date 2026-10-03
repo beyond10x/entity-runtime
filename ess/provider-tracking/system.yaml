@@ -1,0 +1,5 @@
+format: ess/17
+system: entity-provider
+version: v1
+domains:
+  - entity-provider.tracking
