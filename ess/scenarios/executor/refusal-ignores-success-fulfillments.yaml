@@ -1,0 +1,46 @@
+type: ess-scenario/4
+domain: entity.executor
+scenario: refusal-ignores-success-fulfillments
+summary: An input guard preserves its declared refusal despite success fulfillment keys, without recording a decision.
+timeline:
+  - at: 2026-10-03T00:00:00Z
+    command: entity.executor.Register
+    input:
+      request: '{"definition":{"entity":"invoice","version":1,"semantics":"service/3","schema":{"fields":{"issued_at":{"type":"string","required":true},"note":{"type":"string"}}},"lifecycle":{"initial":"Draft","states":["Draft"]},"operations":{"Issue":{"arguments":{"fields":{"accept":{"type":"boolean","required":true}}},"outcomes":[{"name":"rejected","when":{"eq":["$args.accept",false]},"refuses":{"error":"NotAccepted","message":"Invoice cannot be issued"}},{"name":"issued","effect":"updates","fulfills":{"issued_at":{"actions":"required"},"note":{"actions":"optional"}}}]}}}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:01Z
+    command: entity.executor.Create
+    input:
+      request: '{"entity":"invoice","id":"i-1","version":1,"fields":{"issued_at":"pending","note":"remove"},"recording":{"record_id":"r-1","recorded_at":"2026-10-03T00:00:00Z","correlation":null,"causation":null,"actor":null}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-03T00:00:02Z
+    command: entity.executor.Execute
+    input:
+      request: '{"entity":"invoice","id":"i-1","expected_revision":1,"operation":"Issue","arguments":{"accept":false},"fulfillments":{"issued_at":{"set":{"value":"must not be stored"}},"note":"remove"},"recording":{"record_id":"r-2","recorded_at":"2026-10-03T00:00:00Z","correlation":null,"causation":null,"actor":null}}'
+    outcome: returned
+    response:
+      status: error
+      error: Refused
+      value: >-
+        {"detail":"outcome 'rejected' refuses with 'NotAccepted': Invoice cannot be issued"}
+  - at: 2026-10-03T00:00:03Z
+    command: entity.executor.Load
+    input: {request: '{"entity":"invoice","id":"i-1"}'}
+    outcome: returned
+    response:
+      status: ok
+      value: '{"entity":"invoice","fields":{"issued_at":"pending","note":"remove"},"id":"i-1","lifecycle_state":"Draft","revision":1,"version":1}'
+  - at: 2026-10-03T00:00:04Z
+    command: entity.executor.LookupReceipt
+    input: {request: '{"record_id":"r-2"}'}
+    outcome: returned
+    response: {status: ok, value: 'null'}
+  - at: 2026-10-03T00:00:05Z
+    command: entity.executor.HistoryCoordinates
+    input: {request: '{"entity":"invoice","id":"i-1"}'}
+    outcome: returned
+    response:
+      status: ok
+      value: '[{"events":[],"kind":"decision","receipt":{"batch_key":{"single_record":"r-1"},"kind":"decision","member_index":0,"position":{"store":0,"subject":0},"record_id":"r-1","revision":1,"subject":{"entity":"invoice","id":"i-1"}},"record_id":"r-1","revision":1}]'

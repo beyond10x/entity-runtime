@@ -490,20 +490,16 @@ impl<'a> Executor<'a> {
                 };
                 let evaluation = match prepared.select_with(current)? {
                     LoadedDecision::Complete(evaluation) => {
-                        if !request.fulfillments.is_empty() {
-                            let outcome = match &evaluation {
-                                Evaluation::Accepted(decision) => {
-                                    decision.record.outcome.clone().unwrap_or_default()
+                        if let Evaluation::Accepted(decision) = &evaluation {
+                            if !request.fulfillments.is_empty() {
+                                return Err(CoreError::FulfillmentKeysMismatch {
+                                    operation: request.operation.clone(),
+                                    outcome: decision.record.outcome.clone().unwrap_or_default(),
+                                    missing: Vec::new(),
+                                    extra: request.fulfillments.keys().cloned().collect(),
                                 }
-                                Evaluation::Refused(_) => String::new(),
-                            };
-                            return Err(CoreError::FulfillmentKeysMismatch {
-                                operation: request.operation.clone(),
-                                outcome,
-                                missing: Vec::new(),
-                                extra: request.fulfillments.keys().cloned().collect(),
+                                .into());
                             }
-                            .into());
                         }
                         evaluation
                     }
