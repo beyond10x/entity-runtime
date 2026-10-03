@@ -23,6 +23,14 @@ remain available. The [service-binding inventory](../design/models/service-bindi
 is diagnostic material: inventory membership alone is not an executable behavioral assertion.
 The corresponding requirements are traced to actual scenarios in the core register.
 
+The separate [`provider-tracking` contract](../../ess/provider-tracking/ess-inputs.yaml) covers
+the explicit SQLite read-verification policy and scoped facade calls. `task provider-ess-check`
+uses the same checker with its `eventlog` feature and Rust 1.91 to execute actual SQLite/facade
+operations, including mutations from a second SQL connection. It keeps its own generated suite,
+coverage baseline and reports. This is a bounded provider contract; it does not claim coverage
+of all Eventlog providers. `task check` runs both contracts. The original five-library checker
+retains its Rust 1.85 build without that feature.
+
 ## Calls, values and observations
 
 [`domains/core.yaml`](../../ess/domains/core.yaml) owns `entity.core.JsonDocument` and the nominal

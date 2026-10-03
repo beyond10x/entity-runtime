@@ -358,14 +358,14 @@ impl Target {
     }
 }
 
-fn execution_error(error: ExecutionError) -> Failure {
+pub(super) fn execution_error(error: ExecutionError) -> Failure {
     match error {
         ExecutionError::Core(e) => Failure::debug(e),
         ExecutionError::Store(e) => e.into(),
         ExecutionError::Write(e) => e.into(),
     }
 }
-fn create(v: &Value) -> Result<CreateRequest> {
+pub(super) fn create(v: &Value) -> Result<CreateRequest> {
     Ok(CreateRequest {
         subject: subject(v)?,
         definition_version: read(v, "version")?,
@@ -383,7 +383,7 @@ fn execute(v: &Value) -> Result<ExecuteRequest> {
         recording: recording(&v["recording"])?,
     })
 }
-fn actions(v: &Value) -> Result<Vec<BatchAction>> {
+pub(super) fn actions(v: &Value) -> Result<Vec<BatchAction>> {
     read::<Vec<Value>>(v, "actions")?
         .iter()
         .map(|a| match read::<String>(a, "kind")?.as_str() {

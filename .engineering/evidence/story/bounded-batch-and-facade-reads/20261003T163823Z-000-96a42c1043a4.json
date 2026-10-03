@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T16:38:23Z",
+  "actor": "human:timo",
+  "artifact": "story:bounded-batch-and-facade-reads",
+  "kind": "story",
+  "revision": 16,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Final task check exit 0; every ordered step completed; real PostgreSQL lane executed; all-feature runtime 186 passed; performance probe separately executed and passed",
+    "reference": "docs/ess/evidence/provider-tracking/README.md"
+  }
+}

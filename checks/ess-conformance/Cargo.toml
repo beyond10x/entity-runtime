@@ -8,7 +8,16 @@ rust-version = "1.85"
 # Verification tooling is deliberately outside the production workspace and dependency graph.
 [workspace]
 
+[features]
+# The provider is a separate Rust 1.91 contract; the five-library checker retains Rust 1.85.
+eventlog = ["dep:entity-eventlog", "dep:eventlog-core", "dep:rusqlite", "dep:time"]
+
 [dependencies]
+entity-eventlog = { path = "../../crates/entity-eventlog", features = ["sqlite", "sync-bridge"], optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", rev = "6983cc25eb92e07844b3a6fa3e0decbdb300f43c", optional = true }
+# SQL mutation fixtures exercise a second connection; they never substitute provider observations.
+rusqlite = { version = "=0.40.2", features = ["bundled"], optional = true }
+time = { version = "0.3", optional = true }
 entity-core = { path = "../../crates/entity-core" }
 entity-store = { path = "../../crates/entity-store" }
 entity-executor = { path = "../../crates/entity-executor" }

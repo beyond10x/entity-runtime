@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T16:39:23Z",
+  "actor": "human:timo",
+  "artifact": "story:executor-input-refusal-before-existence",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Final all-issue integration task check exit 0 with 421 original ESS scenarios passing and real PostgreSQL execution",
+    "reference": "docs/ess/evidence/provider-tracking/README.md"
+  }
+}

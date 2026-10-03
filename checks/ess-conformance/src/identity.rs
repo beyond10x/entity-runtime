@@ -28,7 +28,7 @@ pub fn source_identity(root: &Path, mut watch: impl FnMut(&Path)) -> Result<Stri
         PathBuf::from("checks/ess-conformance/Cargo.toml"),
         PathBuf::from("checks/ess-conformance/Cargo.lock"),
     ];
-    for name in ["core", "store", "executor", "shell", "query"] {
+    for name in ["core", "store", "executor", "shell", "query", "eventlog"] {
         collect(
             root,
             &root.join(format!("crates/entity-{name}/src")),

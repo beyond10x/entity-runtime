@@ -1,0 +1,42 @@
+{
+  "format": "er-ess-coverage/2",
+  "review": "Issue 51: admit seven real SQLite and public facade scenarios for exact state/history semantics and five SQL corruptions with unchanged event heads; retain the original 421-scenario contract unchanged.",
+  "scenarios": [
+    "entity-provider.tracking.Batch/outcome/returned",
+    "entity-provider.tracking.Create/outcome/returned",
+    "entity-provider.tracking.Histories/outcome/returned",
+    "entity-provider.tracking.Load/outcome/returned",
+    "entity-provider.tracking.LookupBatch/outcome/returned",
+    "entity-provider.tracking.Provision/outcome/returned",
+    "entity-provider.tracking.Register/outcome/returned",
+    "entity-provider.tracking.Reopen/outcome/returned",
+    "entity-provider.tracking.Snapshot/outcome/returned",
+    "entity-provider.tracking.SqlMutate/outcome/returned",
+    "entity-provider.tracking/authored/multi-subject-histories-one-scope",
+    "entity-provider.tracking/authored/unchanged-capture-retains-verified-state",
+    "entity-provider.tracking/authored/unchanged-head-blob-tamper",
+    "entity-provider.tracking/authored/unchanged-head-delete-blob-tamper",
+    "entity-provider.tracking/authored/unchanged-head-event-tamper",
+    "entity-provider.tracking/authored/unchanged-head-identity-tamper",
+    "entity-provider.tracking/authored/unchanged-head-projection-tamper"
+  ],
+  "contracts": {
+    "entity-provider.tracking.Batch/outcome/returned": "sha256:22607c1c5675c479fafeba66d96e76a0262864626b798f5b46095f6f0a8cce93",
+    "entity-provider.tracking.Create/outcome/returned": "sha256:0c06bfff5e0e6942c5f51b649ce03d4fafe76edc6c7cbe43d4e5e4867ad4b660",
+    "entity-provider.tracking.Histories/outcome/returned": "sha256:201760fbb6f57fb2d56013ae856612a6e73855f802239d8443e6a4d8a00d59a6",
+    "entity-provider.tracking.Load/outcome/returned": "sha256:a5fed80769d30c356904f047e643080a78b7c9aaf1530e2288314af4617cc072",
+    "entity-provider.tracking.LookupBatch/outcome/returned": "sha256:803e7b91ec6a5522e117fc0832c6164a2714e972de417a5f47eb8312e09511ce",
+    "entity-provider.tracking.Provision/outcome/returned": "sha256:128b0d3d83bf0b4612f3e3a983c55aa7771f5861c255bf55971ad8ef7d6aafb1",
+    "entity-provider.tracking.Register/outcome/returned": "sha256:d73ccb4dca73f0fa8eda70a375109d5bba8739eaba7f04795e767df20fd5224f",
+    "entity-provider.tracking.Reopen/outcome/returned": "sha256:939ba7b4baf4cc782d7905a42c9cceb9a9d3c516cdd34cf800972c2dc4ab0a48",
+    "entity-provider.tracking.Snapshot/outcome/returned": "sha256:c21d9a434cc9b54618fab793f7c592a2de727ce4b7b5ff2eaf7d9f513f7887dc",
+    "entity-provider.tracking.SqlMutate/outcome/returned": "sha256:809bae3a1ba4f0c3d680605645cdc9e15c63fb2a4f574343dd6bcfd086436c15",
+    "entity-provider.tracking/authored/multi-subject-histories-one-scope": "sha256:e4232edce8bd789c1302dc9ad52f7e289dbf14224d9c3b9cb20443f91aebf224",
+    "entity-provider.tracking/authored/unchanged-capture-retains-verified-state": "sha256:689fbf50253b167579ab9e66427506ab41b2e50b241bd6f95d225407dcc61d22",
+    "entity-provider.tracking/authored/unchanged-head-blob-tamper": "sha256:a8fc8cf0f81ba50923241f9d57732b426573ea6b35a95f11d6034fb136c43dbf",
+    "entity-provider.tracking/authored/unchanged-head-delete-blob-tamper": "sha256:37ecf56441bf8be29f0c0d909e775f5b65a74ed6e76c5a6ab9641830bc4408a9",
+    "entity-provider.tracking/authored/unchanged-head-event-tamper": "sha256:f21024400fea76ba02a9a2968c9ab83a761af0e50655613fc71b063f5f85c0f3",
+    "entity-provider.tracking/authored/unchanged-head-identity-tamper": "sha256:d3e4c67f158a4e6de73adc0a81c0000397fe4b2d1898338e47f3714c51456263",
+    "entity-provider.tracking/authored/unchanged-head-projection-tamper": "sha256:f149b22ad9c1ec2350bc95583466c228593efb9843b1bfe4910f756c4d75a0c8"
+  }
+}

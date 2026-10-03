@@ -10,6 +10,8 @@ struct Context {
     shell: shell::Target,
     store: store::Target,
     executor: executor::Target,
+    #[cfg(feature = "eventlog")]
+    provider: crate::provider::Target,
 }
 
 pub struct Target {
@@ -46,6 +48,8 @@ impl ConformanceTarget for Target {
             shell: shell::Target::new()?,
             store: store::Target::new()?,
             executor: executor::Target::new()?,
+            #[cfg(feature = "eventlog")]
+            provider: crate::provider::Target::new()?,
         });
         Ok(())
     }
@@ -71,6 +75,8 @@ impl ConformanceTarget for Target {
             "entity.query" => context.query.execute(operation, &request.input)?,
             "entity.store" => context.store.execute(operation, &request.input)?,
             "entity.executor" => context.executor.execute(operation, &request.input)?,
+            #[cfg(feature = "eventlog")]
+            "entity-provider.tracking" => context.provider.execute(operation, &request.input)?,
             _ => return Err(TargetError::unsupported(&name, "unknown library domain")),
         };
         self.observations.borrow_mut().push(

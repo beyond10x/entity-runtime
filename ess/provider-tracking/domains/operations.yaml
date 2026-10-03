@@ -1,0 +1,94 @@
+domain: entity-provider.tracking
+types:
+  - {name: entity-provider.tracking.JsonDocument, kind: newtype, of: String}
+commands:
+  - name: entity-provider.tracking.Register
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity-provider.tracking.Provision
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity-provider.tracking.Reopen
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity-provider.tracking.Create
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity-provider.tracking.Batch
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity-provider.tracking.Load
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity-provider.tracking.Histories
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity-provider.tracking.LookupBatch
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity-provider.tracking.Snapshot
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  - name: entity-provider.tracking.SqlMutate
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}

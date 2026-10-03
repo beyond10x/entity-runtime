@@ -8,7 +8,7 @@ relations:
 - designs: story:declared-refusal-before-fulfillment-validation
 - designs: story:executor-input-refusal-before-existence
 - designs: story:bounded-batch-and-facade-reads
-revision: 10
+revision: 15
 ---
 ## Stage and authority
 
@@ -333,3 +333,23 @@ The operator explicitly accepted SQLite change tracking on 2026-10-03: full veri
 ## First integrated gate
 
 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=2 task check exited 0 for integrated #49 and #50. All ordered steps completed: formatting, workspace Clippy and tests, documentation, examples, requirements, fixture pins, Eventlog all-feature Rust 1.91 tests/Clippy, notes and ESS. PostgreSQL's dedicated server lane explicitly skipped because ENTITY_POSTGRES_URL was unset; it is not claimed as executed. ESS final output: {"total":421,"passed":421,"failed":0,"error":0,"unsupported":0,"skipped":0}. Exact log and exit status remain in target/issue-wave-scratch/task-check.log and task-check.exit. The two executor stories are implemented; #51 continues before publication and requires a new integrated gate after its changes.
+
+## Third unit implementation underway
+
+Provider unit: Eventlog managed id er-51-capture-20261003, branch fix/er-51-capture-checkpoints, base06c1e99c86c7130169c7ed584ec7326f7e9a546e, scratch target/issue-51-scratch, build target. Runtime unit: Entity Runtime id issue-51-20261003, branch impl/issue-51-bounded-reads, basef57bf9753abec7aaa5ff9103bd9b66e29f3398cd, scratch target/issue-51-scratch, build target. Both source implementations were admitted after their transient ESS declarations validated and coordinator AEP stories moved active. Distinct runtime performance author owns only tests/shared_clock_cost.rs; baseline complete and frozen before source changes compiled.
+
+Baseline release probe: 55/601/1203 exact events, warm shared-clock batch medians 92.517484ms/7.038153041s/12.449723852s, ratios76.07x/134.57x; intended bound assertion red, exit101. All real-provider seed/history/revision checks passed. Immutable source/test/binary hashes and samples are in runtime scratch perf/. This is baseline evidence only.
+
+Coordinator's separate provider conformance draft validates 7 authored scenarios and uses a real SQLite/facade adapter; compilation/execution awaits unit integration. Existing 421-scenario five-library scope remains separate. Full task check will include both afterward. A dedicated disposable PostgreSQL TLS fixture has been prepared outside repositories for the next full gates; other sessions' containers are untouched.
+
+The previously skipped PostgreSQL lane was run against the task-owned PostgreSQL17.6 fixture and exited0: 13 provider conformance tests passed; the feature-disabled facade target and doc-test target each selected zero tests. Initial fixture attempt failed to connect because Docker reassigned the ephemeral host port during TLS restart; reinspecting the container port corrected setup without a source change. Both raw logs and exit statuses remain in integration scratch. Future integrated gates will use the live fixture and include the server lane.
+
+## Completed integration
+
+All three issue stories are implemented. Runtime unit1516e748 was fast-forwarded after independent review; provider6983cc25 is bot-published with signed common checks and its545-test PostgreSQL/TLS proof. All dependency pins/locks use that exact revision. Both introduced review defects (receipt-key parity and same-table projection aliasing) retain original failing cases and separate fixed rechecks. Final integrated task check exits0 with all ordered steps completed; PostgreSQL executes, original ESS421 and new provider ESS17 all pass. Final explicit release performance probe passes with1.177x growth between55 and1203events. No existing scenario contract was removed or changed.
+
+Per-step result: fmt-check0, clippy0, test0, doc-check0, example-check0, req-check0, pin-check0, postgres-check0, eventlog-runtime-check0, notes-check0, ess-check0, provider-ess-check0. The aggregate fail-fast task exits0; raw output and exit receipt are in assigned scratch. The package-level performance case is intentionally ignored and separately executed once after final gates, exit0. Example and documentation targets that select zero tests are not counted as backend proof. The public evidence README and source hashes distinguish the final working-tree observation from later evidence-only commits.
+
+Agent counts: unit49 executor17→22, unit50 executor22→38, unit51 runtime library66→74/package186; Eventlog focused176→199 and final complete persistence545. Agent tokens, tool counts and per-agent wall duration are unknown because this harness did not expose them. Final performance medians11.532148/13.049370/13.568977ms at55/601/1203events. Detailed evidence stays in the immutable records and recovery archives.
+
+The approved endpoint remains one PR from fix/github-issues-49-51 to main. Primary checkouts remain unchanged. Publication is followed by managed archive/finish/gc of only this wave's trees, preserving raw evidence privately. No main merge or release is authorized by this completion record.

@@ -626,160 +626,190 @@ mod tests {
             },
         }
     }
-    #[tokio::test]
-    async fn tracked_unchanged_reads_and_appends_do_not_recapture_verified_prefixes() {
-        let (backend, store, registry) = fixture(CapturePolicy::ProviderTracked).await;
-        let before = store.calls();
-        let subject = Subject::new("ticket", "clock").unwrap();
-        assert_eq!(store.load(&subject).await.unwrap(), None);
-        assert_eq!(
-            store.calls().captures,
-            before.captures,
-            "unchanged provider proof must avoid another capture"
-        );
-        for revision in 0..4 {
-            append(&store, &registry, revision).await;
-            let complete = backend
-                .capture_tenant(&store.tenant, projection_specs(), LIMITS)
-                .await
+    #[test]
+    fn tracked_unchanged_reads_and_appends_do_not_recapture_verified_prefixes() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+            .block_on(async {
+                let (backend, store, registry) = fixture(CapturePolicy::ProviderTracked).await;
+                let before = store.calls();
+                let subject = Subject::new("ticket", "clock").unwrap();
+                assert_eq!(store.load(&subject).await.unwrap(), None);
+                assert_eq!(
+                    store.calls().captures,
+                    before.captures,
+                    "unchanged provider proof must avoid another capture"
+                );
+                for revision in 0..4 {
+                    append(&store, &registry, revision).await;
+                    let complete = backend
+                        .capture_tenant(&store.tenant, projection_specs(), LIMITS)
+                        .await
+                        .unwrap();
+                    let full = build_model(&store.authority, &complete).unwrap();
+                    assert_eq!(
+                        store.load(&subject).await.unwrap(),
+                        full.terminals.get(&subject).cloned()
+                    );
+                    assert_eq!(
+                        store.history(&subject).await.unwrap(),
+                        full.histories[&subject]
+                    );
+                }
+                assert_eq!(
+                    store.calls().captures,
+                    before.captures,
+                    "acknowledged linear suffixes must not reread old content"
+                );
+                assert_eq!(store.calls().model_advances - before.model_advances, 4);
+            });
+    }
+    #[test]
+    fn delta_verification_matches_full_models_and_refuses_missing_or_forged_coordinates() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+            .block_on(async {
+                let (backend, store, registry) = fixture(CapturePolicy::FullVerification).await;
+                append(&store, &registry, 0).await;
+                let before = backend
+                    .capture_tenant(&store.tenant, projection_specs(), LIMITS)
+                    .await
+                    .unwrap();
+                append(&store, &registry, 1).await;
+                append(&store, &registry, 2).await;
+                let after = backend
+                    .capture_tenant(&store.tenant, projection_specs(), LIMITS)
+                    .await
+                    .unwrap();
+                let full = build_model(&store.authority, &after).unwrap();
+                let advanced = advance(
+                    &store.authority,
+                    held(&store.authority, before.clone()),
+                    difference(&before, &after),
+                    CaptureCheckpoint::new(()),
+                )
                 .unwrap();
-            let full = build_model(&store.authority, &complete).unwrap();
-            assert_eq!(
-                store.load(&subject).await.unwrap(),
-                full.terminals.get(&subject).cloned()
-            );
-            assert_eq!(
-                store.history(&subject).await.unwrap(),
-                full.histories[&subject]
-            );
-        }
-        assert_eq!(
-            store.calls().captures,
-            before.captures,
-            "acknowledged linear suffixes must not reread old content"
-        );
-        assert_eq!(store.calls().model_advances - before.model_advances, 4);
-    }
-    #[tokio::test]
-    async fn delta_verification_matches_full_models_and_refuses_missing_or_forged_coordinates() {
-        let (backend, store, registry) = fixture(CapturePolicy::FullVerification).await;
-        append(&store, &registry, 0).await;
-        let before = backend
-            .capture_tenant(&store.tenant, projection_specs(), LIMITS)
-            .await
-            .unwrap();
-        append(&store, &registry, 1).await;
-        append(&store, &registry, 2).await;
-        let after = backend
-            .capture_tenant(&store.tenant, projection_specs(), LIMITS)
-            .await
-            .unwrap();
-        let full = build_model(&store.authority, &after).unwrap();
-        let advanced = advance(
-            &store.authority,
-            held(&store.authority, before.clone()),
-            difference(&before, &after),
-            CaptureCheckpoint::new(()),
-        )
-        .unwrap();
-        assert_eq!(advanced.model.histories, full.histories);
-        assert_eq!(advanced.model.terminals, full.terminals);
-        assert_eq!(advanced.model.records, full.records);
-        assert_eq!(advanced.model.batches, full.batches);
-        for mutation in 0..6 {
-            let mut delta = difference(&before, &after);
-            match mutation {
-                0 => {
-                    delta.projections[1].rows.pop();
+                assert_eq!(advanced.model.histories, full.histories);
+                assert_eq!(advanced.model.terminals, full.terminals);
+                assert_eq!(advanced.model.records, full.records);
+                assert_eq!(advanced.model.batches, full.batches);
+                for mutation in 0..6 {
+                    let mut delta = difference(&before, &after);
+                    match mutation {
+                        0 => {
+                            delta.projections[1].rows.pop();
+                        }
+                        1 => {
+                            delta.projections[2].rows.pop();
+                        }
+                        2 => {
+                            delta.projections[3].rows.pop();
+                        }
+                        3 => {
+                            delta.projections[3].rows[0].before = None;
+                        }
+                        4 => {
+                            delta.events[0].global_seq = before.events.last().unwrap().global_seq;
+                        }
+                        _ => {
+                            delta.projections[3].rows[0].after = Some(json!(["forged"]));
+                        }
+                    }
+                    let result = advance(
+                        &store.authority,
+                        held(&store.authority, before.clone()),
+                        delta,
+                        CaptureCheckpoint::new(()),
+                    );
+                    assert!(
+                        matches!(
+                            result,
+                            Err(AsyncStoreError::ProviderIntegrity { .. })
+                                | Err(AsyncStoreError::CorruptHistory { .. })
+                        ),
+                        "mutation {mutation} must be refused"
+                    );
                 }
-                1 => {
-                    delta.projections[2].rows.pop();
-                }
-                2 => {
-                    delta.projections[3].rows.pop();
-                }
-                3 => {
-                    delta.projections[3].rows[0].before = None;
-                }
-                4 => {
-                    delta.events[0].global_seq = before.events.last().unwrap().global_seq;
-                }
-                _ => {
-                    delta.projections[3].rows[0].after = Some(json!(["forged"]));
-                }
-            }
-            let result = advance(
-                &store.authority,
-                held(&store.authority, before.clone()),
-                delta,
-                CaptureCheckpoint::new(()),
-            );
-            assert!(
-                matches!(
-                    result,
-                    Err(AsyncStoreError::ProviderIntegrity { .. })
-                        | Err(AsyncStoreError::CorruptHistory { .. })
-                ),
-                "mutation {mutation} must be refused"
-            );
-        }
+            });
     }
 
-    #[tokio::test]
-    async fn held_reader_keeps_its_old_model_while_a_refresh_rebuilds_safely() {
-        let (_, store, registry) = fixture(CapturePolicy::ProviderTracked).await;
-        append(&store, &registry, 0).await;
-        let subject = Subject::new("ticket", "clock").unwrap();
-        let pinned = store.tracked_model().await.unwrap();
-        let before = store.calls();
-        append(&store, &registry, 1).await;
-        assert_eq!(pinned.terminals[&subject].revision, 1);
-        assert_eq!(store.load(&subject).await.unwrap().unwrap().revision, 2);
-        assert_eq!(store.calls().captures, before.captures + 1);
-        drop(pinned);
-        let before = store.calls();
-        append(&store, &registry, 2).await;
-        assert_eq!(store.calls().captures, before.captures);
-        assert_eq!(store.calls().model_advances, before.model_advances + 1);
+    #[test]
+    fn held_reader_keeps_its_old_model_while_a_refresh_rebuilds_safely() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+            .block_on(async {
+                let (_, store, registry) = fixture(CapturePolicy::ProviderTracked).await;
+                append(&store, &registry, 0).await;
+                let subject = Subject::new("ticket", "clock").unwrap();
+                let pinned = store.tracked_model().await.unwrap();
+                let before = store.calls();
+                append(&store, &registry, 1).await;
+                assert_eq!(pinned.terminals[&subject].revision, 1);
+                assert_eq!(store.load(&subject).await.unwrap().unwrap().revision, 2);
+                assert_eq!(store.calls().captures, before.captures + 1);
+                drop(pinned);
+                let before = store.calls();
+                append(&store, &registry, 2).await;
+                assert_eq!(store.calls().captures, before.captures);
+                assert_eq!(store.calls().model_advances, before.model_advances + 1);
+            });
     }
 
-    #[tokio::test]
-    async fn unjournaled_provider_mutation_invalidates_the_model_before_reuse() {
-        let (backend, store, registry) = fixture(CapturePolicy::ProviderTracked).await;
-        append(&store, &registry, 0).await;
-        let subject = Subject::new("ticket", "clock").unwrap();
-        let before = store.calls();
-        let bytes = b"unreferenced-content";
-        let digest = framed_key("er.test-orphan/1", bytes).unwrap();
-        backend
-            .put_blob(&store.tenant, &digest, bytes)
-            .await
-            .unwrap();
-        assert_eq!(store.load(&subject).await.unwrap().unwrap().revision, 1);
-        assert_eq!(store.calls().captures, before.captures + 1);
+    #[test]
+    fn unjournaled_provider_mutation_invalidates_the_model_before_reuse() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+            .block_on(async {
+                let (backend, store, registry) = fixture(CapturePolicy::ProviderTracked).await;
+                append(&store, &registry, 0).await;
+                let subject = Subject::new("ticket", "clock").unwrap();
+                let before = store.calls();
+                let bytes = b"unreferenced-content";
+                let digest = framed_key("er.test-orphan/1", bytes).unwrap();
+                backend
+                    .put_blob(&store.tenant, &digest, bytes)
+                    .await
+                    .unwrap();
+                assert_eq!(store.load(&subject).await.unwrap().unwrap().revision, 1);
+                assert_eq!(store.calls().captures, before.captures + 1);
+            });
     }
 
-    #[tokio::test]
-    async fn one_scoped_history_read_preserves_order_duplicates_and_absence() {
-        let (_, store, registry) = fixture(CapturePolicy::ProviderTracked).await;
-        append(&store, &registry, 0).await;
-        let subject = Subject::new("ticket", "clock").unwrap();
-        let absent = Subject::new("ticket", "absent").unwrap();
-        let before = store.calls();
-        let histories = store
-            .scoped_histories(&[subject.clone(), absent.clone(), subject.clone()])
-            .await
-            .unwrap();
-        assert_eq!(histories[0], histories[2]);
-        assert_eq!(histories[0].records.len(), 1);
-        assert_eq!(
-            histories[1],
-            SubjectHistory {
-                subject: absent,
-                origin: HistoryOrigin::Genesis,
-                records: Vec::new()
-            }
-        );
-        assert_eq!(store.calls().captures, before.captures);
+    #[test]
+    fn one_scoped_history_read_preserves_order_duplicates_and_absence() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+            .block_on(async {
+                let (_, store, registry) = fixture(CapturePolicy::ProviderTracked).await;
+                append(&store, &registry, 0).await;
+                let subject = Subject::new("ticket", "clock").unwrap();
+                let absent = Subject::new("ticket", "absent").unwrap();
+                let before = store.calls();
+                let histories = store
+                    .scoped_histories(&[subject.clone(), absent.clone(), subject.clone()])
+                    .await
+                    .unwrap();
+                assert_eq!(histories[0], histories[2]);
+                assert_eq!(histories[0].records.len(), 1);
+                assert_eq!(
+                    histories[1],
+                    SubjectHistory {
+                        subject: absent,
+                        origin: HistoryOrigin::Genesis,
+                        records: Vec::new()
+                    }
+                );
+                assert_eq!(store.calls().captures, before.captures);
+            });
     }
 }

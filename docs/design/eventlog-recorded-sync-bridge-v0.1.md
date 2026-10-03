@@ -490,3 +490,22 @@ the bridge mechanics, then run provider-backed cases where the adapter dependenc
 These tests close only runtime isolation, bounded admission, response truthfulness and ownership.
 They do not prove native capture, inline rebuild, canonical decoding/indexes, provider transaction
 semantics, final dependency pins or legacy import.
+
+## Explicit tracked reads and scoped facade calls
+
+`RecordedProviderFacade::start_with_read_policy(registry, owner, config, policy)` and the bridge's
+matching constructor select the read policy documented in the recorded-adapter design. Existing
+`start` constructors retain `FullVerification`; `BridgeConfig` keeps its source-compatible shape.
+`ProviderTracked` is explicit and still performs complete verification during startup.
+
+`facade.scoped()` exposes `load_recorded`, `read_history`, `read_histories`, `lookup_record` and
+`lookup_batch` with the ordinary per-call wait. `read_histories(&subjects, wait)` submits one worker
+request and one read scope, returning histories in input order, preserving duplicate positions
+and representing absent subjects with empty genesis histories. An empty input returns an empty
+list. Reads retain the bridge's typed rejection, dispatch and provider errors; the caller supplies
+no arbitrary closure or runtime. Existing complete snapshot APIs remain available.
+
+The scoped methods use the adapter's existing verified scope for full-verification providers and
+the fresh provider-attested model for tracked handles. They do not make a projection row alone
+an authority or weaken whole-batch verification. Consumers opt into the tracked constructor and
+scoped calls explicitly; no dependency update silently selects the narrower raw-file boundary.

@@ -2,12 +2,14 @@
 format: aep.planning-md/3
 id: dependency-blocker:verified-provider-change-authority
 kind: dependency-blocker
-status: open
+status: cleared
 title: Issue 51 needs an integrity-preserving bounded-read provider contract
 relations:
 - blocks: story:bounded-batch-and-facade-reads
 withholds: test_result
-revision: 1
+revision: 3
+transitions:
+- {from: "open", to: "cleared", at: "2026-10-03T16:38:23Z", actor: "human:timo", revision: 3}
 ---
 ## Evidence
 
@@ -20,3 +22,7 @@ An accepted, implemented and tested provider contract or an equally strong ER ve
 ## Next owner and action
 
 Coordinator proposes the provider contract and cross-repository scope to the operator. Do not claim issue #51 fixed or weaken existing integrity assertions. Local facade work may proceed as an explicitly partial contribution after wave approval.
+
+## Resolution
+
+The operator accepted the SQLite-visible integrity boundary. Eventlog6983cc25eb92e07844b3a6fa3e0decbdb300f43c implements the optional proof contract and is bot-published with signed common checks, independent regression review and a final545-case PostgreSQL/TLS proof. Runtime1516e748 plus integration receipt/test/docs work preserves full-open verification, complete-new-batch assurance, and external SQL tamper refusal. The exact published-pin integration gate exits0 with421+17 ESS scenarios, all supported and none skipped. Final release probe medians11.532148/13.049370/13.568977ms at55/601/1203 events give1.132/1.177x growth and pass the unchanged2x assertion. Evidence is retained in docs/ess/evidence/provider-tracking and the immutable review records. Clear condition met without changing default constructor behavior or claiming consumer adoption.

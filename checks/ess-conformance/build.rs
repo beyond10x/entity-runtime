@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .join("../..")
     .canonicalize()?;
-    for name in ["core", "store", "executor", "shell", "query"] {
+    for name in ["core", "store", "executor", "shell", "query", "eventlog"] {
         println!(
             "cargo:rerun-if-changed={}",
             root.join(format!("crates/entity-{name}/src")).display()

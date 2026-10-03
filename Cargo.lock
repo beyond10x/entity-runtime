@@ -605,7 +605,7 @@ dependencies = [
 [[package]]
 name = "eventlog-core"
 version = "0.6.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a0484634e8c640be29d6b6541d6cc1c1aaef7d3"
+source = "git+https://github.com/beyond10x/eventlog?rev=6983cc25eb92e07844b3a6fa3e0decbdb300f43c#6983cc25eb92e07844b3a6fa3e0decbdb300f43c"
 dependencies = [
  "serde",
  "serde_json",
@@ -618,7 +618,7 @@ dependencies = [
 [[package]]
 name = "eventlog-file"
 version = "0.6.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a0484634e8c640be29d6b6541d6cc1c1aaef7d3"
+source = "git+https://github.com/beyond10x/eventlog?rev=6983cc25eb92e07844b3a6fa3e0decbdb300f43c#6983cc25eb92e07844b3a6fa3e0decbdb300f43c"
 dependencies = [
  "eventlog-core",
  "serde",
@@ -631,7 +631,7 @@ dependencies = [
 [[package]]
 name = "eventlog-postgres"
 version = "0.6.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a0484634e8c640be29d6b6541d6cc1c1aaef7d3"
+source = "git+https://github.com/beyond10x/eventlog?rev=6983cc25eb92e07844b3a6fa3e0decbdb300f43c#6983cc25eb92e07844b3a6fa3e0decbdb300f43c"
 dependencies = [
  "eventlog-core",
  "rustls",
@@ -648,7 +648,7 @@ dependencies = [
 [[package]]
 name = "eventlog-sqlite"
 version = "0.6.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a0484634e8c640be29d6b6541d6cc1c1aaef7d3"
+source = "git+https://github.com/beyond10x/eventlog?rev=6983cc25eb92e07844b3a6fa3e0decbdb300f43c#6983cc25eb92e07844b3a6fa3e0decbdb300f43c"
 dependencies = [
  "eventlog-core",
  "nix",
@@ -661,7 +661,7 @@ dependencies = [
 [[package]]
 name = "eventlog-tree"
 version = "0.6.0"
-source = "git+https://github.com/beyond10x/eventlog?rev=0a0484634e8c640be29d6b6541d6cc1c1aaef7d3#0a0484634e8c640be29d6b6541d6cc1c1aaef7d3"
+source = "git+https://github.com/beyond10x/eventlog?rev=6983cc25eb92e07844b3a6fa3e0decbdb300f43c#6983cc25eb92e07844b3a6fa3e0decbdb300f43c"
 dependencies = [
  "eventlog-core",
  "eventlog-sqlite",

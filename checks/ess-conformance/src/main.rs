@@ -3,6 +3,8 @@ mod common;
 mod core;
 mod executor;
 mod identity;
+#[cfg(feature = "eventlog")]
+mod provider;
 mod query;
 mod shell;
 mod store;
@@ -65,6 +67,9 @@ impl Clock for EvidenceClock {
 struct Args {
     #[arg(long, default_value = ".", global = true)]
     root: PathBuf,
+    /// Specification directory relative to the repository root.
+    #[arg(long, default_value = "ess", global = true)]
+    spec_root: PathBuf,
     #[command(subcommand)]
     command: Command,
 }
@@ -122,8 +127,7 @@ fn read(root: &Path, relative: &str) -> Result<String> {
     Ok(fs::read_to_string(root.join(path))?)
 }
 
-fn generate(root: &Path) -> Result<(String, String)> {
-    let ess_root = root.join("ess");
+fn generate(ess_root: &Path) -> Result<(String, String)> {
     let manifest: Manifest =
         serde_yaml_ng::from_str(&fs::read_to_string(ess_root.join("ess-inputs.yaml"))?)?;
     if manifest.format != "ess-inputs/1" {
@@ -132,17 +136,19 @@ fn generate(root: &Path) -> Result<(String, String)> {
     let mut sources = SourceMap::new();
     let mut files = Vec::new();
     for path in manifest.specification {
-        let text = read(&ess_root, &path)?;
+        let text = read(ess_root, &path)?;
         let raw = RawSpecFile::parse(&text).map_err(|e| format!("{path}: {e}"))?;
         sources.insert(path.as_str(), text.as_str());
         files.push((Source::new(path), raw));
     }
     let spec = Specification::assemble(files).map_err(|e| e.to_string())?;
     let ir = compile(&spec, &sources).map_err(|e| e.to_string())?;
+    #[cfg(feature = "eventlog")]
+    provider::check_model(&ir.to_canonical_json())?;
     let authored = manifest
         .scenarios
         .iter()
-        .map(|path| Ok(CoverageSource::new(path.clone(), read(&ess_root, path)?)?))
+        .map(|path| Ok(CoverageSource::new(path.clone(), read(ess_root, path)?)?))
         .collect::<Result<Vec<_>>>()?;
     let input =
         coverage_build::build(&ir, &authored, Scope::System, Origins::GeneratedAndAuthored)?;
@@ -173,8 +179,8 @@ fn scenario_ids(suite: &AdmittedSuite) -> Vec<String> {
         .collect()
 }
 
-fn coverage(root: &Path, suite: &AdmittedSuite, review: Option<&str>) -> Result<()> {
-    let path = root.join("ess/coverage.json");
+fn coverage(ess_root: &Path, suite: &AdmittedSuite, review: Option<&str>) -> Result<()> {
+    let path = ess_root.join("coverage.json");
     let scenarios = scenario_ids(suite);
     let contracts = suite
         .suite()
@@ -261,32 +267,36 @@ fn run(root: &Path, suite: &AdmittedSuite, reports: &Path) -> Result<()> {
 fn main() -> Result<()> {
     let args = Args::parse();
     let root = args.root.canonicalize()?;
+    let ess_root = root.join(args.spec_root).canonicalize()?;
+    if !ess_root.starts_with(&root) {
+        return Err("specification directory must be inside the repository".into());
+    }
     match args.command {
         Command::Regenerate { coverage_review } => {
-            let (ir, suite) = generate(&root)?;
-            let second = generate(&root)?;
+            let (ir, suite) = generate(&ess_root)?;
+            let second = generate(&ess_root)?;
             if (ir.as_str(), suite.as_str()) != (second.0.as_str(), second.1.as_str()) {
                 return Err("nondeterministic regeneration".into());
             }
             coverage(
-                &root,
+                &ess_root,
                 &AdmittedSuite::from_json(&suite)?,
                 coverage_review.as_deref(),
             )?;
-            fs::create_dir_all(root.join("ess/generated"))?;
-            fs::write(root.join("ess/generated/model.json"), ir)?;
-            fs::write(root.join("ess/generated/suite.json"), suite)?;
+            fs::create_dir_all(ess_root.join("generated"))?;
+            fs::write(ess_root.join("generated/model.json"), ir)?;
+            fs::write(ess_root.join("generated/suite.json"), suite)?;
         }
         Command::Check { reports } => {
-            let (ir, suite) = generate(&root)?;
-            let second = generate(&root)?;
+            let (ir, suite) = generate(&ess_root)?;
+            let second = generate(&ess_root)?;
             if (ir.as_str(), suite.as_str()) != (second.0.as_str(), second.1.as_str()) {
                 return Err("nondeterministic regeneration".into());
             }
-            exact(&root.join("ess/generated/model.json"), &ir)?;
-            exact(&root.join("ess/generated/suite.json"), &suite)?;
+            exact(&ess_root.join("generated/model.json"), &ir)?;
+            exact(&ess_root.join("generated/suite.json"), &suite)?;
             let admitted = AdmittedSuite::from_json(&suite)?;
-            coverage(&root, &admitted, None)?;
+            coverage(&ess_root, &admitted, None)?;
             run(&root, &admitted, &reports)?;
         }
         Command::Run {
@@ -294,9 +304,10 @@ fn main() -> Result<()> {
             scenario,
             reports,
         } => {
-            let text = fs::read_to_string(
-                root.join(suite.unwrap_or_else(|| "ess/generated/suite.json".into())),
-            )?;
+            let text = fs::read_to_string(match suite {
+                Some(path) => root.join(path),
+                None => ess_root.join("generated/suite.json"),
+            })?;
             let admitted = AdmittedSuite::from_json(&text)?;
             if let Some(id) = scenario {
                 let selected = admitted

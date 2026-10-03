@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T16:19:07Z",
+  "actor": "human:timo",
+  "artifact": "story:bounded-batch-and-facade-reads",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "metric_observation",
+    "source": "Release shared-clock public-facade probe; exact55/601/1203events; baselineexit101 medians92.517484/7038.153041/12449.723852ms; treatmentexit0 medians10.511861/11.983571/17.701283ms; growth1.140/1.684x; unchanged capture/decode/model counters unchanged",
+    "reference": "crates/entity-eventlog/tests/shared_clock_cost.rs"
+  }
+}

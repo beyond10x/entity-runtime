@@ -1,0 +1,590 @@
+{
+  "system": "entity-provider",
+  "version": 1,
+  "naming": {},
+  "domains": {
+    "entity-provider.tracking": {
+      "name": "entity-provider.tracking",
+      "naming": {
+        "summary": "Explicit transient read policy for an Eventlog-backed Entity Runtime handle."
+      },
+      "types": [
+        "entity-provider.tracking.CapturePolicy",
+        "entity-provider.tracking.JsonDocument"
+      ],
+      "entities": [],
+      "commands": [
+        "entity-provider.tracking.Batch",
+        "entity-provider.tracking.Create",
+        "entity-provider.tracking.Histories",
+        "entity-provider.tracking.Load",
+        "entity-provider.tracking.LookupBatch",
+        "entity-provider.tracking.Provision",
+        "entity-provider.tracking.Register",
+        "entity-provider.tracking.Reopen",
+        "entity-provider.tracking.Snapshot",
+        "entity-provider.tracking.SqlMutate"
+      ],
+      "events": [],
+      "errors": [],
+      "views": [],
+      "actors": []
+    }
+  },
+  "types": {
+    "entity-provider.tracking.CapturePolicy": {
+      "name": "entity-provider.tracking.CapturePolicy",
+      "body": {
+        "kind": "enum",
+        "variants": [
+          "FullVerification",
+          "ProviderTracked"
+        ]
+      },
+      "naming": {}
+    },
+    "entity-provider.tracking.JsonDocument": {
+      "name": "entity-provider.tracking.JsonDocument",
+      "body": {
+        "kind": "newtype",
+        "of": {
+          "kind": "primitive",
+          "name": "string"
+        },
+        "invariants": []
+      },
+      "naming": {}
+    }
+  },
+  "conversions": [],
+  "entities": {},
+  "commands": {
+    "entity-provider.tracking.Batch": {
+      "name": "entity-provider.tracking.Batch",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.Create": {
+      "name": "entity-provider.tracking.Create",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.Histories": {
+      "name": "entity-provider.tracking.Histories",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.Load": {
+      "name": "entity-provider.tracking.Load",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.LookupBatch": {
+      "name": "entity-provider.tracking.LookupBatch",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.Provision": {
+      "name": "entity-provider.tracking.Provision",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.Register": {
+      "name": "entity-provider.tracking.Register",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.Reopen": {
+      "name": "entity-provider.tracking.Reopen",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.Snapshot": {
+      "name": "entity-provider.tracking.Snapshot",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.SqlMutate": {
+      "name": "entity-provider.tracking.SqlMutate",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    }
+  },
+  "events": {},
+  "errors": {},
+  "views": {},
+  "actors": {},
+  "bindings": {},
+  "components": {},
+  "workloads": {}
+}
