@@ -49,6 +49,7 @@ has no lineage capability. The store domain separately executes the pure lineage
 | R-104 and R-122 | Supplied reader refusal propagates through the real executor | `unreachable-is-never-absent` |
 | R-126 | Exact imported matching and named unverifiability | `imported-exact-retry-is-historical`, `historical-observation-has-no-committed-receipt`, `imported-missing-definition-cannot-prove-retry` |
 | R-157, R-159 | `Executor::recording_refusals`, actual `RecordedRefusal` arguments | `optional-refusal-recorder-sees-conflicts-not-malformed-input`, `ordinary-forked-write-records-refusal`, `kernel-refusal-is-recorded` |
+| Declared refusal precedes success fulfillment validation | `Executor::execute`, completed input and stored-field guard refusals preserve their outcome, error and message without state/history/receipt changes | `refusal-ignores-success-fulfillments`, `subject-refusal-ignores-success-fulfillments` |
 | R-156–R-158, executor preparation portion | `merge_base` verifies heads, selected first state and highest revision; `branch_tips` determines append parents | `merge-checks-head-and-highest-revision`, `merge-candidate-uses-first-state-and-all-tips`, `merge-appends-over-observation-tips`, `empty-history-is-not-a-merge` |
 
 The complete R-158 durable fork/merge contract additionally requires a lineage-capable provider;

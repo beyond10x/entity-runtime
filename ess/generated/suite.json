@@ -211,12 +211,14 @@
       "entity.executor/authored/named-and-single-retries-keep-original-receipts",
       "entity.executor/authored/optional-refusal-recorder-sees-conflicts-not-malformed-input",
       "entity.executor/authored/ordinary-forked-write-records-refusal",
+      "entity.executor/authored/refusal-ignores-success-fulfillments",
       "entity.executor/authored/saved-definition-retry-precedes-current-authority",
       "entity.executor/authored/service-1-saved-definition-retry",
       "entity.executor/authored/service-2-conditional-presence-retry",
       "entity.executor/authored/service-3-fulfillment-retry",
       "entity.executor/authored/single-key-must-match-member",
       "entity.executor/authored/stale-observation-rolls-back-whole-batch",
+      "entity.executor/authored/subject-refusal-ignores-success-fulfillments",
       "entity.executor/authored/uncertain-response-recovers-one-original-receipt",
       "entity.executor/authored/unreachable-is-never-absent",
       "entity.query/authored/consumed-descending-identity-refuses",
@@ -1356,6 +1358,11 @@
         "disposition": "accepted",
         "scenario": "entity.executor/authored/ordinary-forked-write-records-refusal"
       },
+      "scenarios/executor/refusal-ignores-success-fulfillments.yaml": {
+        "digest": "sha256:6247ca7b983dac8637cc6e313a24a6bdbb02ea40f46f49b80132fb76238f6086",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/refusal-ignores-success-fulfillments"
+      },
       "scenarios/executor/saved-definition-retry-precedes-current-authority.yaml": {
         "digest": "sha256:5cbaa4ae899865dc4b19997666390b75e73dd85ac3c7335b76c96e98885b9447",
         "disposition": "accepted",
@@ -1385,6 +1392,11 @@
         "digest": "sha256:54c000e7ff57b94df8cecee28548ea14345f8b389a7dc2f6428ac5c3537aea8d",
         "disposition": "accepted",
         "scenario": "entity.executor/authored/stale-observation-rolls-back-whole-batch"
+      },
+      "scenarios/executor/subject-refusal-ignores-success-fulfillments.yaml": {
+        "digest": "sha256:932c6d40f8b4ce74475f40dd88053f86a4e6654b1d5f14866c03ba5718a8a430",
+        "disposition": "accepted",
+        "scenario": "entity.executor/authored/subject-refusal-ignores-success-fulfillments"
       },
       "scenarios/executor/uncertain-response-recovers-one-original-receipt.yaml": {
         "digest": "sha256:ce651ad505fa0a5fc020d0a607c9e9907f4cfd3988a25956b2dadb7c93c7e464",
@@ -1823,7 +1835,7 @@
       }
     },
     "counts": {
-      "authored": 303,
+      "authored": 305,
       "generated": 111,
       "outside": 0,
       "refused": 0
@@ -58026,6 +58038,396 @@
         }
       ]
     },
+    "entity.executor/authored/refusal-ignores-success-fulfillments": {
+      "purpose": "An input guard preserves its declared refusal despite success fulfillment keys, without recording a decision.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.executor"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.executor.RequestDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Execute"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.HistoryCoordinates"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Load"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.LookupReceipt"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Register"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Execute",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.HistoryCoordinates",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Load",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.LookupReceipt",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Register",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.executor.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"issued_at\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\"]},\"operations\":{\"Issue\":{\"arguments\":{\"fields\":{\"accept\":{\"type\":\"boolean\",\"required\":true}}},\"outcomes\":[{\"name\":\"rejected\",\"when\":{\"eq\":[\"$args.accept\",false]},\"refuses\":{\"error\":\"NotAccepted\",\"message\":\"Invoice cannot be issued\"}},{\"name\":\"issued\",\"effect\":\"updates\",\"fulfills\":{\"issued_at\":{\"actions\":\"required\"},\"note\":{\"actions\":\"optional\"}}}]}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Register",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"invoice\",\"id\":\"i-1\",\"version\":1,\"fields\":{\"issued_at\":\"pending\",\"note\":\"remove\"},\"recording\":{\"record_id\":\"r-1\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"correlation\":null,\"causation\":null,\"actor\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Create",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Execute",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"invoice\",\"id\":\"i-1\",\"expected_revision\":1,\"operation\":\"Issue\",\"arguments\":{\"accept\":false},\"fulfillments\":{\"issued_at\":{\"set\":{\"value\":\"must not be stored\"}},\"note\":\"remove\"},\"recording\":{\"record_id\":\"r-2\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"correlation\":null,\"causation\":null,\"actor\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Execute",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "Refused",
+              "status": "error",
+              "value": "{\"detail\":\"outcome 'rejected' refuses with 'NotAccepted': Invoice cannot be issued\"}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Load",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"invoice\",\"id\":\"i-1\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Load",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Load",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"invoice\",\"fields\":{\"issued_at\":\"pending\",\"note\":\"remove\"},\"id\":\"i-1\",\"lifecycle_state\":\"Draft\",\"revision\":1,\"version\":1}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Load",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.LookupReceipt",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"record_id\":\"r-2\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.LookupReceipt",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.LookupReceipt",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "null"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.LookupReceipt",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.HistoryCoordinates",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"invoice\",\"id\":\"i-1\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.HistoryCoordinates",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.HistoryCoordinates",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "[{\"events\":[],\"kind\":\"decision\",\"receipt\":{\"batch_key\":{\"single_record\":\"r-1\"},\"kind\":\"decision\",\"member_index\":0,\"position\":{\"store\":0,\"subject\":0},\"record_id\":\"r-1\",\"revision\":1,\"subject\":{\"entity\":\"invoice\",\"id\":\"i-1\"}},\"record_id\":\"r-1\",\"revision\":1}]"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.HistoryCoordinates",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
     "entity.executor/authored/saved-definition-retry-precedes-current-authority": {
       "purpose": "An exact old creation recovers after state advances and the current registry is removed, without loading current state.",
       "source": [
@@ -60409,6 +60811,396 @@
               "error": "",
               "status": "ok",
               "value": "[]"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.HistoryCoordinates",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.executor/authored/subject-refusal-ignores-success-fulfillments": {
+      "purpose": "A stored-field guard preserves its declared refusal despite success fulfillment keys, without recording a decision.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.executor"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.executor.RequestDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Execute"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.HistoryCoordinates"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Load"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.LookupReceipt"
+        },
+        {
+          "kind": "command",
+          "name": "entity.executor.Register"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Execute",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.HistoryCoordinates",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Load",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.LookupReceipt",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.executor.Register",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.executor.Register",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"invoice\",\"version\":1,\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"issued_at\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Draft\",\"states\":[\"Draft\"]},\"operations\":{\"Issue\":{\"arguments\":{\"fields\":{\"accept\":{\"type\":\"boolean\",\"required\":true}}},\"outcomes\":[{\"name\":\"rejected\",\"when\":{\"eq\":[\"$fields.issued_at\",\"pending\"]},\"refuses\":{\"error\":\"NotAccepted\",\"message\":\"Invoice cannot be issued\"}},{\"name\":\"issued\",\"effect\":\"updates\",\"fulfills\":{\"issued_at\":{\"actions\":\"required\"},\"note\":{\"actions\":\"optional\"}}}]}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Register",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Register",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Register",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Create",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"invoice\",\"id\":\"i-1\",\"version\":1,\"fields\":{\"issued_at\":\"pending\",\"note\":\"remove\"},\"recording\":{\"record_id\":\"r-1\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"correlation\":null,\"causation\":null,\"actor\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Create",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Execute",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"invoice\",\"id\":\"i-1\",\"expected_revision\":1,\"operation\":\"Issue\",\"arguments\":{\"accept\":false},\"fulfillments\":{\"issued_at\":{\"set\":{\"value\":\"must not be stored\"}},\"note\":\"remove\"},\"recording\":{\"record_id\":\"r-2\",\"recorded_at\":\"2026-10-03T00:00:00Z\",\"correlation\":null,\"causation\":null,\"actor\":null}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Execute",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "Refused",
+              "status": "error",
+              "value": "{\"detail\":\"outcome 'rejected' refuses with 'NotAccepted': Invoice cannot be issued\"}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.Load",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"invoice\",\"id\":\"i-1\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.Load",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.Load",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"invoice\",\"fields\":{\"issued_at\":\"pending\",\"note\":\"remove\"},\"id\":\"i-1\",\"lifecycle_state\":\"Draft\",\"revision\":1,\"version\":1}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.Load",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.LookupReceipt",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"record_id\":\"r-2\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.LookupReceipt",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.LookupReceipt",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "null"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.executor.LookupReceipt",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.executor.HistoryCoordinates",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"entity\":\"invoice\",\"id\":\"i-1\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.executor.HistoryCoordinates",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.executor.HistoryCoordinates",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "status": "ok",
+              "value": "[{\"events\":[],\"kind\":\"decision\",\"receipt\":{\"batch_key\":{\"single_record\":\"r-1\"},\"kind\":\"decision\",\"member_index\":0,\"position\":{\"store\":0,\"subject\":0},\"record_id\":\"r-1\",\"revision\":1,\"subject\":{\"entity\":\"invoice\",\"id\":\"i-1\"}},\"record_id\":\"r-1\",\"revision\":1}]"
             },
             "fields": [
               {

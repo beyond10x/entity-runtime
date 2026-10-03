@@ -4,6 +4,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve a declared service refusal when a command supplies fulfillment keys for its success
+  outcome, including guards that inspect the loaded subject.
+
 ## [0.25.1] — 2026-09-28
 
 ### Added

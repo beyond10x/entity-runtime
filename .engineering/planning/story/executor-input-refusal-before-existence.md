@@ -37,7 +37,7 @@ scope:
   path: ess/generated/suite.json
 - confidence: cited
   path: ess/scenarios/executor/
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-03T14:50:47Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-03T14:50:47Z", actor: "human:timo", revision: 6}
@@ -69,3 +69,34 @@ Derived 2026-10-03 by aep:story-scoper.
 ## Proposed design decision
 
 Creation already has an explicit definition_version: call the kernel's decide_create and preserve Refused before checking existing state. Missing-subject execution requires a caller-selected definition version: ExecuteRequest currently has no version, and Registry::versions admits several. Recommend an additive version-bound execution entry point, preserving the existing API's row-derived version semantics rather than silently selecting latest. Reassess callers, request recovery identity and ESS declarations before implementation. This recommendation is not yet an accepted contract.
+
+## Accepted execution design
+
+## Explicit definition versions before loading
+
+For fresh creates, evaluate the declared creation refusal before loading the subject. Preserve
+existing conflict precedence for other creation errors and retain request recovery before fresh
+decision. Creation already names its definition version.
+
+For execution against subjects that may be absent, the caller selects a positive definition
+version through additive `Executor::execute_versioned` and `Executor::batch_versioned` methods.
+`VersionedBatchAction` carries a version with Execute and Merge while retaining Create and Observe.
+The existing ExecuteRequest and BatchAction retain their source-compatible shapes and row-derived
+version semantics. Neither API implicitly selects the latest or sole registered version.
+
+The versioned path validates request shape, recovers existing record/batch identities, then runs
+`decide_before_load` for each fresh versioned action before that action's state/history read.
+A declared input refusal wins over existence, revision and merge-history checks; a request that
+needs loaded state retains ordinary conflict checks. The prepared definition must match a loaded
+instance. Preserve per-member batch decision order and append only after all members succeed.
+
+Retries compare an explicit requested version with the saved record's definition/version before
+reusing the existing canonical request comparison. Exact retries still work after clearing the
+registry; a different explicit version conflicts. No `er.request/*` framing changes. Refusal
+recording retains explicit caller version. Conformance Execute/Batch request documents support
+optional definition_version at the adapter boundary, with real calls to the versioned APIs.
+
+Required scenarios cover refusal for existing create and absent execution, no load on input
+refusal, accepted missing/stale conflicts, loaded version mismatch, mixed-batch rollback and
+committed/imported retry version identity. These are behavior over the existing
+entity.executor.RequestDocument contract, not a new persisted entity.

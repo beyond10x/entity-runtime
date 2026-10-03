@@ -8,7 +8,7 @@ relations:
 - designs: story:declared-refusal-before-fulfillment-validation
 - designs: story:executor-input-refusal-before-existence
 - designs: story:bounded-batch-and-facade-reads
-revision: 4
+revision: 6
 ---
 ## Stage and authority
 
@@ -307,3 +307,13 @@ The following is the exact output of aep plan artifact waves --kind story --stat
 ## Handoff measurement
 
 After the baseline build, target/issue-wave-preflight occupies 116,848,903 bytes; free disk is 17,951,981,568 bytes. The build process exited 0 and is no longer running. Its reproducible output is retained for the next wave, not archived as evidence. No branch was published and no PR was created at stage 1. All five new planning files are retained uncommitted in the integration worktree; primary source is unchanged. The coordinator releases only its own session lease at handoff and will reacquire it before resuming.
+
+## Unit 49 launched
+
+Managed id issue-49-20261003, branch impl/issue-49-refusal, base 72a9c36fbd58baee10be844a170649692772e51a. Path relative to HOME: .local/state/worktree/trees/b10x/entity-runtime/issue-49-20261003. Build target/, scratch target/issue-49-scratch/, brief target/issue-49-scratch/brief.md. Stage: implementation. Coordinator owns shared ESS artifacts and documents. Opening commit cheap gates fmt-check, req-check, pin-check and notes-check all exited 0; author and committer verified as b10x-bot[bot].
+
+## Unit 49 integration and unit 50 launch
+
+Unit 49 commit c6164443df9f303f4898f1de1abfc1c899e8c921 was fast-forwarded into the integration branch after red/green regression and adversarial checks. Executor package count 17→20→22; all final tests, formatter and Clippy exited 0. The review found no defect. New ESS cases await coordinator regeneration and full conformance gate. Bot author and committer verified.
+
+Unit 50 managed id issue-50-20261003, branch impl/issue-50-input-refusal, base c6164443df9f303f4898f1de1abfc1c899e8c921. Path relative to HOME: .local/state/worktree/trees/b10x/entity-runtime/issue-50-20261003. Build target/, scratch target/issue-50-scratch/, brief target/issue-50-scratch/brief.md. Stage: implementation of the approved additive version API. Coordinator retains shared manifest/generated/coverage/doc ownership.

@@ -229,6 +229,8 @@ scenarios:
   - scenarios/executor/service-1-saved-definition-retry.yaml
   - scenarios/executor/service-2-conditional-presence-retry.yaml
   - scenarios/executor/service-3-fulfillment-retry.yaml
+  - scenarios/executor/refusal-ignores-success-fulfillments.yaml
+  - scenarios/executor/subject-refusal-ignores-success-fulfillments.yaml
   - scenarios/executor/single-key-must-match-member.yaml
   - scenarios/executor/stale-observation-rolls-back-whole-batch.yaml
   - scenarios/executor/uncertain-response-recovers-one-original-receipt.yaml
