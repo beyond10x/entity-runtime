@@ -1,0 +1,22 @@
+type: ess-scenario/4
+domain: entity.executor
+scenario: issue-50-malformed-version
+summary: Present malformed definition versions are rejected instead of silently falling back to legacy execution.
+timeline:
+  - at: 2026-10-03T00:00:00Z
+    command: entity.executor.Execute
+    input:
+      request: '{"entity":"invoice","id":"a","definition_version":null,"expected_revision":1,"operation":"Pay","arguments":{},"recording":{"record_id":"bad","recorded_at":"2026-10-03T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response: {status: error, error: Deserialize}
+  - at: 2026-10-03T00:00:01Z
+    command: entity.executor.Batch
+    input:
+      request: '{"key":{"named":"bad"},"actions":[{"kind":"execute","entity":"invoice","id":"a","definition_version":"latest","expected_revision":1,"operation":"Pay","arguments":{},"recording":{"record_id":"bad","recorded_at":"2026-10-03T00:00:00Z","actor":null,"correlation":null,"causation":null}}]}'
+    outcome: returned
+    response: {status: error, error: Deserialize}
+  - at: 2026-10-03T00:00:02Z
+    command: entity.executor.Trace
+    input: {request: '{}'}
+    outcome: returned
+    response: {status: ok, value: '[]'}
