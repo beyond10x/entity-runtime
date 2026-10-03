@@ -4,10 +4,18 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- `Executor::execute_versioned` and `batch_versioned` let callers select an exact definition
+  version and receive input-guarded refusals before subject existence or revision checks.
+  Existing execution methods keep selecting the definition from the loaded subject.
+
 ### Fixed
 
 - Preserve a declared service refusal when a command supplies fulfillment keys for its success
   outcome, including guards that inspect the loaded subject.
+- Return a declared creation refusal before an existing-subject conflict. Exact retries still
+  recover their original result before evaluating a new decision.
 
 ## [0.25.1] — 2026-09-28
 

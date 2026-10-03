@@ -271,6 +271,11 @@ scenarios:
   - scenarios/shell/memory-stale-intent-precedes-kernel.yaml
   - scenarios/shell/provider-failures-preserve-classification.yaml
   - scenarios/shell/retry-does-not-hide-read-failure.yaml
+  - scenarios/executor/issue-50-input-refusal-existing-create.yaml
+  - scenarios/executor/issue-50-input-refusal-missing-execute.yaml
+  - scenarios/executor/issue-50-batch-refusal-is-atomic.yaml
+  - scenarios/executor/issue-50-malformed-version.yaml
+  - scenarios/executor/issue-50-versioned-merge-preserves-proof.yaml
   - scenarios/store/absence.yaml
   - scenarios/store/canonical-byte-encoding-preserves-exact-number-tokens.yaml
   - scenarios/store/complete-assurance-requires-provider-capture.yaml

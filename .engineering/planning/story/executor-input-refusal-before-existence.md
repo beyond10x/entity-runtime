@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:executor-input-refusal-before-existence
 kind: story
-status: active
+status: implemented
 title: Evaluate executor input refusals before row existence
 refs:
 - provider: github
@@ -17,12 +17,12 @@ scope:
   path: checks/ess-conformance/src/executor.rs
 - confidence: cited
   path: crates/entity-executor/src/lib.rs
-- confidence: inferred
+- confidence: cited
   path: crates/entity-executor/tests/input_refusal_precedence.rs
 - confidence: cited
-  path: docs/design/recorded-execution-v0.1.md
+  path: crates/entity-executor/tests/version_binding_review.rs
 - confidence: cited
-  path: docs/design/service-binding-boundary-v0.1.md
+  path: docs/design/recorded-execution-v0.1.md
 - confidence: cited
   path: docs/ess/executor-traceability.md
 - confidence: cited
@@ -37,10 +37,11 @@ scope:
   path: ess/generated/suite.json
 - confidence: cited
   path: ess/scenarios/executor/
-revision: 7
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-03T14:50:47Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-03T14:50:47Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-10-03T15:28:40Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"test_result":1,"review_outcome":1,"verification":1,"ess_conformance_coverage_v1":1}}}
 ---
 ## Context
 
@@ -48,7 +49,7 @@ GitHub issue #50 reports RevisionConflict hides an input-guarded declared refusa
 
 ## Acceptance
 
-Named conformance scenarios executor_input_refusal_existing_create and executor_input_refusal_missing_execute return the declared input refusal before row existence checks, append nothing, and preserve successful execution, revision-conflict, and batch atomicity behavior.
+Named conformance scenarios executor-input-refusal-existing-create and executor-input-refusal-missing-execute return the declared input refusal before row existence checks, append nothing, and preserve successful execution, revision-conflict, and batch atomicity behavior. Explicit versions are required for pre-load execution; legacy APIs preserve row-derived authority. The scenario identifiers use ESS hyphens; the Rust regression function identifiers retain underscores.
 
 ## Delivery
 
@@ -56,15 +57,18 @@ One issue-fix integration branch and one PR with issues #49 and #51. Regression 
 
 ## Scope
 
-Derived 2026-10-03 by aep:story-scoper.
+Final scope confirmed by the implementor report and independent review of commit be0ce7e4; coordinator integration changes are named below.
 
-- Primary surface: crates/entity-executor/src/lib.rs:325, :432, :460-474; Executor::decide_and_append and decide — cited.
-- Tests: crates/entity-executor/tests/input_refusal_precedence.rs — inferred new regression file.
-- ESS: ess/scenarios/executor/, checks/ess-conformance/src/executor.rs, ess/ess-inputs.yaml, ess/coverage.json, ess/generated/model.json, ess/generated/suite.json — cited.
-- Documents: docs/ess/executor-traceability.md, docs/design/service-binding-boundary-v0.1.md, docs/design/recorded-execution-v0.1.md, docs/requirements.md, CHANGELOG.md — cited.
-- Confidence: medium; exact version selection for missing subjects is absent from the existing request — inferred.
-- Collision: #49 edits the same executor decision path; common ESS artifacts and changelog are coordinator-owned — cited.
-- Safety: append follows all decisions, so an early refusal preserves atomicity; existing request recovery precedes new decisions and must retain authority — cited, source-walk level 3, unproven by execution.
+- crates/entity-executor/src/lib.rs: explicit version-bound APIs, prepared action reuse, creation refusal precedence and exact historical version checks — cited.
+- crates/entity-executor/tests/input_refusal_precedence.rs: previously inferred new file, confirmed absent before implementation and added with 13 passing regressions, including two original red reproductions — cited.
+- crates/entity-executor/tests/version_binding_review.rs: independent review added three passing authority, byte-identity and atomicity probes — cited.
+- checks/ess-conformance/src/executor.rs: optional explicit version parsing; malformed versions refuse before polling — cited.
+- Five new files in ess/scenarios/executor/issue-50-*.yaml plus coordinator ess/ess-inputs.yaml, ess/generated/model.json, ess/generated/suite.json and ess/coverage.json — cited.
+- CHANGELOG.md, docs/design/recorded-execution-v0.1.md, docs/ess/executor-traceability.md and docs/requirements.md — cited coordinator changes.
+- Correction: docs/design/service-binding-boundary-v0.1.md was scoped conservatively but required no change; the accepted executor boundary is documented in recorded-execution-v0.1.md.
+- Collision with #49 was resolved by serial unit implementation and coordinator-owned common ESS artifacts.
+
+Evidence: review-result:issue-50-adversary; package 22 to 35 implementor cases, then 35 to 38 adversarial cases, all green. Integrated ESS report executes 421/421 with no skipped or unsupported scenarios; all 416 earlier scenario contracts are unchanged. First generation refused two underscore scenario names; correcting identifiers to ESS hyphen syntax did not change assertions.
 
 ## Proposed design decision
 

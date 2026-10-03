@@ -1,6 +1,6 @@
 type: ess-scenario/4
 domain: entity.executor
-scenario: executor_input_refusal_missing_execute
+scenario: executor-input-refusal-missing-execute
 summary: An explicit definition selects the declared input refusal before a missing subject is loaded.
 timeline:
   - at: 2026-10-03T00:00:00Z

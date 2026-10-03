@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T15:28:40Z",
+  "actor": "human:timo",
+  "artifact": "story:executor-input-refusal-before-existence",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=2 task check exited 0 on integrated #49 and #50; PostgreSQL lane explicitly skipped because ENTITY_POSTGRES_URL unset",
+    "reference": "target/issue-wave-scratch/task-check.log"
+  }
+}

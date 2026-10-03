@@ -1,6 +1,6 @@
 type: ess-scenario/4
 domain: entity.executor
-scenario: executor_input_refusal_existing_create
+scenario: executor-input-refusal-existing-create
 summary: A declared creation refusal precedes existence and leaves the original row and history intact.
 timeline:
   - at: 2026-10-03T00:00:00Z

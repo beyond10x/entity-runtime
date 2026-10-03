@@ -8,7 +8,7 @@ relations:
 - designs: story:declared-refusal-before-fulfillment-validation
 - designs: story:executor-input-refusal-before-existence
 - designs: story:bounded-batch-and-facade-reads
-revision: 6
+revision: 10
 ---
 ## Stage and authority
 
@@ -317,3 +317,19 @@ Managed id issue-49-20261003, branch impl/issue-49-refusal, base 72a9c36fbd58bae
 Unit 49 commit c6164443df9f303f4898f1de1abfc1c899e8c921 was fast-forwarded into the integration branch after red/green regression and adversarial checks. Executor package count 17→20→22; all final tests, formatter and Clippy exited 0. The review found no defect. New ESS cases await coordinator regeneration and full conformance gate. Bot author and committer verified.
 
 Unit 50 managed id issue-50-20261003, branch impl/issue-50-input-refusal, base c6164443df9f303f4898f1de1abfc1c899e8c921. Path relative to HOME: .local/state/worktree/trees/b10x/entity-runtime/issue-50-20261003. Build target/, scratch target/issue-50-scratch/, brief target/issue-50-scratch/brief.md. Stage: implementation of the approved additive version API. Coordinator retains shared manifest/generated/coverage/doc ownership.
+
+## Conformance checkpoint
+
+Issue 49's complete conformance check exited 0: {"total":416,"passed":416,"failed":0,"error":0,"unsupported":0,"skipped":0}. The prior 414 scenario contracts were all unchanged; two authored scenarios were added. Commit b01d15f0 contains the exact regenerated suite and machine-readable evidence. The raw adversary record issue-49-adversary-pass-1 contains a local compiler path and remains private/untracked; the public record issue-49-adversary-public explicitly redacts only that path. Do not stage the private record. It is retained for local archival with raw logs.
+
+## Integrated second unit
+
+Issue #50 is merged: unit commit be0ce7e4, integration merge 201f8fc8. Independent review-result:issue-50-adversary found no defect and added three tests (35 to 38); production source was unchanged during review. Integration corrected two scenario identifiers to ESS hyphen syntax after generation rejected underscores. Conformance generation and execution now succeed: 421 total, 421 passed, zero failed/error/unsupported/skipped. Coverage diff: 416 to 421, removed [], changed_existing []. Exact report/2 and suite are retained in integration scratch issue50-conformance/; AEP imported the exact pair. The full repository gate is running. Issue #51 remains blocked pending the explicit integrity-boundary choice and a provider-owned change-proof contract.
+
+## Third unit unblocked by operator choice
+
+The operator explicitly accepted SQLite change tracking on 2026-10-03: full verification on open, warm invalidation for SQLite-mediated writes including external-connection tampering, raw database-file edits bypassing SQLite outside that warm guarantee. The integrity decision blocker is cleared. Continue #51 under the approved all-issues scope; do not create the integration PR prematurely. Scope/design agents are assessing a generic optional Eventlog provider capability and the runtime incremental verifier before dispatch. Upstream source support may require a bot-published dependency commit; retain exactly one Entity Runtime integration PR, without an unrelated release or main merge.
+
+## First integrated gate
+
+CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=2 task check exited 0 for integrated #49 and #50. All ordered steps completed: formatting, workspace Clippy and tests, documentation, examples, requirements, fixture pins, Eventlog all-feature Rust 1.91 tests/Clippy, notes and ESS. PostgreSQL's dedicated server lane explicitly skipped because ENTITY_POSTGRES_URL was unset; it is not claimed as executed. ESS final output: {"total":421,"passed":421,"failed":0,"error":0,"unsupported":0,"skipped":0}. Exact log and exit status remain in target/issue-wave-scratch/task-check.log and task-check.exit. The two executor stories are implemented; #51 continues before publication and requires a new integrated gate after its changes.
