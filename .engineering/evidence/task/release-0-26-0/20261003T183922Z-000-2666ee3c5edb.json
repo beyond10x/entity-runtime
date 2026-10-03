@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-03T18:39:22Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-26-0",
+  "kind": "task",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on the 0.26.0 candidate with a real PostgreSQL 17.6 fixture; exit 0",
+    "reference": "target/release-evidence/task-check.log"
+  }
+}

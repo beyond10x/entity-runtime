@@ -8,7 +8,7 @@ relations:
 - designs: story:declared-refusal-before-fulfillment-validation
 - designs: story:executor-input-refusal-before-existence
 - designs: story:bounded-batch-and-facade-reads
-revision: 16
+revision: 17
 ---
 ## Stage and authority
 
@@ -357,3 +357,7 @@ The approved endpoint remains one PR from fix/github-issues-49-51 to main. Prima
 ## PR delivery and CI parity
 
 PR52 is open at https://github.com/beyond10x/entity-runtime/pull/52 under b10x-bot[bot]. The reusable CI workflow carries its own step list; final delivery review added the same already-passing provider checker commands to its Rust1.91 job, with retained exact reports/generated suite/coverage. This closes local/CI gate drift. Source and Cargo hashes remain unchanged; no executable implementation changed. Follow-up common checks and GitHub checks judge the final workflow commit. Raw/private evidence remains outside published source.
+
+## Release authorization on 2026-10-03
+
+The operator subsequently requested that PR #52 be merged and a new version cut. This supersedes the earlier PR-only delivery boundary. Task release-0-26-0 prepares the minor release on the existing integration branch; merge and publication are authorized. The SQLite change-tracking boundary remains exactly as accepted. Completion requires the bot-authored published release, its successful exact-tag workflow, and verified platform artifacts; documentation publication remains asynchronous.

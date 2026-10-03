@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-10-03
+
 ### Added
 
 - Opt-in `CapturePolicy::ProviderTracked` reuses a fully verified provider observation when
