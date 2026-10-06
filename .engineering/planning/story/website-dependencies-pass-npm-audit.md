@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:website-dependencies-pass-npm-audit
 kind: story
-status: active
+status: implemented
 title: The website's locked dependencies pass npm audit at high
 owner: entity-runtime
 relations:
@@ -16,10 +16,11 @@ scope:
   path: website/package.json
 - confidence: cited
   path: website/vendor
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-06T23:24:53Z", actor: "human:timo", revision: 6}
 - {from: "proposed", to: "active", at: "2026-10-06T23:24:53Z", actor: "human:timo", revision: 7}
+- {from: "active", to: "implemented", at: "2026-10-06T23:42:22Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"verification":1}}}
 ---
 # The website's locked dependencies pass `npm audit --audit-level=high`
 
