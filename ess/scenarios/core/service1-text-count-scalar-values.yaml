@@ -1,0 +1,61 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-count-scalar-values",
+  "summary": "A text's length counts Unicode scalar values without normalization: a composed e-acute counts 1, the decomposed e and combining acute count 2, and U+1F600 counts 1.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"letter\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"one\",\"assert\":{\"compare\":{\"left\":\"$fields.letter.count\",\"op\":\"eq\",\"right\":1}},\"message\":\"one scalar value\"}]}",
+        "id": "p-1",
+        "fields": "{\"letter\":\"\u00e9\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"letter\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"one\",\"assert\":{\"compare\":{\"left\":\"$fields.letter.count\",\"op\":\"eq\",\"right\":1}},\"message\":\"one scalar value\"}]}",
+        "id": "p-1",
+        "fields": "{\"letter\":\"e\u0301\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_violation"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:02Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"letter\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"two\",\"assert\":{\"compare\":{\"left\":\"$fields.letter.count\",\"op\":\"eq\",\"right\":2}},\"message\":\"two scalar values\"}]}",
+        "id": "p-1",
+        "fields": "{\"letter\":\"e\u0301\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:03Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"letter\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"one\",\"assert\":{\"compare\":{\"left\":\"$fields.letter.count\",\"op\":\"eq\",\"right\":1}},\"message\":\"one scalar value\"}]}",
+        "id": "p-1",
+        "fields": "{\"letter\":\"\\ud83d\\ude00\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    }
+  ]
+}

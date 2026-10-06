@@ -1694,6 +1694,51 @@ answer. Under `service/1` they resolve as above, and a `map`'s keys stay unaddre
 size. `validate_reference_path` gains the same two forms so an address into a collection is checked at
 registration, which is invariant 5's requirement and not a new rule.
 
+**The length of a text (R-160).** A third address form, added after ESS decided what a text's `count`
+means (ESS `docs/design/string-alphabet-and-length.md` § 3) and lowers a guard or invariant over one
+to this address:
+
+| address | resolves to | source |
+| --- | --- | --- |
+| `<text>.count` | the number of Unicode scalar values of a declared `string` field, argument or nested property, as a JSON number, with no normalization | ESS `docs/design/string-alphabet-and-length.md` § 3 — Rust's `chars().count()`; a composed `é` is 1, `e` plus U+0301 is 2, U+1F600 is 1 |
+
+It is the count `max_length` already takes, and it is `service/1`-only like the other two: `kernel/1`
+refuses it at registration as it refuses `<collection>.count`. `enum` and `ref` fields are text on
+the wire but are not `string` fields, so `count` on them is refused with every other scalar kind;
+the refusal names the path and says `count` reads a text, an array or a map. A segment past the
+length is refused as it is past any count.
+
+**Keyed on the declaration, not the value.** `walk` answers a length only from a `string` field
+registration checked on the way there. It carries that as a flag that turns false past a union's
+content key, because registration admits any path into a union payload without walking it (the
+variant is chosen by the tag at run time) while the run-time walk types the variant for the two
+collection forms. A length keyed on the value would turn every path registration admits untyped —
+an undeclared member under `additional_fields` or `additional_properties`, a `json` field, a union
+payload, a binder path — from nothing into a number, and a recorded decision whose rule read one
+would replay to a different answer (R-97). Each of those keeps resolving to nothing. Nothing is
+past a checked text but its length: a stored value under the declaration that is not a text — an
+object with its own `count` member, an array whose size the value-keyed array form would answer —
+has no length, so the rule reading it is unobservable. An absent optional text has no value to walk,
+so its length is unobserved exactly as an absent array's count is, and the § 10.5 optional-field
+rewrite (`any: [{not: {exists: …}}, …]`) admits it.
+
+**A text's length is admitted only where the reading walk resolves it (R-161).** Registration checks
+the text length address for the walk that will read it, because invariant 5 is that every admitted
+path is one something resolves:
+
+| reader | what it is | text length | what the base already admitted |
+| --- | --- | --- | --- |
+| the kernel, from a schema root | `walk`, carrying each field's declaration | admitted | all collection forms, resolved |
+| the kernel, from a quantifier's binder | `walk(element, path, None, false, …)`: the element without its declaration | refused as `QuantifierBodyScope` (it would resolve to nothing) | an array's `count` and index, read from the value; a map's `count`, which reads the element's own `count` member rather than its size |
+| the store, for a projection key | `entity-store` `key_of`, object members only | refused as `InvalidTemplate` at `projections.<name>` (it would file no instance) | an array's `count` and index and a map's `count`, which file no instance |
+
+The last column is not refused, although two of its entries are wrong. `replay` re-validates the
+definition snapshot every record carries (`replay.rs`), so refusing a form the base registered would
+strand every history recorded under it. Those defects are left for later work that changes the
+reader instead: binder elements that carry their declaration, and a projection key walk that reads
+the collection forms. A declared object property that happens to be called `count` is a member, not
+an address form, and stays a valid key.
+
 ## 11. Acceptance
 
 Executable, decisive, and runnable without Eventlog, a provider or a network. Focused first, then the
@@ -1824,6 +1869,13 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `an_empty_any_of_is_unknown_when_unobserved_and_false_when_observed` | § 10.4 |
 | `a_collection_count_resolves_under_service_1_and_resolves_to_nothing_under_kernel_1` | § 10.6 |
 | `an_array_ordinal_address_resolves_under_service_1_only` | § 10.6 |
+| `a_text_count_is_its_number_of_unicode_scalar_values_under_service_1` | § 10.6, R-160: scalar values, not bytes, UTF-16 units or a normalized form |
+| `a_text_count_is_read_from_a_field_an_argument_and_a_nested_property_in_every_rule_position` | § 10.6, R-160: invariant, precondition and outcome guard, at and over the bound, and replay |
+| `a_text_count_through_a_path_registration_does_not_type_keeps_resolving_to_nothing` | § 10.6, R-160, R-97: union payload, open schema, `json` and additional properties |
+| `a_text_count_on_a_reference_that_is_not_a_text_array_or_map_is_refused_at_registration` | § 10.6, R-160: every other scalar kind, past the count, `kernel/1` and a quantifier element |
+| `a_stored_text_holding_an_array_answers_no_length` | § 10.6, R-160: a stored non-text under a declared `string` has no length |
+| `a_projection_key_refuses_a_text_length_and_registers_the_base_collection_forms_unchanged` | § 10.6, R-161: a text length is no projection key; the base's collection-form keys and a property named `count` register unchanged |
+| `a_map_count_anywhere_inside_a_quantifier_element_reads_the_member_until_binder_elements_carry_their_declaration` | § 10.6, R-161: a map's `count` inside a quantifier element registers and reads as on the base |
 | `every_complete_branch_decision_replays_byte_for_byte_from_its_record` | `crates/entity-core/src/replay.rs:113-170` over a create-plus-branch history |
 
 Fault sensitivity, applied and reverted (AGENTS.md § Conventions): swap the input guard and the state

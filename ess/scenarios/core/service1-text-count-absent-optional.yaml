@@ -1,0 +1,69 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-count-absent-optional",
+  "summary": "An absent optional text's length is unobserved, as an absent array's count is: the invariant is refused as unobservable naming the address, and the exists guard admits it.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\"},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"at most five\"}]}",
+        "id": "p-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable",
+        "unresolved": [
+          "$fields.tags.count"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\"},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$fields.name.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"at most five\"}]}",
+        "id": "p-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable",
+        "unresolved": [
+          "$fields.name.count"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:02Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\"},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"any\":[{\"not\":{\"exists\":\"$fields.name\"}},{\"compare\":{\"left\":\"$fields.name.count\",\"op\":\"lte\",\"right\":5}}]},\"message\":\"at most five\"}]}",
+        "id": "p-1",
+        "fields": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:03Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\"},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"any\":[{\"not\":{\"exists\":\"$fields.name\"}},{\"compare\":{\"left\":\"$fields.name.count\",\"op\":\"lte\",\"right\":5}}]},\"message\":\"at most five\"}]}",
+        "id": "p-1",
+        "fields": "{\"name\":\"abcdef\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_violation"
+      }
+    }
+  ]
+}

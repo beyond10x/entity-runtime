@@ -2800,7 +2800,7 @@ fn resolve_expression_optional(
         if let Some(element) = bindings.get(name) {
             return Ok(match path {
                 None => Some(element.clone()),
-                Some(path) => walk(element, path, None, context.service()),
+                Some(path) => walk(element, path, None, false, context.service()),
             });
         }
     }
@@ -2854,10 +2854,11 @@ impl TemplateContext<'_> {
 
 /// Resolves one path into a root map.
 ///
-/// Under `kernel/1` this walks objects only, so `<collection>.count` and `<array>.<n>` resolve to
-/// nothing and every existing definition keeps the answer it has. Under `service/1` those two
-/// address forms resolve, and a declared `map`'s **keys** stay unaddressable: the only `count` a
-/// map has is its size, so `{metadata: {count: "7"}}` cannot be read as its own `count` key.
+/// Under `kernel/1` this walks objects only, so `<collection>.count`, `<text>.count` and
+/// `<array>.<n>` resolve to nothing and every existing definition keeps the answer it has. Under
+/// `service/1` those address forms resolve, and a declared `map`'s **keys** stay unaddressable: the
+/// only `count` a map has is its size, so `{metadata: {count: "7"}}` cannot be read as its own
+/// `count` key.
 fn lookup(
     root: &Map<String, Value>,
     path: &str,
@@ -2873,7 +2874,7 @@ fn lookup(
     let field = schema.and_then(|schema| schema.fields.get(first));
     match segments.next() {
         None => Some(value.clone()),
-        Some(rest) => walk(value, rest, field, service),
+        Some(rest) => walk(value, rest, field, field.is_some(), service),
     }
 }
 
@@ -2881,10 +2882,17 @@ fn lookup(
 ///
 /// Recursive rather than iterative because a `service/1` collection address produces a **new**
 /// value — a count is a number nothing held — and only the leaf is cloned either way.
+///
+/// `checked` says whether registration walked the same declarations to reach `field`. It turns
+/// false past a union's content key, whose variant the tag selects here but registration admits
+/// untyped, and a text's length is read only from a checked `string` field. Keyed on the value
+/// instead, every path registration admits untyped would turn from nothing into a number, and a
+/// recorded decision over one would replay differently (R-97).
 fn walk(
     value: &Value,
     path: &str,
     field: Option<&crate::FieldDefinition>,
+    checked: bool,
     service: bool,
 ) -> Option<Value> {
     let mut segments = path.splitn(2, '.');
@@ -2892,10 +2900,22 @@ fn walk(
     let rest = segments.next();
 
     if service {
+        // A checked text's length in Unicode scalar values, with no normalization: what
+        // `max_length` counts and what ESS decided a text's `count` means. Nothing else is past a
+        // text, and a stored value under the declaration that is not one — an object with a
+        // `count` member, an array with a size — has no length.
+        if checked && field.is_some_and(|field| field.kind == FieldKind::String) {
+            return match (value, rest) {
+                (Value::String(text), None) if segment == "count" => {
+                    Some(Value::from(text.chars().count()))
+                }
+                _ => None,
+            };
+        }
         if let Some((next, next_field)) = collection_address(value, field, segment) {
             return match rest {
                 None => Some(next),
-                Some(rest) => walk(&next, rest, next_field, service),
+                Some(rest) => walk(&next, rest, next_field, checked, service),
             };
         }
         // A declared map's keys are not addressable, so nothing but its size resolves.
@@ -2912,9 +2932,10 @@ fn walk(
         FieldKind::Union => selected_variant(field, value, segment),
         _ => None,
     });
+    let checked = checked && !field.is_some_and(|field| field.kind == FieldKind::Union);
     match rest {
         None => Some(next.clone()),
-        Some(rest) => walk(next, rest, next_field, service),
+        Some(rest) => walk(next, rest, next_field, checked, service),
     }
 }
 

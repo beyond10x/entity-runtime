@@ -1,0 +1,59 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-count-untyped-path",
+  "summary": "A text length reads only a declared string field: a union payload, an undeclared field of an open schema and a json field keep resolving to nothing, so the rule stays unobservable.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"payee\":{\"type\":\"union\",\"tag\":\"kind\",\"required\":true,\"variants\":{\"person\":{\"type\":\"string\",\"required\":true}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"three\",\"assert\":{\"compare\":{\"left\":\"$fields.payee.value.count\",\"op\":\"eq\",\"right\":3}},\"message\":\"three\"}]}",
+        "id": "p-1",
+        "fields": "{\"payee\":{\"kind\":\"person\",\"value\":\"Ann\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable",
+        "unresolved": [
+          "$fields.payee.value.count"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{},\"additional_fields\":true},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"three\",\"assert\":{\"compare\":{\"left\":\"$fields.note.count\",\"op\":\"eq\",\"right\":3}},\"message\":\"three\"}]}",
+        "id": "p-1",
+        "fields": "{\"note\":\"Ann\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable",
+        "unresolved": [
+          "$fields.note.count"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:02Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"blob\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"three\",\"assert\":{\"compare\":{\"left\":\"$fields.blob.count\",\"op\":\"eq\",\"right\":3}},\"message\":\"three\"}]}",
+        "id": "p-1",
+        "fields": "{\"blob\":\"Ann\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable",
+        "unresolved": [
+          "$fields.blob.count"
+        ]
+      }
+    }
+  ]
+}

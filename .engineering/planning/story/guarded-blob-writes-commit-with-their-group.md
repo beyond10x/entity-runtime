@@ -2,11 +2,15 @@
 format: aep.planning-md/3
 id: story:guarded-blob-writes-commit-with-their-group
 kind: story
-status: draft
+status: implemented
 title: Every guarded blob-bearing write commits its blobs with its group
 relations:
 - serves: vision:O1
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-06T09:23:12Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-10-06T09:23:12Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-10-06T09:23:13Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Every guarded blob-bearing write commits its blobs with its group
 

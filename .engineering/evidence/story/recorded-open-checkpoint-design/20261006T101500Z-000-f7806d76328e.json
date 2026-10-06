@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-06T10:15:00Z",
+  "actor": "human:timo",
+  "artifact": "story:recorded-open-checkpoint-design",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "metric_observation",
+    "source": "Release probe each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost, 3 runs x median of 5 ProviderTracked opens (start ms): 55 events 142.9/86.3/138.6; 601 events 1079.0/1017.6/1778.6; 1203 events 2084.9/2312.6/2167.0; host load 22-54; exit 0 each",
+    "reference": "docs/ess/evidence/provider-tracking/open-cost-baseline.txt @ e3f182b5"
+  }
+}
