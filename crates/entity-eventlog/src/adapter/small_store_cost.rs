@@ -568,3 +568,87 @@ async fn adversary_every_bound_blob_is_sorted_key_json_under_either_map_backend(
         );
     }
 }
+
+/// What a build answers to every index a read is served from, or the refusal as it is worded.
+fn owning_parity_answer(result: Result<CapturedModel, AsyncStoreError>) -> String {
+    match result {
+        Ok(model) => format!(
+            "Ok {:?} {:?} {:?} {:?} {:?} {:?} {:?} {}",
+            model.histories,
+            model.terminals,
+            model.forked,
+            model.records,
+            model.batches,
+            model.record_physical,
+            model.held.digests,
+            model.decoded
+        ),
+        Err(error) => format!("Err {error:?}"),
+    }
+}
+
+/// Adversary, issue 59: the owning build a tracked handle opens with moves record and batch blobs
+/// out of its capture instead of copying them, and must answer every capture as the borrowing
+/// build answers it — the same model to every index, or the same refusal in the same words. Beside
+/// the consistent rewrites above: every capture in which one event names another's wrapper, so one
+/// record blob is named twice and the second reference is given the bytes the first took, and
+/// every capture with one blob's bytes damaged or one blob missing.
+#[tokio::test]
+async fn adversary_an_owning_build_answers_every_rewritten_capture_as_a_borrowing_build() {
+    let registry = registry(2);
+    let directory = tempfile::tempdir().expect("store directory");
+    let (path, authority, _) = seeded(directory.path(), &registry, 6).await;
+    let store = reopen(&path, &authority).await;
+    let capture = store.capture().await.expect("capture");
+    let mut rewrites = adversary_rewrites(&capture);
+    let events = capture.events.len();
+    for index in 1..events {
+        for other in (1..events).filter(|other| *other != index) {
+            let mut named_twice = capture.clone();
+            named_twice.events[other].data = capture.events[index].data.clone();
+            rewrites.push((
+                format!("event {other} names event {index}'s wrapper"),
+                named_twice,
+            ));
+        }
+    }
+    for index in 0..capture.blobs.len() {
+        let mut damaged = capture.clone();
+        damaged.blobs[index].bytes.push(b' ');
+        rewrites.push((format!("blob {index} damaged"), damaged));
+        let mut missing = capture.clone();
+        missing.blobs.remove(index);
+        rewrites.push((format!("blob {index} missing"), missing));
+    }
+    super::REUSED_RECORD_BYTES.with(|reused| reused.set(0));
+    let (mut differed, mut refused, mut built) = (Vec::new(), 0usize, 0usize);
+    for (what, rewritten) in
+        std::iter::once(("the honest capture".to_owned(), capture.clone())).chain(rewrites)
+    {
+        let borrowing = owning_parity_answer(build_model(&authority, &rewritten));
+        let mut owned = rewritten;
+        let owning = owning_parity_answer(build_model_owning(&authority, &mut owned));
+        if borrowing.starts_with("Err") {
+            refused += 1;
+        } else {
+            built += 1;
+        }
+        if borrowing != owning {
+            differed.push(format!(
+                "{what}:\n  borrowing {borrowing:.300}\n  owning    {owning:.300}"
+            ));
+        }
+    }
+    let reused = super::REUSED_RECORD_BYTES.with(std::cell::Cell::get);
+    // A parity probe proves nothing unless both outcomes and the twice-named path were reached.
+    assert!(
+        refused > 0 && built > 0 && reused > 0,
+        "the probe did not reach every path: refused {refused}, built {built}, reused {reused}"
+    );
+    assert!(
+        differed.is_empty(),
+        "{} captures answered differently by the owning build:\n{}",
+        differed.len(),
+        differed.join("\n")
+    );
+}

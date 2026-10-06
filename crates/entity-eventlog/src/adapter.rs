@@ -18,9 +18,9 @@ use entity_store::{
         AsyncStateReader, AsyncStoreError, BatchKey, BatchReceipt, BoxFuture, CommitReceipt,
         CompleteStoreSnapshot, HistoryOrigin, RecordLookup, RecordPosition, RecordReceipt,
         StoreCoverage, StoredBatch, StoredRecord, Subject, SubjectAssurance, SubjectHistory,
-        SubjectSnapshot, WriteFailure, batch_comparison_bytes, branch_tips,
+        SubjectSnapshot, WriteFailure, batch_comparison_bytes, branch_tips_of_records,
         original_request_comparison_bytes, record_comparison_bytes, validate_entry_against_state,
-        verify_subject_history, verify_subject_history_with_checked_bytes,
+        verify_shared_subject_history_with_checked_bytes, verify_subject_history,
     },
 };
 use eventlog_core::{
@@ -49,6 +49,7 @@ use crate::{
 
 mod memory;
 mod scoped;
+mod shared;
 mod tracked;
 pub use tracked::CapturePolicy;
 #[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
@@ -58,6 +59,7 @@ use memory::{Decoded, VerifiedMemory};
 use scoped::ReadScope;
 #[cfg(feature = "sync-bridge")]
 use scoped::ScopedModel;
+use shared::{ModelBatch, ModelHistory, ModelLookup};
 
 #[cfg(test)]
 thread_local! {
@@ -75,6 +77,11 @@ thread_local! {
     /// already verified. A branched history, which the extension verifier replays whole, is
     /// charged only for that suffix.
     static REPLAYED_RECORDS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+
+    /// Pending records [`build_model_owning`] gave the bytes an earlier pending record of the same
+    /// record blob had already taken, on the current thread: only a store whose events name one
+    /// record blob twice reaches that path, and a parity test shows it ran by reading this.
+    static REUSED_RECORD_BYTES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// This file's only path to [`crate::encoding::framed_key`].
@@ -1343,7 +1350,7 @@ impl AsyncRecordedReader for BatchReadStore<'_> {
                 .model
                 .records
                 .get(record_id)
-                .cloned())
+                .map(ModelLookup::to_public))
         })
     }
 
@@ -1358,7 +1365,7 @@ impl AsyncRecordedReader for BatchReadStore<'_> {
                 .model
                 .batches
                 .get(key)
-                .cloned())
+                .map(ModelBatch::to_public))
         })
     }
 
@@ -1425,31 +1432,33 @@ impl AsyncRecordedReader for EventlogRecordedStore {
         &'a self,
         record_id: &'a str,
     ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>> {
-        Box::pin(async move { Ok(self.capture_model().await?.records.get(record_id).cloned()) })
+        Box::pin(async move {
+            Ok(self
+                .capture_model()
+                .await?
+                .records
+                .get(record_id)
+                .map(ModelLookup::to_public))
+        })
     }
     fn lookup_batch<'a>(
         &'a self,
         key: &'a BatchKey,
     ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>> {
-        Box::pin(async move { Ok(self.capture_model().await?.batches.get(key).cloned()) })
+        Box::pin(async move {
+            Ok(self
+                .capture_model()
+                .await?
+                .batches
+                .get(key)
+                .map(ModelBatch::to_public))
+        })
     }
     fn history<'a>(
         &'a self,
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>> {
-        Box::pin(async move {
-            Ok(self
-                .capture_model()
-                .await?
-                .histories
-                .get(subject)
-                .cloned()
-                .unwrap_or_else(|| SubjectHistory {
-                    subject: subject.clone(),
-                    origin: HistoryOrigin::Genesis,
-                    records: Vec::new(),
-                }))
-        })
+        Box::pin(async move { Ok(model_history(&*self.capture_model().await?, subject)) })
     }
     fn complete_snapshot<'a>(
         &'a self,
@@ -1472,7 +1481,7 @@ impl AsyncRecordedReader for EventlogRecordedStore {
                         .cloned()
                         .ok_or_else(|| integrity("subject history has no terminal state"))?;
                     Ok(SubjectSnapshot {
-                        history: history.clone(),
+                        history: history.to_public(),
                         terminal,
                     })
                 })
@@ -1510,7 +1519,7 @@ impl AsyncRecordedReader for EventlogOperationStore<'_> {
     ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>> {
         Box::pin(async move {
             let read = self.store.scoped_model(&ReadScope::record(id)).await?;
-            Ok(read.model.records.get(id).cloned())
+            Ok(read.model.records.get(id).map(ModelLookup::to_public))
         })
     }
     fn lookup_batch<'a>(
@@ -1519,7 +1528,7 @@ impl AsyncRecordedReader for EventlogOperationStore<'_> {
     ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>> {
         Box::pin(async move {
             let read = self.store.scoped_model(&ReadScope::batch(key)).await?;
-            Ok(read.model.batches.get(key).cloned())
+            Ok(read.model.batches.get(key).map(ModelBatch::to_public))
         })
     }
     fn history<'a>(
@@ -1606,7 +1615,7 @@ impl EventlogOperationStore<'_> {
                 && let Some(history) = model.histories.get(&member.entry.subject())
             {
                 let tips = if model.lineage_subjects.contains(&member.entry.subject()) {
-                    branch_tips(history)
+                    branch_tips_of_records(&history.records)
                 } else {
                     Vec::new()
                 };
@@ -1901,7 +1910,7 @@ fn recover_from(
 ) -> Result<Option<AppendOutcome>, AsyncStoreError> {
     if let Some(batch) = model.batches.get(key) {
         let expected = batch_comparison_bytes(key, &request.members)?;
-        if batch.comparison_bytes == expected {
+        if *batch.comparison_bytes == expected {
             return Ok(Some(AppendOutcome::Committed {
                 receipt: batch.receipt.clone(),
                 replayed: true,
@@ -1912,7 +1921,7 @@ fn recover_from(
     let mut occupied = Vec::new();
     for (index, member) in request.members.iter().enumerate() {
         if let Some(found) = model.records.get(member.entry.record_id()) {
-            if let (BatchKey::SingleRecord(_), RecordLookup::Committed(record)) = (key, found)
+            if let (BatchKey::SingleRecord(_), ModelLookup::Committed(record)) = (key, found)
                 && record.entry == member.entry
                 && record.request_bytes == member.request_bytes
             {
@@ -1921,7 +1930,7 @@ fn recover_from(
                     replayed: true,
                 }));
             }
-            if let (BatchKey::SingleRecord(_), RecordLookup::Imported(evidence)) = (key, found)
+            if let (BatchKey::SingleRecord(_), ModelLookup::Imported(evidence)) = (key, found)
                 && evidence.entry == member.entry
             {
                 let history = model
@@ -1933,8 +1942,11 @@ fn recover_from(
                             "imported lookup has no subject history",
                         )
                     })?;
+                // Reached only by a single-record request naming an imported record, so this
+                // verifies a materialised copy of one subject's history, byte comparisons included,
+                // rather than widening the shared-history verifier for it.
                 let assurance = verify_subject_history(
-                    history,
+                    &history.to_public(),
                     model
                         .terminals
                         .get(&member.entry.subject())
@@ -1943,7 +1955,7 @@ fn recover_from(
                         })?,
                 )?;
                 return Ok(Some(AppendOutcome::Historical {
-                    evidence: evidence.clone(),
+                    evidence: entity_store::asynchronous::ImportedRecordEvidence::clone(evidence),
                     assurance,
                 }));
             }
@@ -3654,11 +3666,18 @@ struct RecordBlobDigests {
     request: Option<String>,
 }
 
+/// One verified capture's authority, held so that every read is answered from it.
+///
+/// A committed record is admitted once, as one allocation: `records`, its subject's entry in
+/// `histories` and its batch's entry in `batches` each hold an `Arc` of it (see [`shared`]). A
+/// cloned model therefore shares its records with the model it was cloned from, which is sound
+/// because nothing mutates a record once it is admitted — histories are only reordered and
+/// extended, never edited in place.
 #[derive(Default, Clone)]
 struct CapturedModel {
     held: CaptureHeld,
     binding: Option<PhysicalRef>,
-    histories: BTreeMap<Subject, SubjectHistory>,
+    histories: BTreeMap<Subject, ModelHistory>,
     terminals: BTreeMap<Subject, EntityInstance>,
     /// Subjects two merged branches both wrote, with their heads. Their history is held and
     /// verified branch by branch, but they have no one state: reads and ordinary writes refuse
@@ -3666,9 +3685,9 @@ struct CapturedModel {
     forked: BTreeMap<Subject, Vec<String>>,
     /// Commands the store received and refused, in store order.
     refusals: Vec<entity_store::asynchronous::RecordedRefusal>,
-    records: BTreeMap<String, RecordLookup>,
+    records: BTreeMap<String, ModelLookup>,
     record_physical: BTreeMap<String, PhysicalRef>,
-    batches: BTreeMap<BatchKey, StoredBatch>,
+    batches: BTreeMap<BatchKey, ModelBatch>,
     anchors: BTreeMap<Subject, Vec<u8>>,
     anchor_physical: BTreeMap<Subject, PhysicalRef>,
     binding_blob_digest: Option<String>,
@@ -3689,7 +3708,10 @@ struct PendingRecord {
     /// The record blob exactly as it was bound. `decode_record` has already held it against the
     /// entry it decoded, so re-encoding the entry to obtain these bytes produces the same bytes at
     /// the cost of encoding every record in the store a second time.
-    record_bytes: Vec<u8>,
+    ///
+    /// `None` only between the two passes of [`build_model_owning`], which leaves the bytes in the
+    /// capture while it verifies and then moves them here rather than copying them.
+    record_bytes: Option<Vec<u8>>,
     request_bytes: Vec<u8>,
     event: RecordedEvent,
 }
@@ -3706,6 +3728,12 @@ struct BoundBlobs<'a> {
     admitted: BTreeMap<&'a str, &'static str>,
     /// What the handle building this model has verified before, when a handle builds it.
     memory: Option<&'a mut VerifiedMemory>,
+    /// Whether an admitted record keeps a copy of its record blob. `false` only in the first pass of
+    /// [`build_model_owning`], which moves the capture's own bytes into each record afterwards.
+    copies_record_bytes: bool,
+    /// Batch blobs [`build_model_owning`] took out of its capture, which each batch then shares
+    /// rather than copies. `None` for a build that borrows its capture.
+    moved_batches: Option<BTreeMap<String, Arc<Vec<u8>>>>,
 }
 
 impl<'a> BoundBlobs<'a> {
@@ -3721,6 +3749,23 @@ impl<'a> BoundBlobs<'a> {
             blobs,
             admitted: BTreeMap::new(),
             memory,
+            copies_record_bytes: true,
+            moved_batches: None,
+        }
+    }
+
+    /// The comparison bytes of the batch blob `digest` names, for the batch the model stores.
+    ///
+    /// `admit_event` admitted it in the batch domain for every member that names it, so this is the
+    /// bytes, not another hash of them. A borrowing build copies them out of its capture; an owning
+    /// build hands out the allocation it moved them into.
+    fn batch(&mut self, digest: &str) -> Result<Arc<Vec<u8>>, AsyncStoreError> {
+        const MISSING: &str = "referenced blob is missing";
+        match &self.moved_batches {
+            Some(moved) => moved.get(digest).cloned().ok_or_else(|| integrity(MISSING)),
+            None => Ok(Arc::new(
+                self.get(digest, BATCH_BLOB_DOMAIN, MISSING)?.to_vec(),
+            )),
         }
     }
 
@@ -3844,15 +3889,10 @@ fn model_state(
 
 /// The history a model holds for `subject`: an empty genesis history when it holds none.
 fn model_history(model: &CapturedModel, subject: &Subject) -> SubjectHistory {
-    model
-        .histories
-        .get(subject)
-        .cloned()
-        .unwrap_or_else(|| SubjectHistory {
-            subject: subject.clone(),
-            origin: HistoryOrigin::Genesis,
-            records: Vec::new(),
-        })
+    model.histories.get(subject).map_or_else(
+        || ModelHistory::genesis(subject.clone()).to_public(),
+        ModelHistory::to_public,
+    )
 }
 
 /// A forked subject has no one state to serve or to write after.
@@ -3883,6 +3923,104 @@ fn build_model_remembering(
         build_model_events_remembering(authority, capture, projection_rows(capture), memory)?;
     validate_projection_sets(authority, &capture.projections, &model)?;
     Ok(model)
+}
+
+/// [`build_model`] of a capture its caller owns, moving each committed record's record blob and
+/// each batch's blob out of `capture` into the model instead of copying them.
+///
+/// It answers exactly what [`build_model`] answers for the same capture, refusals included and
+/// worded the same: both run `admit_event`, `build_committed` and `validate_projection_sets` over
+/// the same bytes in the same order. Only where those bytes live afterwards differs. A borrowing
+/// build copies every record blob into its stored record and every batch blob into its batch while
+/// the capture still holds both, and the tracked handle then kept the capture's blobs as well: on
+/// the shared-clock probe store that was a fifth of what an open leaves resident (issue 59).
+///
+/// So the first pass admits every event with the capture borrowed, as a whole build does, but
+/// leaves the record bytes in the capture. Between the passes those bytes are moved into the
+/// pending records — a second reference to one record blob gets the bytes the first took, which
+/// are the same bytes — and each batch blob into an allocation its batch then shares. The second
+/// pass stores and verifies the records. What is left in `capture.blobs` is every blob the model
+/// does not hold. No handle memory takes part: the tracked handle that calls this keeps none.
+fn build_model_owning(
+    authority: &Authority,
+    capture: &mut TenantCapture,
+) -> Result<CapturedModel, AsyncStoreError> {
+    let rows = projection_rows(capture);
+    let (mut model, mut pending) = {
+        let blobs = capture_blobs(capture);
+        let mut model = CapturedModel {
+            held: capture_held(capture, &blobs, rows),
+            ..CapturedModel::default()
+        };
+        let mut bound = BoundBlobs {
+            copies_record_bytes: false,
+            ..BoundBlobs::new(&blobs)
+        };
+        let mut pending = Vec::new();
+        for event in &capture.events {
+            admit_event(authority, event, &mut bound, &mut model, &mut pending)?;
+        }
+        if model.binding.is_none() && !capture.events.is_empty() {
+            return Err(integrity("authoritative events exist without a binding"));
+        }
+        (model, pending)
+    };
+    // `admit_event` admitted every pending record's record blob in the record domain and its batch
+    // blob in the batch domain, so no digest is in both sets and every one of them is in the
+    // capture: what is moved below is exactly what a borrowing build would have copied.
+    let record_digests: BTreeSet<String> = pending
+        .iter()
+        .map(|record| record.wrapper.record_blob.clone())
+        .collect();
+    let batch_digests: BTreeSet<String> = pending
+        .iter()
+        .map(|record| record.wrapper.batch_blob.clone())
+        .collect();
+    let mut moved_records = BTreeMap::new();
+    let mut moved_batches = BTreeMap::new();
+    let mut kept = Vec::new();
+    for blob in std::mem::take(&mut capture.blobs) {
+        if record_digests.contains(&blob.digest) {
+            moved_records.insert(blob.digest, blob.bytes);
+        } else if batch_digests.contains(&blob.digest) {
+            moved_batches.insert(blob.digest, Arc::new(blob.bytes));
+        } else {
+            kept.push(blob);
+        }
+    }
+    capture.blobs = kept;
+    let mut taken_by: BTreeMap<String, usize> = BTreeMap::new();
+    for index in 0..pending.len() {
+        let digest = &pending[index].wrapper.record_blob;
+        let bytes = match moved_records.remove(digest) {
+            Some(bytes) => {
+                taken_by.insert(digest.clone(), index);
+                bytes
+            }
+            None => {
+                #[cfg(test)]
+                REUSED_RECORD_BYTES.with(|reused| reused.set(reused.get() + 1));
+                taken_by
+                    .get(digest)
+                    .and_then(|first| pending[*first].record_bytes.clone())
+                    .ok_or_else(unmoved_record_bytes)?
+            }
+        };
+        pending[index].record_bytes = Some(bytes);
+    }
+    let unbound = BTreeMap::new();
+    let mut bound = BoundBlobs {
+        moved_batches: Some(moved_batches),
+        ..BoundBlobs::new(&unbound)
+    };
+    build_committed(pending, &mut bound, &mut model)?;
+    validate_projection_sets(authority, &capture.projections, &model)?;
+    Ok(model)
+}
+
+/// A pending record reached the model without the record bytes `build_model_owning` moves in.
+fn unmoved_record_bytes() -> AsyncStoreError {
+    integrity("a committed record's bound bytes never reached the model")
 }
 
 /// The authoritative model of one capture's events and blobs, before its materialized rows are
@@ -4037,7 +4175,6 @@ fn admit_event(
             }
             let (record_bytes, entry, decoded) =
                 bound.record(&wrapper.record_blob, MISSING_BOUND)?;
-            let record_bytes = record_bytes.to_vec();
             if decoded {
                 model.decoded += 1;
             }
@@ -4050,23 +4187,23 @@ fn admit_event(
             // Whether a record's request blob is its request is a function of the two byte
             // strings, so a pair this handle already held together is not re-encoded to hold it.
             let held = bound.memory.as_deref().is_some_and(|memory| {
-                memory.request_held(&wrapper.record_blob, &record_bytes, &request_bytes)
+                memory.request_held(&wrapper.record_blob, record_bytes, &request_bytes)
             });
             if !held {
                 if original_request_comparison_bytes(&entry)? != request_bytes {
                     return Err(integrity("request blob differs from record"));
                 }
                 if let Some(memory) = bound.memory.as_deref_mut() {
-                    memory.hold_request(&wrapper.record_blob, &record_bytes, &request_bytes);
+                    memory.hold_request(&wrapper.record_blob, record_bytes, &request_bytes);
                 }
             }
             // Admitted here so that a batch blob a group shares is hashed once for the group
             // rather than once for each of its members.
             bound.get(&wrapper.batch_blob, BATCH_BLOB_DOMAIN, MISSING_BOUND)?;
             pending.push(PendingRecord {
+                record_bytes: bound.copies_record_bytes.then(|| record_bytes.to_vec()),
                 wrapper,
                 entry,
-                record_bytes,
                 request_bytes,
                 event: event.clone(),
             });
@@ -4136,7 +4273,10 @@ fn build_import(
                 let record_id = saved.entry.record_id().to_owned();
                 if model
                     .records
-                    .insert(record_id.clone(), RecordLookup::Imported(saved.clone()))
+                    .insert(
+                        record_id.clone(),
+                        ModelLookup::Imported(Box::new(saved.clone())),
+                    )
                     .is_some()
                 {
                     return Err(corrupt(&subject, "global imported record identity repeats"));
@@ -4169,7 +4309,7 @@ fn build_import(
     model
         .anchor_physical
         .insert(subject.clone(), physical(event));
-    model.histories.insert(subject.clone(), history);
+    model.histories.insert(subject.clone(), history.into());
     Ok(subject)
 }
 
@@ -4189,17 +4329,20 @@ fn insert_committed(
         group.sort_by_key(|record| record.wrapper.member_index);
         let batch_blob = group[0].wrapper.batch_blob.clone();
         // Already admitted in `build_model_events`, so this is the bytes, not another hash of them.
-        let batch_bytes = bound
-            .get(&batch_blob, BATCH_BLOB_DOMAIN, "referenced blob is missing")?
-            .to_vec();
+        let batch_bytes = bound.batch(&batch_blob)?;
         // A group whose blob is exactly its members' record blobs under its key holds exactly the
         // members the full decode below would produce — each record blob was decoded and held to
         // its own bytes, and its request blob to its request, on admission — so it is not decoded
         // again. Anything else takes the full decode, which words every refusal as before.
         let records: Vec<&[u8]> = group
             .iter()
-            .map(|record| record.record_bytes.as_slice())
-            .collect();
+            .map(|record| {
+                record
+                    .record_bytes
+                    .as_deref()
+                    .ok_or_else(unmoved_record_bytes)
+            })
+            .collect::<Result<_, _>>()?;
         // `Some` holds the fully decoded members, still to be held to the references one by one.
         let (expectations, decoded): (Vec<Expect>, Option<Vec<AppendMember>>) =
             match batch_of_records(&batch_bytes, &key, &records) {
@@ -4258,7 +4401,10 @@ fn insert_committed(
                     request: Some(record.wrapper.request_blob.clone()),
                 },
             );
-            let saved = StoredRecord {
+            // The one allocation of this record: its id, its subject's history and its batch each
+            // hold this `Arc`, where each used to hold a copy of the decoded definition and both
+            // byte strings.
+            let saved = Arc::new(StoredRecord {
                 entry: record.entry,
                 position,
                 receipt: receipt.clone(),
@@ -4273,13 +4419,13 @@ fn insert_committed(
                 // The bound record blob. `decode_record` held it against the entry it produced and
                 // that entry was just held against this batch member, so re-encoding the member
                 // here would encode every record in the store a second time to obtain these bytes.
-                record_bytes: record.record_bytes,
-            };
+                record_bytes: record.record_bytes.ok_or_else(unmoved_record_bytes)?,
+            });
             if model
                 .records
                 .insert(
                     receipt.record_id.clone(),
-                    RecordLookup::Committed(saved.clone()),
+                    ModelLookup::Committed(Arc::clone(&saved)),
                 )
                 .is_some()
             {
@@ -4305,16 +4451,11 @@ fn insert_committed(
                     .state_records
                     .insert(subject.clone(), receipt.record_id.clone());
             }
-            let history =
-                model
-                    .histories
-                    .entry(subject.clone())
-                    .or_insert_with(|| SubjectHistory {
-                        subject: subject.clone(),
-                        origin: HistoryOrigin::Genesis,
-                        records: Vec::new(),
-                    });
-            history.records.push(saved.clone());
+            let history = model
+                .histories
+                .entry(subject.clone())
+                .or_insert_with(|| ModelHistory::genesis(subject.clone()));
+            history.records.push(Arc::clone(&saved));
             stored.push(saved);
         }
         let receipt = match &key {
@@ -4332,7 +4473,7 @@ fn insert_committed(
             .batches
             .insert(
                 key.clone(),
-                StoredBatch {
+                ModelBatch {
                     key,
                     records: stored,
                     // `decode_batch` refuses bytes that are not `batch_comparison_bytes` of what it
@@ -4388,7 +4529,7 @@ fn build_committed(
 /// terminals. Nothing serves that state, because the subject is also listed as forked.
 fn settled(
     forked: &mut BTreeMap<Subject, Vec<String>>,
-    history: &SubjectHistory,
+    history: &ModelHistory,
     terminal: Result<EntityInstance, AsyncStoreError>,
 ) -> Result<EntityInstance, AsyncStoreError> {
     match terminal {
@@ -4421,7 +4562,7 @@ fn settled(
 /// appended records all follow that prefix in store order, so ordering the history leaves the
 /// prefix where it was; otherwise, or without one, the whole history is verified from its origin.
 fn settle_history(
-    history: &mut SubjectHistory,
+    history: &mut ModelHistory,
     verified: Option<(usize, &EntityInstance)>,
 ) -> Result<EntityInstance, AsyncStoreError> {
     let extension = verified.filter(|(records, _)| {
@@ -4455,8 +4596,15 @@ fn settle_history(
     // Every stored record a model holds reached it through `admit_event`, which decoded its entry
     // from exactly its record blob, refused a blob that does not reproduce that entry and a
     // request blob that is not its request. Those are the two comparisons the decoded verifier
-    // does not repeat; everything else it checks as the whole or extension verifier would.
-    verify_subject_history_with_checked_bytes(history, extension, &terminal)?;
+    // does not repeat; everything else it checks as the whole or extension verifier would. The
+    // records are read where the model shares them, so verifying a history copies none of them.
+    verify_shared_subject_history_with_checked_bytes(
+        &history.subject,
+        &history.origin,
+        &history.records,
+        extension,
+        &terminal,
+    )?;
     Ok(terminal)
 }
 
@@ -4521,7 +4669,7 @@ fn expected_projection_rows(
             .get(record_id)
             .ok_or_else(|| integrity("record has no admitted blob digests"))?;
         let row = match lookup {
-            RecordLookup::Committed(saved) => {
+            ModelLookup::Committed(saved) => {
                 // The row no longer reads the batch's bytes, but a committed record whose batch
                 // this model does not hold is still the refusal it always was.
                 if !model.batches.contains_key(&saved.receipt.batch_key) {
@@ -4542,7 +4690,7 @@ fn expected_projection_rows(
                     "physical":physical,
                 }}])
             }
-            RecordLookup::Imported(saved) => {
+            ModelLookup::Imported(saved) => {
                 let subject = saved.entry.subject();
                 let anchor = model
                     .anchor_blob_digests
@@ -5709,6 +5857,146 @@ mod seeded_open {
         }
     }
 
+    /// An owning build is a build, and the capture it owns gives up the bytes the model holds.
+    ///
+    /// On the committed, the imported and the named-batch fixture, `build_model_owning` must
+    /// produce the model `build_model` produces to the last field, and decode as many records. Every
+    /// committed record's bytes and every batch's comparison bytes must be the buffer the capture
+    /// bound — moved, not copied — and the capture must keep every other blob, byte for byte, and
+    /// none of those (issue 59).
+    #[test]
+    fn an_owning_build_answers_as_a_build_and_moves_record_and_batch_blobs_into_the_model() {
+        for (label, (authority, capture), moves) in [
+            ("committed", fixture(GATE_RECORDS, GATE_MAX_BODY), true),
+            ("imported", imported_fixture(GATE_RECORDS), false),
+            ("batched", batched_fixture(), true),
+        ] {
+            let borrowed = build_model(&authority, &capture).expect("model builds");
+            let mut owned = capture.clone();
+            let buffers: BTreeMap<String, usize> = owned
+                .blobs
+                .iter()
+                .map(|blob| (blob.digest.clone(), blob.bytes.as_ptr() as usize))
+                .collect();
+            let model = build_model_owning(&authority, &mut owned).expect("owning build");
+            assert_eq!(
+                (model_digest(&model), model.decoded),
+                (model_digest(&borrowed), borrowed.decoded),
+                "{label}: the owning build is not the build"
+            );
+            let mut moved = BTreeSet::new();
+            for (record_id, lookup) in &model.records {
+                let ModelLookup::Committed(record) = lookup else {
+                    continue;
+                };
+                let digest = &model.record_blob_digests[record_id].record;
+                assert_eq!(
+                    record.record_bytes.as_ptr() as usize,
+                    buffers[digest],
+                    "{label}: {record_id}'s bytes are a copy of the bound blob, not the blob"
+                );
+                moved.insert(digest.clone());
+            }
+            for (key, batch) in &model.batches {
+                let digest = &model.batch_blob_digests[key];
+                assert_eq!(
+                    batch.comparison_bytes.as_ptr() as usize,
+                    buffers[digest],
+                    "{label}: batch {key:?} holds a copy of its bound blob, not the blob"
+                );
+                moved.insert(digest.clone());
+            }
+            let kept: Vec<_> = capture
+                .blobs
+                .iter()
+                .filter(|blob| !moved.contains(&blob.digest))
+                .cloned()
+                .collect();
+            assert_eq!(
+                owned.blobs, kept,
+                "{label}: the capture keeps a blob the model holds, or lost one it does not"
+            );
+            assert_eq!(
+                !moved.is_empty(),
+                moves,
+                "{label}: the fixture must reach the blobs it moves: {moved:?}"
+            );
+        }
+    }
+
+    /// A committed record is one allocation however the model reaches it (issue 59).
+    ///
+    /// Each index used to own a copy, decoded definition and both canonical byte strings
+    /// included, so a verified model held every committed record three times and a handle's
+    /// memory of the histories it verified held it a fourth. On a store of two named batches and a
+    /// single-record one over three subjects, the record a record id names must be the very `Arc`
+    /// its subject's history, its batch and the handle's memory of that history hold — in a model
+    /// built whole on a remembering handle, and in one advanced from a prefix by the last event.
+    #[test]
+    fn a_committed_record_is_one_allocation_by_id_history_batch_and_memory() {
+        fn shared_counts(
+            label: &str,
+            model: &CapturedModel,
+            memory: Option<&VerifiedMemory>,
+        ) -> (usize, usize) {
+            let (mut committed, mut named) = (0, 0);
+            for (record_id, lookup) in &model.records {
+                let ModelLookup::Committed(record) = lookup else {
+                    continue;
+                };
+                committed += 1;
+                named += usize::from(matches!(record.receipt.batch_key, BatchKey::Named(_)));
+                let subject = record.entry.subject();
+                let in_history = model.histories[&subject]
+                    .records
+                    .iter()
+                    .find(|held| held.entry.record_id() == record_id)
+                    .unwrap_or_else(|| panic!("{label}: {record_id} is absent from its history"));
+                assert!(
+                    Arc::ptr_eq(record, in_history),
+                    "{label}: {record_id}'s subject history holds a copy of the record, not the record"
+                );
+                let member = usize::try_from(record.receipt.member_index).expect("member index");
+                assert!(
+                    Arc::ptr_eq(
+                        record,
+                        &model.batches[&record.receipt.batch_key].records[member]
+                    ),
+                    "{label}: {record_id}'s batch holds a copy of the record, not the record"
+                );
+                if let Some(memory) = memory {
+                    let remembered = memory.remembered_records(&subject).unwrap_or_else(|| {
+                        panic!("{label}: the handle remembers no history of {subject:?}")
+                    });
+                    assert!(
+                        remembered.iter().any(|held| Arc::ptr_eq(record, held)),
+                        "{label}: the handle's memory holds a copy of {record_id}, not the record"
+                    );
+                }
+            }
+            (committed, named)
+        }
+
+        let (authority, capture) = batched_fixture();
+        let mut memory = VerifiedMemory::default();
+        let built =
+            build_model_remembering(&authority, &capture, Some(&mut memory)).expect("model builds");
+        let last = capture.events.len() - 1;
+        let mut advanced =
+            build_model(&authority, &prefix_of(&authority, &capture, last)).expect("prefix builds");
+        advance_model(&authority, &mut advanced, &capture, last).expect("advance");
+        for (label, model, memory) in [
+            ("built", &built, Some(&memory)),
+            ("advanced", &advanced, None),
+        ] {
+            assert_eq!(
+                shared_counts(label, model, memory),
+                (6, 5),
+                "{label}: the fixture must reach six committed records, five in named batches"
+            );
+        }
+    }
+
     /// One stored document with the value at `at` replaced, encoded canonically again.
     fn rewrite(bytes: Vec<u8>, at: &[&str], value: Value) -> Vec<u8> {
         let mut document: Value = serde_json::from_slice(&bytes).expect("a stored document");
@@ -6109,14 +6397,14 @@ mod seeded_open {
                     .get(record_id)
                     .unwrap_or_else(|| panic!("{label}: {record_id} carries no digests"));
                 let (record_bytes, request) = match lookup {
-                    RecordLookup::Committed(saved) => {
+                    ModelLookup::Committed(saved) => {
                         committed += 1;
                         (
                             saved.record_bytes.clone(),
                             Some(saved.request_bytes.clone()),
                         )
                     }
-                    RecordLookup::Imported(saved) => {
+                    ModelLookup::Imported(saved) => {
                         imported += 1;
                         (
                             record_comparison_bytes(&saved.entry).expect("record bytes"),

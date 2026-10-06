@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    borrow::Borrow,
+    collections::{BTreeMap, BTreeSet},
+};
 
 use entity_core::{
     create, decide_before_load, CoreError, DecisionCommand, EntityInstance, LoadedDecision,
@@ -19,6 +22,55 @@ fn corrupt(subject: &Subject, detail: impl Into<String>) -> AsyncStoreError {
     AsyncStoreError::CorruptHistory {
         subject: subject.clone(),
         detail: detail.into(),
+    }
+}
+
+/// The parts of one subject history a verifier reads, however its reader holds the records.
+///
+/// [`SubjectHistory`] owns its records. A reader that keeps each record once and shares it between
+/// several indexes holds them behind a pointer instead, and copying every record into a
+/// `SubjectHistory` only to verify it would cost exactly the copy the sharing exists to avoid.
+/// Every history verifier here reads through this view, so an owned history and a shared one are
+/// verified by the same code, check for check.
+struct HistoryView<'a, R> {
+    subject: &'a Subject,
+    origin: &'a HistoryOrigin,
+    records: &'a [R],
+}
+
+impl<R> Clone for HistoryView<'_, R> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<R> Copy for HistoryView<'_, R> {}
+
+impl<'a> HistoryView<'a, StoredRecord> {
+    fn of(history: &'a SubjectHistory) -> Self {
+        Self {
+            subject: &history.subject,
+            origin: &history.origin,
+            records: &history.records,
+        }
+    }
+}
+
+impl<'a, R: Borrow<StoredRecord>> HistoryView<'a, R> {
+    fn record(self, index: usize) -> &'a StoredRecord {
+        self.records[index].borrow()
+    }
+
+    fn iter(self) -> impl Iterator<Item = &'a StoredRecord> {
+        self.records.iter().map(Borrow::borrow)
+    }
+}
+
+/// The state a history's records continue from: none at genesis, the anchor's after an import.
+fn origin_state(origin: &HistoryOrigin) -> Option<EntityInstance> {
+    match origin {
+        HistoryOrigin::Genesis => None,
+        HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
     }
 }
 
@@ -172,55 +224,51 @@ pub fn validate_entry_against_state(
 }
 
 pub(crate) fn validate_imported_boundary(history: &SubjectHistory) -> Result<(), AsyncStoreError> {
-    let HistoryOrigin::Imported(anchor) = &history.origin else {
+    validate_imported_boundary_of(&history.subject, &history.origin)
+}
+
+fn validate_imported_boundary_of(
+    subject: &Subject,
+    origin: &HistoryOrigin,
+) -> Result<(), AsyncStoreError> {
+    let HistoryOrigin::Imported(anchor) = origin else {
         return Ok(());
     };
-    if anchor.instance.entity != history.subject.entity || anchor.instance.id != history.subject.id
-    {
+    if anchor.instance.entity != subject.entity || anchor.instance.id != subject.id {
         return Err(corrupt(
-            &history.subject,
+            subject,
             "anchor instance belongs to another subject",
         ));
     }
-    validate_revision(&history.subject, anchor.instance.revision)?;
+    validate_revision(subject, anchor.instance.revision)?;
     let mut ids = BTreeSet::new();
     for evidence in &anchor.evidence {
         match evidence {
             LegacyEvidence::Envelope(envelope) => {
                 envelope.entry.validate().map_err(|error| {
-                    corrupt(
-                        &history.subject,
-                        format!("imported envelope is invalid: {error}"),
-                    )
+                    corrupt(subject, format!("imported envelope is invalid: {error}"))
                 })?;
                 validate_evidence_revision(
-                    &history.subject,
+                    subject,
                     envelope.entry.revision(),
                     anchor.instance.revision,
                     "imported envelope",
                 )?;
-                if envelope.entry.subject() != history.subject {
-                    return Err(corrupt(
-                        &history.subject,
-                        "imported envelope names another subject",
-                    ));
+                if envelope.entry.subject() != *subject {
+                    return Err(corrupt(subject, "imported envelope names another subject"));
                 }
                 if let RecordedEntry::Decision(commit) = &envelope.entry {
                     validate_bare_decision(
-                        &history.subject,
+                        subject,
                         &commit.envelope.record,
                         anchor.instance.revision,
                     )?;
-                    validate_anchor_result(
-                        &history.subject,
-                        &anchor.instance,
-                        &commit.envelope.record,
-                    )?;
+                    validate_anchor_result(subject, &anchor.instance, &commit.envelope.record)?;
                 }
                 if envelope.source_id.trim().is_empty() || envelope.source_locator.trim().is_empty()
                 {
                     return Err(corrupt(
-                        &history.subject,
+                        subject,
                         "imported envelope has blank source coordinates",
                     ));
                 }
@@ -235,23 +283,23 @@ pub(crate) fn validate_imported_boundary(history: &SubjectHistory) -> Result<(),
                     )
                 ) {
                     return Err(corrupt(
-                        &history.subject,
+                        subject,
                         "imported envelope order contradicts the anchor declaration",
                     ));
                 }
                 if !ids.insert(envelope.entry.record_id()) {
                     return Err(corrupt(
-                        &history.subject,
+                        subject,
                         "an imported record identity appears more than once",
                     ));
                 }
             }
             LegacyEvidence::Decision(decision) => {
-                validate_bare_decision(&history.subject, decision, anchor.instance.revision)?;
-                validate_anchor_result(&history.subject, &anchor.instance, decision)?;
+                validate_bare_decision(subject, decision, anchor.instance.revision)?;
+                validate_anchor_result(subject, &anchor.instance, decision)?;
             }
             LegacyEvidence::Event(event) => {
-                validate_legacy_event(&history.subject, event, anchor.instance.revision)?;
+                validate_legacy_event(subject, event, anchor.instance.revision)?;
             }
         }
     }
@@ -379,12 +427,11 @@ pub fn verify_imported_record(
 }
 
 fn validate_stored_coordinates(
-    history: &SubjectHistory,
+    subject: &Subject,
     record: &StoredRecord,
     previous_position: Option<super::RecordPosition>,
     bytes_held: bool,
 ) -> Result<(), AsyncStoreError> {
-    let subject = &history.subject;
     if record.entry.subject() != *subject {
         return Err(corrupt(subject, "stored record names another subject"));
     }
@@ -465,10 +512,15 @@ pub fn verify_subject_history(
     history: &SubjectHistory,
     terminal: &EntityInstance,
 ) -> Result<SubjectAssurance, AsyncStoreError> {
-    let origin = match &history.origin {
-        HistoryOrigin::Genesis => None,
-        HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
-    };
+    verify_whole(HistoryView::of(history), terminal)
+}
+
+/// [`verify_subject_history`] of a history however its records are held.
+fn verify_whole<R: Borrow<StoredRecord>>(
+    history: HistoryView<'_, R>,
+    terminal: &EntityInstance,
+) -> Result<SubjectAssurance, AsyncStoreError> {
+    let origin = origin_state(history.origin);
     if branched(history) {
         return verify_branched(history, origin, terminal);
     }
@@ -476,11 +528,8 @@ pub fn verify_subject_history(
 }
 
 /// Whether the history comes from a store whose records carry their lineage.
-fn branched(history: &SubjectHistory) -> bool {
-    history
-        .records
-        .iter()
-        .any(|record| record.lineage.is_some())
+fn branched<R: Borrow<StoredRecord>>(history: HistoryView<'_, R>) -> bool {
+    history.iter().any(|record| record.lineage.is_some())
 }
 
 /// Each branch head of a history whose records carry their lineage, with the state it reached.
@@ -498,11 +547,7 @@ fn branched(history: &SubjectHistory) -> bool {
 pub fn branch_heads(
     history: &SubjectHistory,
 ) -> Result<Vec<(String, Option<EntityInstance>)>, AsyncStoreError> {
-    let origin = match &history.origin {
-        HistoryOrigin::Genesis => None,
-        HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
-    };
-    let walk = walk_branches(history, origin)?;
+    let walk = walk_branches(HistoryView::of(history), origin_state(&history.origin))?;
     Ok(walk
         .heads
         .into_iter()
@@ -521,11 +566,22 @@ pub fn branch_heads(
 /// history has one decision head and has not forked. A history with no lineage has none.
 #[must_use]
 pub fn branch_tips(history: &SubjectHistory) -> Vec<String> {
+    branch_tips_of_records(&history.records)
+}
+
+/// [`branch_tips`] of a subject's records, however its reader holds them.
+///
+/// Not part of the documented surface: it exists for the Eventlog adapter, whose verified model
+/// keeps each committed record once and shares it between its record, history and batch indexes,
+/// so it holds no [`SubjectHistory`] to pass without copying every record of the subject first.
+/// Any other reader holds a `SubjectHistory` and calls [`branch_tips`], which answers the same.
+#[doc(hidden)]
+#[must_use]
+pub fn branch_tips_of_records<R: Borrow<StoredRecord>>(records: &[R]) -> Vec<String> {
     let lineages = || {
-        history
-            .records
+        records
             .iter()
-            .filter_map(|record| record.lineage.as_deref())
+            .filter_map(|record| record.borrow().lineage.as_deref())
     };
     let followed: BTreeSet<&str> = lineages()
         .flat_map(|lineage| lineage.parents.iter().map(String::as_str))
@@ -555,13 +611,13 @@ struct BranchWalk {
 /// is a merge decision. It is decided on one of their states at the highest revision any of them
 /// reached, so its own revision passes every branch it joins. An observation cannot join
 /// branches.
-fn walk_branches(
-    history: &SubjectHistory,
+fn walk_branches<R: Borrow<StoredRecord>>(
+    history: HistoryView<'_, R>,
     origin: Option<EntityInstance>,
 ) -> Result<BranchWalk, AsyncStoreError> {
-    let subject = &history.subject;
+    let subject = history.subject;
     subject.validate()?;
-    validate_imported_boundary(history)?;
+    validate_imported_boundary_of(subject, history.origin)?;
     let mut states: BTreeMap<String, Option<EntityInstance>> = BTreeMap::new();
     // For each record, the decisions it sits on: itself for a decision, and for an observation the
     // decision it observed. The imported anchor is a decision here, under its own digest.
@@ -572,8 +628,8 @@ fn walk_branches(
     let mut ids: BTreeSet<&str> = BTreeSet::new();
     let mut anchor_digest: Option<String> = None;
     let mut previous_position = None;
-    for record in &history.records {
-        validate_stored_coordinates(history, record, previous_position, false)?;
+    for record in history.iter() {
+        validate_stored_coordinates(subject, record, previous_position, false)?;
         if !ids.insert(record.entry.record_id()) {
             return Err(corrupt(
                 subject,
@@ -713,12 +769,12 @@ fn walk_branches(
 /// [`AsyncStoreError::Forked`] with the heads for an unjoined fork; typed corruption for a record
 /// with no lineage, a parent that is not an earlier record of the subject, a repeated digest, and
 /// every check the linear verification makes.
-fn verify_branched(
-    history: &SubjectHistory,
+fn verify_branched<R: Borrow<StoredRecord>>(
+    history: HistoryView<'_, R>,
     origin: Option<EntityInstance>,
     terminal: &EntityInstance,
 ) -> Result<SubjectAssurance, AsyncStoreError> {
-    let subject = &history.subject;
+    let subject = history.subject;
     let BranchWalk { states, heads } = walk_branches(history, origin.clone())?;
     if heads.len() > 1 {
         return Err(AsyncStoreError::Forked {
@@ -737,7 +793,7 @@ fn verify_branched(
             "supplied terminal state differs from verified history",
         ));
     }
-    Ok(match &history.origin {
+    Ok(match history.origin {
         HistoryOrigin::Genesis => SubjectAssurance::VerifiedFromGenesis {
             subject: subject.clone(),
         },
@@ -768,13 +824,14 @@ pub fn verify_subject_history_extension(
     verified_state: &EntityInstance,
     terminal: &EntityInstance,
 ) -> Result<SubjectAssurance, AsyncStoreError> {
+    let view = HistoryView::of(history);
     // A branched history is verified whole: a merge can place a record from one branch before
     // records a verified prefix already held, so no prefix of it is settled.
-    if verified == 0 || verified > history.records.len() || branched(history) {
+    if verified == 0 || verified > history.records.len() || branched(view) {
         return verify_subject_history(history, terminal);
     }
     verify_records_from(
-        history,
+        view,
         verified,
         Some(verified_state.clone()),
         terminal,
@@ -813,44 +870,81 @@ pub fn verify_subject_history_with_checked_bytes(
     verified: Option<(usize, &EntityInstance)>,
     terminal: &EntityInstance,
 ) -> Result<SubjectAssurance, AsyncStoreError> {
+    verify_with_checked_bytes(HistoryView::of(history), verified, terminal)
+}
+
+/// Unsound unless the caller has already checked every stored record's record and request bytes.
+///
+/// [`verify_subject_history_with_checked_bytes`] of a history its reader holds in parts — the
+/// subject, the origin and the records in physical order, each behind whatever pointer the reader
+/// shares it through — with exactly the same checks, the same precondition and the same refusals.
+///
+/// Not part of the documented surface: it exists for the Eventlog adapter, whose verified model
+/// keeps each committed record once and shares that one allocation between its record, history and
+/// batch indexes. It holds no [`SubjectHistory`] to pass, and assembling one would copy every
+/// record of the subject — decoded definition and both byte strings — on every verification. Any
+/// other reader must call [`verify_subject_history`] or [`verify_subject_history_extension`].
+///
+/// # Errors
+///
+/// Every refusal [`verify_subject_history_with_checked_bytes`] makes of the same history.
+#[doc(hidden)]
+pub fn verify_shared_subject_history_with_checked_bytes<R: Borrow<StoredRecord>>(
+    subject: &Subject,
+    origin: &HistoryOrigin,
+    records: &[R],
+    verified: Option<(usize, &EntityInstance)>,
+    terminal: &EntityInstance,
+) -> Result<SubjectAssurance, AsyncStoreError> {
+    verify_with_checked_bytes(
+        HistoryView {
+            subject,
+            origin,
+            records,
+        },
+        verified,
+        terminal,
+    )
+}
+
+fn verify_with_checked_bytes<R: Borrow<StoredRecord>>(
+    history: HistoryView<'_, R>,
+    verified: Option<(usize, &EntityInstance)>,
+    terminal: &EntityInstance,
+) -> Result<SubjectAssurance, AsyncStoreError> {
     if branched(history) {
-        return verify_subject_history(history, terminal);
+        return verify_whole(history, terminal);
     }
     match verified {
         Some((records, state)) if records > 0 && records <= history.records.len() => {
             verify_records_from(history, records, Some(state.clone()), terminal, true)
         }
-        _ => {
-            let origin = match &history.origin {
-                HistoryOrigin::Genesis => None,
-                HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
-            };
-            verify_records_from(history, 0, origin, terminal, true)
-        }
+        _ => verify_records_from(history, 0, origin_state(history.origin), terminal, true),
     }
 }
 
-fn verify_records_from(
-    history: &SubjectHistory,
+fn verify_records_from<R: Borrow<StoredRecord>>(
+    history: HistoryView<'_, R>,
     start: usize,
     mut current: Option<EntityInstance>,
     terminal: &EntityInstance,
     bytes_held: bool,
 ) -> Result<SubjectAssurance, AsyncStoreError> {
-    history.subject.validate()?;
-    validate_imported_boundary(history)?;
+    let subject = history.subject;
+    subject.validate()?;
+    validate_imported_boundary_of(subject, history.origin)?;
     let mut previous_position = start
         .checked_sub(1)
-        .map(|last| history.records[last].position);
+        .map(|last| history.record(last).position);
     let mut ids: BTreeSet<&str> = history.records[..start]
         .iter()
-        .map(|record| record.entry.record_id())
+        .map(|record| record.borrow().entry.record_id())
         .collect();
-    for record in &history.records[start..] {
-        validate_stored_coordinates(history, record, previous_position, bytes_held)?;
+    for record in history.records[start..].iter().map(Borrow::borrow) {
+        validate_stored_coordinates(subject, record, previous_position, bytes_held)?;
         if !ids.insert(record.entry.record_id()) {
             return Err(corrupt(
-                &history.subject,
+                subject,
                 "one global record identity repeats within the subject history",
             ));
         }
@@ -858,30 +952,26 @@ fn verify_records_from(
             .map_err(|error| match error {
                 AsyncStoreError::CorruptHistory { .. } => error,
                 other => corrupt(
-                    &history.subject,
+                    subject,
                     format!("stored entry does not follow its verified predecessor: {other}"),
                 ),
             })?;
         previous_position = Some(record.position);
     }
-    let current = current.ok_or_else(|| {
-        corrupt(
-            &history.subject,
-            "genesis history contains no creation decision",
-        )
-    })?;
+    let current =
+        current.ok_or_else(|| corrupt(subject, "genesis history contains no creation decision"))?;
     if current != *terminal {
         return Err(corrupt(
-            &history.subject,
+            subject,
             "supplied terminal state differs from verified history",
         ));
     }
-    Ok(match &history.origin {
+    Ok(match history.origin {
         HistoryOrigin::Genesis => SubjectAssurance::VerifiedFromGenesis {
-            subject: history.subject.clone(),
+            subject: subject.clone(),
         },
         HistoryOrigin::Imported(anchor) => SubjectAssurance::VerifiedAfterBoundary {
-            subject: history.subject.clone(),
+            subject: subject.clone(),
             anchor_revision: anchor.instance.revision,
         },
     })

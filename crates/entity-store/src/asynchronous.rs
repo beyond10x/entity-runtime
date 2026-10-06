@@ -18,6 +18,8 @@ pub use ports::{
 pub use types::*;
 pub(crate) use verify::validate_imported_boundary;
 pub use verify::{branch_heads, branch_tips, validate_entry_against_state};
+#[doc(hidden)]
+pub use verify::{branch_tips_of_records, verify_shared_subject_history_with_checked_bytes};
 pub use verify::{
     verify_complete_store, verify_imported_record, verify_store_histories, verify_subject_history,
     verify_subject_history_extension, verify_subject_history_with_checked_bytes,

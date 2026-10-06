@@ -17,6 +17,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   semantics and Eventlog-backed storage through 0.27.0), task guides, and a CLI reference, crate
   list and status page generated from the code. The older copies under `docs/guide/` are removed;
   the site's pages replace them.
+- An `EventlogRecordedStore` holds each committed record once rather than three times: the
+  verified model's record, history and batch indexes, and the handle's memory of the histories it
+  verified, share one copy. A `ProviderTracked` handle also moves each record's and each batch's
+  stored bytes from its capture into the model instead of copying them, and no longer keeps a
+  second copy of those bytes beside the model. Every answer is unchanged. On the 96-field probe
+  store, the resident memory a `ProviderTracked` open adds is 0.47 times what it was at 601
+  events and 0.43 times at 1,203 events.
 
 ## [0.27.0] — 2026-10-06
 

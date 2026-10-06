@@ -15,10 +15,11 @@
 use std::collections::BTreeMap;
 
 use entity_core::EntityInstance;
-use entity_store::asynchronous::{
-    HistoryOrigin, RecordedEntry, StoredRecord, Subject, SubjectHistory,
-};
+#[cfg(test)]
+use entity_store::asynchronous::SubjectHistory;
+use entity_store::asynchronous::{HistoryOrigin, RecordedEntry, StoredRecord, Subject};
 
+use super::shared::{ModelHistory, SharedRecord};
 use crate::encoding::RecordedEntryWrapper;
 
 /// Bytes a handle may hold in memory before it forgets everything and starts again.
@@ -69,14 +70,13 @@ fn record_charge(record: &StoredRecord) -> usize {
 
 /// What a remembered history is charged beyond its records: its subject, its origin and its
 /// terminal state, which is no larger than the record that produced it.
-fn history_charge(history: &SubjectHistory) -> usize {
+fn history_charge(history: &impl RememberedHistory) -> usize {
     let largest = history
-        .records
-        .iter()
+        .records()
         .map(|record| record.record_bytes.len())
         .max()
         .unwrap_or(0);
-    let origin = match &history.origin {
+    let origin = match history.origin() {
         HistoryOrigin::Genesis => 0,
         HistoryOrigin::Imported(_) => DECODED_FIXED,
     };
@@ -107,9 +107,66 @@ struct Remembered {
     charged: usize,
 }
 
+/// A history this memory can remember, however its records are held.
+///
+/// A model's history shares each record with the model's other indexes, and the memory keeps one
+/// more reference to that allocation instead of a copy of it. A history that owns its records —
+/// only this module's cap test remembers one — is copied in record by record.
+pub(super) trait RememberedHistory {
+    fn subject(&self) -> &Subject;
+    fn origin(&self) -> &HistoryOrigin;
+    fn records(&self) -> impl Iterator<Item = &StoredRecord>;
+    fn len(&self) -> usize;
+    /// The records from position `from` on, as the memory holds them.
+    fn shared_from(&self, from: usize) -> Vec<SharedRecord>;
+}
+
+impl RememberedHistory for ModelHistory {
+    fn subject(&self) -> &Subject {
+        &self.subject
+    }
+    fn origin(&self) -> &HistoryOrigin {
+        &self.origin
+    }
+    fn records(&self) -> impl Iterator<Item = &StoredRecord> {
+        self.records.iter().map(|record| &**record)
+    }
+    fn len(&self) -> usize {
+        self.records.len()
+    }
+    fn shared_from(&self, from: usize) -> Vec<SharedRecord> {
+        self.records[from..].to_vec()
+    }
+}
+
+#[cfg(test)]
+impl RememberedHistory for SubjectHistory {
+    fn subject(&self) -> &Subject {
+        &self.subject
+    }
+    fn origin(&self) -> &HistoryOrigin {
+        &self.origin
+    }
+    fn records(&self) -> impl Iterator<Item = &StoredRecord> {
+        self.records.iter()
+    }
+    fn len(&self) -> usize {
+        self.records.len()
+    }
+    fn shared_from(&self, from: usize) -> Vec<SharedRecord> {
+        self.records[from..]
+            .iter()
+            .cloned()
+            .map(std::sync::Arc::new)
+            .collect()
+    }
+}
+
 struct VerifiedHistory {
     origin: HistoryOrigin,
-    records: Vec<StoredRecord>,
+    /// The verified records, each the allocation the model that verified it holds. The charge
+    /// below still counts each in full: once that model is replaced, this is what keeps it alive.
+    records: Vec<SharedRecord>,
     terminal: EntityInstance,
     /// What this history is charged against the cap, every record it holds included.
     charged: usize,
@@ -247,7 +304,7 @@ impl VerifiedMemory {
     /// stored byte strings. `history` must already be in store order, as a verified one is.
     pub(super) fn verified_prefix(
         &self,
-        history: &SubjectHistory,
+        history: &ModelHistory,
     ) -> Option<(usize, EntityInstance)> {
         let verified = self.histories.get(&history.subject)?;
         let length = verified.records.len();
@@ -261,27 +318,25 @@ impl VerifiedMemory {
     /// Remembers a history this handle just verified to reach `terminal`.
     ///
     /// `verified` is the prefix [`Self::verified_prefix`] answered for this history, if any: those
-    /// records are already remembered exactly, so only the records after them are copied.
+    /// records are already remembered exactly, so only the records after them are added.
     pub(super) fn remember_history(
         &mut self,
-        history: &SubjectHistory,
+        history: &impl RememberedHistory,
         terminal: &EntityInstance,
         verified: Option<usize>,
     ) {
         let charged = history_charge(history)
-            .saturating_add(history.records.iter().map(record_charge).sum::<usize>());
+            .saturating_add(history.records().map(record_charge).sum::<usize>());
         if let Some(length) = verified
-            && length <= history.records.len()
-            && let Some(remembered) = self.histories.get(&history.subject)
+            && length <= history.len()
+            && let Some(remembered) = self.histories.get(history.subject())
             && remembered.records.len() == length
         {
             let growth = charged.saturating_sub(remembered.charged);
             if self.held.saturating_add(growth) <= self.cap
-                && let Some(remembered) = self.histories.get_mut(&history.subject)
+                && let Some(remembered) = self.histories.get_mut(history.subject())
             {
-                remembered
-                    .records
-                    .extend_from_slice(&history.records[length..]);
+                remembered.records.extend(history.shared_from(length));
                 remembered.terminal = terminal.clone();
                 remembered.charged = charged;
                 self.held = self.held.saturating_add(growth);
@@ -290,14 +345,14 @@ impl VerifiedMemory {
         }
         let replacing = self
             .histories
-            .get(&history.subject)
+            .get(history.subject())
             .map_or(0, |remembered| remembered.charged);
         self.make_room(charged.saturating_sub(replacing));
         if let Some(replaced) = self.histories.insert(
-            history.subject.clone(),
+            history.subject().clone(),
             VerifiedHistory {
-                origin: history.origin.clone(),
-                records: history.records.clone(),
+                origin: history.origin().clone(),
+                records: history.shared_from(0),
                 terminal: terminal.clone(),
                 charged,
             },
@@ -305,6 +360,14 @@ impl VerifiedMemory {
             self.held = self.held.saturating_sub(replaced.charged);
         }
         self.held = self.held.saturating_add(charged);
+    }
+
+    /// The records remembered for `subject`'s verified history, for a test of what they share.
+    #[cfg(test)]
+    pub(super) fn remembered_records(&self, subject: &Subject) -> Option<&[SharedRecord]> {
+        self.histories
+            .get(subject)
+            .map(|history| history.records.as_slice())
     }
 
     fn make_room(&mut self, adding: usize) {

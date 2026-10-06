@@ -29,6 +29,9 @@ pub(super) struct Cache {
 struct Held {
     checkpoint: Option<CaptureCheckpoint>,
     model: Arc<CapturedModel>,
+    /// Bound blobs an advance may read again: wrappers, requests and the rest. Not the record and
+    /// batch blobs of committed records, whose bytes the model holds; which digests are bound at
+    /// all is `model.held.digests`.
     blobs: BTreeMap<String, Vec<u8>>,
     rows: Vec<BTreeMap<String, Value>>,
     last_position: u64,
@@ -70,7 +73,7 @@ impl EventlogRecordedStore {
                     .ok_or_else(|| integrity("tracked cache generation exhausted"))?;
                 let held = match update {
                     TenantCaptureUpdate::Complete {
-                        capture,
+                        mut capture,
                         checkpoint,
                     } => {
                         self.native_captures.fetch_add(1, Ordering::Relaxed);
@@ -79,7 +82,9 @@ impl EventlogRecordedStore {
                         {
                             return Err(integrity("native capture substituted tenant generation"));
                         }
-                        let model = build_model(&self.authority, &capture)?;
+                        // The model takes the record and batch blobs; what this handle keeps of
+                        // the capture is every other blob, which is all an advance reads again.
+                        let model = build_model_owning(&self.authority, &mut capture)?;
                         if model.binding.is_none() {
                             return Err(integrity("the tenant has no authoritative binding"));
                         }
@@ -194,7 +199,7 @@ impl EventlogRecordedStore {
         id: &str,
     ) -> Result<Option<RecordLookup>, AsyncStoreError> {
         let read = self.scoped_model(&ReadScope::record(id)).await?;
-        Ok(read.model.records.get(id).cloned())
+        Ok(read.model.records.get(id).map(ModelLookup::to_public))
     }
 
     #[cfg(feature = "sync-bridge")]
@@ -203,7 +208,7 @@ impl EventlogRecordedStore {
         key: &BatchKey,
     ) -> Result<Option<StoredBatch>, AsyncStoreError> {
         let read = self.scoped_model(&ReadScope::batch(key)).await?;
-        Ok(read.model.batches.get(key).cloned())
+        Ok(read.model.batches.get(key).map(ModelBatch::to_public))
     }
 }
 
@@ -234,7 +239,10 @@ fn advance(
         .map_err(|_| integrity("verified model is held by another reader"))?;
     let mut new_blobs = BTreeSet::new();
     for blob in delta.blobs {
+        // Every bound digest, not only the retained blobs: the record and batch blobs the model
+        // holds are no longer retained here, and a suffix rebinding one is still a replacement.
         if !new_blobs.insert(blob.digest.clone())
+            || model.held.digests.contains(&blob.digest)
             || blobs.insert(blob.digest.clone(), blob.bytes).is_some()
         {
             return Err(integrity("capture suffix replaces a bound blob"));
@@ -244,6 +252,9 @@ fn advance(
     // Borrow only the suffix's references. Building a map of every retained blob is itself a
     // whole-store scan, even when no bytes are decoded.
     let mut wanted = BTreeSet::new();
+    // The suffix's record and batch blobs, which the advanced model copies and this handle then
+    // stops retaining. A later suffix naming one is refused here and verified by a whole build.
+    let mut held_by_model = Vec::new();
     for event in &delta.events {
         if event.global_seq <= last_position {
             return Err(integrity("capture suffix does not advance tenant position"));
@@ -255,6 +266,7 @@ fn advance(
                 .get(digest)
                 .ok_or_else(|| integrity("suffix wrapper blob is missing"))?,
         )?;
+        held_by_model.extend([wrapper.record_blob.clone(), wrapper.batch_blob.clone()]);
         wanted.extend([
             digest.to_owned(),
             wrapper.record_blob,
@@ -343,7 +355,8 @@ fn advance(
         );
     }
     // Reuse the existing exact row renderer against a compact model holding only changed
-    // coordinates. Old state-source metadata is included without cloning the old history.
+    // coordinates. Old state-source metadata is included without cloning the old history, and
+    // every record it names is the model's own allocation, shared rather than copied.
     let mut touched = CapturedModel::default();
     for id in &ids {
         touched
@@ -368,10 +381,10 @@ fn advance(
         let history = &model.histories[subject];
         let mut records = Vec::new();
         if let Some(id) = model.state_records.get(subject) {
-            let RecordLookup::Committed(record) = &model.records[id] else {
+            let ModelLookup::Committed(record) = &model.records[id] else {
                 return Err(integrity("linear state source is not committed"));
             };
-            records.push(record.clone());
+            records.push(Arc::clone(record));
             touched
                 .record_blob_digests
                 .insert(id.clone(), model.record_blob_digests[id].clone());
@@ -381,7 +394,7 @@ fn advance(
                 .last()
                 .is_none_or(|record| record.entry.record_id() != last.entry.record_id())
             {
-                records.push(last.clone());
+                records.push(Arc::clone(last));
             }
             touched.record_physical.insert(
                 last.entry.record_id().to_owned(),
@@ -390,10 +403,9 @@ fn advance(
         }
         touched.histories.insert(
             subject.clone(),
-            SubjectHistory {
-                subject: subject.clone(),
-                origin: HistoryOrigin::Genesis,
+            ModelHistory {
                 records,
+                ..ModelHistory::genesis(subject.clone())
             },
         );
         touched
@@ -460,6 +472,9 @@ fn advance(
     model.held.events = usage.events;
     model.held.blobs = usage.blobs;
     model.held.rows = usage.projection_rows;
+    for digest in &held_by_model {
+        blobs.remove(digest);
+    }
     Ok(Held {
         checkpoint: Some(checkpoint),
         model: Arc::new(model),
@@ -734,6 +749,97 @@ mod tests {
                         "mutation {mutation} must be refused"
                     );
                 }
+            });
+    }
+
+    /// What a tracked handle retains: every bound blob except the record and batch blobs whose
+    /// bytes its model holds. Returns how many of those the model holds.
+    fn retained_beside(label: &str, store: &EventlogRecordedStore) -> usize {
+        let cache = store.tracked.lock().expect("tracked cache");
+        let held = cache.held.as_ref().expect("a verified observation");
+        let model = &held.model;
+        let mut in_model: BTreeSet<&String> = model.batch_blob_digests.values().collect();
+        for (record_id, lookup) in &model.records {
+            if let ModelLookup::Committed(_) = lookup {
+                in_model.insert(&model.record_blob_digests[record_id].record);
+            }
+        }
+        let expected: BTreeSet<&String> = model
+            .held
+            .digests
+            .iter()
+            .filter(|digest| !in_model.contains(digest))
+            .collect();
+        assert_eq!(
+            held.blobs.keys().collect::<BTreeSet<_>>(),
+            expected,
+            "{label}: the handle retains a blob its model holds, or lost one it may read again"
+        );
+        in_model.len()
+    }
+
+    /// A tracked handle keeps one copy of every record and batch blob, the model's (issue 59).
+    ///
+    /// After advances and after a cold open of the same store, it retains every bound blob except
+    /// the ones its model holds. A suffix binding one of those again is still refused as the
+    /// replacement of a bound blob: the handle no longer retains the bytes, but it still knows the
+    /// digest.
+    #[test]
+    fn a_tracked_handle_retains_no_blob_its_model_holds_and_refuses_one_bound_again() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+            .block_on(async {
+                let (backend, store, registry) = fixture(CapturePolicy::ProviderTracked).await;
+                append(&store, &registry, 0).await;
+                append(&store, &registry, 1).await;
+                store.tracked_model().await.unwrap();
+                assert!(store.calls().model_advances > 0, "the appends advanced");
+                assert_eq!(retained_beside("advanced", &store), 4);
+                let cold = EventlogRecordedStore::open_with_policy(
+                    backend.clone(),
+                    store.authority.clone(),
+                    LIMITS,
+                    CapturePolicy::ProviderTracked,
+                )
+                .await
+                .unwrap();
+                assert_eq!(retained_beside("cold", &cold), 4);
+                let held = cold.tracked.lock().unwrap().held.take().unwrap();
+                let ModelLookup::Committed(record) = &held.model.records["record-0"] else {
+                    panic!("record-0 is committed")
+                };
+                let rebound = held.model.record_blob_digests[record.entry.record_id()]
+                    .record
+                    .clone();
+                let delta = TenantCaptureDelta {
+                    tenant: cold.tenant.clone(),
+                    stream_identity: cold.authority.stream_identity.clone(),
+                    events: Vec::new(),
+                    blobs: vec![eventlog_core::CapturedBlob {
+                        digest: rebound,
+                        bytes: b"bound again".to_vec(),
+                    }],
+                    projections: Vec::new(),
+                    resulting_usage: CaptureUsage {
+                        events: 0,
+                        blobs: 0,
+                        projection_rows: 0,
+                        payload_bytes: 0,
+                    },
+                };
+                let refused = advance(&cold.authority, held, delta, CaptureCheckpoint::new(()))
+                    .err()
+                    .expect("a record blob bound again is refused");
+                assert!(
+                    matches!(
+                        &refused,
+                        AsyncStoreError::ProviderIntegrity { detail, .. }
+                            if detail == "capture suffix replaces a bound blob"
+                    ),
+                    "a record blob bound again is not refused as a replacement: {refused:?}"
+                );
             });
     }
 
