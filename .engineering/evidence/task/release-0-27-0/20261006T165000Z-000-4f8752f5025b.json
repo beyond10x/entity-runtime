@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-06T16:50:00Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-27-0",
+  "kind": "task",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "release.yml run 37494290829 at tag 0.27.0 (4bf7351f): Verify tag provenance, gate / Gate, gate / MSRV 1.85, gate / Eventlog runtime (Rust 1.91), 5 platform builds, Assemble verified release: all success; 5 archives verified against SHA256SUMS locally; published by b10x-bot[bot] with 6 assets",
+    "reference": "https://github.com/beyond10x/entity-runtime/releases/tag/0.27.0"
+  }
+}

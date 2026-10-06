@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: task:release-0-27-0
 kind: task
-status: draft
+status: implemented
 title: Prepare and publish the 0.27.0 release for issue 54
 owner: entity-runtime
 refs:
@@ -11,7 +11,11 @@ refs:
 relations:
 - serves: vision:O2
 - delivers: design:wave-issues-54-55-unblock-dependents
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-06T16:43:20Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":2}}}
+- {from: "proposed", to: "active", at: "2026-10-06T16:43:20Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":2}}}
+- {from: "active", to: "implemented", at: "2026-10-06T16:43:20Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":2}}}
 ---
 ## Outcome
 
