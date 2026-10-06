@@ -1,0 +1,67 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-count-projection-key",
+  "summary": "A projection key reads object members only, so a text length is refused there; an array count or index and a map count register as before, and a property named count stays a key.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"projections\":{\"by_key\":{\"key\":\"$fields.name.count\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "invalid_template"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"projections\":{\"by_key\":{\"key\":\"$fields.tags.count\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"projections\":{\"by_key\":{\"key\":\"$fields.tags.0\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"required\":true,\"key\":\"string\",\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"projections\":{\"by_key\":{\"key\":\"$fields.meta.count\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"stats\":{\"type\":\"object\",\"required\":true,\"properties\":{\"count\":{\"type\":\"integer\",\"required\":true}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"projections\":{\"by_key\":{\"key\":\"$fields.stats.count\"}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    }
+  ]
+}

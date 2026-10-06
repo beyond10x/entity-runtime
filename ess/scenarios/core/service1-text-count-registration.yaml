@@ -1,0 +1,120 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-count-registration",
+  "summary": "Registration admits a text length on a declared service/1 string and refuses it on other scalar kinds, past the count, under kernel/1 and on a quantifier element; a map count there still registers.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$fields.name.count\",\"op\":\"lte\",\"right\":8}},\"message\":\"short\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"age\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$fields.age.count\",\"op\":\"lte\",\"right\":8}},\"message\":\"short\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "invalid_rule"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"status\":{\"type\":\"enum\",\"values\":[\"open\",\"closed\"],\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$fields.status.count\",\"op\":\"lte\",\"right\":8}},\"message\":\"short\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "invalid_rule"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"owner\":{\"type\":\"ref\",\"entity\":\"person\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$fields.owner.count\",\"op\":\"lte\",\"right\":8}},\"message\":\"short\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "invalid_rule"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$fields.name.count.more\",\"op\":\"lte\",\"right\":8}},\"message\":\"short\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "invalid_rule"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:05Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"eq\":[\"$fields.name.count\",3]},\"message\":\"short\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "invalid_rule"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:06Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"for_all\":{\"in\":\"$fields.tags\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"lte\",\"right\":8}}}},\"message\":\"short\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "quantifier_body_scope"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:07Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"groups\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"small\",\"assert\":{\"for_all\":{\"in\":\"$fields.groups\",\"as\":\"g\",\"that\":{\"compare\":{\"left\":\"$g.count\",\"op\":\"lte\",\"right\":1}}}},\"message\":\"small\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    }
+  ]
+}

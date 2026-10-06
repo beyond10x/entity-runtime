@@ -1,0 +1,36 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-count-invariant",
+  "summary": "An invariant reading a field's text length admits a text of exactly that length and refuses a longer one as a violation.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"four\",\"assert\":{\"compare\":{\"left\":\"$fields.code.count\",\"op\":\"eq\",\"right\":4}},\"message\":\"a code is four characters\"}]}",
+        "id": "p-1",
+        "fields": "{\"code\":\"AB12\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"code\":\"AB12\"}}"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"four\",\"assert\":{\"compare\":{\"left\":\"$fields.code.count\",\"op\":\"eq\",\"right\":4}},\"message\":\"a code is four characters\"}]}",
+        "id": "p-1",
+        "fields": "{\"code\":\"AB123\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_violation"
+      }
+    }
+  ]
+}
