@@ -1,0 +1,25 @@
+[package]
+name = "entity-runtime-docs"
+description = "Generates the derived pages of the Entity Runtime documentation site (CLI reference, crate list, status) and checks them for drift."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# The CLI reference is walked from the clap definition the `entity` binary parses, so it cannot
+# describe an option the binary does not have.
+entity-cli = { path = "../entity-cli", version = "0.27.0" }
+clap.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# The "Embed the kernel" guide shows tests/embed_the_kernel.rs verbatim; running it keeps the page
+# true.
+entity-core = { path = "../entity-core", version = "0.27.0" }
+entity-yaml = { path = "../entity-yaml", version = "0.27.0" }
+
+[lints]
+workspace = true

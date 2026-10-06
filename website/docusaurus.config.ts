@@ -1,14 +1,6 @@
-import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
-import docsSystemPlugin, {ecosystemFooterGroup, ecosystemNavbarItems} from '@beyond10x/docs-system/docusaurus';
-
-// Public product documentation lives here under `website/docs`. The repository-root `docs/` tree
-// is the engineering record — requirements, designs, plans and reviews — and is deliberately not
-// a website content source. Markdown is parsed as CommonMark because these pages need no MDX.
-//
-// GitHub Pages must publish the *built output* through the Actions workflow, never the `/docs`
-// folder of the branch: that would serve the raw tree at the public URL.
+import {withProductSite} from '@beyond10x/docs-system/product-site';
 
 const config: Config = {
   title: 'Entity Runtime',
@@ -21,12 +13,15 @@ const config: Config = {
 
   url: 'https://beyond10x.github.io',
   baseUrl: '/entity-runtime/',
+
   organizationName: 'beyond10x',
   projectName: 'entity-runtime',
+  deploymentBranch: 'gh-pages',
   trailingSlash: false,
 
   onBrokenLinks: 'throw',
   onBrokenAnchors: 'throw',
+
   markdown: {
     format: 'detect',
     mermaid: true,
@@ -48,113 +43,58 @@ const config: Config = {
           path: 'docs',
           routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/beyond10x/entity-runtime/edit/main/website/docs/',
-          showLastUpdateTime: true,
+          editUrl: 'https://github.com/beyond10x/entity-runtime/tree/main/website/',
         },
         blog: false,
-        theme: {
-          customCss: './src/css/custom.css',
-        },
       } satisfies Preset.Options,
     ],
   ],
 
   themes: ['@docusaurus/theme-mermaid'],
-  plugins: [docsSystemPlugin],
 
   themeConfig: {
     image: 'img/social-card.svg',
-    metadata: [
-      {
-        name: 'keywords',
-        content:
-          'agent safety, AI agents, deterministic tools, entity runtime, lifecycle, domain events, schema-driven, Rust, YAML, replay',
-      },
-    ],
-    colorMode: {
-      defaultMode: 'dark',
-      respectPrefersColorScheme: true,
-    },
     navbar: {
       title: 'Entity Runtime',
-      hideOnScroll: true,
       logo: {
         alt: 'Entity Runtime mark',
         src: 'img/mark.svg',
       },
       items: [
-        ...ecosystemNavbarItems(),
-        {to: '/docs/agentic-systems', label: 'Why for agents', position: 'left'},
-        {to: '/docs/guide/getting-started', label: 'Quickstart', position: 'left'},
-        {
-          label: 'Build',
-          position: 'left',
-          items: [
-            {to: '/docs/guide/modeling', label: 'Model policy as data'},
-            {to: '/docs/guide/graphs', label: 'Render graphs'},
-            {to: '/docs/guide/agent-integration', label: 'Connect an agent'},
-            {to: '/docs/guide/mcp', label: 'Mount MCP tools'},
-            {to: '/docs/guide/generated-docs', label: 'Generate entity docs'},
-            {to: '/docs/guide/generated-cli', label: 'Generate a Rust CLI'},
-          ],
-        },
-        {
-          label: 'Reference',
-          position: 'left',
-          items: [
-            {to: '/docs/guide/definitions', label: 'Definition language'},
-            {to: '/docs/guide/cli', label: 'CLI'},
-            {to: '/docs/guide/refusals', label: 'Typed refusals'},
-            {to: '/docs/guide/library', label: 'Rust libraries'},
-            {to: '/docs/guarantees', label: 'Guarantees and limits'},
-          ],
-        },
-        {
-          href: 'https://github.com/beyond10x/entity-runtime',
-          label: 'GitHub',
-          position: 'right',
-        },
+        {to: '/docs/', label: 'Documentation', position: 'left'},
+        {to: '/docs/getting-started', label: 'Get started', position: 'left'},
+        {to: '/docs/reference/cli', label: 'CLI', position: 'left'},
+        {to: '/docs/status', label: 'Status', position: 'left'},
+        {href: 'https://github.com/beyond10x/entity-runtime', label: 'GitHub', position: 'right'},
       ],
     },
     footer: {
-      style: 'dark',
       links: [
-        ecosystemFooterGroup(),
         {
-          title: 'Use it',
+          title: 'Documentation',
           items: [
-            {label: 'Refund quickstart', to: '/docs/guide/getting-started'},
-            {label: 'Model policy as data', to: '/docs/guide/modeling'},
-            {label: 'Connect an agent', to: '/docs/guide/agent-integration'},
-            {label: 'Persist decisions', to: '/docs/guide/storage'},
-          ],
-        },
-        {
-          title: 'Reference',
-          items: [
-            {label: 'Definition language', to: '/docs/guide/definitions'},
-            {label: 'CLI', to: '/docs/guide/cli'},
-            {label: 'Typed refusals', to: '/docs/guide/refusals'},
-            {label: 'Guarantees and limits', to: '/docs/guarantees'},
+            {label: 'Overview', to: '/docs/'},
+            {label: 'Getting started', to: '/docs/getting-started'},
+            {label: 'The decision boundary', to: '/docs/concepts/decision-boundary'},
+            {label: 'Storage and replay', to: '/docs/concepts/storage'},
+            {label: 'Connect an agent', to: '/docs/guides/connect-an-agent'},
+            {label: 'Definition language', to: '/docs/reference/definitions'},
+            {label: 'entity CLI', to: '/docs/reference/cli'},
+            {label: 'Status', to: '/docs/status'},
           ],
         },
         {
           title: 'Project',
           items: [
-            {label: 'GitHub repository', href: 'https://github.com/beyond10x/entity-runtime'},
+            {label: 'Source', href: 'https://github.com/beyond10x/entity-runtime'},
             {label: 'Releases', href: 'https://github.com/beyond10x/entity-runtime/releases'},
-            {label: 'Apache-2.0 license', href: 'https://github.com/beyond10x/entity-runtime/blob/main/LICENSE'},
+            {label: 'Changelog', href: 'https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md'},
           ],
         },
       ],
-      copyright: `© ${new Date().getFullYear()} beyond10x · Agent intent in. Deterministic decision out.`,
-    },
-    prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
-      additionalLanguages: ['rust', 'yaml', 'json', 'bash'],
+      copyright: 'A beyond10x project. Entity Runtime · Apache-2.0.',
     },
   } satisfies Preset.ThemeConfig,
 };
 
-export default config;
+export default withProductSite(config, {landing: './product.json', mark: 'ER'});

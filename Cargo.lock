@@ -525,6 +525,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "entity-runtime-docs"
+version = "0.27.0"
+dependencies = [
+ "clap",
+ "entity-cli",
+ "entity-core",
+ "entity-yaml",
+ "serde_json",
+]
+
+[[package]]
 name = "entity-shell"
 version = "0.27.0"
 dependencies = [

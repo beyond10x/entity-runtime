@@ -9,6 +9,7 @@ tasks:
       - task: clippy
       - task: test
       - task: doc-check
+      - task: docs-check
       - task: example-check
       - task: req-check
       - task: pin-check
@@ -81,6 +82,16 @@ tasks:
       RUSTDOCFLAGS: -D warnings
     cmds:
       - cargo doc --workspace --no-deps --locked
+
+  docs-check:
+    desc: the generated documentation pages are current and every page passes entity-runtime-docs checks
+    cmds:
+      - cargo run -q -p entity-runtime-docs --locked -- generate --check
+
+  docs-generate:
+    desc: regenerate the CLI reference, crate list and status page and data
+    cmds:
+      - cargo run -q -p entity-runtime-docs --locked -- generate
 
   example-check:
     desc: every shipped example definition validates through the CLI

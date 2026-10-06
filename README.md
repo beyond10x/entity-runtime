@@ -2,314 +2,60 @@
 
 > Let agents propose. Let deterministic rules decide.
 
-Entity Runtime turns a domain model into a safe execution boundary. You declare an entity's
-schema, lifecycle, operations, rules, and events in YAML. An application or AI agent may request a
-named operation; a deterministic Rust kernel either returns the complete next decision or a typed
-refusal.
+Entity Runtime decides whether a proposed state change is legal. You declare an entity type as
+data — its fields, lifecycle states, named operations, rules and events — and a deterministic Rust
+kernel answers each request with the complete next decision or a typed refusal that changes
+nothing. The kernel reads no clock, file or network; storage, identity, time and side effects stay
+with the application around it. It ships as Rust libraries and one command, `entity`.
 
-```text
-definition + instance + operation + arguments -> Decision { instance, record, events }
-```
+**Documentation: <https://beyond10x.github.io/entity-runtime/>** —
+[getting started](https://beyond10x.github.io/entity-runtime/docs/getting-started) ·
+[guides](https://beyond10x.github.io/entity-runtime/docs/guides/model-policy-as-data) ·
+[CLI reference](https://beyond10x.github.io/entity-runtime/docs/reference/cli) ·
+[crates](https://beyond10x.github.io/entity-runtime/docs/reference/crates) ·
+[status](https://beyond10x.github.io/entity-runtime/docs/status)
 
-The kernel performs no IO, reads no clock, invents no identity, and mutates no caller-owned state.
-Storage, authentication, timestamps, transport, and event publication remain explicit concerns of
-the application around it.
+**Status:** [0.27.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.27.0), released
+2026-10-06. The API is in development; a minor release may change it. The
+[status page](https://beyond10x.github.io/entity-runtime/docs/status) lists what is shipped, with
+the test that holds each item, and what is planned.
 
-[Read the product guide](https://beyond10x.github.io/docs/entity-runtime/) or
-[download a release](https://github.com/beyond10x/entity-runtime/releases).
+## Install
 
-The guide targets [0.21.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.21.0);
-the API remains in development. Start with the
-[refund quickstart](https://beyond10x.github.io/docs/entity-runtime/guide/getting-started/) or
-[system model and derivation](https://beyond10x.github.io/docs/entity-runtime/system-model/).
-
-## Why use it?
-
-Agent prompts are useful for intent and judgment, but they are a poor place to hide business
-invariants. A prompt can be revised, truncated, bypassed, or interpreted differently by another
-model. Entity Runtime puts the rules that must always hold into versioned data evaluated by trusted
-code.
-
-That gives a system one boundary for:
-
-- closed schemas and lifecycle transitions;
-- named preconditions and invariants with actionable refusals;
-- optimistic concurrency and atomic state-plus-history writes;
-- normalized decision records that can be replayed and verified;
-- domain events derived only after a decision succeeds;
-- human diagrams, API contracts, MCP tools, and dedicated CLIs generated from the same model.
-
-It is a toolkit, not a hosted service. Use the kernel as a Rust library, the `entity` command as a
-reference shell, or the provider and generated-surface crates in your own application.
-
-## The boundary
-
-```mermaid
-flowchart LR
-    caller[Agent or application] -->|operation + arguments| shell[Trusted shell]
-    definition[Validated YAML definition] --> kernel[Deterministic kernel]
-    shell --> kernel
-    kernel -->|Decision| shell
-    kernel -->|Typed refusal| shell
-    shell -->|atomic commit| store[(Chosen provider)]
-    shell -->|publish after commit| events[Event consumers]
-```
-
-The model may choose `refund.approve` and propose a reason. The trusted shell decides which
-definition and store are mounted, derives recording provenance from its authenticated context,
-supplies the observed revision, and decides whether events are published. The kernel alone decides
-whether the requested transition is legal.
-
-## A definition is data
-
-This complete definition declares one field, three states, and two legal operations:
-
-```yaml
-entity: ticket
-version: 1
-
-schema:
-  additional_fields: false
-  fields:
-    title: { type: string, required: true, min_length: 1 }
-
-lifecycle:
-  initial: open
-  states: [open, active, closed]
-
-operations:
-  start:
-    transitions: [{ from: open, to: active }]
-  close:
-    transitions: [{ from: active, to: closed }]
-```
-
-Real definitions can add typed arguments, defaults, nested objects, references to other entity
-types, preconditions, invariants, field assignments, projections, and event templates. See the
-[definition language](https://beyond10x.github.io/docs/entity-runtime/guide/definitions) and the
-shipped [`refund`](examples/refund.yaml) and [`order`](examples/order.yaml) examples.
-
-## Try it
-
-Prebuilt `entity` binaries for Linux, macOS, and Windows are attached to every release with a
-`SHA256SUMS` file. From a checkout, install the same command with:
+Every [release](https://github.com/beyond10x/entity-runtime/releases) carries `entity` for Linux
+(x86_64, aarch64), macOS (x86_64, arm64) and Windows (x86_64) with a `SHA256SUMS` file. Or build it
+with Rust 1.85 or newer:
 
 ```console
-cargo install --path crates/entity-cli --locked
+cargo install --git https://github.com/beyond10x/entity-runtime --tag 0.27.0 --locked entity-cli
 ```
-
-Then validate and inspect the refund model:
 
 ```console
 $ entity validate examples/refund.yaml
 examples/refund.yaml: valid (refund v1)
 1 file(s), 0 invalid
-
-$ entity graph examples/refund.yaml
-refund v1: initial draft
-draft --submit--> submitted
-submitted --approve--> approved
-submitted --reject--> rejected
 ```
 
-Create and advance an instance without persistence:
+The libraries are not on a registry; depend on them by Git tag
+([embed the kernel](https://beyond10x.github.io/entity-runtime/docs/guides/embed-the-kernel)).
+
+## Build from source
+
+Requires Rust 1.85 or newer and [go-task](https://taskfile.dev). `entity-eventlog` and the
+provider contract need Rust 1.91.0 as well, which `task check` calls by name (`cargo +1.91.0`).
+PostgreSQL tests run when `ENTITY_POSTGRES_URL` names a server and print that they were skipped
+otherwise.
 
 ```console
-entity create \
-  --definition examples/refund.yaml \
-  --id ref-123 \
-  --fields '{"order_id":"ord-9","amount_cents":2500,"evidence_count":1}' \
-  > draft.json
-
-entity execute \
-  --definition examples/refund.yaml \
-  --instance @draft.json \
-  --operation submit \
-  > submitted.json
-
-$ entity execute \
-    --definition examples/refund.yaml \
-    --instance @submitted.json \
-    --operation approve \
-    --arguments '{"actor_role":"agent","reason":"receipt verified"}' \
-    --format text
-refund ref-123 is approved (revision 3); events: RefundApproved
+task check                                   # the full gate
+cargo run -p entity-cli --locked -- --help   # the entity command from this checkout
+task site-build                              # the documentation site (needs network for npm)
 ```
 
-A `Decision` printed by `create` or `execute` can be passed back as the next `--instance`. Add
-`--store` and recording metadata when the command should persist the decision; the
-[storage guide](https://beyond10x.github.io/docs/entity-runtime/guide/storage) explains the write
-contract and provider choices.
-
-Exit code `0` means the command decided successfully, `1` means a definition, kernel operation, or
-store write was refused, and `2` means the invocation was invalid. Kernel and store refusals are
-structured data; no refusal is a partial success.
-
-## Use the same model everywhere
-
-The `entity` command projects a validated definition set into several surfaces:
-
-```console
-# Mermaid, Graphviz DOT, SVG, HTML, or terminal text
-entity graph --format mermaid examples/refund.yaml
-
-# Browsable entity pages plus OpenAPI and AsyncAPI in JSON and YAML
-entity generate docs --definition examples/refund.yaml --out ./refund-reference
-
-# Schema-derived tools such as refund.create, refund.get, and refund.approve
-entity mcp --definition examples/refund.yaml --store ./refund-store
-
-# A retained, Clap-derived Rust command with refund create/get/list/events/operations
-entity generate rust-cli \
-  --definition examples/refund.yaml \
-  --name refundctl \
-  --out ./bin/refundctl --runtime-source .
-
-# A compact, version-stamped Agent Skills document for the installed command
-entity skill
-```
-
-Generated OpenAPI describes an HTTP facade an adopter may implement; it does not start a hidden
-server. Generated AsyncAPI describes emitted domain events; it does not select a broker. The MCP
-server uses stdio and a caller-selected File Store. These boundaries keep generated convenience
-from silently choosing infrastructure or authority.
-
-The dedicated CLI and MCP tools derive their domain commands from entity definitions. The
-top-level `entity` command is handwritten Rust using Clap derive. Entity Runtime has its own
-definition format and no whole-system ESS specification; see the
-[coverage map](https://beyond10x.github.io/docs/entity-runtime/system-model/) for the exact boundary.
-
-The command surface is:
-
-| command | purpose |
-|---|---|
-| `validate` | parse and register one or more definitions, reporting every invalid file |
-| `inspect` | show what a definition declares: fields, states, rules, and operations |
-| `graph` | render lifecycle or typed-reference graphs as text, Mermaid, DOT, SVG, or HTML |
-| `create` / `execute` | request a decision, optionally committing it to a File Store |
-| `list` | list stored identities for one entity type |
-| `generate docs` | write entity pages plus OpenAPI and AsyncAPI contracts |
-| `generate rust-cli` | build a definition-specific Rust command |
-| `mcp` | expose stored entities as schema-derived MCP tools over stdio |
-| `store migrate-file` | validate and perform an out-of-place File Store v1-to-v2 migration |
-| `skill` | render the Agent Skills guide for this installed CLI version |
-
-Run `entity <command> --help` for the exact arguments and safety conditions.
-
-## From Rust
-
-```rust
-use entity_core::{Registry, Runtime};
-use serde_json::json;
-
-let definition = entity_yaml::from_str(include_str!("../examples/order.yaml"))?;
-let mut registry = Registry::new();
-registry.register(definition)?;
-let runtime = Runtime::new(&registry);
-
-let created = runtime.create(
-    "order",
-    1,
-    "ord-1",
-    json!({"customer_id": "c-1", "total_cents": 2599}),
-)?;
-let submitted = runtime.execute(
-    &created.instance,
-    "submit",
-    json!({"actor": "alice"}),
-)?;
-let approved = runtime.execute(
-    &submitted.instance,
-    "approve",
-    json!({"actor": "alice"}),
-)?;
-
-assert_eq!(approved.instance.lifecycle_state, "approved");
-assert_eq!(approved.instance.revision, 3);
-```
-
-Registration is the validation boundary: execution receives a `ValidatedDefinition`, never an
-unchecked parsed document. On refusal, the caller still owns the unchanged prior instance.
-
-## Architecture
-
-| crate | responsibility |
-|---|---|
-| [`entity-core`](crates/entity-core/) | IO-free definitions, validation, decisions, typed refusals, and verified replay |
-| [`entity-yaml`](crates/entity-yaml/) | YAML text to definition data, without filesystem IO |
-| [`entity-store`](crates/entity-store/) | provider traits, memory/File Store, envelopes, projections, and conformance suites |
-| [`entity-query`](crates/entity-query/) | optional containment queries and cursor-bound document pages |
-| [`entity-executor`](crates/entity-executor/) | asynchronous execution over recorded storage ports, without selecting a runtime |
-| [`entity-eventlog`](crates/entity-eventlog/) | complete recorded storage on Eventlog providers: features `file`, `sqlite`, `postgres`, `tree`, `sync-bridge` |
-| [`entity-sqlite`](crates/entity-sqlite/) | embedded transactional persistence |
-| [`entity-postgres`](crates/entity-postgres/) | centralized transactional persistence |
-| [`entity-remote`](crates/entity-remote/) | transport-neutral remote protocol and explicit hybrid policy |
-| [`entity-graph`](crates/entity-graph/) | deterministic lifecycle and reference graphs |
-| [`entity-surface`](crates/entity-surface/) | deterministic documentation, OpenAPI, and AsyncAPI projections |
-| [`entity-shell`](crates/entity-shell/) | provider-backed operations shared by command surfaces |
-| [`entity-mcp`](crates/entity-mcp/) | synchronous MCP tools over caller-provided IO |
-| [`entity-cli`](crates/entity-cli/) | the `entity` executable and its filesystem/process boundary |
-
-`entity-core` depends only on `serde` and `serde_json`. Provider interfaces and every IO concern
-live outside it. `MemoryStore`, `SqliteStore`, and `PostgresStore` support all-or-nothing ordered
-batches; File Store atomicity is limited to one subject document. The Eventlog stores publish each
-append, one decision or an ordered batch, as one Eventlog append group.
-
-## Guarantees and limits
-
-- Identical inputs produce identical decisions and serialized bytes.
-- Definitions reject unknown keys, invalid reference paths, and expressions outside their scope.
-- Value validation accumulates defects with paths instead of stopping at the first.
-- Preconditions run before assignments; invariants run against the proposed next state; events are
-  materialized last.
-- Complete decision replay re-executes normalized commands and compares the recorded result and
-  events. Legacy event folding holds every revision to what the current definition's operations
-  could have produced, and is an explicit, weaker migration boundary: no definition snapshot, and
-  no view of a decision that emitted nothing.
-- `actor` and timestamps are recorded provenance, not authentication or trusted time. The host must
-  supply and validate them.
-- `Unreachable` is distinct from `Absent`; a network failure is never treated as proof that data
-  does not exist.
-
-The full public statement is in
-[Guarantees and limits](https://beyond10x.github.io/docs/entity-runtime/guarantees).
-
-## Develop
-
-The five library contracts for core, store, executor, shell and query have a canonical
-[ESS entry point](ess/ess-inputs.yaml) and a [conformance guide](docs/ess/README.md).
-The standalone Rust checker runs real APIs, preserves exact JSON values and requires reviewed
-scenario changes. It runs as part of `task check` and CI; ESS stays outside production dependencies.
-
-Requires Rust 1.85+ and [go-task](https://taskfile.dev); `entity-eventlog` needs Rust 1.91, and
-`task check` runs its `eventlog-runtime-check` step on the 1.91.0 toolchain. PostgreSQL tests run
-when `ENTITY_POSTGRES_URL` is set and print that they were skipped otherwise.
-
-```console
-task check
-```
-
-Run the command itself with `cargo run -p entity-cli --locked -- ...`. Website changes have their
-own build:
-
-```console
-task site-build
-```
-
-Contributors and coding agents must read [`AGENTS.md`](AGENTS.md) before changing the repository.
-The requirements register and normative designs live under [`docs/`](docs/); the human
-product handbook lives under [`website/docs/`](website/docs/).
-
-## Ecosystem
-
-- [AEP](https://github.com/beyond10x/aep) is the first adopter.
-  Its artifact backends consume six of this repository's crates — the kernel, `entity-store`,
-  `entity-query`, `entity-sqlite`, `entity-postgres` and `entity-remote` — at one exact revision;
-  the dependency points from it to Entity Runtime.
-- [eventlog](https://github.com/beyond10x/eventlog) provides append-only event storage.
-  `entity-eventlog` stores recorded state on its 0.4.0 providers. Event publication is an explicit
-  host integration, not an automatic connection from this runtime.
-- The public [Ecosystem](https://beyond10x.github.io/ecosystem/) maps the broader beyond10x system.
+The documentation site's source is [`website/`](website/); the requirements register, designs,
+executable ESS contracts and reviews are the engineering record under [`docs/`](docs/) and
+[`ess/`](ess/). Contributors and coding agents read [`AGENTS.md`](AGENTS.md) before changing
+anything; the [changelog](CHANGELOG.md) records every change a user sees.
 
 ## License
 

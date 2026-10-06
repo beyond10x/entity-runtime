@@ -1,0 +1,25 @@
+{
+  "format": "b10x-terminal/1",
+  "title": "An agent proposes; the rule decides",
+  "recordedWith": "entity 0.27.0, examples/refund.yaml",
+  "entries": [
+    {
+      "command": "entity validate refund.yaml",
+      "output": "refund.yaml: valid (refund v1)\n1 file(s), 0 invalid",
+      "exitCode": 0,
+      "comment": "Four states, and two rules on approve."
+    },
+    {
+      "command": "entity execute --definition refund.yaml --instance @submitted.json --operation approve --arguments '{\"actor_role\":\"agent\",\"reason\":\"customer supplied delivery evidence\"}'",
+      "output": "{\n  \"kind\": \"precondition_failed\",\n  \"message\": \"precondition 'large_refunds_need_a_human' failed for operation 'approve': refunds above 5000 cents require a human actor\",\n  \"operation\": \"approve\",\n  \"reason\": \"refunds above 5000 cents require a human actor\",\n  \"rule\": \"large_refunds_need_a_human\"\n}",
+      "exitCode": 1,
+      "comment": "An agent proposes approving a 12500-cent refund. Nothing changes."
+    },
+    {
+      "command": "entity execute --definition refund.yaml --store ./refund-store --id refund-104 --operation approve --arguments '{\"actor_role\":\"human\",\"reason\":\"supervisor verified the delivery evidence\"}' --record-id request-104-approved --recorded-at 2026-08-31T10:04:00Z --actor supervisor-7 --format text",
+      "output": "refund refund-104 is approved (revision 3); record request-104-approved; events: RefundApproved",
+      "exitCode": 0,
+      "comment": "A human approval is decided and stored with its provenance."
+    }
+  ]
+}
