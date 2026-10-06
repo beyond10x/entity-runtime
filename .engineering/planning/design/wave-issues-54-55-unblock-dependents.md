@@ -13,7 +13,7 @@ refs:
 relations:
 - designs: story:a-condition-reads-the-length-of-a-text
 - designs: story:recorded-open-checkpoint-design
-revision: 2
+revision: 5
 ---
 # Wave proposal: unblock ESS lowering (#54) and the recorded-store open (#55)
 
@@ -35,9 +35,38 @@ Session run: interactive.
 
 | unit | story | stage | branch | head | worktree | build dir | scratch |
 |---|---|---|---|---|---|---|---|
-| integration | — | opening commit | `wave/er-54-55-w1` | (opening commit) | `~/.local/state/worktree/trees/b10x/entity-runtime/er-w-int` (id `er-w-int`) | none (gate runs here at close: `~/.cache/b10x-target/er-w-int`) | `~/.cache/er-w/int` |
-| U1 | `story:a-condition-reads-the-length-of-a-text` | planned | `impl/a-condition-reads-the-length-of-a-text` | — | id `er-w1-u1` | `~/.cache/b10x-target/er-w1-u1` | `~/.cache/er-w/u1` |
-| U2 | `story:recorded-open-checkpoint-design` | planned | `impl/recorded-open-checkpoint-design` | — | id `er-w1-u2` | `~/.cache/b10x-target/er-w1-u2` | `~/.cache/er-w/u2` |
+| integration | — | gate green, closing | `wave/er-54-55-w1` | `a744b765` (opening `b7362882`) | `~/.local/state/worktree/trees/b10x/entity-runtime/er-w-int` (id `er-w-int`) | `~/.cache/b10x-target/er-w-int` (+ `-ess`) | `~/.cache/er-w/int` |
+| U1 | `story:a-condition-reads-the-length-of-a-text` | **implemented**; merged `9e071211`; adversary ×2, security ×1, two corrections | `impl/a-condition-reads-the-length-of-a-text` | `f84a61fc` | id `er-w1-u1` | `~/.cache/b10x-target/er-w1-u1` | `~/.cache/er-w/u1` |
+| U2 | `story:recorded-open-checkpoint-design` | **implemented**; merged `a744b765`; design review ×2, two corrections; option (a) chosen; beyond10x/eventlog#39 filed; `dependency-blocker:eventlog-durable-capture-continuity` blocks the implementation story | `impl/recorded-open-checkpoint-design` | `e3f182b5` | id `er-w1-u2` | `~/.cache/b10x-target/er-w1-u2` | `~/.cache/er-w/u2` |
+
+Gate on `a744b765`, each step its own exit (logs `~/.cache/er-w/int/gate-*.log`): fmt-check 0,
+clippy 0, test 0 (621 passed), doc-check 0, example-check 0, req-check 0, pin-check 0,
+postgres-check 0 (**skipped**: `ENTITY_POSTGRES_URL` unset; CI runs it), eventlog-runtime-check 0
+(188 passed), notes-check 0, ess-check 0 (430/430), provider-ess-check 0 (17/17). The logs show the
+new tests of this tree ran (shared-target check).
+
+Measured build (U1 tree, before dispatch): `cargo test -p entity-core --locked --no-run`, 11 s, 295M.
+Free disk at dispatch 18G; lowest read during the wave 12G.
+
+Agent cost (tokens / tool uses / wall): U1 implementor 230,938 + 324,320 + 388,587 / 119 + 193 + 53 /
+16.6 + 16.0 + 7.9 min; U1 adversary 179,949 + 262,380 / 81 + 128 / 11.2 + 9.3 min; U1 security
+195,515 / 79 / 12.8 min; U2 implementor 407,391 + 478,141 + 512,259 / 183 + 43 + 34 / 64.9 + 6.0 +
+3.2 min; U2 reviewer 292,557 + 360,203 / 101 + 22 / 22.4 + 6.0 min.
+
+Routing note (coordinator error, corrected): correction 1 refused two pre-existing forms the base
+accepted (array/map collection addresses as projection keys, map `count` under a binder). Adversary
+pass 2 showed stored histories under those definitions stopped replaying (`replay.rs:131`
+re-validates snapshots). Correction 2 reverted both; the defects are
+`story:projection-keys-read-collection-addresses` and `story:binder-elements-carry-their-declaration`.
+Pass 1's outcomes for those two pre-existing findings were recorded `fixed` before the revert; the
+outcome that held is `no-op` (filed as stories). The store's evidence is append-only, so the first
+record stands and this line corrects it.
+
+Accepted narrowing: Entity Runtime refuses `$t.count` on a text element inside a quantifier body
+(ESS § 3 allows it) until binder elements carry their declaration at run time.
+
+Wave 2 (operator goal "wave A+B completed in sequence"): `story:a-text-field-declares-its-alphabet`,
+dispatched after this wave lands on `main`.
 
 ## Dependents this unblocks
 

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-06T09:55:00Z",
+  "actor": "human:timo",
+  "artifact": "story:a-condition-reads-the-length-of-a-text",
+  "kind": "story",
+  "revision": 11,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "task ess-check on er-w1-u1: baseline (new service1-text-count scenarios, unchanged code) total 428 passed 422 failed 6; treatment total 428 passed 428 failed 0; cargo test -p entity-core --test service_values text_count 0 passed 4 failed -> 4 passed. VERIFIED",
+    "reference": "~/.cache/er-w/u1/red-ess.log vs ~/.cache/er-w/u1/green-ess.log"
+  }
+}

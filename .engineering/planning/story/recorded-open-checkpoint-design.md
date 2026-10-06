@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:recorded-open-checkpoint-design
 kind: story
-status: active
+status: implemented
 title: The bounded recorded-store open is designed, and the provider proof it needs is named
 owner: entity-runtime
 refs:
@@ -16,10 +16,11 @@ scope:
   path: crates/entity-eventlog/tests/shared_clock_cost.rs
 - confidence: cited
   path: docs/design/recorded-open-checkpoint-v0.1.md
-revision: 6
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-06T09:42:08Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":1}}}
 - {from: "proposed", to: "active", at: "2026-10-06T09:42:08Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "active", to: "implemented", at: "2026-10-06T11:36:51Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"metric_observation":1,"review_outcome":4,"verification":1}}}
 ---
 # The bounded recorded-store open is designed, and the provider proof it needs is named
 
@@ -80,3 +81,10 @@ Derived 2026-10-06 from the implementation story's scoper report at `7926ec45`.
 - **Coordinator-owned:** the `review-result`, the evidence, any `dependency-blocker` — cited
 - **Confidence:** high
 - **Would collide with:** `story:seeded-open-under-one-second` and the implementation story only on `shared_clock_cost.rs` — inferred
+
+## Scope as landed (wave 1, merged at `a744b765`)
+
+- `docs/design/recorded-open-checkpoint-v0.1.md` (new), `crates/entity-eventlog/tests/shared_clock_cost.rs`, `docs/ess/evidence/provider-tracking/open-cost-baseline.txt` (new): as drafted.
+- Added by the design review: `crates/entity-eventlog/tests/review_open_checkpoint.rs` (pins the pinned provider's trigger refusals, snapshot writes ending continuity, a recorded refusal ending tracked continuity).
+- **Correction:** the drafted collision with `story:seeded-open-under-one-second` on `shared_clock_cost.rs` was wrong; that story never names the file. Its overlap with the implementation story is `build_model` (`crates/entity-eventlog/src/adapter.rs:3869-3921`).
+- Not touched: `docs/ess/evidence/provider-tracking/source.sha256` still holds the probe file's earlier hash (evidence of the 0.26.0 release; no gate reads it).

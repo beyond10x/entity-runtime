@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:a-condition-reads-the-length-of-a-text
 kind: story
-status: active
+status: implemented
 title: A condition reads the length of a text
 owner: entity-runtime
 refs:
@@ -22,10 +22,11 @@ scope:
   path: docs/design/kernel-v0.1.md
 - confidence: inferred
   path: docs/design/service-semantics-v0.1.md
-revision: 11
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-06T09:42:08Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"review_outcome":1}}}
 - {from: "proposed", to: "active", at: "2026-10-06T09:42:08Z", actor: "human:timo", revision: 11, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "active", to: "implemented", at: "2026-10-06T11:36:51Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"test_result":1,"review_outcome":5,"verification":1}}}
 ---
 # A condition reads the length of a text
 
@@ -101,3 +102,15 @@ from the story or the tree) or **inferred** (a reading that could be wrong).
 - Whether the run-time arm is keyed on the value or on a declared `string` (see safety fact).
 - Whether `enum` and `ref` fields get `.count`; assumed `string` only.
 - `kernel/1` excluded (inferred: `count` is `service/1` only, `runtime.rs:2894`, `validation.rs:1432`).
+
+## Scope as landed (wave 1, merged at `9e071211`)
+
+From the implementor's confirmation table; corrections to the drafted Scope are shown, not deleted.
+
+- `runtime.rs` path walk (`lookup`, `walk`, `collection_address`): confirmed; a `checked` flag that turns false past a union's content key was needed — keying on a declared `string` alone was **not enough** (union payloads are typed by tag at run time).
+- `validation.rs` `walk_field_path` and the registration path check: confirmed; also the projection-key and binder checks (`:1462-1532`).
+- `Condition`, `evaluate_condition`, `evaluate_compare`, `condition_needs_subject` unchanged: confirmed. **Correction:** `CONDITION_OPERATORS` is at `definition.rs:960`, not in 1047-1415.
+- Tests: `service_values.rs` § 10.6 runs `:1371-1489` (drafted `:1372-1470`); the new section is at `:1491`. Two attack files added: `tests/adversary_text_count.rs`, `tests/security_text_count.rs`.
+- ESS: nine `ess/scenarios/core/service1-text-count-*.yaml`; `coverage.json` changed only its `review` line and new entries; `suite.json` regenerated.
+- Documents: R-160, R-161 (`docs/requirements.md`); rows added at `docs/design/kernel-v0.1.md:402` and `docs/ess/core-traceability.md:84` (drafted: edit `:79`); `docs/design/service-semantics-v0.1.md` § 10.6 table and § 11 rows; `CHANGELOG.md`.
+- `error.rs`: **not touched** (refusals reuse `InvalidRule` and `QuantifierBodyScope`).

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-06T10:30:00Z",
+  "actor": "human:timo",
+  "artifact": "story:recorded-open-checkpoint-design",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "Mutation: adapter.rs:987-990 commented out (open skips verification) -> probe fails 'a ProviderTracked open is one complete capture ... left: (0, 0, 0) right: (1, 1, 54)' and the tightened cold-open check fails at shared_clock_cost.rs:269; reverted, both green. Two independent design reviews (review-result:er-w1-u2-design-review-1, -2) with 13 findings fixed. VERIFIED (new behaviour: the probe and the design)",
+    "reference": "~/.cache/er-w/u2/mutation-run.log, ~/.cache/er-w/u2/mutation-run-2.log"
+  }
+}

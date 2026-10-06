@@ -21,10 +21,14 @@ scope:
   path: checks/ess-conformance
 - confidence: cited
   path: crates/entity-eventlog/src/adapter.rs
+- confidence: inferred
+  path: crates/entity-eventlog/src/adapter/scoped.rs
 - confidence: cited
   path: crates/entity-eventlog/src/adapter/tracked.rs
 - confidence: cited
   path: crates/entity-eventlog/src/facade.rs
+- confidence: inferred
+  path: crates/entity-eventlog/src/projection.rs
 - confidence: cited
   path: crates/entity-eventlog/src/sync.rs
 - confidence: cited
@@ -35,7 +39,7 @@ scope:
   path: docs/design/eventlog-recorded-sync-bridge-v0.1.md
 - confidence: cited
   path: ess/provider-tracking
-revision: 15
+revision: 18
 ---
 # A recorded-store open verifies a persisted checkpoint and the suffix after it
 
@@ -62,23 +66,26 @@ events; 4.1 s for one list command at 2,623 events.
 
 ## Acceptance
 
-1. **Gate:** this story implements the option `story:recorded-open-checkpoint-design` chose (it
-   depends on that story). It starts only after that story is implemented, and, if the design chose
-   the Eventlog option, only after the `dependency-blocker` the design files is cleared.
-2. **Spec-first.** The checkpoint and the bounded open are scenarios in
-   `ess/provider-tracking/` before implementation: a tampered checkpoint is refused or falls back to
-   complete verification (the design says which); a checkpoint whose position is beyond the
-   provider's head is refused; an open after appends verifies only the suffix; the model digest
-   after a bounded open equals the digest after a complete one on the same store.
-   `provider-ess-check` executes them.
+1. **Gate:** this story implements option (a) of `docs/design/recorded-open-checkpoint-v0.1.md`,
+   which `story:recorded-open-checkpoint-design` chose (wave 1, 2026-10-06). It starts only after
+   `dependency-blocker:eventlog-durable-capture-continuity` (beyond10x/eventlog#39) is cleared.
+2. **Spec-first.** The design's four new commands are written into
+   `ess/provider-tracking/domains/operations.yaml` before any code:
+   `entity-provider.tracking.EnableDurableCheckpoints`, `DiscardCheckpoint`, and the fixtures
+   `KeepCopy` and `TruncateTail`, plus the new `SqlMutate` kind that tampers the checkpoint record
+   (design § on the specification). Scenarios: a tampered checkpoint falls back to complete
+   verification; a checkpoint ahead of the head refuses the open and `DiscardCheckpoint` recovers
+   it; an open after appends verifies only the suffix; a foreign write between the observation and
+   the durable checkpoint yields a complete open; every answer a bounded handle gives equals what a
+   complete handle gives on the same store. `provider-ess-check` executes them.
 3. **The five reviewed tamper scenarios**
-   (`ess/provider-tracking/scenarios/unchanged-head-{blob,delete-blob,event,identity,projection}-tamper.yaml`):
-   each still passes under `CapturePolicy::FullVerification`; under `ProviderTracked` each passes
-   unchanged, or its contract is narrowed exactly as the design states, through
-   `--coverage-review`, with the narrowing named in `CHANGELOG.md`. `provider-ess-check` exits 0.
+   (`ess/provider-tracking/scenarios/unchanged-head-{blob,delete-blob,event,identity,projection}-tamper.yaml`)
+   pass unchanged: their reopen follows a refusal, so no checkpoint exists (verified by the design
+   reviews, `review-result:er-w1-u2-design-review-1`). Tamper-after-checkpoint variants are added
+   per item 2. `provider-ess-check` exits 0.
 4. **Full verification on demand:** a test opens a store with a valid checkpoint under
    `FullVerification` and shows the whole history is verified (the cold-open capture count
-   `shared_clock_cost.rs:287` asserts today).
+   `crates/entity-eventlog/tests/shared_clock_cost.rs:266-273` asserts it right after the open).
 5. **Cost.** The release-mode probe the design story added to
    `crates/entity-eventlog/tests/shared_clock_cost.rs` measures the open with a checkpoint at the
    previous head: median of 5 runs at 1,203 events is at most 2× the median at 55 events (the bound
@@ -87,7 +94,9 @@ events; 4.1 s for one list command at 2,623 events.
    and recorded as `verification` evidence naming both files.
 6. **No silent unverified read.** Every verification removed from the open path names, in a test,
    where it now happens.
-7. `CHANGELOG.md` line; `docs/requirements.md` R-151 ("fully verifies on open", line 224) amended;
+7. `CHANGELOG.md` line (including the one-way enable step and its consequence for older binaries on
+   the same store); `docs/requirements.md` R-151 ("fully verifies on open", line 224) amended to the
+   wording the design gives;
    `AGENTS.md` § Boundaries, the "IO stays at named edges" bullet (`AGENTS.md:245`), gains one
    sentence stating what a `ProviderTracked` open verifies and what it does not, in the same change.
 
