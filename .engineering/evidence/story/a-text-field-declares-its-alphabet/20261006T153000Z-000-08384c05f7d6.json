@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-06T15:30:00Z",
+  "actor": "human:timo",
+  "artifact": "story:a-text-field-declares-its-alphabet",
+  "kind": "story",
+  "revision": 34,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "task ess-check on er-w2-u1: baseline (new service1-text-alphabet scenarios, unchanged code) total 435 passed 430 failed 5; treatment total 435 passed 435 failed 0; cargo test -p entity-core --test text_alphabet 1 passed 15 failed -> 16 passed. VERIFIED",
+    "reference": "~/.cache/er-w/w2u1/logs"
+  }
+}

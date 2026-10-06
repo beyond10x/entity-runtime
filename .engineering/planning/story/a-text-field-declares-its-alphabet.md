@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:a-text-field-declares-its-alphabet
 kind: story
-status: active
+status: implemented
 title: A text field or argument declares its alphabet
 owner: entity-runtime
 refs:
@@ -22,10 +22,11 @@ scope:
   path: crates/entity-surface/src/lib.rs
 - confidence: inferred
   path: docs/design/kernel-v0.1.md
-revision: 34
+revision: 36
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-06T11:44:10Z", actor: "human:timo", revision: 33, decided_on: {"recorded":{"review_outcome":3}}}
 - {from: "proposed", to: "active", at: "2026-10-06T11:44:10Z", actor: "human:timo", revision: 34, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "active", to: "implemented", at: "2026-10-06T15:49:52Z", actor: "human:timo", revision: 36, decided_on: {"recorded":{"test_result":1,"review_outcome":6,"verification":1}}}
 ---
 # A text field or argument declares its alphabet
 
@@ -107,3 +108,16 @@ Derived 2026-10-06 by `aep:story-scoper`. Every line is **cited** (read from the
 - Whether "a named `ValidationError`" for registration refusals means reusing `DefinitionError::ConstraintNotApplicable`/`InvalidField` or new variants.
 - Whether entity-surface projections must carry the alphabet.
 - "First offending character" is only assertable in ESS through the free-text `details` field.
+
+## Scope as landed (wave 2, merged at `da26675c`)
+
+From the implementor's confirmation table; corrections to the drafted Scope are shown, not deleted.
+
+- `definition.rs` `FieldDefinition.alphabet` with `skip_serializing_if` (`:377`): as drafted.
+- `validation.rs`: `validate_constraint_applicability` (now `:2191`), `validate_field_definition` (`:2244`), new `validate_alphabet` (`:2404`), `validate_string` (`:2705`); a private `Findings` type caches one membership set per declaration per validation call (added by the cost finding of adversary pass 1).
+- **Correction:** `error.rs` was **not** touched; refusals reuse `ConstraintNotApplicable`, `InvalidField` and `SemanticsKeyNotAvailable`.
+- `entity-surface/src/lib.rs`: confirmed; `x-alphabet` at `:398`, reference-page entry at `:882`.
+- `docs/design/kernel-v0.1.md` § 3.1: new paragraph, lines 70–77. **Correction:** `docs/ess/core-traceability.md` got new rows 86–87 instead of editing rows 50/55.
+- Tests: `tests/text_alphabet.rs` (new); attack files `tests/adversary_text_alphabet.rs`, `entity-surface/tests/adversary_alphabet.rs`.
+- ESS: five `ess/scenarios/core/service1-text-alphabet-*.yaml`; no domain, component or adapter change.
+- Decided: an alphabet is a `service/N` key; `kernel/1` refuses it (`SemanticsKeyNotAvailable`, R-163). An alphabet on a response field registers but is not enforced until `story:service-response-is-checked-against-its-schema`.
