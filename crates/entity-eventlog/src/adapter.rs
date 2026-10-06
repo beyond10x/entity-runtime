@@ -5298,10 +5298,13 @@ mod seeded_open {
     /// here.
     fn model_digest(model: &CapturedModel) -> String {
         let mut hasher = Sha256::new();
-        // A linear store's records carry no lineage. The field postdates the pin below, so it is
-        // left out of the text the pin covers while it is empty; a record that does carry one
-        // still changes the digest.
-        let pinned = |text: String| text.replace(", lineage: None", "");
+        // A linear store's records carry no lineage, and these fixtures' fields declare no
+        // alphabet. Both fields postdate the pins below, so each is left out of the text the pins
+        // cover while it is empty; a record that does carry one still changes the digest.
+        let pinned = |text: String| {
+            text.replace(", lineage: None", "")
+                .replace(", alphabet: None", "")
+        };
         for part in [
             format!("{:?}", model.binding),
             format!(

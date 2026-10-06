@@ -1,0 +1,70 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-alphabet-membership",
+  "summary": "An alphabet admits a text of only its characters and the empty text, and refuses any other naming the path and first offending character, without case folding.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "p-1",
+        "fields": "{\"code\":\"12#A\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "p-1",
+        "fields": "{\"code\":\"12x#y\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "details": "Validation([ValidationError { path: \"fields.code\", message: \"character 'x' (U+0078) at position 3 is not in the alphabet\" }])",
+        "paths": [
+          "fields.code"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:02Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "p-1",
+        "fields": "{\"code\":\"\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:03Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "p-1",
+        "fields": "{\"code\":\"12a\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "details": "Validation([ValidationError { path: \"fields.code\", message: \"character 'a' (U+0061) at position 3 is not in the alphabet\" }])",
+        "paths": [
+          "fields.code"
+        ]
+      }
+    }
+  ]
+}
