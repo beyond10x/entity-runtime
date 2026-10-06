@@ -57,3 +57,19 @@ jobs:
       - name: Build website
         working-directory: website
         run: npm run build
+
+      - name: Check the generated pages and bind the built site to its source commit
+        run: |
+          cargo test --locked -p entity-runtime-docs
+          cargo run --locked -p entity-runtime-docs -- generate --check
+          cargo run --locked -p entity-runtime-docs -- provenance --site website/build --commit "$GITHUB_SHA"
+
+      - name: Upload the exact built site
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: b10x-project-site
+          path: website/build
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: error

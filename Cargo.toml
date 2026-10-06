@@ -16,6 +16,7 @@ members = [
   "crates/entity-yaml",
   "crates/entity-cli",
   "crates/entity-xtask",
+  "crates/entity-runtime-docs",
   "crates/scan-support",
 ]
 

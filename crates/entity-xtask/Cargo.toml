@@ -1,5 +1,6 @@
 [package]
 name = "entity-xtask"
+description = "Repository-only checks that do not belong in the public entity command: today, that the local aep is new enough for the planning store (task plan-check)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,0 +1,329 @@
+{
+  "asOf": "2026-10-06",
+  "format": "b10x-status/1",
+  "items": [
+    {
+      "area": "Kernel",
+      "detail": "The same definition, instance, operation and arguments give the same Decision and the same serialized bytes.",
+      "href": "/docs/concepts/guarantees",
+      "label": "Deterministic decisions",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "entity-core reads no clock, filesystem, network, environment or random source and depends only on serde and serde_json.",
+      "href": "/docs/concepts/guarantees",
+      "label": "No IO in the kernel",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "A refused operation leaves the caller's instance untouched and produces no events.",
+      "href": "/docs/reference/refusals",
+      "label": "A refusal changes nothing",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "A misspelled key, an unknown condition operator or a condition with two operators is refused, not ignored.",
+      "href": "/docs/reference/definitions",
+      "label": "Closed definition documents",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "A comparison over a value nobody observed answers unknown, and the refusal names every missing path.",
+      "href": "/docs/reference/definitions",
+      "label": "Three-valued rules",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "An object with several broken values reports every error, each with its path.",
+      "href": "/docs/reference/definitions",
+      "label": "Accumulated validation",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "starts_with and ends_with compare bytes, case-sensitively, under every semantics (0.24.0).",
+      "href": "/docs/reference/definitions",
+      "label": "Prefix and suffix conditions",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "A ref field names another entity type; validate_all refuses a reference to a type nobody registered.",
+      "href": "/docs/reference/definitions",
+      "label": "Typed references",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "Operations and creations carry ordered branches with guards, effects, responses and declared refusals; the kernel selects the branch.",
+      "href": "/docs/concepts/service-semantics",
+      "label": "Named outcomes (service/1)",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "A copied optional argument stays absent, present or null through replay and retry.",
+      "href": "/docs/concepts/service-semantics",
+      "label": "Optional values keep their absence (service/2)",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "Set, Preserve and Remove actions apply after the outcome is selected and are kept in the record.",
+      "href": "/docs/concepts/service-semantics",
+      "label": "Typed update actions (service/3)",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "A service definition may declare an identity field; derived creation computes the storage address from it.",
+      "href": "/docs/concepts/service-semantics",
+      "label": "Logical identity and derived addresses",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "A service rule reads the length of a declared string as path.count, counted in Unicode scalar values with no normalization (0.27.0).",
+      "href": "/docs/concepts/service-semantics#text-length-and-alphabets",
+      "label": "Text length in service rules",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "A service string field or argument may declare an alphabet; a value outside it is a validation error naming the first offending character, and generated contracts carry it as x-alphabet (0.27.0).",
+      "href": "/docs/concepts/service-semantics#text-length-and-alphabets",
+      "label": "Text alphabets",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "replay re-executes a complete decision record and refuses a record whose result was altered.",
+      "href": "/docs/concepts/storage",
+      "label": "Verified decision replay",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "rehydrate folds an event-only history and refuses an event no operation emits on its transition.",
+      "href": "/docs/concepts/storage",
+      "label": "Legacy event folding",
+      "status": "shipped"
+    },
+    {
+      "area": "Storage",
+      "detail": "One black-box suite holds Memory and File stores to the same write contract.",
+      "href": "/docs/concepts/storage",
+      "label": "Provider conformance suites",
+      "status": "shipped"
+    },
+    {
+      "area": "Storage",
+      "detail": "entity store migrate-file copies a pre-0.15 store out of place; --dry-run writes nothing.",
+      "href": "/docs/guides/migrate-a-file-store",
+      "label": "File Store v2 and its migration",
+      "status": "shipped"
+    },
+    {
+      "area": "Storage",
+      "detail": "State, history and events commit in one SQLite transaction.",
+      "href": "/docs/concepts/storage",
+      "label": "SQLite provider",
+      "status": "shipped"
+    },
+    {
+      "area": "Storage",
+      "detail": "The same contract against a server the caller connects to; the gate runs it only when ENTITY_POSTGRES_URL is set.",
+      "href": "/docs/concepts/storage",
+      "label": "PostgreSQL provider",
+      "status": "shipped"
+    },
+    {
+      "area": "Storage",
+      "detail": "A store behind a caller-provided transport; a server that did not answer is Unreachable, never Absent.",
+      "href": "/docs/concepts/storage",
+      "label": "Remote protocol",
+      "status": "shipped"
+    },
+    {
+      "area": "Storage",
+      "detail": "Authority, read path, offline and divergence behaviour are declared; divergences replay later with catch_up.",
+      "href": "/docs/concepts/storage",
+      "label": "Hybrid authority and catch-up",
+      "status": "shipped"
+    },
+    {
+      "area": "Storage",
+      "detail": "entity-query pages one entity type by JSON containment; a cursor is bound to the query that issued it.",
+      "href": "/docs/guides/embed-the-kernel",
+      "label": "Document queries",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
+      "detail": "entity-executor runs complete recorded commands over async storage ports; a retry returns the original result.",
+      "href": "/docs/concepts/storage",
+      "label": "Asynchronous executor with exact retries",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
+      "detail": "execute_versioned and batch_versioned decide on a version the caller names (0.26.0).",
+      "href": "/docs/concepts/storage",
+      "label": "Explicit definition versions",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
+      "detail": "entity-eventlog keeps complete records on Eventlog file, sqlite, postgres and tree providers, provisioned explicitly before an open.",
+      "href": "/docs/concepts/storage",
+      "label": "Eventlog providers",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
+      "detail": "On a tree store two branches that both decided for one subject fork it; BatchAction::Merge joins the heads.",
+      "href": "/docs/concepts/storage",
+      "label": "Forked subjects and merge",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
+      "detail": "An executor built with recording_refusals records each refusal once and moves no subject.",
+      "href": "/docs/concepts/storage",
+      "label": "Recorded refusals",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
+      "detail": "import_anchors establishes a batch of imported boundaries in one append group, and a retry of it settles.",
+      "href": "/docs/concepts/storage",
+      "label": "Batch import of legacy histories",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
+      "detail": "A new tree store is eventlog-tree/2; an eventlog-tree/1 store reads the same after migration (0.25.0).",
+      "href": "/docs/concepts/storage",
+      "label": "Tree stores keep each text once",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
+      "detail": "CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract.",
+      "href": "/docs/concepts/storage",
+      "label": "Provider-tracked reads on SQLite",
+      "status": "shipped"
+    },
+    {
+      "area": "Surfaces",
+      "detail": "Validate, inspect, graph, create, execute, list and store migrations from one Rust binary with typed exit codes.",
+      "href": "/docs/reference/cli",
+      "label": "The entity command",
+      "status": "shipped"
+    },
+    {
+      "area": "Surfaces",
+      "detail": "A build with the eventlog-providers feature provisions and uses an Eventlog File store; no gate step builds that feature.",
+      "href": "/docs/reference/cli",
+      "label": "Eventlog File through the command",
+      "status": "shipped"
+    },
+    {
+      "area": "Surfaces",
+      "detail": "Text, Mermaid, DOT, SVG and HTML, the same bytes on every run.",
+      "href": "/docs/guides/render-graphs",
+      "label": "Lifecycle and reference graphs",
+      "status": "shipped"
+    },
+    {
+      "area": "Surfaces",
+      "detail": "entity generate docs writes a static bundle and replaces only a directory it generated.",
+      "href": "/docs/guides/generate-entity-docs",
+      "label": "Entity pages, OpenAPI and AsyncAPI",
+      "status": "shipped"
+    },
+    {
+      "area": "Surfaces",
+      "detail": "Schema-derived create, get, list, events and operation tools; a stale call is refused and changes nothing.",
+      "href": "/docs/guides/mount-mcp-tools",
+      "label": "MCP tools over stdio",
+      "status": "shipped"
+    },
+    {
+      "area": "Surfaces",
+      "detail": "entity generate rust-cli compiles a command with one subcommand per entity and operation.",
+      "href": "/docs/guides/generate-a-rust-cli",
+      "label": "Definition-specific Rust CLI",
+      "status": "shipped"
+    },
+    {
+      "area": "Surfaces",
+      "detail": "entity skill renders a version-stamped Agent Skills document; replacing a file needs --force.",
+      "href": "/docs/guides/connect-an-agent",
+      "label": "Agent skill",
+      "status": "shipped"
+    },
+    {
+      "area": "Contracts",
+      "detail": "entity-core, entity-store, entity-executor, entity-shell and entity-query are checked against their ESS scenarios by the gate.",
+      "href": "/docs/concepts/system-model",
+      "label": "Executable ESS contracts for five libraries",
+      "status": "shipped"
+    },
+    {
+      "area": "Planned",
+      "detail": "A schema generated from the Rust definition types.",
+      "href": "/docs/reference/definitions",
+      "label": "JSON Schema for the definition format",
+      "status": "planned"
+    },
+    {
+      "area": "Planned",
+      "detail": "Moving stored instances from one definition version to another.",
+      "href": "/docs/concepts/guarantees",
+      "label": "Definition migrations",
+      "status": "planned"
+    },
+    {
+      "area": "Planned",
+      "detail": "Why an operation is or is not permitted from the current state.",
+      "href": "/docs/reference/cli",
+      "label": "entity explain",
+      "status": "planned"
+    },
+    {
+      "area": "Planned",
+      "detail": "Reusable named rules, reusable schema fragments and definition inheritance.",
+      "href": "/docs/reference/definitions",
+      "label": "Named predicates and schema fragments",
+      "status": "planned"
+    },
+    {
+      "area": "Planned",
+      "detail": "A service response checked against its declared fields, including alphabet and max_length.",
+      "href": "/docs/concepts/service-semantics#text-length-and-alphabets",
+      "label": "Responses checked against their schema",
+      "status": "planned"
+    },
+    {
+      "area": "Planned",
+      "detail": "A service/1 outcome with a moves effect loads through entity-yaml and the entity command.",
+      "href": "/docs/concepts/service-semantics",
+      "label": "Moves outcomes in YAML",
+      "status": "planned"
+    },
+    {
+      "area": "Planned",
+      "detail": "Registered definitions served as an HTTP and a NATS interface; today OpenAPI and AsyncAPI are contracts only.",
+      "href": "/docs/concepts/system-model",
+      "label": "Definitions served over HTTP and NATS",
+      "status": "planned"
+    }
+  ],
+  "source": "entity-runtime-docs, from its capability list; every shipped item names the test or gate step that holds it"
+}

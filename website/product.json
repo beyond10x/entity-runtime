@@ -1,0 +1,140 @@
+{
+  "format": "b10x-product-landing/1",
+  "product": {
+    "name": "Entity Runtime",
+    "mark": "ER",
+    "eyebrow": "Deterministic decisions · Rust",
+    "promise": [
+      "Let agents propose.",
+      "Let rules decide."
+    ],
+    "lede": "Declare an entity's fields, lifecycle, operations, rules and events as data. A deterministic Rust kernel answers each requested operation with the complete next decision, or a typed refusal that changes nothing. It reads no clock, file or network: storage, identity, time and side effects stay with the application around it.",
+    "actions": [
+      {
+        "label": "Get started",
+        "href": "/docs/getting-started",
+        "kind": "primary"
+      },
+      {
+        "label": "Read the documentation",
+        "href": "/docs/"
+      },
+      {
+        "label": "What exists today",
+        "href": "/docs/status"
+      }
+    ],
+    "meta": "Rust libraries and the entity command · Linux, macOS, Windows · Apache-2.0",
+    "art": {
+      "kind": "terminal",
+      "session": "data/terminal.json"
+    },
+    "kpis": [
+      "shipped",
+      "planned"
+    ]
+  },
+  "sections": [
+    {
+      "kind": "features",
+      "eyebrow": "What it does",
+      "title": "One boundary between a proposal and durable state.",
+      "lede": "The agent chooses a named operation. The trusted shell supplies authority and canonical state. The kernel decides, from data.",
+      "items": [
+        {
+          "title": "Policy outside the prompt",
+          "description": "Schema, lifecycle, operations, rules and events are a validated definition with closed keys, not prose a model reinterprets on every call.",
+          "status": "shipped",
+          "href": "/docs/guides/model-policy-as-data"
+        },
+        {
+          "title": "Operations, not patches",
+          "description": "Callers ask for approve or reject, never for a writable status field. Every move is a declared transition with its own arguments and rules.",
+          "status": "shipped",
+          "href": "/docs/reference/definitions"
+        },
+        {
+          "title": "Refusals are data",
+          "description": "A refusal names its kind and the rule, state or path that caused it. Missing evidence is unknown, not false.",
+          "status": "shipped",
+          "href": "/docs/reference/refusals"
+        },
+        {
+          "title": "Decisions carry their record",
+          "description": "Command, definition, changes and events are kept with caller-supplied provenance; replay re-runs the decision instead of trusting it.",
+          "status": "shipped",
+          "href": "/docs/concepts/storage"
+        },
+        {
+          "title": "No silent overwrites",
+          "description": "Every commit names the revision it was decided on. A stale writer is refused; an exact retry gets the original result back.",
+          "status": "shipped",
+          "href": "/docs/concepts/storage"
+        },
+        {
+          "title": "One model, many surfaces",
+          "description": "Lifecycle graphs, entity pages with OpenAPI and AsyncAPI, MCP tools and a generated Rust command come from the same definitions.",
+          "status": "shipped",
+          "href": "/docs/concepts/system-model"
+        }
+      ]
+    },
+    {
+      "kind": "flow",
+      "eyebrow": "How it decides",
+      "title": "From proposal to recorded decision.",
+      "steps": [
+        {
+          "label": "01",
+          "title": "The agent proposes",
+          "description": "A named operation and the domain arguments it was delegated."
+        },
+        {
+          "label": "02",
+          "title": "The shell supplies trust",
+          "description": "Canonical state, identity, authority, record id, time and the expected revision."
+        },
+        {
+          "label": "03",
+          "title": "The kernel decides",
+          "description": "Transition, schema, preconditions, assignments, invariants and events, in a fixed order."
+        },
+        {
+          "label": "04",
+          "title": "The provider commits",
+          "description": "State, history and events in one write, or a typed refusal that changes nothing."
+        }
+      ]
+    },
+    {
+      "kind": "status",
+      "eyebrow": "Status",
+      "title": "Released, and held by named tests.",
+      "lede": "Shipped means released in a tagged version and held by a test or gate step in the repository. Planned means a draft on the plan.",
+      "items": "data/status.json"
+    },
+    {
+      "kind": "related",
+      "eyebrow": "Related tools",
+      "title": "Where Entity Runtime sits.",
+      "tools": [
+        {
+          "id": "ess",
+          "relation": "specifies"
+        },
+        {
+          "name": "AEP",
+          "description": "Governed planning. The lifecycle of each kind of planning artifact is an Entity Runtime definition, and entity-core decides every move.",
+          "href": "https://beyond10x.github.io/ecosystem/aep/",
+          "mark": "Ae"
+        },
+        {
+          "name": "Eventlog",
+          "description": "Append-only event storage. entity-eventlog keeps complete recorded state on its file, SQLite, PostgreSQL and tree providers.",
+          "href": "https://beyond10x.github.io/ecosystem/eventlog/",
+          "mark": "Ev"
+        }
+      ]
+    }
+  ]
+}

@@ -6,7 +6,8 @@ Org-wide rules — repo naming, the language rule (anything that runs is Rust, n
 former-brand rule and the rule that a change to bytes another repo verifies is a coordinated
 migration with an ADR — live in `atlas/AGENTS.md` and are not restated here.
 
-`README.md` orients a reader. This file says what must not break.
+`README.md` orients a person and links the documentation site; the site (`website/docs/`) is the
+product documentation. This file says what must not break, and does not repeat either.
 
 ## Serves
 
@@ -28,9 +29,11 @@ which orders asynchronous recorded-store calls around the kernel without selecti
 `entity-query`, optional provider-neutral document queries; `entity-graph` and
 `entity-surface`, which project validated definitions; `entity-shell`, which shares
 provider-backed operations; `entity-mcp`, which serves those operations over caller-provided
-stdio; and `entity-cli`, the `entity` command that owns filesystem and process IO. It is not a
-hosted database, message bus, workflow service or scripting runtime. The kernel holds no
-credential and reaches no network; an explicit provider may perform the storage or transport IO
+stdio; and `entity-cli`, the `entity` command that owns filesystem and process IO, whose clap
+definition lives in its library (`crates/entity-cli/src/cli.rs`) so the docs generator can read it.
+`entity-runtime-docs`, `entity-xtask` and `scan-support` are repository tooling (`publish = false`).
+It is not a hosted database, message bus, workflow service or scripting runtime. The kernel holds
+no credential and reaches no network; an explicit provider may perform the storage or transport IO
 its name promises.
 
 ## Which documents are normative
@@ -77,20 +80,23 @@ somewhere. Do not write an enforcement here that you cannot point at.
 
 1. **The kernel does no IO.** No clock, identifier generator, filesystem, network, environment,
    thread, async runtime or random source in `entity-core`.
-   *Enforced by* `crates/entity-core/tests/purity.rs`, which strips comments and string literals
-   (so prose about `std::fs` is not a breach and a dereference at the start of a line is not
-   mistaken for one), expands every `use` path (so `use std::{fs, env};` and
-   `use std::env::var as fetch;` are both seen), and matches whole words (so `Operand::` is not a
-   `rand::`). It is checked against fourteen plantings it must catch and eight lookalikes it must
-   not, and a second test pins the dependency list — every dependency table, not just the literal
-   `[dependencies]` — to `serde` and `serde_json`.
+   *Enforced by*
+   `crates/entity-core/tests/purity.rs::the_kernel_reaches_no_clock_filesystem_network_or_random_source`,
+   which strips comments and string literals (so prose about `std::fs` is not a breach and a
+   dereference at the start of a line is not mistaken for one), expands every `use` path (so
+   `use std::{fs, env};` and `use std::env::var as fetch;` are both seen), and matches whole words
+   (so `Operand::` is not a `rand::`). It is checked against fourteen plantings it must catch and
+   eight lookalikes it must not, and
+   `crates/entity-core/tests/purity.rs::the_kernel_depends_on_serialisation_and_nothing_else` pins
+   the dependency list — every dependency table, not just the literal `[dependencies]` — to
+   `serde` and `serde_json`.
 2. **Same inputs, same `Decision`, same bytes.** Ordered maps only; no `HashMap`/`HashSet`.
    *Enforced by* the same scan (`HashMap` and `HashSet` are banned tokens) and
-   `the_same_inputs_produce_the_same_decision_byte_for_byte`.
+   `crates/entity-core/tests/requirements.rs::the_same_inputs_produce_the_same_decision_byte_for_byte`.
 3. **A refusal changes nothing.** `execute` takes the caller's instance by shared reference, and
    every successful kernel entry point returns a new value; no refusal mutates caller-owned data.
    *Enforced by* the signatures of `create`, `execute`, `replay` and `rehydrate`, and by
-   `a_refusal_leaves_the_caller_owned_instance_untouched`.
+   `crates/entity-core/tests/requirements.rs::a_refusal_leaves_the_caller_owned_instance_untouched`.
 4. **There is no generic lifecycle-state write.** `create` selects the declared initial state and
    `execute` reaches another state only through a declared operation. Legacy event rehydration may
    reconstruct a state, but it folds one revision at a time as one decision and holds each to an
@@ -100,11 +106,11 @@ somewhere. Do not write an enforcement here that you cannot point at.
    command or delete.
    *Enforced by* `create` and `execute`, by the checks in `rehydrate`, by `execute` refusing an
    instance whose state the definition does not declare (`UnknownState`), and by
-   `an_instance_claiming_a_state_the_definition_does_not_declare_is_refused` plus the R-97 replay
-   tests named in `docs/requirements.md`. It is **not** enforced by the type: `EntityInstance` has
-   public fields and deserialises because a store round-trips it, so which instance reaches the
-   kernel is the shell's responsibility (R-80). Do not restate the stronger claim that the type
-   seals lifecycle state.
+   `crates/entity-core/tests/requirements.rs::an_instance_claiming_a_state_the_definition_does_not_declare_is_refused`
+   plus the R-97 replay tests named in `docs/requirements.md`. It is **not** enforced by the type:
+   `EntityInstance` has public fields and deserialises because a store round-trips it, so which
+   instance reaches the kernel is the shell's responsibility (R-80). Do not restate the stronger
+   claim that the type seals lifecycle state.
 5. **Rules and templates see only what their scope allows, and every path is checked.** An
    invariant cannot read `$args`, `$old_fields`, `$from_state` or `$to_state`; a precondition
    cannot read `$state`, which would mean the state the operation is heading for; a creation event
@@ -113,18 +119,18 @@ somewhere. Do not write an enforcement here that you cannot point at.
    in a `set` or event template alike.
    *Enforced by* `validate_reference` and `validate_reference_path` in
    `crates/entity-core/src/validation.rs` and the tests
-   `a_precondition_may_not_read_state_and_an_invariant_may_not_read_the_transition`,
-   `a_nested_reference_path_is_checked_against_the_schema`,
-   `a_template_the_scope_cannot_resolve_is_refused_at_registration`.
+   `crates/entity-core/tests/requirements.rs::a_precondition_may_not_read_state_and_an_invariant_may_not_read_the_transition`,
+   `crates/entity-core/tests/requirements.rs::a_nested_reference_path_is_checked_against_the_schema`,
+   `crates/entity-core/tests/requirements.rs::a_template_the_scope_cannot_resolve_is_refused_at_registration`.
 6. **Value validation accumulates.** An object with four broken values reports four errors, each
    with a path.
    *Enforced by* `validate_object` returning `Vec<ValidationError>` and
-   `validation_accumulates_every_field_error`, which asserts an exact set of paths, not "is an
-   error".
+   `crates/entity-core/tests/requirements.rs::validation_accumulates_every_field_error`, which
+   asserts an exact set of paths, not "is an error".
 7. **No `$now`, no `uuid()`, no lookup in a template or a rule.** What the world knows enters as
    an argument.
    *Enforced by* the closed reference set in `resolve_expression_optional` and
-   `an_unresolvable_template_reference_is_an_error_not_a_null`.
+   `crates/entity-core/tests/requirements.rs::an_unresolvable_template_reference_is_an_error_not_a_null`.
 8. **The twelve-step evaluation order is the contract.** `EntityMismatch` before `UnknownState`;
    `InvalidTransition` before `PreconditionFailed`; invariants after `set`; events last. Twelve,
    numbered 0 to 11, and the first two are numbered in the order `ensure_instance_matches` checks
@@ -133,12 +139,12 @@ somewhere. Do not write an enforcement here that you cannot point at.
    definition inserts four steps into that list and moves nothing else (§ 4.2 of
    `docs/design/service-semantics-v0.1.md`).
    *Enforced by* `execute`'s straight-line body and
-   `an_operation_not_declared_from_the_current_state_is_refused_before_its_preconditions`,
-   `fields_are_revalidated_after_set`,
-   `a_failed_invariant_after_an_operation_yields_no_decision_and_no_events`,
-   `the_kernel_checks_entity_mismatch_before_unknown_state_and_both_documents_say_so` — which reads
-   this file and the design page, so neither can drift back — and
-   `a_service_1_operation_runs_the_sixteen_steps_in_the_numbered_order`.
+   `crates/entity-core/tests/requirements.rs::an_operation_not_declared_from_the_current_state_is_refused_before_its_preconditions`,
+   `crates/entity-core/tests/requirements.rs::fields_are_revalidated_after_set`,
+   `crates/entity-core/tests/requirements.rs::a_failed_invariant_after_an_operation_yields_no_decision_and_no_events`,
+   `crates/entity-core/tests/service_semantics.rs::the_kernel_checks_entity_mismatch_before_unknown_state_and_both_documents_say_so` —
+   which reads this file and the design page, so neither can drift back — and
+   `crates/entity-core/tests/service_semantics.rs::a_service_1_operation_runs_the_sixteen_steps_in_the_numbered_order`.
 9. **Every public item is documented and there is no `unsafe`.**
    *Enforced by* `missing_docs = "warn"` and `unsafe_code = "forbid"` in `[workspace.lints]`,
    raised to errors by the gate's `-D warnings`; the `doc-check` step fails on a broken intra-doc
@@ -154,9 +160,21 @@ somewhere. Do not write an enforcement here that you cannot point at.
     `#[serde(deny_unknown_fields)]` and a condition carries exactly one known operator.
     *Enforced by* those attributes and by `Condition`'s hand-written `Deserialize`
     (`crates/entity-core/src/definition.rs`), plus
-    `a_misspelled_definition_key_is_refused_rather_than_ignored` and
-    `a_condition_carrying_two_operators_or_an_unknown_one_is_refused`. A key nobody reads is a rule
-    nobody enforces.
+    `crates/entity-core/tests/requirements.rs::a_misspelled_definition_key_is_refused_rather_than_ignored`
+    and
+    `crates/entity-core/tests/requirements.rs::a_condition_carrying_two_operators_or_an_unknown_one_is_refused`.
+    A key nobody reads is a rule nobody enforces.
+12. **The documentation says only what the code holds.** The CLI reference, crate list, status
+    page and status data are generated by `entity-runtime-docs` and never edited by hand; every
+    shipped status item names an existing test or gate step; the typed-refusals page names every
+    refusal kind the code returns; a code block titled with a repository file is that file.
+    *Enforced by* `task docs-check` and
+    `crates/entity-runtime-docs/src/main.rs::every_generated_file_is_current_in_this_tree`,
+    `crates/entity-runtime-docs/src/main.rs::every_documentation_page_passes_its_checks`,
+    `crates/entity-runtime-docs/src/status.rs::every_shipped_capability_rests_on_evidence_that_exists`
+    and
+    `crates/entity-runtime-docs/src/kinds.rs::every_refusal_kind_of_this_tree_is_on_the_refusals_page`,
+    which `cargo test --workspace` runs in CI too.
 
 ## Gate
 
@@ -166,16 +184,29 @@ task check
 
 The local gate runs these steps in this order: `fmt-check` · `clippy` (`--workspace --all-targets
 --locked -D warnings`, which is what makes `missing_docs` fatal) · `test` · `doc-check`
-(`RUSTDOCFLAGS=-D warnings`) · `example-check` (`entity validate examples/*.yaml` and
-`examples/aep/*.yaml`, `examples/references/*.yaml`) · `req-check` · `pin-check` (every `PIN.md` under `crates/` still hashes to
-what it records, in both directions — a moved copy and an unpinned file beside it) ·
-`postgres-check` (the Postgres provider's tests
+(`RUSTDOCFLAGS=-D warnings`) · `docs-check` (`entity-runtime-docs generate --check`: the generated
+documentation is current and every page passes its checks) · `example-check` (`entity validate
+examples/*.yaml` and `examples/aep/*.yaml`, `examples/references/*.yaml`) · `req-check` ·
+`pin-check` (every `PIN.md` under `crates/` still hashes to what it records, in both directions —
+a moved copy and an unpinned file beside it) · `postgres-check` (the Postgres provider's tests
 against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they did not run) ·
 `eventlog-runtime-check` (`entity-eventlog`'s tests and Clippy with `--all-features` on the
 `+1.91.0` toolchain) · `notes-check` · `ess-check` (canonical regeneration, reviewed scenario
-contracts and complete execution against the selected libraries) · `provider-ess-check`
-(the separate SQLite tracking/facade contract on Rust 1.91). Every cargo step runs `--locked`, so the gate judges the dependency
-set the repository committed rather than one cargo re-resolved on the way past.
+contracts and complete execution against the selected libraries) · `provider-ess-check` (the
+separate SQLite tracking/facade contract on Rust 1.91). Every cargo step runs `--locked`, so the
+gate judges the dependency set the repository committed rather than one cargo re-resolved on the
+way past. Each step runs alone as `task <step>`.
+
+Toolchains: there is no `rust-toolchain.toml`. CI's Gate job installs the current stable
+toolchain, the MSRV job 1.85.0 and the Eventlog job 1.91.0; `task check` needs `cargo +1.91.0` as
+well as your default toolchain. The ESS steps build into `checks/ess-conformance/target` unless
+`ER_ESS_TARGET_DIR` names another directory; set it, and `CARGO_TARGET_DIR`, outside a managed
+worktree.
+
+No gate step builds `entity-cli` with `eventlog-providers` or `entity-sqlite`/`entity-postgres`
+with `eventlog-facade`, so their feature-gated tests (for example
+`crates/entity-cli/tests/cli.rs::explicit_eventlog_file_selection_provisions_creates_executes_retries_and_lists`)
+run only when you ask for them: `cargo +1.91.0 test -p entity-cli --features eventlog-providers`.
 
 The local `pin-check` holds the AEP lifecycle fixture against its own `PIN.md`.
 Atlas owns the separate consumer compatibility suite and its weekly schedule. It compares these
@@ -196,9 +227,10 @@ requirements and the PostgreSQL provider against its service container; both `ch
 `release.yml` call it. CI also has an MSRV job on 1.85.0, which builds the workspace except
 `entity-eventlog`, and a separate `Eventlog runtime (Rust 1.91)` job that runs
 `eventlog-runtime-check`'s commands against its own PostgreSQL service. `pin-check` and
-`notes-check` remain local-only, and the website has its own required Docusaurus build. If a local
-gate step should run in CI too, add it to both the Taskfile and `gate.yml` deliberately rather than
-assuming the two are identical.
+`notes-check` remain local-only. `docs-check` is not a `gate.yml` step, but the docs crate's tests
+that hold the same checks run in its Test step, and `pages.yml` runs `generate --check` itself. If
+a local gate step should run in CI too, add it to both the Taskfile and `gate.yml` deliberately
+rather than assuming the two are identical.
 
 Land nothing until `task check` itself exits zero. A change under `website/` must also pass
 `task site-build`. Read each command's own exit status, not a pipeline's:
@@ -220,25 +252,23 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 ## Boundaries
 
 * **The dependency arrow points from consumers to this repository, and the consumers do not move
-  together.** Four sibling checkouts of four repositories pin eight of this workspace's crates at
-  four distinct values, none of them this repository's latest tag. Read on 2026-09-15 at each
-  consumer's `origin/main`; re-measure with
-  `git -C <repo> grep -n beyond10x/entity-runtime origin/main -- '*Cargo.toml'` rather than trusting
-  the list:
+  together.** Five repositories pin eight of this workspace's crates at five distinct values, none
+  of them this repository's latest tag. Read on 2026-10-06 at each consumer's `origin/main`;
+  re-measure with `git -C <repo> grep -n beyond10x/entity-runtime origin/main -- '*Cargo.toml'`
+  rather than trusting the list:
   * aep — `entity-core`, `entity-store`, `entity-query`, `entity-sqlite`, `entity-postgres` and
-    `entity-remote` at rev `faadc04f` (`Cargo.toml` `[workspace.dependencies]`), which is a commit
-    and not a release tag.
+    `entity-executor` at rev `44c14c05` (`Cargo.toml` `[workspace.dependencies]`), the commit tag
+    `0.25.0` points at, pinned as a rev.
   * aep-service — `entity-core`, `entity-store`, `entity-query` and `entity-postgres` at tag
     `0.17.6`.
   * atlas — `entity-core`, `entity-store`, `entity-shell` and `entity-yaml` at rev `e5ee9d6c`.
   * bench — the same four crates as atlas at tag `0.17.3` (`crates/bench-cli/Cargo.toml`).
-  * org-brain, which also pinned `entity-core` 0.17.7, was deleted on 2026-09-27 and is no longer a
-    consumer.
+  * ess — `entity-core` at tag `0.24.1` (`Cargo.toml`), for its Entity Runtime lowering.
 
-  `entity-shell` and `entity-yaml` are consumer surface, not internal: two of the four checkouts
-  pin them, so a change to either is the same coordinated migration under the atlas ADR rules that
-  a kernel change is — re-pin every consumer above that names the changed crate, in one migration,
-  and correct this list in the same change. No manifest here names a crate of any consumer, and
+  `entity-shell`, `entity-yaml` and `entity-executor` are consumer surface, not internal: a
+  consumer pins each, so a change to any of them is the same coordinated migration under the atlas
+  ADR rules that a kernel change is — re-pin every consumer above that names the changed crate, in
+  one migration, and correct this list in the same change. No manifest here names a crate of any consumer, and
   changing that direction is a coordinated migration too, not a local edit.
 * **Provider interfaces live outside `entity-core`.** A state store, an event store, a search
   index, a blob store — each is a crate that depends on the kernel, never the reverse.
@@ -271,16 +301,40 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 
 ## The website
 
-`website/` is a Docusaurus source corpus with a human-facing product guide under `website/docs/`.
-It does **not** render or link the repository-root `docs/` tree: requirements, designs, plans and
-reviews are the engineering record, not adopter documentation. The unified Website publishes the
-canonical guide at <https://beyond10x.github.io/docs/entity-runtime/>; the project URL is only its
-generated redirect façade. `.github/workflows/pages.yml` retains the required `Build Docusaurus`
-context, type check, link gate and image-format guard, but has no Pages deployment authority.
-`onBrokenLinks: 'throw'` means a dangling link in `website/docs/` fails that build. Public pages link
-one another, releases and source examples; they do not route a reader into `.engineering/`,
-requirements registers, versioned designs or reviews. `task site-build` runs the same locally; it is deliberately not a step of
-`task check`, which reaches no network.
+`website/` is the documentation site, built with Docusaurus and `@beyond10x/docs-system`
+(`withProductSite`; the landing page is `website/product.json`). The organization procedure for it
+is the `docs` skill (`.agents/skills/docs/SKILL.md` in the organization workspace).
+
+* **Two publications, one source.** `.github/workflows/pages.yml` (`Documentation validation`,
+  required job `Build Docusaurus`) builds the site, runs the docs crate's tests and
+  `generate --check`, writes `.well-known/b10x-site.json` and `.well-known/b10x-routes.json` with
+  `entity-runtime-docs provenance`, and on a push to `main` uploads `b10x-project-site`;
+  `.github/workflows/b10x-docs-site.yml` (`Documentation site`) hands that artifact to the
+  Website's `project-site.yml`, which serves it at <https://beyond10x.github.io/entity-runtime/>.
+  Until the organization side moves this repository off the unified site, the unified Website
+  still collects `website/docs/**/*.md` through `b10x.docs.yaml` and serves it under
+  `/docs/entity-runtime/`. Keep `b10x.docs.yaml`, `b10x-docs-bundle.yml`, `b10x-docs-pages.yml` and
+  `b10x-docs-check.yml` until that move lands; deleting them first breaks the organization's portal
+  check. `pages.yml` must keep its first-line Atlas classification, `contents: read` permissions,
+  the unconditional `pull_request` trigger and no Pages action: Atlas checks all four.
+* **Plain Markdown only, while the unified site collects it.** No MDX, no `{` and no capitalised
+  tag outside code, admonitions titled in brackets (`:::caution[Planned]`). `task docs-check`
+  refuses each.
+* **Generated pages.** `website/docs/reference/cli.md` (from `entity_cli::cli::Cli`),
+  `website/docs/reference/crates.md` (from `cargo metadata`; each package's Cargo `description` is
+  public text), `website/docs/status.md` and `website/data/status.json` (from the capability list
+  in `crates/entity-runtime-docs/src/status.rs`) are written by `task docs-generate`. Change the
+  generator or the source, never the page. A new shipped capability goes into that list with the
+  test that holds it; a released change to a command, crate or refusal kind regenerates the pages
+  in the same commit.
+* **Hand-written pages** are concepts, guides and the definition and refusal references. Every
+  command shown was run against the release the page names and its output pasted; the code block
+  of `guides/embed-the-kernel.md` is `crates/entity-runtime-docs/tests/embed_the_kernel.rs`.
+  Public pages do not route a reader into `.engineering/`, requirements registers, versioned
+  designs or reviews; name a component's documentation and its GitHub repository together.
+
+`onBrokenLinks: 'throw'` makes a dangling link fail the build. `task site-build` runs the build
+locally; it is not a step of `task check`, which reaches no network.
 
 ## Where work is tracked
 
@@ -289,7 +343,8 @@ requirements registers, versioned designs or reviews. `task site-build` runs the
 | the store — initiative, epics, stories, ADRs | `.engineering/planning/`, validated by `aep artifact validate` |
 | the requirements and their pins | `docs/requirements.md` |
 | designs, normative and proposed | `docs/design/` |
-| the human-facing product guide — what the site's navbar points at | `website/docs/` |
+| the documentation site, for people using the runtime | `website/docs/`, `website/product.json` |
+| what the site claims is shipped, with the test that holds each claim | `crates/entity-runtime-docs/src/status.rs` |
 | what a user of the runtime sees change | `CHANGELOG.md` |
 | the order the adoption goes in, and the decisions taken | `docs/roadmap.md` |
 | the AEP artifact model as definitions, and the pinned upstream it is checked against | `examples/aep/`, `crates/entity-yaml/tests/fixtures/aep-lifecycles/` |

@@ -4,6 +4,20 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- `entity-cli` gains a library target: `entity_cli::cli::Cli` is the clap definition the `entity`
+  binary parses, so a tool can read the exact command line. The binary behaves as before.
+
+### Changed
+
+- `entity inspect`, `graph`, `create`, `execute` and `list` describe `--format` in their `--help`.
+- The documentation is one site, built from `website/` and served at
+  <https://beyond10x.github.io/entity-runtime/>: getting started, concepts (including service
+  semantics and Eventlog-backed storage through 0.27.0), task guides, and a CLI reference, crate
+  list and status page generated from the code. The older copies under `docs/guide/` are removed;
+  the site's pages replace them.
+
 ## [0.27.0] — 2026-10-06
 
 ### Added
