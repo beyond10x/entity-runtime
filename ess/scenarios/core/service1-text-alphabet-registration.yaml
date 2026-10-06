@@ -1,0 +1,99 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-alphabet-registration",
+  "summary": "Registration admits an alphabet on a service/1 string field and refuses it on another kind, on an argument of another kind, empty, repeating a character and under kernel/1, each naming its path.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"count\":{\"type\":\"integer\",\"alphabet\":\"0123456789\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "details": "DefinitionErrors([ConstraintNotApplicable { path: \"schema.count\", constraint: \"alphabet\", kind: \"integer\", applies_to: \"a string field\" }])",
+        "defect_kinds": [
+          "constraint_not_applicable"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Pick\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"colour\":{\"type\":\"enum\",\"values\":[\"red\",\"green\"],\"alphabet\":\"deginr\"}}}}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "details": "DefinitionErrors([ConstraintNotApplicable { path: \"operations.Pick.arguments.colour\", constraint: \"alphabet\", kind: \"enum\", applies_to: \"a string field\" }])",
+        "defect_kinds": [
+          "constraint_not_applicable"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "details": "DefinitionErrors([InvalidField { path: \"schema.code\", message: \"alphabet must declare at least one character\" }])",
+        "defect_kinds": [
+          "invalid_field"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"AB#A\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "details": "DefinitionErrors([InvalidField { path: \"schema.code\", message: \"alphabet writes 'A' twice, at positions 1 and 4\" }])",
+        "defect_kinds": [
+          "invalid_field"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:05Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "details": "DefinitionErrors([SemanticsKeyNotAvailable { path: \"schema.code.alphabet\", key: \"alphabet\" }])",
+        "defect_kinds": [
+          "semantics_key_not_available"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-alphabet-default",
+  "summary": "A default must satisfy its alphabet: one inside registers; one outside, on a field or an argument, is refused at registration naming the path and the character.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\",\"default\":\"12#\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\",\"default\":\"12x\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "details": "DefinitionErrors([InvalidField { path: \"schema.code\", message: \"invalid default: character 'x' (U+0078) at position 3 is not in the alphabet\" }])",
+        "defect_kinds": [
+          "invalid_field"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Dial\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\",\"default\":\"#a\"}}}}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "details": "DefinitionErrors([InvalidField { path: \"operations.Dial.arguments.keys\", message: \"invalid default: character 'a' (U+0061) at position 2 is not in the alphabet\" }])",
+        "defect_kinds": [
+          "invalid_field"
+        ]
+      }
+    }
+  ]
+}

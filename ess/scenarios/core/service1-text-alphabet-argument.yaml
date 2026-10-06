@@ -1,0 +1,41 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-alphabet-argument",
+  "summary": "An operation argument declaring an alphabet admits a text inside it and refuses one outside it with the argument's path and the first offending character.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"keys\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Dial\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"set\":{\"keys\":\"$args.keys\"}}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}}",
+        "operation": "Dial",
+        "arguments": "{\"keys\":\"12#\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"keys\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Dial\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"set\":{\"keys\":\"$args.keys\"}}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}}",
+        "operation": "Dial",
+        "arguments": "{\"keys\":\"1x2y\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "details": "Validation([ValidationError { path: \"arguments.keys\", message: \"character 'x' (U+0078) at position 2 is not in the alphabet\" }])",
+        "paths": [
+          "arguments.keys"
+        ]
+      }
+    }
+  ]
+}

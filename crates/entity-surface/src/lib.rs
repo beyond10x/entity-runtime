@@ -391,6 +391,12 @@ fn field_schema(field: &FieldDefinition) -> Value {
     if let Some(max) = field.max_length {
         out.insert("maxLength".into(), json!(max));
     }
+    // Published beside the type, as `x-key` is, rather than as a `pattern`: a character class over
+    // arbitrary scalar values is not read the same way by every JSON Schema reader, and a client
+    // that saw a bare `string` would send values the kernel refuses.
+    if let Some(alphabet) = &field.alphabet {
+        out.insert("x-alphabet".into(), Value::String(alphabet.clone()));
+    }
     if let Some(min) = &field.min {
         out.insert("minimum".into(), Value::Number(min.clone()));
     }
@@ -872,6 +878,9 @@ fn constraints(field: &FieldDefinition) -> String {
     if let Some(max) = field.max_length {
         parts.push(format!("max length {max}"));
     }
+    if let Some(alphabet) = &field.alphabet {
+        parts.push(format!("alphabet {alphabet:?}"));
+    }
     if let Some(min) = &field.min {
         parts.push(format!("minimum {min}"));
     }
@@ -1104,6 +1113,34 @@ mod tests {
                 ["payload"]["properties"]["reason"]["type"],
             "string",
             "event payload references retain their declared argument schema"
+        );
+    }
+
+    #[test]
+    fn a_declared_alphabet_reaches_the_api_schema_and_the_reference_page() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "keypad",
+            "semantics": "service/1",
+            "schema": { "fields": {
+                "keys": { "type": "string", "alphabet": "0123456789*#", "max_length": 64 },
+                "label": { "type": "string" }
+            }},
+            "lifecycle": { "initial": "idle", "states": ["idle"] }
+        }))
+        .expect("definition");
+        let fields = &openapi(std::slice::from_ref(&definition))["components"]["schemas"]
+            [format!("{}Fields", schema_key(&definition))]["properties"];
+        assert_eq!(fields["keys"]["x-alphabet"], "0123456789*#");
+        assert_eq!(
+            fields["label"].get("x-alphabet"),
+            None,
+            "a field without an alphabet publishes none"
+        );
+        let bundle = documentation(&[definition]).expect("bundle");
+        assert!(
+            bundle["entities/keypad.md"].contains(r#"| max length 64; alphabet "0123456789*#" |"#),
+            "{}",
+            bundle["entities/keypad.md"]
         );
     }
 
