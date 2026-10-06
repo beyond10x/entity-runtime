@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:a-text-field-declares-its-alphabet
 kind: story
-status: draft
+status: active
 title: A text field or argument declares its alphabet
 owner: entity-runtime
 refs:
@@ -22,7 +22,10 @@ scope:
   path: crates/entity-surface/src/lib.rs
 - confidence: inferred
   path: docs/design/kernel-v0.1.md
-revision: 32
+revision: 34
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-06T11:44:10Z", actor: "human:timo", revision: 33, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "proposed", to: "active", at: "2026-10-06T11:44:10Z", actor: "human:timo", revision: 34, decided_on: {"recorded":{"review_outcome":3}}}
 ---
 # A text field or argument declares its alphabet
 

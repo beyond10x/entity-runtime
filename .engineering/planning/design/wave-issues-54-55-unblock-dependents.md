@@ -13,7 +13,7 @@ refs:
 relations:
 - designs: story:a-condition-reads-the-length-of-a-text
 - designs: story:recorded-open-checkpoint-design
-revision: 5
+revision: 6
 ---
 # Wave proposal: unblock ESS lowering (#54) and the recorded-store open (#55)
 
@@ -669,3 +669,19 @@ consumer re-pin, no Eventlog change, no wave 2.
   "cycles": []
 }
 ```
+
+## Wave 2 record
+
+Operator goal 2026-10-06: "wave A+B completed in sequence". Wave 2 is
+`story:a-text-field-declares-its-alphabet` alone (N = 1), serving vision:O2, for the ESS lowering
+row `ALPHABET` (#54). Branched from wave 1's closing head `4d64687e` while wave 1's PR #56 runs CI;
+if #56 needs a fix commit, it is merged into `wave/er-54-55-w2` and said so in the merge subject.
+
+| unit | story | stage | branch | worktree | build dir | scratch |
+|---|---|---|---|---|---|---|
+| integration | — | opened | `wave/er-54-55-w2` | `~/.local/state/worktree/trees/b10x/entity-runtime/er-w2-int` (id `er-w2-int`) | gate at close: `~/.cache/b10x-target/er-w2-int` | `~/.cache/er-w/w2int` |
+| W2-U1 | `story:a-text-field-declares-its-alphabet` | planned | `impl/a-text-field-declares-its-alphabet` | id `er-w2-u1` | `~/.cache/b10x-target/er-w2-u1` (+ `-ess`) | `~/.cache/er-w/w2u1` |
+
+Commits this wave makes, under the same grant: the opening store commit, one unit commit (more only
+for correction rounds), the merge into `wave/er-54-55-w2`, the closing store commit, a bot push and
+one bot PR to `main`, merged after its required checks pass. No tag, no release.
