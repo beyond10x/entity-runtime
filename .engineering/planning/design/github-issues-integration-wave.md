@@ -2,13 +2,17 @@
 format: aep.planning-md/3
 id: design:github-issues-integration-wave
 kind: design
-status: draft
+status: implemented
 title: 'GitHub issues 49–51: one integration branch and one PR'
 relations:
 - designs: story:declared-refusal-before-fulfillment-validation
 - designs: story:executor-input-refusal-before-existence
 - designs: story:bounded-batch-and-facade-reads
-revision: 17
+revision: 20
+transitions:
+- {from: "draft", to: "in_review", at: "2026-10-06T09:23:18Z", actor: "human:timo", revision: 18}
+- {from: "in_review", to: "approved", at: "2026-10-06T09:23:18Z", actor: "human:timo", revision: 19}
+- {from: "approved", to: "implemented", at: "2026-10-06T09:23:19Z", actor: "human:timo", revision: 20}
 ---
 ## Stage and authority
 

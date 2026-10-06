@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-27T04:07:31Z",
+  "actor": "human:timo",
+  "artifact": "story:recorded-stores-read-the-same-on-a-tree-that-keeps-text-once",
+  "kind": "story",
+  "revision": 2,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "release.yml gate at tag 0.25.0 (gate / Eventlog runtime (Rust 1.91) success); commit 21490fe7; crates/entity-eventlog/tests/tree_text_blobs.rs::a_first_layout_store_reads_the_same_after_its_texts_are_kept_once_and_keeps_recording",
+    "reference": "https://github.com/beyond10x/entity-runtime/actions/runs/36293207400"
+  }
+}

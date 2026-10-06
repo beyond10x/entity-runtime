@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-27T04:07:31Z",
+  "actor": "human:timo",
+  "artifact": "story:guarded-blob-writes-commit-with-their-group",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "release.yml gate at tag 0.25.0 (gate / Gate, gate / Eventlog runtime (Rust 1.91) success); commit 29ebc337; crates/entity-eventlog/tests/guarded_write_blob_binding.rs",
+    "reference": "https://github.com/beyond10x/entity-runtime/actions/runs/36293207400"
+  }
+}
