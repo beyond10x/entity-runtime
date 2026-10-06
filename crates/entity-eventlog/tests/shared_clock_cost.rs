@@ -1,4 +1,4 @@
-//! Release probe for shared-batch closure growth on real SQLite authority.
+//! Release probes for shared-batch closure growth and open cost on real SQLite authority.
 //!
 //! Run explicitly with `cargo +1.91.0 test --release -p entity-eventlog
 //! --features sqlite,sync-bridge --test shared_clock_cost -- --ignored --nocapture`.
@@ -19,7 +19,7 @@ use entity_store::{
     asynchronous::{
         AppendMember, AsyncRecordedReader, BatchKey, RecordedEntry, Subject,
         batch_comparison_bytes, canonical_domain_bytes, original_request_comparison_bytes,
-        record_comparison_bytes,
+        read_record_in_domain, record_comparison_bytes, record_domain,
     },
 };
 use eventlog_core::{
@@ -263,6 +263,14 @@ async fn seeded(path: &Path, registry: &Registry, total_events: usize) -> (Autho
     )
     .await
     .expect("cold ER verification validates all fixture bytes and histories");
+    // Counted before any read: a later complete read takes a capture of its own when the open took
+    // none, so a count taken after it cannot tell an open that verified from one that did not.
+    let opened = verified.calls();
+    assert_eq!(
+        (opened.captures, opened.model_builds),
+        (1, 1),
+        "cold open remains fully verified: {opened:?}"
+    );
     let snapshot = verified
         .complete_snapshot(&authority.logical_scope)
         .await
@@ -284,7 +292,10 @@ async fn seeded(path: &Path, registry: &Registry, total_events: usize) -> (Autho
         .unwrap();
     let unchanged_time = start.elapsed();
     assert_eq!(unchanged, snapshot);
-    assert_eq!(before.captures, 1, "cold open remains fully verified");
+    assert_eq!(
+        before.captures, 1,
+        "the first complete read reuses the open's verification"
+    );
     assert_eq!(
         verified.calls(),
         before,
@@ -295,6 +306,48 @@ async fn seeded(path: &Path, registry: &Registry, total_events: usize) -> (Autho
         verified.calls()
     );
     (authority, groups as u64)
+}
+
+/// Opens the seeded store the way a short-lived consumer process does: one owner, its own worker.
+fn start_tracked(path: &Path, registry: &Registry, authority: Authority) -> RecordedProviderFacade {
+    RecordedProviderFacade::start_with_read_policy(
+        registry.clone(),
+        EventlogRecordedStoreOwner::Sqlite {
+            path: path.to_string_lossy().into_owned(),
+            prefix: PREFIX.into(),
+            authority,
+            limits: LIMITS,
+        },
+        BridgeConfig {
+            queue_capacity: NonZeroU16::new(8).unwrap(),
+        },
+        CapturePolicy::ProviderTracked,
+    )
+    .unwrap()
+}
+
+/// A provider handle opened on the seeded file with the projector attached, as an owner opens it.
+fn attached(
+    runtime: &tokio::runtime::Runtime,
+    path: &Path,
+) -> Arc<eventlog_sqlite::SqliteEventStore> {
+    runtime.block_on(async {
+        let backend = Arc::new(
+            eventlog_sqlite::SqliteEventStore::open_existing(path.to_str().unwrap(), PREFIX)
+                .await
+                .unwrap(),
+        );
+        backend
+            .attach_inline_existing(Arc::new(ErRecordedProjector::new()))
+            .await
+            .unwrap();
+        backend
+    })
+}
+
+fn micros(samples: &[Duration]) -> String {
+    let listed: Vec<String> = samples.iter().map(|d| d.as_micros().to_string()).collect();
+    listed.join(",")
 }
 
 fn median(samples: &mut [Duration]) -> Duration {
@@ -328,22 +381,7 @@ fn warm_shared_clock_batches_remain_within_twice_small_store_cost() {
             "seed_and_verify events={count} elapsed={:?}",
             seed_start.elapsed()
         );
-        let (mut facade, open_elapsed) = measured(|| {
-            RecordedProviderFacade::start_with_read_policy(
-                registry.clone(),
-                EventlogRecordedStoreOwner::Sqlite {
-                    path: path.to_string_lossy().into_owned(),
-                    prefix: PREFIX.into(),
-                    authority,
-                    limits: LIMITS,
-                },
-                BridgeConfig {
-                    queue_capacity: NonZeroU16::new(8).unwrap(),
-                },
-                CapturePolicy::ProviderTracked,
-            )
-            .unwrap()
-        });
+        let (mut facade, open_elapsed) = measured(|| start_tracked(&path, &registry, authority));
         let clock = Subject::new("metadata", "clock").unwrap();
         let mut batches = Vec::new();
         let mut histories = Vec::new();
@@ -423,6 +461,133 @@ fn warm_shared_clock_batches_remain_within_twice_small_store_cost() {
         assert!(
             *median <= small * 2,
             "shared-clock batch at {count} events costs {median:?}, more than twice 55-event {small:?}; all {batch_medians:?}"
+        );
+    }
+}
+
+/// Opens per size whose median is reported.
+const OPENS: usize = 5;
+
+/// The open-cost baseline a bounded recorded open is compared against.
+///
+/// For each seeded size it reports three medians of [`OPENS`] runs, in microseconds:
+/// `start` is the consumer's whole open (worker thread, runtime, SQLite open, projector attach and
+/// the store open), `capture` is the provider's complete tenant capture alone, and `verify` is the
+/// store open on an already open provider: that capture plus the whole-model build. Every run
+/// uses a provider handle opened for it, as a new process would, because a handle skips the
+/// SHA-256 of blob content it has already verified. It also reports how many canonical record and
+/// request bytes the verified model holds and the median time to parse every record's canonical
+/// text: a floor under any open that loads a persisted whole model instead of verifying one. It
+/// asserts what a `ProviderTracked` open does today, so a change that stops verifying the whole
+/// store cannot pass as this baseline. Each `open-cost` line is the stable output the evidence
+/// file records.
+#[test]
+#[ignore = "release performance probe; run explicitly on a quiet host"]
+fn each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost() {
+    assert!(!cfg!(debug_assertions), "this probe requires --release");
+    let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let registry = registry();
+    for count in [55, 601, 1203] {
+        let path = directory.path().join(format!("open-{count}.sqlite3"));
+        let (authority, _) = runtime.block_on(seeded(&path, &registry, count));
+        let tenant = TenantId::new(&authority.tenant).unwrap();
+        let (mut starts, mut captures, mut verifies) = (Vec::new(), Vec::new(), Vec::new());
+        for _ in 0..OPENS {
+            let (mut facade, start_time) =
+                measured(|| start_tracked(&path, &registry, authority.clone()));
+            starts.push(start_time);
+            assert_eq!(
+                facade.shutdown(ShutdownMode::Drain, CallWait::Forever),
+                ShutdownOutcome::Joined { provider: Ok(()) }
+            );
+            let backend = attached(&runtime, &path);
+            let (capture, capture_time) = measured(|| {
+                runtime
+                    .block_on(backend.capture_tenant(&tenant, projection_specs(), LIMITS))
+                    .unwrap()
+            });
+            assert_eq!(
+                capture.events.len(),
+                count,
+                "the provider captured the tenant"
+            );
+            drop((capture, backend));
+            captures.push(capture_time);
+            let backend = attached(&runtime, &path);
+            let (store, verify_time) = measured(|| {
+                runtime
+                    .block_on(EventlogRecordedStore::open_with_policy(
+                        backend,
+                        authority.clone(),
+                        LIMITS,
+                        CapturePolicy::ProviderTracked,
+                    ))
+                    .unwrap()
+            });
+            let calls = store.calls();
+            assert_eq!(
+                (calls.captures, calls.model_builds, calls.records_decoded),
+                (1, 1, count - 1),
+                "a ProviderTracked open is one complete capture and one whole-model build that \
+                 decodes every recorded entry; a bounded open changes this baseline: {calls:?}"
+            );
+            drop(store);
+            verifies.push(verify_time);
+        }
+        // What the verified model holds per record, as canonical text, and what parsing it costs.
+        let mut facade = start_tracked(&path, &registry, authority);
+        let snapshot = facade.complete_snapshot(CallWait::Forever).unwrap();
+        assert_eq!(
+            facade.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+        let records: Vec<_> = snapshot
+            .histories
+            .iter()
+            .flat_map(|h| &h.history.records)
+            .collect();
+        assert_eq!(
+            records.len(),
+            count - 1,
+            "every recorded entry is in the model"
+        );
+        let texts: Vec<_> = records
+            .iter()
+            .map(|r| {
+                (
+                    record_domain(&r.entry),
+                    record_comparison_bytes(&r.entry).unwrap(),
+                )
+            })
+            .collect();
+        let record_bytes: usize = texts.iter().map(|(_, bytes)| bytes.len()).sum();
+        let request_bytes: usize = records.iter().map(|r| r.request_bytes.len()).sum();
+        let mut decodes = Vec::new();
+        for _ in 0..OPENS {
+            let ((), decode_time) = measured(|| {
+                for (domain, bytes) in &texts {
+                    std::hint::black_box(read_record_in_domain(domain, bytes).unwrap());
+                }
+            });
+            decodes.push(decode_time);
+        }
+        let samples = format!(
+            "start_us=[{}] capture_us=[{}] verify_us=[{}] record_parse_us=[{}]",
+            micros(&starts),
+            micros(&captures),
+            micros(&verifies),
+            micros(&decodes)
+        );
+        println!(
+            "open-cost policy=ProviderTracked events={count} opens={OPENS} start_median_us={} capture_median_us={} verify_median_us={} model_record_bytes={record_bytes} model_request_bytes={request_bytes} record_parse_median_us={} {samples}",
+            median(&mut starts).as_micros(),
+            median(&mut captures).as_micros(),
+            median(&mut verifies).as_micros(),
+            median(&mut decodes).as_micros(),
         );
     }
 }

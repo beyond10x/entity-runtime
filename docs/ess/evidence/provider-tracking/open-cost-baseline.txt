@@ -1,0 +1,80 @@
+# Open-cost baseline: CapturePolicy::ProviderTracked opens before a bounded open exists
+
+commit:     b73628826e76507e042619cf1c9c123783f5715a, with the probe below uncommitted
+probe:      crates/entity-eventlog/tests/shared_clock_cost.rs
+            sha256 326e485019f7d8fa66f5928aabfe06686468367ac73bdc8babe5282fca28bad2
+test:       each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost
+toolchain:  rustc 1.91.0 (f8297e351 2025-10-28)
+machine:    Model name: Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz (20 threads)
+date:       2026-10-06
+command:    cargo +1.91.0 test --release -p entity-eventlog --features sqlite,sync-bridge --locked --test shared_clock_cost -- --ignored --nocapture --exact each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost
+host:       shared with other builds; /proc/loadavg before and after each run is recorded below
+
+Each open-cost line, per seeded size, is the median of 5 runs in microseconds:
+  start         RecordedProviderFacade::start_with_read_policy(.., ProviderTracked) on the SQLite file
+  capture       the provider's complete capture_tenant alone, on a provider handle opened for it
+  verify        EventlogRecordedStore::open_with_policy(.., ProviderTracked) on a provider handle opened for it
+  record_parse  read_record_in_domain over every record's canonical text: a floor under loading a persisted model
+model_record_bytes and model_request_bytes are the canonical record and request bytes the verified model holds.
+The probe asserts every verify is one complete capture and one whole-model build decoding every recorded entry.
+Output below is the test's stdout from "running 1 test"; compiler output with local paths is omitted.
+
+Summary, milliseconds: median of the three runs' medians (range of the three).
+  events  start                    capture              verify                   record_parse
+  55      138.6 (86.3-142.9)       19.5 (12.6-20.7)     129.2 (78.6-129.8)       22.9 (16.3-87.4)
+  601     1079.0 (1017.6-1778.6)   147.0 (143.5-280.0)  1004.5 (938.8-1881.0)    199.4 (178.1-309.7)
+  1203    2167.0 (2084.9-2312.6)   300.4 (290.9-338.1)  1915.9 (1863.1-1933.2)   381.1 (362.0-551.6)
+
+## run 1
+loadavg before: 53.55 51.33 41.37 33/5978 3061848
+running 1 test
+seed events=55 recorded_entries=54 groups=27 blob_bytes=2846892
+unchanged events=55 elapsed=3.493805ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 }
+open-cost policy=ProviderTracked events=55 opens=5 start_median_us=142880 capture_median_us=20721 verify_median_us=129809 model_record_bytes=1401295 model_request_bytes=13118 record_parse_median_us=87434 start_us=[142880,224469,94560,179889,136176] capture_us=[21801,20721,19392,19984,26785] verify_us=[129809,91977,143503,90378,262476] record_parse_us=[87434,95168,102458,83844,71607]
+seed events=601 recorded_entries=600 groups=300 blob_bytes=31641002
+unchanged events=601 elapsed=26.479217ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 }
+open-cost policy=ProviderTracked events=601 opens=5 start_median_us=1079020 capture_median_us=147019 verify_median_us=1004473 model_record_bytes=15573490 model_request_bytes=147342 record_parse_median_us=199399 start_us=[1370361,1233042,974025,993230,1079020] capture_us=[199311,147019,144505,141923,151382] verify_us=[1142114,1009187,912615,1004473,971647] record_parse_us=[189013,205120,199399,191513,206580]
+test each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost has been running for over 60 seconds
+seed events=1203 recorded_entries=1202 groups=601 blob_bytes=63391084
+unchanged events=1203 elapsed=60.146803ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 }
+open-cost policy=ProviderTracked events=1203 opens=5 start_median_us=2084911 capture_median_us=290927 verify_median_us=1915891 model_record_bytes=31200206 model_request_bytes=295735 record_parse_median_us=381138 start_us=[2098323,2111669,1964347,2053063,2084911] capture_us=[279696,321199,290927,312002,279747] verify_us=[2049538,1864211,1915891,1806658,1921694] record_parse_us=[389804,373234,378629,381138,384358]
+test each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 102.86s
+loadavg after: 28.90 44.38 40.02 4/5830 3106949
+
+## run 2
+loadavg before: 28.90 44.38 40.02 3/5830 3106950
+running 1 test
+seed events=55 recorded_entries=54 groups=27 blob_bytes=2846892
+unchanged events=55 elapsed=2.350352ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 }
+open-cost policy=ProviderTracked events=55 opens=5 start_median_us=86302 capture_median_us=12643 verify_median_us=78584 model_record_bytes=1401295 model_request_bytes=13118 record_parse_median_us=16279 start_us=[88455,86302,85046,94537,85295] capture_us=[12713,12293,12771,12643,12446] verify_us=[77813,78839,80796,78205,78584] record_parse_us=[16256,16856,16279,16388,16151]
+seed events=601 recorded_entries=600 groups=300 blob_bytes=31641002
+unchanged events=601 elapsed=25.685743ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 }
+open-cost policy=ProviderTracked events=601 opens=5 start_median_us=1017551 capture_median_us=143491 verify_median_us=938760 model_record_bytes=15573490 model_request_bytes=147342 record_parse_median_us=178143 start_us=[978414,1017551,1072069,1091838,976620] capture_us=[139824,141640,155101,143491,250366] verify_us=[920858,905595,972152,938760,1006132] record_parse_us=[248302,177512,177163,180194,178143]
+seed events=1203 recorded_entries=1202 groups=601 blob_bytes=63391084
+unchanged events=1203 elapsed=81.820437ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 }
+test each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost has been running for over 60 seconds
+open-cost policy=ProviderTracked events=1203 opens=5 start_median_us=2312642 capture_median_us=338140 verify_median_us=1933224 model_record_bytes=31200206 model_request_bytes=295735 record_parse_median_us=551614 start_us=[2085232,2640167,2773165,1938001,2312642] capture_us=[338140,319142,371095,295836,477009] verify_us=[2234254,1933224,1836791,1880361,2813488] record_parse_us=[750461,790388,551614,547270,476630]
+test each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 79.89s
+loadavg after: 21.76 38.21 38.19 6/5821 3154565
+
+## run 3
+loadavg before: 21.76 38.21 38.19 9/5821 3154566
+running 1 test
+seed events=55 recorded_entries=54 groups=27 blob_bytes=2846892
+unchanged events=55 elapsed=3.72184ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 }
+open-cost policy=ProviderTracked events=55 opens=5 start_median_us=138590 capture_median_us=19487 verify_median_us=129248 model_record_bytes=1401295 model_request_bytes=13118 record_parse_median_us=22892 start_us=[117754,140596,138590,139984,135828] capture_us=[17144,20585,18973,20433,19487] verify_us=[118650,130530,129248,143276,122207] record_parse_us=[21813,24549,22892,20765,23785]
+seed events=601 recorded_entries=600 groups=300 blob_bytes=31641002
+unchanged events=601 elapsed=48.999618ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 }
+open-cost policy=ProviderTracked events=601 opens=5 start_median_us=1778598 capture_median_us=280036 verify_median_us=1881004 model_record_bytes=15573490 model_request_bytes=147342 record_parse_median_us=309689 start_us=[1586075,1884320,2276821,1745082,1778598] capture_us=[263460,290181,280036,327493,244058] verify_us=[1594668,3340513,1881004,1949788,1688038] record_parse_us=[283404,309689,354204,322667,297907]
+test each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost has been running for over 60 seconds
+seed events=1203 recorded_entries=1202 groups=601 blob_bytes=63391084
+unchanged events=1203 elapsed=68.013972ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 }
+open-cost policy=ProviderTracked events=1203 opens=5 start_median_us=2166982 capture_median_us=300360 verify_median_us=1863050 model_record_bytes=31200206 model_request_bytes=295735 record_parse_median_us=362025 start_us=[2565894,2166982,2338842,1996726,1904458] capture_us=[449927,300360,346954,293961,278528] verify_us=[2319531,1772006,2091531,1863050,1836838] record_parse_us=[380997,371504,353904,352565,362025]
+test each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_cost ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 99.01s
+loadavg after: 28.40 37.04 37.84 6/5694 3178571
