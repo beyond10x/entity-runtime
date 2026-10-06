@@ -1,0 +1,39 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-alphabet-no-normalization",
+  "summary": "Alphabet membership is per Unicode scalar value with no normalization: against an alphabet holding e and U+0301, the decomposed e-acute is admitted and the composed U+00E9 is refused, naming U+00E9.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"letter\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"é\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "p-1",
+        "fields": "{\"letter\":\"é\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"letter\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"é\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}",
+        "id": "p-1",
+        "fields": "{\"letter\":\"é\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "details": "Validation([ValidationError { path: \"fields.letter\", message: \"character 'é' (U+00E9) at position 1 is not in the alphabet\" }])",
+        "paths": [
+          "fields.letter"
+        ]
+      }
+    }
+  ]
+}

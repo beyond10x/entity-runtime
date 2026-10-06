@@ -67,6 +67,15 @@ hold it. Numbers are compared numerically rather than coerced: an integer above 
 wrap to `-1`, pass a `max` bound and report a `min` failure naming a value nobody sent (R-20). Undeclared fields are
 refused unless the schema opts in (R-24); the fields document itself must be an object (R-25).
 
+A `service/1` definition may also give a `string` an `alphabet`: the characters a value may hold
+(R-162). Membership is per Unicode scalar value with no normalization and no case folding, the
+empty text satisfies every alphabet, and a value outside it is one error naming the first
+offending character and its position, so the caller knows what to remove. It is a constraint
+beside `min_length`, not a rule operator: a rule would need a quantifier over the characters of a
+text, which the condition grammar does not have. Registration refuses it on another kind, empty,
+repeating a character, and in a `kernel/1` definition, which keeps exactly the keys it had; a field
+without one serializes without the key, so no recorded decision changes its bytes (R-163).
+
 The same `ObjectSchema` type describes an operation's arguments (R-40), so arguments get exactly the
 defaulting and validation fields get.
 

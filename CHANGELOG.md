@@ -15,6 +15,17 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   Registration refuses `count` on any other scalar kind, a segment past a length, and a length
   read through a quantifier element or used as a projection key, each naming its path; every
   definition an earlier release registered still registers, and `kernel/1` is unchanged.
+- A `service/1` `string` field, argument or nested property may declare
+  `alphabet: "<characters>"`. A value is valid only when every Unicode scalar value in it is one
+  of those characters; the empty text always is. There is no normalization and no case folding,
+  so a composed `é` is refused by an alphabet holding `e` and a combining accent. A value outside
+  its alphabet is a validation error at its path naming the first offending character, its code
+  point and its position, alongside the value's other errors, and a default outside it is refused
+  at registration. Registration refuses `alphabet` on any other kind, empty, repeating a
+  character, or in a `kernel/1` definition, each naming its path. Generated OpenAPI and AsyncAPI
+  schemas carry it as `x-alphabet`. A definition without an alphabet keeps its bytes. An alphabet
+  on an operation's declared response field is admitted but not yet enforced: responses are not
+  checked against their declared schema today, for `max_length` either.
 
 ## [0.26.0] — 2026-10-03
 

@@ -363,6 +363,20 @@ pub struct FieldDefinition {
     #[serde(default)]
     pub max_length: Option<usize>,
 
+    /// The characters a value may hold. `string` only, and `service/1` or later.
+    ///
+    /// A **set** of Unicode scalar values written in a fixed order: a value is valid only when
+    /// every scalar value in it is one of these, so the empty text satisfies every alphabet.
+    /// Membership compares scalar values exactly, with no normalization and no case folding, so
+    /// a composed `é` (U+00E9) is not in an alphabet that holds `e` and U+0301. Registration
+    /// refuses an empty alphabet and one that writes a character twice, so the written order is
+    /// the one spelling of the set.
+    ///
+    /// Absent serializes to nothing: decision records embed the definition, and a definition
+    /// without an alphabet keeps the bytes it had before the key existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alphabet: Option<String>,
+
     /// Minimum value. `integer` and `number` only.
     #[serde(default)]
     pub min: Option<Number>,
@@ -501,7 +515,7 @@ impl FieldDefinition {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldKind {
-    /// A UTF-8 string; `min_length` and `max_length` apply.
+    /// A UTF-8 string; `min_length`, `max_length` and, from `service/1`, `alphabet` apply.
     #[default]
     String,
     /// A whole number; `min` and `max` apply.

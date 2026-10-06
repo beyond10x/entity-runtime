@@ -160,6 +160,11 @@
       "entity.core/authored/service1-selection-terminal",
       "entity.core/authored/service1-selection-wrong-source",
       "entity.core/authored/service1-state-guard-skips-unobservable-input",
+      "entity.core/authored/service1-text-alphabet-argument",
+      "entity.core/authored/service1-text-alphabet-default",
+      "entity.core/authored/service1-text-alphabet-membership",
+      "entity.core/authored/service1-text-alphabet-no-normalization",
+      "entity.core/authored/service1-text-alphabet-registration",
       "entity.core/authored/service1-text-count-absent-optional",
       "entity.core/authored/service1-text-count-invariant",
       "entity.core/authored/service1-text-count-non-text-value",
@@ -1117,6 +1122,31 @@
         "disposition": "accepted",
         "scenario": "entity.core/authored/service1-state-guard-skips-unobservable-input"
       },
+      "scenarios/core/service1-text-alphabet-argument.yaml": {
+        "digest": "sha256:16e620a9358ffbc4b395431be21c9f4ae29cc8867d5c2f9d9238578001649af0",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-text-alphabet-argument"
+      },
+      "scenarios/core/service1-text-alphabet-default.yaml": {
+        "digest": "sha256:cea865ceb75095a82950c18a53a8885eca97966d85ee4885909562df0ce8acac",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-text-alphabet-default"
+      },
+      "scenarios/core/service1-text-alphabet-membership.yaml": {
+        "digest": "sha256:d386451721e26c8eb16777ef4a8ca078f319ea94ba2c44f3961650d5bb5f338e",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-text-alphabet-membership"
+      },
+      "scenarios/core/service1-text-alphabet-no-normalization.yaml": {
+        "digest": "sha256:149ffbbc95f9f54dd6e5d7899e7d3f48dbac1619205d589882599aa53aaf2734",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-text-alphabet-no-normalization"
+      },
+      "scenarios/core/service1-text-alphabet-registration.yaml": {
+        "digest": "sha256:54fd1c267bcf7a54da3fb9f07a25fee334b081b46dddb102c23f181de6883f5b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-text-alphabet-registration"
+      },
       "scenarios/core/service1-text-count-absent-optional.yaml": {
         "digest": "sha256:23926ef466b870aa3b9217141060d6caba801573c51ff0a676b22bc423695eef",
         "disposition": "accepted",
@@ -1919,7 +1949,7 @@
       }
     },
     "counts": {
-      "authored": 319,
+      "authored": 324,
       "generated": 111,
       "outside": 0,
       "refused": 0
@@ -45251,6 +45281,1936 @@
             ],
             "outcome": {
               "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service1-text-alphabet-argument": {
+      "purpose": "An operation argument declaring an alphabet admits a text inside it and refuses one outside it with the argument's path and the first offending character.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"keys\":\"12#\"}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"keys\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Dial\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"set\":{\"keys\":\"$args.keys\"}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "Dial"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"keys\":\"1x2y\"}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"keys\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Dial\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"set\":{\"keys\":\"$args.keys\"}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "Dial"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "details": "Validation([ValidationError { path: \"arguments.keys\", message: \"character 'x' (U+0078) at position 2 is not in the alphabet\" }])",
+              "error_kind": "validation",
+              "paths": [
+                "arguments.keys"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service1-text-alphabet-default": {
+      "purpose": "A default must satisfy its alphabet: one inside registers; one outside, on a field or an argument, is refused at registration naming the path and the character.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.ValidateDefinition"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\",\"default\":\"12#\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\",\"default\":\"12x\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "invalid_field"
+              ],
+              "details": "DefinitionErrors([InvalidField { path: \"schema.code\", message: \"invalid default: character 'x' (U+0078) at position 3 is not in the alphabet\" }])",
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Dial\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\",\"default\":\"#a\"}}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "invalid_field"
+              ],
+              "details": "DefinitionErrors([InvalidField { path: \"operations.Dial.arguments.keys\", message: \"invalid default: character 'a' (U+0061) at position 2 is not in the alphabet\" }])",
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service1-text-alphabet-membership": {
+      "purpose": "An alphabet admits a text of only its characters and the empty text, and refuses any other naming the path and first offending character, without case folding.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Create"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"code\":\"12#A\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"code\":\"12x#y\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "details": "Validation([ValidationError { path: \"fields.code\", message: \"character 'x' (U+0078) at position 3 is not in the alphabet\" }])",
+              "error_kind": "validation",
+              "paths": [
+                "fields.code"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"code\":\"\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"code\":\"12a\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "details": "Validation([ValidationError { path: \"fields.code\", message: \"character 'a' (U+0061) at position 3 is not in the alphabet\" }])",
+              "error_kind": "validation",
+              "paths": [
+                "fields.code"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service1-text-alphabet-no-normalization": {
+      "purpose": "Alphabet membership is per Unicode scalar value with no normalization: against an alphabet holding e and U+0301, the decomposed e-acute is admitted and the composed U+00E9 is refused, naming U+00E9.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Create"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"letter\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"é\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"letter\":\"é\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"letter\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"é\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"letter\":\"é\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "details": "Validation([ValidationError { path: \"fields.letter\", message: \"character 'é' (U+00E9) at position 1 is not in the alphabet\" }])",
+              "error_kind": "validation",
+              "paths": [
+                "fields.letter"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service1-text-alphabet-registration": {
+      "purpose": "Registration admits an alphabet on a service/1 string field and refuses it on another kind, on an argument of another kind, empty, repeating a character and under kernel/1, each naming its path.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.ValidateDefinition"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"count\":{\"type\":\"integer\",\"alphabet\":\"0123456789\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "constraint_not_applicable"
+              ],
+              "details": "DefinitionErrors([ConstraintNotApplicable { path: \"schema.count\", constraint: \"alphabet\", kind: \"integer\", applies_to: \"a string field\" }])",
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Pick\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"colour\":{\"type\":\"enum\",\"values\":[\"red\",\"green\"],\"alphabet\":\"deginr\"}}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "constraint_not_applicable"
+              ],
+              "details": "DefinitionErrors([ConstraintNotApplicable { path: \"operations.Pick.arguments.colour\", constraint: \"alphabet\", kind: \"enum\", applies_to: \"a string field\" }])",
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "invalid_field"
+              ],
+              "details": "DefinitionErrors([InvalidField { path: \"schema.code\", message: \"alphabet must declare at least one character\" }])",
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"AB#A\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "invalid_field"
+              ],
+              "details": "DefinitionErrors([InvalidField { path: \"schema.code\", message: \"alphabet writes 'A' twice, at positions 1 and 4\" }])",
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"code\":{\"type\":\"string\",\"alphabet\":\"0123456789*#ABCD\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "semantics_key_not_available"
+              ],
+              "details": "DefinitionErrors([SemanticsKeyNotAvailable { path: \"schema.code.alphabet\", key: \"alphabet\" }])",
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
               "outcome": "returned"
             }
           },

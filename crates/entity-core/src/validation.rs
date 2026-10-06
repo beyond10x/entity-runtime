@@ -2205,6 +2205,9 @@ fn validate_constraint_applicability(
     {
         return refuse("min_length/max_length", "a string field");
     }
+    if field.alphabet.is_some() && field.kind != FieldKind::String {
+        return refuse("alphabet", "a string field");
+    }
     if (field.min.is_some() || field.max.is_some())
         && !matches!(
             field.kind,
@@ -2256,6 +2259,13 @@ fn validate_field_definition(
             key: field.kind.as_str().to_owned(),
         });
     }
+    // `kernel/1` keeps exactly the keys it had; an alphabet is one of the keys added after it.
+    if field.alphabet.is_some() && !semantics.has_service_semantics() {
+        defects.push(DefinitionError::SemanticsKeyNotAvailable {
+            path: format!("{path}.alphabet"),
+            key: "alphabet".to_owned(),
+        });
+    }
 
     if let (Some(min), Some(max)) = (field.min_length, field.max_length) {
         if min > max {
@@ -2264,6 +2274,9 @@ fn validate_field_definition(
                 message: "min_length cannot exceed max_length".into(),
             });
         }
+    }
+    if let Some(alphabet) = &field.alphabet {
+        validate_alphabet(alphabet, path, defects);
     }
     if let (Some(min), Some(max)) = (&field.min, &field.max) {
         if crate::number::compare(min, max).is_gt() {
@@ -2373,13 +2386,40 @@ fn validate_field_definition(
     if let Some(default) = field.default.as_value() {
         let mut default = default.clone();
         apply_nested_defaults(field, &mut default);
-        let mut errors = Vec::new();
+        let mut errors = Findings::default();
         validate_value(field, &default, path, semantics, &mut errors);
-        for error in errors {
+        for error in errors.errors {
             defects.push(DefinitionError::InvalidField {
                 path: error.path,
                 message: format!("invalid default: {}", error.message),
             });
+        }
+    }
+}
+
+/// An alphabet is a set written in a fixed order, so the written order is its one spelling. An
+/// empty one admits nothing but the empty text, which no author writing one means, and a repeated
+/// character is a second spelling of the same set. Characters are scalar values: a composed and a
+/// decomposed letter are different characters, never a repeat.
+fn validate_alphabet(alphabet: &str, path: &str, defects: &mut Vec<DefinitionError>) {
+    if alphabet.is_empty() {
+        defects.push(DefinitionError::InvalidField {
+            path: path.to_owned(),
+            message: "alphabet must declare at least one character".into(),
+        });
+    }
+    let mut first: BTreeMap<char, usize> = BTreeMap::new();
+    for (index, character) in alphabet.chars().enumerate() {
+        let position = index + 1;
+        if let Some(earlier) = first.get(&character) {
+            defects.push(DefinitionError::InvalidField {
+                path: path.to_owned(),
+                message: format!(
+                    "alphabet writes {character:?} twice, at positions {earlier} and {position}"
+                ),
+            });
+        } else {
+            first.insert(character, position);
         }
     }
 }
@@ -2449,7 +2489,7 @@ pub(crate) fn validate_object_under(
     root_path: &str,
     semantics: Semantics,
 ) -> Vec<ValidationError> {
-    let mut errors = Vec::new();
+    let mut errors = Findings::default();
     validate_members(
         &schema.fields,
         schema.additional_fields,
@@ -2459,7 +2499,33 @@ pub(crate) fn validate_object_under(
         semantics,
         &mut errors,
     );
-    errors
+    errors.errors
+}
+
+/// What one value-validation call has found, and the membership set of every alphabet it has met.
+///
+/// An alphabet has no length bound and the number of values checked against it is the caller's,
+/// so its set is built once per call and declaration, never once per value: a thousand values
+/// against a forty-thousand-character alphabet cost one set build and a thousand lookups, not their
+/// product. The key is the declaration's address, stable while the call borrows the definition. It
+/// is only compared, never read through and never iterated, so it cannot reach an answer.
+#[derive(Default)]
+struct Findings {
+    errors: Vec<ValidationError>,
+    alphabets: BTreeMap<*const FieldDefinition, BTreeSet<char>>,
+}
+
+impl Findings {
+    fn push(&mut self, error: ValidationError) {
+        self.errors.push(error);
+    }
+
+    /// The membership set of `definition`'s `alphabet`, built the first time this call meets it.
+    fn alphabet(&mut self, definition: &FieldDefinition, alphabet: &str) -> &BTreeSet<char> {
+        self.alphabets
+            .entry(std::ptr::from_ref(definition))
+            .or_insert_with(|| alphabet.chars().collect())
+    }
 }
 
 /// The one membership check, used for a top-level schema and for a nested object alike.
@@ -2470,7 +2536,7 @@ fn validate_members(
     root_path: &str,
     noun: &str,
     semantics: Semantics,
-    errors: &mut Vec<ValidationError>,
+    errors: &mut Findings,
 ) {
     for (name, definition) in fields {
         match object.get(name) {
@@ -2512,7 +2578,7 @@ fn validate_value(
     value: &Value,
     path: &str,
     semantics: Semantics,
-    errors: &mut Vec<ValidationError>,
+    errors: &mut Findings,
 ) {
     let service = semantics.has_service_semantics();
     match definition.kind {
@@ -2657,17 +2723,12 @@ pub(crate) fn validate_field_value(
     path: &str,
     semantics: Semantics,
 ) -> Vec<ValidationError> {
-    let mut errors = Vec::new();
+    let mut errors = Findings::default();
     validate_value(definition, value, path, semantics, &mut errors);
-    errors
+    errors.errors
 }
 
-fn validate_string(
-    definition: &FieldDefinition,
-    value: &str,
-    path: &str,
-    errors: &mut Vec<ValidationError>,
-) {
+fn validate_string(definition: &FieldDefinition, value: &str, path: &str, errors: &mut Findings) {
     let length = value.chars().count();
     if let Some(min) = definition.min_length {
         if length < min {
@@ -2685,6 +2746,26 @@ fn validate_string(
             ));
         }
     }
+    // One error per value, naming the first scalar value outside the set and where it is, so the
+    // caller can say what to remove. The set comes from the call's findings, built once per
+    // declaration however many values share it.
+    if let Some(alphabet) = &definition.alphabet {
+        let members = errors.alphabet(definition, alphabet);
+        let first = value
+            .chars()
+            .enumerate()
+            .find(|(_, character)| !members.contains(character));
+        if let Some((index, character)) = first {
+            errors.push(ValidationError::new(
+                path,
+                format!(
+                    "character {character:?} (U+{:04X}) at position {} is not in the alphabet",
+                    u32::from(character),
+                    index + 1
+                ),
+            ));
+        }
+    }
 }
 
 fn validate_number(
@@ -2692,7 +2773,7 @@ fn validate_number(
     value: &serde_json::Number,
     path: &str,
     semantics: Semantics,
-    errors: &mut Vec<ValidationError>,
+    errors: &mut Findings,
 ) {
     if semantics.has_service_semantics() {
         // A stored value a `service/1` predicate could not read is refused where it arrives, with
@@ -2756,7 +2837,7 @@ fn validate_union(
     value: &Value,
     path: &str,
     semantics: Semantics,
-    errors: &mut Vec<ValidationError>,
+    errors: &mut Findings,
 ) {
     let Some(members) = value.as_object() else {
         wrong_type(path, "union object", errors);
@@ -2889,6 +2970,6 @@ fn is_padded_base64(text: &str) -> bool {
         .all(|byte| byte.is_ascii_alphanumeric() || byte == b'+' || byte == b'/')
 }
 
-fn wrong_type(path: &str, expected: &str, errors: &mut Vec<ValidationError>) {
+fn wrong_type(path: &str, expected: &str, errors: &mut Findings) {
     errors.push(ValidationError::new(path, format!("expected {expected}")));
 }
