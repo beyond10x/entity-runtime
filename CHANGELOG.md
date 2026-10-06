@@ -4,6 +4,18 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- A `service/1` rule may read the length of a declared `string` field, argument or
+  nested property as `<path>.count`, counted in Unicode scalar values with no normalization
+  (`é` composed is 1, `e` plus a combining accent is 2), in every position where an array's or
+  a map's `count` is read. A path into a `json` field, a union payload, an undeclared member or
+  a quantifier element still resolves to nothing, so recorded decisions replay unchanged, and a
+  stored value under a declared `string` that is not a text has no length.
+  Registration refuses `count` on any other scalar kind, a segment past a length, and a length
+  read through a quantifier element or used as a projection key, each naming its path; every
+  definition an earlier release registered still registers, and `kernel/1` is unchanged.
+
 ## [0.26.0] — 2026-10-03
 
 ### Added

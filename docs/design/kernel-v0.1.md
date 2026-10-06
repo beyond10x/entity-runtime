@@ -399,6 +399,8 @@ The requirements that order and the rest of the `service/1` rules add:
 | R-146 | `source-number/1`: how a `service/1` predicate reads a stored number, and that the token is stored unchanged. |
 | R-147 | The scale context text comparison is answered inside. |
 | R-148 | `compare`, `truthy`, `for_all`/`for_any` and the two collection address forms. |
+| R-160 | The third collection address form: a declared text's length in Unicode scalar values. |
+| R-161 | Where a text's length is admitted: not as a projection key, not inside a quantifier element; nothing the base registered is refused. |
 
 ## 7. Outputs and refusals
 

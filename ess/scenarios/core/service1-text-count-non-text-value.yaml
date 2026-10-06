@@ -1,0 +1,44 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-count-non-text-value",
+  "summary": "A stored value under a declared string that is not a text has no length: an object with a count member and an array both leave the precondition unobservable.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Rename\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"preconditions\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$fields.name.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the current name is at most five characters\"}],\"set\":{\"name\":\"$args.name\"}}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"name\":{\"count\":1}}}",
+        "operation": "Rename",
+        "arguments": "{\"name\":\"Bo\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$fields.name.count"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Rename\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"preconditions\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$fields.name.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the current name is at most five characters\"}],\"set\":{\"name\":\"$args.name\"}}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"name\":[\"a\",\"b\"]}}",
+        "operation": "Rename",
+        "arguments": "{\"name\":\"Bo\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$fields.name.count"
+        ]
+      }
+    }
+  ]
+}

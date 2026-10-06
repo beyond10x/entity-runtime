@@ -163,7 +163,10 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
 
     // A projection naming a field the schema does not have, or a state the lifecycle does not
     // declare, is refused where it is written rather than producing an empty read model at run time
-    // — an index that is silently always empty is the hardest kind of wrong to notice.
+    // — an index that is silently always empty is the hardest kind of wrong to notice. The store
+    // resolves a key by walking object members only, so a text's length is refused as a key. The
+    // array and map forms are not: earlier releases registered them, and replay re-validates every
+    // recorded definition, so they still register and project nothing.
     for (name, projection) in &definition.projections {
         let path = format!("projections.{name}");
         defects.check(
@@ -176,6 +179,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                     binders: None,
                     semantics,
                 },
+                Reader::Projection,
             )
             .map_err(|detail| DefinitionError::InvalidTemplate {
                 path: path.clone(),
@@ -1312,8 +1316,28 @@ impl Scope<'_> {
     }
 }
 
-/// Checks one `$...` reference against its scope, following the path through the schema.
-fn validate_reference(expression: &str, scope: Scope<'_>) -> Result<(), String> {
+/// The walk that will resolve an address registration admits, and so which address forms it may
+/// admit: every admitted path has to be one something resolves (invariant 5).
+///
+/// It decides only the text length address. The base admitted an array's count and index and a
+/// map's count for every reader, and replay re-validates each recorded definition, so refusing any
+/// of those now would strand histories recorded under them.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reader {
+    /// The kernel's walk from a schema root, which carries each field's declaration and reads a
+    /// declared text's length.
+    Kernel,
+    /// The kernel's walk from a quantifier's binder, which reads the element without its
+    /// declaration, so a text's length resolves to nothing.
+    Binder,
+    /// The store's projection key walk (`entity-store` `key_of`), which reads object members only,
+    /// so a text's length resolves to nothing.
+    Projection,
+}
+
+/// Checks one `$...` reference against its scope, following the path through the schema for the
+/// walk that will read it.
+fn validate_reference(expression: &str, scope: Scope<'_>, reader: Reader) -> Result<(), String> {
     let refused = |detail: String| {
         Err(format!(
             "{detail}; {} may read {}",
@@ -1333,8 +1357,14 @@ fn validate_reference(expression: &str, scope: Scope<'_>) -> Result<(), String> 
             let (Some(element), Some(path)) = (element, path) else {
                 return Ok(());
             };
-            return walk_field_path(element, &format!("${name}"), path, scope.service())
-                .map_err(|detail| format!("'{expression}' cannot resolve: {detail}"));
+            return walk_field_path(
+                element,
+                &format!("${name}"),
+                path,
+                Reader::Binder,
+                scope.service(),
+            )
+            .map_err(|detail| format!("'{expression}' cannot resolve: {detail}"));
         }
     }
 
@@ -1357,7 +1387,7 @@ fn validate_reference(expression: &str, scope: Scope<'_>) -> Result<(), String> 
         let Some(schema) = schema else {
             return refused(format!("'{expression}' is not available here"));
         };
-        return validate_reference_path(schema, path, noun, scope.service())
+        return validate_reference_path(schema, path, noun, reader, scope.service())
             .map_err(|detail| format!("'{expression}' cannot resolve: {detail}"));
     }
 
@@ -1373,6 +1403,7 @@ fn validate_reference_path(
     schema: &ObjectSchema,
     path: &str,
     noun: &str,
+    reader: Reader,
     service: bool,
 ) -> Result<(), String> {
     let mut segments = path.splitn(2, '.');
@@ -1389,7 +1420,7 @@ fn validate_reference_path(
 
     match segments.next() {
         None => Ok(()),
-        Some(rest) => walk_field_path(field, root, rest, service),
+        Some(rest) => walk_field_path(field, root, rest, reader, service),
     }
 }
 
@@ -1414,11 +1445,12 @@ fn is_ordinal(segment: &str) -> bool {
             && segment.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
-/// Walks the rest of an address from one declared field.
+/// Walks the rest of an address from one declared field, for the walk `reader` names.
 fn walk_field_path(
     field: &FieldDefinition,
     walked: &str,
     path: &str,
+    reader: Reader,
     service: bool,
 ) -> Result<(), String> {
     let mut segments = path.splitn(2, '.');
@@ -1430,7 +1462,7 @@ fn walk_field_path(
     let here = format!("{walked}.{segment}");
 
     if service {
-        // The two collection address forms, checked at registration like every other address.
+        // The three collection address forms, checked at registration like every other address.
         match field.kind {
             FieldKind::Array if segment == "count" || is_ordinal(segment) => {
                 if segment == "count" {
@@ -1446,7 +1478,7 @@ fn walk_field_path(
                 };
                 return match rest {
                     None => Ok(()),
-                    Some(rest) => walk_field_path(items, &here, rest, service),
+                    Some(rest) => walk_field_path(items, &here, rest, reader, service),
                 };
             }
             FieldKind::Array => {
@@ -1471,6 +1503,32 @@ fn walk_field_path(
                     )),
                 };
             }
+            // A text's length in Unicode scalar values. Only the kernel's walk from a schema root
+            // reads it; anywhere else it would resolve to nothing at every reading, so it is
+            // refused where it is written instead.
+            FieldKind::String if segment == "count" => {
+                match reader {
+                    Reader::Kernel => {}
+                    Reader::Binder => {
+                        return Err(format!(
+                            "'{here}' reads the length of a text inside a quantifier element, \
+                             which the run-time walk does not type, so it resolves to nothing"
+                        ))
+                    }
+                    Reader::Projection => {
+                        return Err(format!(
+                            "'{here}' reads the length of a text, and a projection key reads \
+                             object members only, so the read model would file no instance under it"
+                        ))
+                    }
+                }
+                return match rest {
+                    None => Ok(()),
+                    Some(rest) => Err(format!(
+                        "'{here}' is a count, so '{rest}' resolves to nothing"
+                    )),
+                };
+            }
             _ => {}
         }
     }
@@ -1480,7 +1538,7 @@ fn walk_field_path(
         FieldKind::Object => match field.properties.get(segment) {
             Some(next) => match rest {
                 None => Ok(()),
-                Some(rest) => walk_field_path(next, &here, rest, service),
+                Some(rest) => walk_field_path(next, &here, rest, reader, service),
             },
             None if field.additional_properties => Ok(()),
             None => Err(format!("'{walked}' declares no property '{segment}'")),
@@ -1507,6 +1565,10 @@ fn walk_field_path(
                 content_key(field)
             ))
         }
+        kind if service && segment == "count" => Err(format!(
+            "'{walked}' is a {kind} field, so 'count' resolves to nothing; `count` reads a text, \
+             an array or a map"
+        )),
         kind => Err(format!(
             "'{walked}' is a {kind} field, so '{segment}' resolves to nothing"
         )),
@@ -2016,7 +2078,7 @@ fn unreadable_instant(path: &str, detail: String) -> Result<(), DefinitionError>
 
 fn validate_operand(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
     walk_references(value, path, scope, &mut |expression, path, scope| {
-        validate_reference(expression, scope).map_err(|message| {
+        validate_reference(expression, scope, Reader::Kernel).map_err(|message| {
             if scope.kind.is_rule() {
                 DefinitionError::InvalidRule {
                     path: path.to_owned(),

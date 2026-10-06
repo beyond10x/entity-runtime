@@ -174,6 +174,15 @@ scenarios:
   - scenarios/core/service1-selection-terminal.yaml
   - scenarios/core/service1-selection-wrong-source.yaml
   - scenarios/core/service1-state-guard-skips-unobservable-input.yaml
+  - scenarios/core/service1-text-count-absent-optional.yaml
+  - scenarios/core/service1-text-count-invariant.yaml
+  - scenarios/core/service1-text-count-non-text-value.yaml
+  - scenarios/core/service1-text-count-outcome-guard.yaml
+  - scenarios/core/service1-text-count-precondition.yaml
+  - scenarios/core/service1-text-count-projection-key.yaml
+  - scenarios/core/service1-text-count-registration.yaml
+  - scenarios/core/service1-text-count-scalar-values.yaml
+  - scenarios/core/service1-text-count-untyped-path.yaml
   - scenarios/core/service1-truthy-missing.yaml
   - scenarios/core/service1-truthy-true.yaml
   - scenarios/core/service1-truthy-zero.yaml

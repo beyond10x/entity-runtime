@@ -1,0 +1,38 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-count-precondition",
+  "summary": "A precondition reading an argument's text length refuses a text one Unicode scalar value over the bound and admits one at the bound, whose UTF-8 bytes exceed it.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Rename\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"preconditions\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$args.name.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"a name is at most five characters\"}],\"set\":{\"name\":\"$args.name\"}}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"name\":\"Ann\"}}",
+        "operation": "Rename",
+        "arguments": "{\"name\":\"h\u00e9llo!\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_failed"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"Rename\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"arguments\":{\"fields\":{\"name\":{\"type\":\"string\",\"required\":true}}},\"preconditions\":[{\"name\":\"short\",\"assert\":{\"compare\":{\"left\":\"$args.name.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"a name is at most five characters\"}],\"set\":{\"name\":\"$args.name\"}}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"name\":\"Ann\"}}",
+        "operation": "Rename",
+        "arguments": "{\"name\":\"h\u00e9llo\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":2,\"fields\":{\"name\":\"h\u00e9llo\"}}"
+      }
+    }
+  ]
+}

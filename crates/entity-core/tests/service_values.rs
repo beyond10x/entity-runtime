@@ -1488,6 +1488,465 @@ fn an_array_ordinal_address_resolves_under_service_1_only() {
     );
 }
 
+// --- § 10.6: the length of a text ----------------------------------------------------------------
+
+/// A schema with one optional `string` field named `name`.
+fn text_schema() -> Value {
+    json!({ "fields": { "name": { "type": "string" } } })
+}
+
+/// `compare: {left: <address>, op: <op>, right: <right>}`.
+fn compare(address: &str, op: &str, right: u64) -> Value {
+    json!({ "compare": { "left": address, "op": op, "right": right } })
+}
+
+#[test]
+fn a_text_count_is_its_number_of_unicode_scalar_values_under_service_1() {
+    for (text, scalars) in [
+        ("", 0),
+        ("abc", 3),
+        ("\u{e9}", 1),
+        ("e\u{301}", 2),
+        ("\u{1F600}", 1),
+    ] {
+        assert_eq!(
+            answer(
+                "service/1",
+                text_schema(),
+                json!({}),
+                compare("$fields.name.count", "eq", scalars),
+                json!({ "name": text })
+            ),
+            Truth::True,
+            "{text:?} holds {scalars} scalar values"
+        );
+    }
+    // Not UTF-8 bytes (a composed `é` is two, U+1F600 four), not UTF-16 units (U+1F600 is two), and
+    // no normalization (the decomposed `é` is not read as the composed one).
+    for (text, wrong) in [
+        ("\u{e9}", 2),
+        ("\u{1F600}", 2),
+        ("\u{1F600}", 4),
+        ("e\u{301}", 1),
+    ] {
+        assert_eq!(
+            answer(
+                "service/1",
+                text_schema(),
+                json!({}),
+                compare("$fields.name.count", "eq", wrong),
+                json!({ "name": text })
+            ),
+            Truth::False,
+            "{text:?} does not count {wrong}"
+        );
+    }
+    // A text reached through a declared array's element is a declared text too.
+    assert_eq!(
+        answer(
+            "service/1",
+            json!({ "fields": { "lines": { "type": "array", "items": { "type": "string" } } } }),
+            json!({}),
+            compare("$fields.lines.1.count", "eq", 2),
+            json!({ "lines": ["abc", "e\u{301}"] })
+        ),
+        Truth::True
+    );
+}
+
+#[test]
+fn a_text_count_is_read_from_a_field_an_argument_and_a_nested_property_in_every_rule_position() {
+    // An invariant, over a nested property of a field.
+    let profile = json!({ "fields": { "profile": {
+        "type": "object", "required": true,
+        "properties": { "nick": { "type": "string", "required": true } }
+    }}});
+    for (nick, truth) in [("Ann", Truth::True), ("Anna", Truth::False)] {
+        assert_eq!(
+            answer(
+                "service/1",
+                profile.clone(),
+                json!({}),
+                compare("$fields.profile.nick.count", "lte", 3),
+                json!({ "profile": { "nick": nick } })
+            ),
+            truth,
+            "{nick:?}"
+        );
+    }
+
+    // A precondition over an argument, and an outcome guard over an argument's nested property.
+    let document = json!({
+        "entity": "probe", "version": 1, "semantics": "service/1",
+        "schema": { "fields": { "name": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "held", "states": ["held"] },
+        "operations": {
+            "rename": {
+                "transitions": [{ "from": "held", "to": "held" }],
+                "arguments": { "fields": { "name": { "type": "string", "required": true } } },
+                "preconditions": [{
+                    "name": "short",
+                    "assert": compare("$args.name.count", "lte", 5),
+                    "message": "at most five characters"
+                }],
+                "set": { "name": "$args.name" }
+            },
+            "nick": {
+                "arguments": { "fields": { "profile": {
+                    "type": "object", "required": true,
+                    "properties": { "nick": { "type": "string", "required": true } }
+                }}},
+                "outcomes": [
+                    {
+                        "name": "too_long",
+                        "when": compare("$args.profile.nick.count", "gt", 8),
+                        "refuses": { "error": "TooLong" }
+                    },
+                    { "name": "accepted", "effect": { "moves": { "from": "held", "to": "held" } } }
+                ]
+            }
+        }
+    });
+    let mut registry = Registry::new();
+    registry
+        .register(definition(document))
+        .expect("a text length registers in a precondition and an outcome guard");
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("probe", 1, "p-1", json!({ "name": "Ann" }))
+        .expect("creates");
+
+    // Five scalar values in six UTF-8 bytes is at the bound; six scalar values is over it.
+    let renamed = runtime
+        .execute(&created.instance, "rename", json!({ "name": "h\u{e9}llo" }))
+        .expect("five scalar values are at the bound");
+    assert_eq!(renamed.instance.fields["name"], json!("h\u{e9}llo"));
+    let over = runtime.execute(
+        &created.instance,
+        "rename",
+        json!({ "name": "h\u{e9}llo!" }),
+    );
+    assert!(
+        matches!(
+            &over,
+            Err(CoreError::PreconditionFailed { rule: Some(rule), .. }) if rule == "short"
+        ),
+        "{over:?}"
+    );
+
+    // Eight scalar values in sixteen UTF-8 bytes is at the bound; nine is over it.
+    let accepted = runtime
+        .execute(
+            &created.instance,
+            "nick",
+            json!({ "profile": { "nick": "\u{f1}".repeat(8) } }),
+        )
+        .expect("eight scalar values are at the bound");
+    assert_eq!(accepted.record.outcome.as_deref(), Some("accepted"));
+    let too_long = runtime.execute(
+        &created.instance,
+        "nick",
+        json!({ "profile": { "nick": "\u{f1}".repeat(9) } }),
+    );
+    assert!(
+        matches!(
+            &too_long,
+            Err(CoreError::Refused { outcome, error, .. }) if outcome == "too_long" && error == "TooLong"
+        ),
+        "{too_long:?}"
+    );
+
+    // The decision that read a length replays to the instance it produced.
+    let rebuilt = replay(&[created.record.clone(), renamed.record.clone()]).expect("replays");
+    assert_eq!(rebuilt, renamed.instance);
+}
+
+/// R-97: the length is keyed on a declared `string` field registration checked, never on the value.
+/// Each path below registers today without registration typing it, resolves to nothing, and keeps
+/// resolving to nothing, so no decision already recorded over one changes on replay.
+#[test]
+fn a_text_count_through_a_path_registration_does_not_type_keeps_resolving_to_nothing() {
+    let three = |address: &str| compare(address, "eq", 3);
+    let variants = json!({
+        "person": { "type": "string", "required": true },
+        "company": { "type": "object", "required": true, "properties": {
+            "name": { "type": "string", "required": true }
+        }}
+    });
+    // A union payload: registration admits any path past the content key without walking it, so
+    // the variant the tag selects at run time cannot license a length registration never checked.
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants.clone(),
+            three("$fields.payee.value.count"),
+            json!({ "kind": "person", "value": "Ann" })
+        ),
+        Truth::Unknown,
+        "a union payload's declared string"
+    );
+    assert_eq!(
+        variant_answer(
+            "kind",
+            variants,
+            three("$fields.payee.value.name.count"),
+            json!({ "kind": "company", "value": { "name": "Ann" } })
+        ),
+        Truth::Unknown,
+        "a declared string property inside a union payload"
+    );
+    // An undeclared field under an open schema, a `json` field, and an undeclared member of an
+    // object that admits additional properties.
+    for (schema, address, fields) in [
+        (
+            json!({ "fields": {}, "additional_fields": true }),
+            "$fields.note.count",
+            json!({ "note": "Ann" }),
+        ),
+        (
+            json!({ "fields": { "blob": { "type": "json" } } }),
+            "$fields.blob.count",
+            json!({ "blob": "Ann" }),
+        ),
+        (
+            json!({ "fields": { "meta": {
+                "type": "object", "additional_properties": true, "properties": {}
+            }}}),
+            "$fields.meta.note.count",
+            json!({ "meta": { "note": "Ann" } }),
+        ),
+    ] {
+        assert_eq!(
+            answer("service/1", schema, json!({}), three(address), fields),
+            Truth::Unknown,
+            "{address}"
+        );
+    }
+    // The same text in a declared field is read.
+    assert_eq!(
+        answer(
+            "service/1",
+            text_schema(),
+            json!({}),
+            three("$fields.name.count"),
+            json!({ "name": "Ann" })
+        ),
+        Truth::True
+    );
+}
+
+#[test]
+fn a_text_count_on_a_reference_that_is_not_a_text_array_or_map_is_refused_at_registration() {
+    for field in [
+        json!({ "type": "integer" }),
+        json!({ "type": "number" }),
+        json!({ "type": "boolean" }),
+        json!({ "type": "enum", "values": ["open", "closed"] }),
+        json!({ "type": "ref", "entity": "person" }),
+        json!({ "type": "binary64" }),
+    ] {
+        let defects = refused(probe(
+            "service/1",
+            json!({ "fields": { "x": field } }),
+            json!({}),
+            compare("$fields.x.count", "eq", 1),
+        ));
+        assert!(
+            defects.iter().any(|defect| matches!(
+                defect,
+                DefinitionError::InvalidRule { path, message }
+                    if path == "invariants[0].assert.compare.left"
+                        && message.contains("`count` reads a text, an array or a map")
+            )),
+            "{field}: {defects}"
+        );
+    }
+
+    // Nothing is selected past a length.
+    let defects = refused(probe(
+        "service/1",
+        text_schema(),
+        json!({}),
+        compare("$fields.name.count.more", "eq", 1),
+    ));
+    assert!(
+        defects.iter().any(|defect| matches!(
+            defect,
+            DefinitionError::InvalidRule { path, message }
+                if path == "invariants[0].assert.compare.left"
+                    && message.contains("'name.count' is a count, so 'more' resolves to nothing")
+        )),
+        "{defects}"
+    );
+
+    // `kernel/1` has no collection address, so it has no length either.
+    let defects = refused(probe(
+        "kernel/1",
+        text_schema(),
+        json!({}),
+        json!({ "eq": ["$fields.name.count", 1] }),
+    ));
+    assert!(
+        defects.iter().any(|defect| matches!(
+            defect,
+            DefinitionError::InvalidRule { path, message }
+                if path == "invariants[0].assert.eq[0]"
+                    && message.contains("'name' is a string field, so 'count' resolves to nothing")
+        )),
+        "{defects}"
+    );
+
+    // A quantifier's element is walked untyped at run time, so its length would resolve to nothing
+    // at every evaluation: refused where it is written rather than admitted as a rule that cannot
+    // be observed.
+    let defects = refused(probe(
+        "service/1",
+        json!({ "fields": { "tags": {
+            "type": "array", "required": true, "items": { "type": "string" }
+        }}}),
+        json!({}),
+        json!({ "for_all": { "in": "$fields.tags", "as": "t", "that": compare("$t.count", "lte", 8) } }),
+    ));
+    assert!(
+        defects.iter().any(|defect| matches!(
+            defect,
+            DefinitionError::QuantifierBodyScope { detail, .. }
+                if detail.contains("a quantifier element")
+        )),
+        "{defects}"
+    );
+}
+
+/// The store files an instance under a projection key by walking object members only
+/// (`entity-store` `key_of`). A text's length, which this unit made addressable and the base already
+/// refused as a key, is refused where it is written, naming the key. The array and map forms the base
+/// registered keep registering unchanged, because replay re-validates every recorded definition;
+/// they file no instance until story:projection-keys-read-collection-addresses. A declared object
+/// property that happens to be called `count` is a member, not an address form, and stays a key.
+#[test]
+fn a_projection_key_refuses_a_text_length_and_registers_the_base_collection_forms_unchanged() {
+    let schema = json!({ "fields": {
+        "name": { "type": "string", "required": true },
+        "tags": { "type": "array", "required": true, "items": { "type": "string" } },
+        "meta": { "type": "map", "required": true, "key": "string", "items": { "type": "string" } },
+        "stats": { "type": "object", "required": true, "properties": {
+            "count": { "type": "integer", "required": true }
+        }}
+    }});
+    let keyed = |key: &str| {
+        definition(json!({
+            "entity": "probe", "version": 1, "semantics": "service/1",
+            "schema": schema.clone(),
+            "lifecycle": { "initial": "held", "states": ["held"] },
+            "projections": { "by_key": { "key": key } }
+        }))
+    };
+    let Err(defects) = ValidatedDefinition::new(keyed("$fields.name.count")) else {
+        panic!("a projection keyed on '$fields.name.count' registered and would file no instance");
+    };
+    assert!(
+        defects.iter().any(|defect| matches!(
+            defect,
+            DefinitionError::InvalidTemplate { path, message }
+                if path == "projections.by_key"
+                    && message.contains("$fields.name.count")
+                    && message.contains("a projection key reads object members only")
+        )),
+        "{defects}"
+    );
+    for key in ["$fields.tags.count", "$fields.tags.0", "$fields.meta.count"] {
+        let document = keyed(key);
+        let registered = ValidatedDefinition::new(document.clone()).unwrap_or_else(|defects| {
+            panic!(
+                "a projection keyed on '{key}' registered on the base and must keep registering \
+                 so recorded histories replay; it projects nothing until \
+                 story:projection-keys-read-collection-addresses, which should change this row: \
+                 {defects}"
+            )
+        });
+        assert_eq!(*registered, document, "{key} registers unchanged");
+    }
+    let document = keyed("$fields.stats.count");
+    let registered = ValidatedDefinition::new(document.clone())
+        .expect("a declared property named `count` is a member, and a projection key may read it");
+    assert_eq!(*registered, document);
+}
+
+/// `$m.count` on a map reached one level inside a quantifier element — through an object element's
+/// property and through an array element's index — registers and reads as on the base: the run-time
+/// walk reads the element without its declaration, so `count` reads the member named `count`, not
+/// the size, until story:binder-elements-carry-their-declaration.
+#[test]
+fn a_map_count_anywhere_inside_a_quantifier_element_reads_the_member_until_binder_elements_carry_their_declaration(
+) {
+    let map =
+        json!({ "type": "map", "required": true, "key": "string", "items": { "type": "integer" } });
+    for (items, address, rows) in [
+        (
+            json!({ "type": "object", "required": true, "properties": { "meta": map.clone() } }),
+            "$e.meta.count",
+            json!([{ "meta": { "count": 5 } }]),
+        ),
+        (
+            json!({ "type": "array", "required": true, "items": map.clone() }),
+            "$e.0.count",
+            json!([[{ "count": 5 }]]),
+        ),
+    ] {
+        // The one-member map's size is 1, which `lte 1` admits; its `count` member is 5, which it
+        // does not.
+        assert_eq!(
+            answer(
+                "service/1",
+                json!({ "fields": { "rows": { "type": "array", "required": true, "items": items } } }),
+                json!({}),
+                json!({ "for_all": { "in": "$fields.rows", "as": "e", "that": compare(address, "lte", 1) } }),
+                json!({ "rows": rows })
+            ),
+            Truth::False,
+            "{address} reads the `count` member as on the base; when \
+             story:binder-elements-carry-their-declaration lands it reads the size and this row \
+             flips to True"
+        );
+    }
+}
+
+/// A checked declared `string` has nothing past it but its length. A stored value that is not a
+/// text — here an array, whose size the value-keyed array arm would otherwise answer — has none,
+/// so the rule reading it is unobservable rather than answered from another kind's size.
+#[test]
+fn a_stored_text_holding_an_array_answers_no_length() {
+    let validated = ValidatedDefinition::new(definition(json!({
+        "entity": "probe", "version": 1, "semantics": "service/1",
+        "schema": { "fields": { "name": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "held", "states": ["held"] },
+        "operations": { "touch": {
+            "transitions": [{ "from": "held", "to": "held" }],
+            "arguments": { "fields": { "name": { "type": "string", "required": true } } },
+            "preconditions": [{
+                "name": "short",
+                "assert": compare("$fields.name.count", "lte", 5),
+                "message": "at most five"
+            }],
+            "set": { "name": "$args.name" }
+        }}
+    })))
+    .expect("registers");
+    let mut instance = create(&validated, "p-1".to_owned(), json!({ "name": "Ann" }))
+        .expect("creates")
+        .instance;
+    instance.fields.insert("name".to_owned(), json!(["a", "b"]));
+    let outcome = entity_core::execute(&validated, &instance, "touch", json!({ "name": "Bo" }));
+    assert!(
+        matches!(
+            &outcome,
+            Err(CoreError::PreconditionUnobservable { unresolved, .. })
+                if unresolved == &["$fields.name.count".to_owned()]
+        ),
+        "a declared text holding an array answered a length: {outcome:?}"
+    );
+}
+
 // --- helpers ---------------------------------------------------------------------------------------
 
 fn payee_schema(tag: &str) -> Value {

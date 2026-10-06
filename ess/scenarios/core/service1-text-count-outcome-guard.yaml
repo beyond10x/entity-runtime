@@ -1,0 +1,39 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-text-count-outcome-guard",
+  "summary": "An outcome guard reading a nested argument property's text length selects the refusing outcome one Unicode scalar value over the bound and the default at the bound, whose UTF-8 bytes exceed it.",
+  "timeline": [
+    {
+      "at": "2026-10-06T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"nick\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"SetNick\":{\"arguments\":{\"fields\":{\"profile\":{\"type\":\"object\",\"required\":true,\"properties\":{\"nick\":{\"type\":\"string\",\"required\":true}}}}},\"outcomes\":[{\"name\":\"too_long\",\"when\":{\"compare\":{\"left\":\"$args.profile.nick.count\",\"op\":\"gt\",\"right\":8}},\"refuses\":{\"error\":\"TooLong\"}},{\"name\":\"accepted\",\"effect\":{\"moves\":{\"from\":\"Held\",\"to\":\"Held\"}}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}}",
+        "operation": "SetNick",
+        "arguments": "{\"profile\":{\"nick\":\"\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "refused",
+        "outcome": "too_long",
+        "error_name": "TooLong"
+      }
+    },
+    {
+      "at": "2026-10-06T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"nick\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"SetNick\":{\"arguments\":{\"fields\":{\"profile\":{\"type\":\"object\",\"required\":true,\"properties\":{\"nick\":{\"type\":\"string\",\"required\":true}}}}},\"outcomes\":[{\"name\":\"too_long\",\"when\":{\"compare\":{\"left\":\"$args.profile.nick.count\",\"op\":\"gt\",\"right\":8}},\"refuses\":{\"error\":\"TooLong\"}},{\"name\":\"accepted\",\"effect\":{\"moves\":{\"from\":\"Held\",\"to\":\"Held\"}}}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{}}",
+        "operation": "SetNick",
+        "arguments": "{\"profile\":{\"nick\":\"\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\u00f1\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "accepted"
+      }
+    }
+  ]
+}
