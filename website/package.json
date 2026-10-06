@@ -18,6 +18,7 @@
     "@docusaurus/preset-classic": "3.10.2",
     "@docusaurus/theme-mermaid": "3.10.2",
     "@mdx-js/react": "^3.0.0",
+    "braces": "file:vendor/braces-3.0.4-b10x.1.tgz",
     "clsx": "^2.0.0",
     "image-size": "file:vendor/image-size-2.0.3-b10x.1.tgz",
     "prism-react-renderer": "^2.3.0",
@@ -36,9 +37,12 @@
   },
   "name": "website",
   "overrides": {
+    "braces": "$braces",
     "image-size": "$image-size",
+    "postcss-selector-parser": "7.1.6",
     "qs": "6.16.0",
-    "serialize-javascript": "7.1.1",
+    "serialize-javascript": "7.1.2",
+    "tinypool": "2.1.2",
     "uuid": "11.1.1"
   },
   "private": true,
@@ -51,7 +55,7 @@
     "start": "docusaurus start",
     "swizzle": "docusaurus swizzle",
     "typecheck": "tsc",
-    "vendor-check": "node vendor/image-size/b10x-check.mjs",
+    "vendor-check": "node vendor/image-size/b10x-check.mjs && node vendor/braces/b10x-check.mjs",
     "write-heading-ids": "docusaurus write-heading-ids",
     "write-translations": "docusaurus write-translations"
   },
