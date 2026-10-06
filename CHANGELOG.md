@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-10-06
+
 ### Added
 
 - A `service/1` rule may read the length of a declared `string` field, argument or
