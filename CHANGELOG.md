@@ -104,6 +104,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   reader. A unit effect is still a plain word (`effect: creates`), every document the reader
   accepted before reads to the same definition, and the YAML tag form `!moves { … }` is still
   refused.
+- `entity inspect --format yaml` writes a `moves` effect in that mapping form instead of the tag
+  form `!moves`, so its output loads back through `entity validate`. `kernel/1` output is
+  unchanged.
 
 ## [0.29.0] — 2026-10-07
 

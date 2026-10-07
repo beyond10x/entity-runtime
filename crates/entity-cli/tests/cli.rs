@@ -140,6 +140,45 @@ fn a_moves_outcome_in_a_yaml_or_json_definition_validates_and_executes() {
 }
 
 #[test]
+fn inspect_as_yaml_prints_a_definition_that_validates_again() {
+    let invoice = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../entity-yaml/tests/fixtures/invoice.yaml");
+    let printed = run(
+        &["inspect", invoice.to_str().unwrap(), "--format", "yaml"],
+        None,
+    );
+    assert_eq!(printed.status.code(), Some(0), "{}", stderr(&printed));
+    let text = stdout(&printed);
+    assert!(
+        text.contains("moves:") && !text.contains("!moves"),
+        "{text}"
+    );
+    let reread = scratch("inspected-invoice.yaml", &text);
+    let output = run(&["validate", reread.to_str().unwrap()], None);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+
+    // A definition with no data-carrying variant prints the bytes the YAML library writes for it.
+    let order = order_yaml();
+    let printed = run(
+        &["inspect", order.to_str().unwrap(), "--format", "yaml"],
+        None,
+    );
+    assert_eq!(printed.status.code(), Some(0), "{}", stderr(&printed));
+    let definition =
+        entity_yaml::from_str(&fs::read_to_string(&order).expect("readable")).expect("loads");
+    assert_eq!(
+        stdout(&printed),
+        serde_yaml_ng::to_string(&definition).expect("serializes")
+    );
+}
+
+#[test]
 fn validate_names_the_defect_and_exits_one() {
     let broken = scratch(
         "broken.yaml",
