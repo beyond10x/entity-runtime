@@ -10,7 +10,7 @@ use entity_eventlog::{
         EventlogRecordedStoreProvisioner, ProvisionAuthority, ShutdownMode, SyncExecutionError,
         SyncReadError,
     },
-    Authority, CapturePolicy, EventlogOperationContext, RecordedProviderFacade,
+    Authority, CapturePolicy, EventlogOperationContext, OpenVerification, RecordedProviderFacade,
 };
 use entity_store::asynchronous::{BatchKey, SubjectHistory};
 use ess_conformance::target::TargetError;
@@ -83,27 +83,59 @@ impl Target {
             let _ = facade.shutdown(ShutdownMode::Drain, CallWait::Forever);
         }
     }
-    fn reopen(&mut self, policy: CapturePolicy) -> Result<Value> {
+    fn kept(&self) -> std::path::PathBuf {
+        self.root.0.join("kept.sqlite3")
+    }
+    fn owner(&self) -> Result<EventlogRecordedStoreOwner> {
         let authority = self
             .authority
             .clone()
             .ok_or_else(|| Failure::named("NotProvisioned", "no authority"))?;
+        Ok(EventlogRecordedStoreOwner::Sqlite {
+            path: self.path(),
+            prefix: PREFIX.into(),
+            authority,
+            limits: LIMITS,
+        })
+    }
+    /// Reports how the open verified the authority, as the facade itself reports it.
+    fn reopen(&mut self, policy: CapturePolicy) -> Result<Value> {
+        let owner = self.owner()?;
         self.close();
-        self.facade = Some(
-            RecordedProviderFacade::start_with_read_policy(
-                self.registry.clone(),
-                EventlogRecordedStoreOwner::Sqlite {
-                    path: self.path(),
-                    prefix: PREFIX.into(),
-                    authority,
-                    limits: LIMITS,
-                },
-                bridge(),
-                policy,
-            )
-            .map_err(start_error)?,
-        );
-        Ok(Value::Null)
+        let facade = RecordedProviderFacade::start_with_read_policy(
+            self.registry.clone(),
+            owner,
+            bridge(),
+            policy,
+        )
+        .map_err(start_error)?;
+        let opened = match facade.open_verification() {
+            OpenVerification::Complete => json!({"open":"complete"}),
+            OpenVerification::Checkpoint => json!({"open":"checkpoint"}),
+            OpenVerification::Suffix { events } => json!({"open":"suffix","events":events}),
+        };
+        self.facade = Some(facade);
+        Ok(opened)
+    }
+    /// The SQLite file and its write-ahead companions, which together are one store state.
+    fn files(path: &std::path::Path) -> [std::path::PathBuf; 3] {
+        let name = |suffix: &str| {
+            let mut name = path.as_os_str().to_owned();
+            name.push(suffix);
+            std::path::PathBuf::from(name)
+        };
+        [path.to_owned(), name("-wal"), name("-shm")]
+    }
+    /// Copies one closed store state over another, companions included or removed.
+    fn copy_state(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
+        for (source, target) in Self::files(from).iter().zip(Self::files(to).iter()) {
+            if source.exists() {
+                std::fs::copy(source, target).map_err(|e| Failure::named("Fixture", e))?;
+            } else if target.exists() {
+                std::fs::remove_file(target).map_err(|e| Failure::named("Fixture", e))?;
+            }
+        }
+        Ok(())
     }
     pub fn execute(
         &mut self,
@@ -158,6 +190,73 @@ impl Target {
                 self.reopen(policy)
             }
             "Reopen" => self.reopen(policy(value)?),
+            "EnableDurableCheckpoints" => {
+                self.facade()?
+                    .enable_durable_open_checkpoints(CallWait::Forever)
+                    .map_err(read_error)?;
+                Ok(Value::Null)
+            }
+            "DiscardCheckpoint" => {
+                let owner = self.owner()?;
+                self.close();
+                let discarded = owner.discard_open_checkpoint().map_err(Failure::from)?;
+                Ok(json!({"discarded":discarded}))
+            }
+            "KeepCopy" => {
+                self.owner()?;
+                self.close();
+                Self::copy_state(std::path::Path::new(&self.path()), &self.kept())?;
+                Ok(Value::Null)
+            }
+            "TruncateTail" => {
+                self.owner()?;
+                self.close();
+                let path = self.path();
+                let fixture = |e: rusqlite::Error| Failure::named("Fixture", e);
+                // The current checkpoint rows, read before the kept copy replaces the file.
+                let current = rusqlite::Connection::open(&path).map_err(fixture)?;
+                let snapshots: Vec<(String, String, i64, i64, String, String)> = current
+                    .prepare(&format!("SELECT tenant_id, stream_id, version, state_schema_version, state, recorded_at FROM {PREFIX}_snapshots WHERE stream_type='er.open-checkpoint'"))
+                    .and_then(|mut statement| {
+                        statement
+                            .query_map([], |row| {
+                                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+                            })?
+                            .collect()
+                    })
+                    .map_err(fixture)?;
+                let generations: Vec<(String, String, String, Option<String>)> = current
+                    .prepare(&format!("SELECT tenant_id, stream_id, generation, cached_generation FROM {PREFIX}_snapshot_generations WHERE stream_type='er.open-checkpoint'"))
+                    .and_then(|mut statement| {
+                        statement
+                            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?
+                            .collect()
+                    })
+                    .map_err(fixture)?;
+                drop(current);
+                if snapshots.is_empty() {
+                    return Err(Failure::named("Fixture", "no open checkpoint to carry"));
+                }
+                Self::copy_state(&self.kept(), std::path::Path::new(&path))?;
+                let restored = rusqlite::Connection::open(&path).map_err(fixture)?;
+                for (tenant, stream, generation, cached) in &generations {
+                    restored
+                        .execute(
+                            &format!("INSERT OR REPLACE INTO {PREFIX}_snapshot_generations (tenant_id, stream_type, stream_id, generation, cached_generation) VALUES (?1, 'er.open-checkpoint', ?2, ?3, ?4)"),
+                            rusqlite::params![tenant, stream, generation, cached],
+                        )
+                        .map_err(fixture)?;
+                }
+                for (tenant, stream, version, schema, state, recorded) in &snapshots {
+                    restored
+                        .execute(
+                            &format!("INSERT OR REPLACE INTO {PREFIX}_snapshots (tenant_id, stream_type, stream_id, version, state_schema_version, state, recorded_at) VALUES (?1, 'er.open-checkpoint', ?2, ?3, ?4, ?5, ?6)"),
+                            rusqlite::params![tenant, stream, version, schema, state, recorded],
+                        )
+                        .map_err(fixture)?;
+                }
+                Ok(Value::Null)
+            }
             "Create" => {
                 let request = executor::create(value)?;
                 let outcome = self
@@ -229,6 +328,10 @@ impl Target {
                     "projection" => "UPDATE ess_provider_p_er_subjects_v1 SET body='{}'",
                     "identity" => "UPDATE ess_provider_identity SET stream_identity='substituted-generation'",
                     "delete-blob" => "DELETE FROM ess_provider_blobs WHERE rowid=(SELECT MIN(rowid) FROM ess_provider_blobs)",
+                    // The open checkpoint changed without recomputing its digest.
+                    "checkpoint" => "UPDATE ess_provider_snapshots SET state=json_set(state,'$.position',json_extract(state,'$.position')+1) WHERE stream_type='er.open-checkpoint'",
+                    // A write that changes nothing but is still a write the provider did not make.
+                    "rewrite-identity" => "UPDATE ess_provider_identity SET stream_identity=stream_identity",
                     _ => return Err(Failure::named("Deserialize", "unknown SQL mutation fixture")),
                 };
                 let connection = rusqlite::Connection::open(self.path())

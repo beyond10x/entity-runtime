@@ -251,6 +251,40 @@ impl EventlogRecordedStoreOwner {
         }
     }
 
+    /// Replaces the open checkpoint this owner's store holds for its authority with a tombstone,
+    /// so the next `ProviderTracked` open verifies completely; `false` when none was persisted.
+    ///
+    /// The recovery from a checkpoint ahead of the provider's head, after an operator has decided
+    /// the store is to be used as it is. Run it before a facade is started from this owner, with
+    /// every other owner of the store shut down: a handle that opened before the discard would
+    /// otherwise write its own checkpoint again at its drain. It never writes over a tombstone it
+    /// did not load at its open, so a violation costs the recovery and nothing else. Only SQLite
+    /// stores hold an open checkpoint; every other owner returns `false` without opening its store.
+    ///
+    /// # Errors
+    /// The SQLite store cannot be opened, or its snapshot cannot be read or written.
+    pub fn discard_open_checkpoint(&self) -> Result<bool, AsyncStoreError> {
+        match self {
+            #[cfg(feature = "sqlite")]
+            Self::Sqlite {
+                path,
+                prefix,
+                authority,
+                ..
+            } => {
+                let (path, prefix, authority) = (path.clone(), prefix.clone(), authority.clone());
+                run_detached(async move {
+                    let store = eventlog_sqlite::SqliteEventStore::open_existing(&path, &prefix)
+                        .await
+                        .map_err(store_open)?;
+                    EventlogRecordedStore::discard_open_checkpoint(&store, &authority).await
+                })
+            }
+            #[allow(unreachable_patterns, reason = "every provider but SQLite is optional")]
+            _ => Ok(false),
+        }
+    }
+
     async fn open_with_policy(
         self,
         policy: crate::CapturePolicy,
@@ -616,6 +650,26 @@ async fn provision_binding(
 }
 
 impl OwnedBackend {
+    /// Installs or removes the provider's durable capture continuity, which only SQLite offers.
+    async fn durable_continuity(&self, enable: bool) -> Result<(), AsyncStoreError> {
+        match self {
+            #[cfg(feature = "sqlite")]
+            Self::Sqlite(store) => if enable {
+                store.enable_durable_continuity().await
+            } else {
+                store.disable_durable_continuity().await
+            }
+            .map_err(store_open),
+            #[allow(unreachable_patterns, reason = "every provider but SQLite is optional")]
+            _ => {
+                let _ = enable;
+                Err(AsyncStoreError::InvalidInput(
+                    "durable open checkpoints need the SQLite provider".into(),
+                ))
+            }
+        }
+    }
+
     async fn retire(&self) -> Result<(), AsyncStoreError> {
         match self {
             #[cfg(feature = "postgres")]
@@ -703,6 +757,36 @@ trait WorkerDriver: Send {
         source_id: Option<String>,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>>;
     fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>>;
+    /// How the store's open verified its authority.
+    fn open_verification(&self) -> crate::OpenVerification {
+        crate::OpenVerification::Complete
+    }
+    /// One administrative call; `true` when it changed what is persisted.
+    fn administer<'a>(
+        &'a self,
+        _call: &'a Administration,
+    ) -> BoxFuture<'a, Result<bool, AsyncStoreError>> {
+        Box::pin(async {
+            Err(AsyncStoreError::Backend(
+                "administration is unavailable".into(),
+            ))
+        })
+    }
+    /// Runs after a drain shutdown finished every accepted request, before retirement.
+    fn drained(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+}
+
+/// The administrative calls a worker runs on its provider and store.
+pub(crate) enum Administration {
+    /// Installs the provider's durable continuity, then verifies the authority again so the
+    /// handle holds an observation with a durable form.
+    EnableDurableCheckpoints,
+    /// Removes the provider's durable continuity again.
+    DisableDurableCheckpoints,
+    /// Persists the handle's last verified observation as the open checkpoint.
+    WriteCheckpoint,
 }
 
 struct ProductionDriver {
@@ -856,6 +940,38 @@ impl WorkerDriver for ProductionDriver {
     fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>> {
         Box::pin(async move { self.backend.retire().await })
     }
+
+    fn open_verification(&self) -> crate::OpenVerification {
+        self.store.open_verification()
+    }
+
+    fn administer<'a>(
+        &'a self,
+        call: &'a Administration,
+    ) -> BoxFuture<'a, Result<bool, AsyncStoreError>> {
+        Box::pin(async move {
+            match call {
+                Administration::EnableDurableCheckpoints => {
+                    self.backend.durable_continuity(true).await?;
+                    self.store.reverify().await?;
+                    Ok(true)
+                }
+                Administration::DisableDurableCheckpoints => {
+                    self.backend.durable_continuity(false).await?;
+                    Ok(true)
+                }
+                Administration::WriteCheckpoint => self.store.write_open_checkpoint().await,
+            }
+        })
+    }
+
+    fn drained(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async move {
+            // A checkpoint that cannot be written leaves the previous one: the next open verifies
+            // a longer suffix, or completely. Only its cost differs, so retirement goes on.
+            let _ = self.store.write_open_checkpoint().await;
+        })
+    }
 }
 
 /// Startup refusal before a usable owner is returned.
@@ -960,6 +1076,8 @@ pub enum BridgeOperationIdentity {
     Write(BatchKey),
     /// One imported subject boundary.
     Import(Subject),
+    /// One administrative call: enabling or disabling durable open checkpoints, or writing one.
+    Administration,
 }
 
 /// Closed read operation names.
@@ -1120,6 +1238,7 @@ enum Request {
         Arc<Cell<Result<ImportAnchorOutcome, SyncImportError>>>,
         Option<String>,
     ),
+    Administer(Administration, Arc<Cell<Result<bool, SyncReadError>>>),
     Wake,
 }
 
@@ -1138,6 +1257,7 @@ impl Request {
             Self::Observe(_, _, _, c) => Some(&c.phase),
             Self::Batch(_, _, _, c) => Some(&c.phase),
             Self::Import(_, _, _, c, _) => Some(&c.phase),
+            Self::Administer(_, c) => Some(&c.phase),
             Self::Wake => None,
         }
     }
@@ -1163,6 +1283,7 @@ impl Request {
             Self::Import(_, _, subject, _, _) => {
                 Some(BridgeOperationIdentity::Import(subject.clone()))
             }
+            Self::Administer(..) => Some(BridgeOperationIdentity::Administration),
             Self::Wake => None,
         }
     }
@@ -1196,6 +1317,9 @@ impl Request {
             Self::Import(_, _, _, c, _) => {
                 c.complete(Err(SyncImportError::Rejected(BridgeRejection::Closed)))
             }
+            Self::Administer(_, c) => {
+                c.complete(Err(SyncReadError::Rejected(BridgeRejection::Closed)))
+            }
             Self::Wake => {}
         }
     }
@@ -1215,6 +1339,7 @@ impl Request {
             }
             Self::Batch(_, _, _, c) => c.complete(Err(SyncExecutionError::Rejected(rejection))),
             Self::Import(_, _, _, c, _) => c.complete(Err(SyncImportError::Rejected(rejection))),
+            Self::Administer(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
             Self::Wake => {}
         }
     }
@@ -1261,6 +1386,9 @@ impl Request {
                     cause: ImportAnchorUncertainty::RecoveryUnavailable,
                 },
             ))),
+            Self::Administer(_, c) => c.complete(Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerStopped,
+            ))),
             Self::Wake => {}
         }
     }
@@ -1270,6 +1398,7 @@ impl Request {
 pub struct RecordedEventlogBridge {
     sender: SyncSender<Request>,
     worker_id: ThreadId,
+    opened: crate::OpenVerification,
     join: Option<JoinHandle<()>>,
     shared: Arc<Shared>,
     capacity: u16,
@@ -1410,9 +1539,10 @@ impl RecordedEventlogBridge {
         });
         let join = spawn(work).map_err(BridgeStartError::ThreadSpawn)?;
         match ready_rx.recv() {
-            Ok(Ok(worker_id)) => Ok(Self {
+            Ok(Ok((worker_id, opened))) => Ok(Self {
                 sender,
                 worker_id,
+                opened,
                 join: Some(join),
                 shared,
                 capacity: config.queue_capacity.get(),
@@ -1504,6 +1634,61 @@ impl RecordedEventlogBridge {
             &cell,
             wait,
             BridgeOperationIdentity::Read(BridgeReadKind::CompleteSnapshot),
+        )
+    }
+
+    /// How the worker's store open verified its authority.
+    #[must_use]
+    pub fn open_verification(&self) -> crate::OpenVerification {
+        self.opened
+    }
+
+    /// Enables durable open checkpoints on the worker's SQLite store: installs Eventlog's durable
+    /// capture continuity, then verifies the authority again so this handle holds an observation
+    /// a drain can persist.
+    ///
+    /// **One-way for older readers.** Entity Runtime before this call existed, and Eventlog before
+    /// 0.8.0, refuse to open or attach a store carrying the provider's triggers. Every process
+    /// that opens the store must run versions that admit them first;
+    /// [`Self::disable_durable_open_checkpoints`] makes the store theirs again. Until this runs a
+    /// `ProviderTracked` open writes no checkpoint and verifies completely, as before.
+    ///
+    /// # Errors
+    /// `InvalidInput` for a provider other than SQLite, the provider's refusal of a store carrying
+    /// a trigger it does not own, or a refusal of the verification that follows.
+    pub fn enable_durable_open_checkpoints(&self, wait: CallWait) -> Result<(), SyncReadError> {
+        self.administer(Administration::EnableDurableCheckpoints, wait)
+            .map(|_| ())
+    }
+
+    /// Removes durable open checkpoints from the worker's SQLite store again, after which earlier
+    /// Entity Runtime and Eventlog versions open it as before; every persisted checkpoint then
+    /// restores to nothing and every open verifies completely.
+    ///
+    /// # Errors
+    /// `InvalidInput` for a provider other than SQLite, or the provider's failure.
+    pub fn disable_durable_open_checkpoints(&self, wait: CallWait) -> Result<(), SyncReadError> {
+        self.administer(Administration::DisableDurableCheckpoints, wait)
+            .map(|_| ())
+    }
+
+    /// Persists this handle's last verified observation as the open checkpoint now, by the rules
+    /// of [`crate::EventlogRecordedStore::write_open_checkpoint`], as a drain shutdown does; for a
+    /// long-lived owner. Returns whether a record was written.
+    ///
+    /// # Errors
+    /// The provider's failure reading or writing the snapshot.
+    pub fn write_open_checkpoint(&self, wait: CallWait) -> Result<bool, SyncReadError> {
+        self.administer(Administration::WriteCheckpoint, wait)
+    }
+
+    fn administer(&self, call: Administration, wait: CallWait) -> Result<bool, SyncReadError> {
+        let cell = Cell::new();
+        self.submit(
+            Request::Administer(call, cell.clone()),
+            &cell,
+            wait,
+            BridgeOperationIdentity::Administration,
         )
     }
 
@@ -1943,7 +2128,7 @@ fn worker_main(
     runtime_builder: impl FnOnce() -> std::io::Result<tokio::runtime::Runtime>,
     receiver: &Receiver<Request>,
     shared: Arc<Shared>,
-    ready: std::sync::mpsc::Sender<Result<ThreadId, BridgeStartError>>,
+    ready: std::sync::mpsc::Sender<Result<(ThreadId, crate::OpenVerification), BridgeStartError>>,
 ) {
     let runtime = match runtime_builder() {
         Ok(v) => v,
@@ -1975,7 +2160,13 @@ fn worker_main(
             return;
         }
     };
-    if ready.send(Ok(std::thread::current().id())).is_err() {
+    if ready
+        .send(Ok((
+            std::thread::current().id(),
+            driver.open_verification(),
+        )))
+        .is_err()
+    {
         finish(&shared, runtime.block_on(driver.retire()));
         return;
     }
@@ -2047,6 +2238,13 @@ fn worker_main(
         }
     }
     terminal_drain(&shared, receiver, worker_panicked);
+    // Only a drain that finished every accepted request persists the open checkpoint: a cancelled
+    // or abandoned bridge, or one whose worker panicked, leaves the previous one.
+    if !worker_panicked && shared.lifecycle.load(Ordering::Acquire) == CLOSING_DRAIN {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            runtime.block_on(driver.drained());
+        }));
+    }
     let retired = runtime.block_on(driver.retire());
     finish(&shared, retired);
 }
@@ -2153,6 +2351,7 @@ fn drive_request(
         Request::Import(context, history, subject, c, source_id) => poll_import(c, subject, || {
             runtime.block_on(driver.import_anchor(context, history, source_id))
         }),
+        Request::Administer(call, c) => poll_read(c, || runtime.block_on(driver.administer(&call))),
         Request::Wake => false,
     }
 }
@@ -2226,6 +2425,30 @@ fn finish(shared: &Shared, result: Result<(), AsyncStoreError>) {
 }
 fn store_open(error: eventlog_core::EventLogError) -> AsyncStoreError {
     AsyncStoreError::Backend(error.to_string())
+}
+
+/// Runs one administrative provider call on its own thread and runtime, so a caller inside an
+/// asynchronous runtime can make it as well as one outside.
+#[cfg(feature = "sqlite")]
+fn run_detached<T: Send>(
+    work: impl std::future::Future<Output = Result<T, AsyncStoreError>> + Send,
+) -> Result<T, AsyncStoreError> {
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| AsyncStoreError::Backend(error.to_string()))?
+                    .block_on(work)
+            })
+            .join()
+            .unwrap_or_else(|_| {
+                Err(AsyncStoreError::Backend(
+                    "the administrative worker panicked".into(),
+                ))
+            })
+    })
 }
 
 #[cfg(test)]
@@ -2789,6 +3012,7 @@ mod tests {
             RecordedEventlogBridge {
                 sender,
                 worker_id: foreign_thread_id(),
+                opened: crate::OpenVerification::Complete,
                 join: None,
                 shared: shared(lifecycle),
                 capacity,
@@ -4025,6 +4249,7 @@ mod tests {
         let bridge = RecordedEventlogBridge {
             sender,
             worker_id: std::thread::current().id(),
+            opened: crate::OpenVerification::Complete,
             join: None,
             shared: shared(RUNNING),
             capacity: 1,
@@ -4187,6 +4412,7 @@ mod tests {
         let mut bridge = RecordedEventlogBridge {
             sender,
             worker_id: id_rx.recv().expect("worker id"),
+            opened: crate::OpenVerification::Complete,
             join: Some(join),
             shared,
             capacity: 1,
@@ -4228,6 +4454,7 @@ mod tests {
         let mut bridge = RecordedEventlogBridge {
             sender,
             worker_id: id_rx.recv().expect("worker id"),
+            opened: crate::OpenVerification::Complete,
             join: Some(join),
             shared,
             capacity: 2,
@@ -4279,6 +4506,7 @@ mod tests {
         let mut bridge = RecordedEventlogBridge {
             sender,
             worker_id: id_rx.recv().expect("worker id"),
+            opened: crate::OpenVerification::Complete,
             join: Some(join),
             shared: shared.clone(),
             capacity: 2,

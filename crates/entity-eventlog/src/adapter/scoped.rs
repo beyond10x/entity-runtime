@@ -150,17 +150,24 @@ impl EventlogRecordedStore {
         scope: &ReadScope,
     ) -> Result<ScopedModel, AsyncStoreError> {
         if self.policy == super::CapturePolicy::ProviderTracked {
-            return Ok(ScopedModel {
-                #[cfg(feature = "sync-bridge")]
-                covered: scope.clone(),
-                model: self.tracked_model().await?,
-            });
+            // A whole-model handle answers from its model. A handle opened from a checkpoint has
+            // none: once its observation is continued it reads per entity, as below.
+            if let super::tracked::Tracked::Whole(model) = self.continue_tracked().await? {
+                return Ok(ScopedModel {
+                    #[cfg(feature = "sync-bridge")]
+                    covered: scope.clone(),
+                    model,
+                });
+            }
         }
         for _ in 0..ATTEMPTS {
             self.scoped_reads.fetch_add(1, Ordering::Relaxed);
             match self.scoped_once(scope).await {
                 Ok(scoped) => return Ok(scoped),
-                Err(Retry::Final(error)) => return Err(error),
+                Err(Retry::Final(error)) => {
+                    self.note_refusal(&error);
+                    return Err(error);
+                }
                 Err(Retry::Again) => {}
             }
         }

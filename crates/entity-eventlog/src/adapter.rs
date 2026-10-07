@@ -47,11 +47,13 @@ use crate::{
     },
 };
 
+mod bounded;
+mod checkpoint;
 mod memory;
 mod scoped;
 mod shared;
 mod tracked;
-pub use tracked::CapturePolicy;
+pub use tracked::{CapturePolicy, OpenVerification};
 #[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
 mod small_store_cost;
 
@@ -898,6 +900,13 @@ pub struct EventlogRecordedStore {
     memory: Mutex<VerifiedMemory>,
     policy: CapturePolicy,
     tracked: Mutex<tracked::Cache>,
+    /// The open checkpoint this handle loaded at its open, or last wrote itself.
+    checkpoint: Mutex<checkpoint::Loaded>,
+    /// How the open verified the authority.
+    opened: Mutex<OpenVerification>,
+    /// Whether a verification refused with `ProviderIntegrity` or `CorruptHistory` since the
+    /// handle's last complete verification. Such a handle persists no open checkpoint.
+    refused: std::sync::atomic::AtomicBool,
 }
 
 /// What one write adds to the tenant: events, index rows, and the blobs it binds.
@@ -959,10 +968,20 @@ impl EventlogRecordedStore {
         Self::open_with_policy(backend, authority, limits, CapturePolicy::FullVerification).await
     }
 
-    /// Opens with an explicit provider-continuity policy after complete initial verification.
+    /// Opens with an explicit provider-continuity policy.
+    ///
+    /// `FullVerification` verifies the whole authority. `ProviderTracked` does too, unless the
+    /// store holds a valid open checkpoint and its provider can prove what changed since: then
+    /// it verifies the checkpoint, the binding and only the suffix after it, and answers reads from
+    /// the provider's verified index rows (see [`Self::open_verification`]). A damaged or foreign
+    /// checkpoint costs a complete verification and nothing else.
     ///
     /// # Errors
-    /// The same authority and integrity refusals as [`Self::open`].
+    /// The same authority and integrity refusals as [`Self::open`]. A `ProviderTracked` open also
+    /// refuses with `ProviderIntegrity` a checkpoint whose digest and authority hold but whose
+    /// position is beyond the provider's head: the store lost its tail, which a complete
+    /// verification of a self-consistent store cannot see.
+    /// [`Self::discard_open_checkpoint`] recovers it; `FullVerification` opens are unaffected.
     pub async fn open_with_policy(
         backend: Arc<dyn EventlogBackend>,
         authority: Authority,
@@ -990,12 +1009,181 @@ impl EventlogRecordedStore {
             memory: Mutex::new(VerifiedMemory::default()),
             policy,
             tracked: Mutex::new(tracked::Cache::default()),
+            checkpoint: Mutex::new(checkpoint::Loaded::Absent),
+            opened: Mutex::new(OpenVerification::Complete),
+            refused: std::sync::atomic::AtomicBool::new(false),
         };
-        let model = store.capture_model().await?;
+        if policy == CapturePolicy::FullVerification {
+            let model = store.capture_model().await?;
+            if model.binding.is_none() {
+                return Err(integrity("the tenant has no authoritative binding"));
+            }
+            return Ok(store);
+        }
+        let loaded = checkpoint::load(
+            store.backend.as_ref(),
+            &store.tenant,
+            &store.authority,
+            limits,
+        )
+        .await?;
+        *store
+            .checkpoint
+            .lock()
+            .map_err(|_| integrity("open checkpoint lock poisoned"))? = loaded.clone();
+        let model = match &loaded {
+            checkpoint::Loaded::Valid(record) => match store.open_from(record).await? {
+                bounded::Opened::Bounded(verification) => {
+                    *store
+                        .opened
+                        .lock()
+                        .map_err(|_| integrity("open verification lock poisoned"))? = verification;
+                    return Ok(store);
+                }
+                bounded::Opened::Whole(model) => model,
+                bounded::Opened::Fallback => store.capture_model().await?,
+            },
+            _ => store.capture_model().await?,
+        };
         if model.binding.is_none() {
             return Err(integrity("the tenant has no authoritative binding"));
         }
+        if let Some((position, binding)) = loaded.reach() {
+            let head = store.verified_position()?;
+            if model.binding.as_ref() == Some(binding) && position > head {
+                return Err(integrity(format!(
+                    "the open checkpoint names tenant position {position}, beyond the provider's head {head}: \
+                     the store lost its tail, or the checkpoint belongs to a later copy of it. Shut down every \
+                     owner of the store, then discard the checkpoint once the store is to be used as it is; \
+                     FullVerification opens are unaffected"
+                )));
+            }
+        }
         Ok(store)
+    }
+
+    /// How this handle's open verified the authority.
+    #[must_use]
+    pub fn open_verification(&self) -> OpenVerification {
+        self.opened
+            .lock()
+            .map_or(OpenVerification::Complete, |opened| *opened)
+    }
+
+    /// Persists this handle's last verified observation as the store's open checkpoint.
+    ///
+    /// Writes only for a `ProviderTracked` handle whose provider gives its held checkpoint a
+    /// durable form, which on SQLite needs durable continuity enabled on the store; never after a
+    /// `ProviderIntegrity` or `CorruptHistory` refusal since the handle's last complete
+    /// verification; never when the persisted record is this handle's own; never over a valid
+    /// checkpoint at a higher position; and never over a discard's tombstone this handle did not
+    /// load at its open. The record names the observation this handle verified, never the
+    /// provider's state now, so a foreign write since is reported by the next open. Returns
+    /// whether a record was written. A drain shutdown of the synchronous bridge calls this.
+    ///
+    /// # Errors
+    /// A provider failure reading or writing the snapshot.
+    pub async fn write_open_checkpoint(&self) -> Result<bool, AsyncStoreError> {
+        if self.policy != CapturePolicy::ProviderTracked || self.refused.load(Ordering::Relaxed) {
+            return Ok(false);
+        }
+        let Some(observation) = self.observation()? else {
+            return Ok(false);
+        };
+        let Some(durable) = self.backend.durable_checkpoint(&observation.checkpoint) else {
+            return Ok(false);
+        };
+        let record = checkpoint::Record::new(
+            &self.authority,
+            observation.binding,
+            self.limits,
+            durable.as_bytes().to_vec(),
+            observation.position,
+        );
+        let loaded = self
+            .checkpoint
+            .lock()
+            .map_err(|_| integrity("open checkpoint lock poisoned"))?
+            .clone();
+        if loaded == checkpoint::Loaded::Valid(record.clone()) {
+            return Ok(false);
+        }
+        let persisted = checkpoint::load(
+            self.backend.as_ref(),
+            &self.tenant,
+            &self.authority,
+            self.limits,
+        )
+        .await?;
+        if persisted
+            .reach()
+            .is_some_and(|(position, _)| position > observation.position)
+            || (matches!(persisted, checkpoint::Loaded::Tombstone(_)) && persisted != loaded)
+        {
+            return Ok(false);
+        }
+        let written = checkpoint::save(
+            self.backend.as_ref(),
+            &self.tenant,
+            &self.authority,
+            record.state()?,
+        )
+        .await?;
+        if written {
+            *self
+                .checkpoint
+                .lock()
+                .map_err(|_| integrity("open checkpoint lock poisoned"))? =
+                checkpoint::Loaded::Valid(record);
+        }
+        Ok(written)
+    }
+
+    /// Replaces the store's open checkpoint for `authority` with a tombstone, so the next
+    /// `ProviderTracked` open verifies completely; `false` when none was persisted.
+    ///
+    /// The recovery from a checkpoint ahead of the provider's head. Run it with no
+    /// `ProviderTracked` handle open on the store: a handle opened before it would otherwise
+    /// write its own record again at its drain. It never does over a tombstone it did not load,
+    /// so a violation costs nothing but the recovery.
+    ///
+    /// # Errors
+    /// An invalid authority, or a provider failure reading or writing the snapshot.
+    pub async fn discard_open_checkpoint(
+        backend: &dyn EventlogBackend,
+        authority: &Authority,
+    ) -> Result<bool, AsyncStoreError> {
+        authority.validate()?;
+        let tenant = TenantId::new(authority.tenant.clone()).map_err(input_eventlog)?;
+        checkpoint::discard(backend, &tenant, authority).await
+    }
+
+    /// Verifies the whole authority again and holds it as this handle's observation.
+    ///
+    /// Used after durable continuity is enabled under a live handle: the checkpoint it held was
+    /// issued before, so it has no durable form.
+    pub(crate) async fn reverify(&self) -> Result<(), AsyncStoreError> {
+        if self.policy == CapturePolicy::ProviderTracked {
+            self.forget_observation()?;
+        }
+        self.capture_model().await.map(|_| ())
+    }
+
+    /// Records a verification refusal: such a handle persists no open checkpoint.
+    fn note_refusal(&self, error: &AsyncStoreError) {
+        if matches!(
+            error,
+            AsyncStoreError::ProviderIntegrity { .. } | AsyncStoreError::CorruptHistory { .. }
+        ) {
+            self.refused.store(true, Ordering::Relaxed);
+        }
+    }
+
+    fn noted<T>(&self, result: Result<T, AsyncStoreError>) -> Result<T, AsyncStoreError> {
+        if let Err(error) = &result {
+            self.note_refusal(error);
+        }
+        result
     }
 
     /// Returns a per-operation facade supplying facts only when a new physical write is needed.
@@ -1126,11 +1314,58 @@ impl EventlogRecordedStore {
     /// receipt of the write it just made, because the outcome is verified by reading it back. The
     /// payload-byte cap is not checked, for the reason the import path gives: computing it would
     /// re-encode the whole authority on every write.
-    fn admit_growth(&self, growth: &Growth) -> Result<(), AsyncStoreError> {
-        let held = self
+    ///
+    /// A handle opened from a checkpoint knows the provider's counts but not which digests are
+    /// bound, so it asks the provider about each digest of the write it has not seen bound: one
+    /// point read per such blob, and exactly the count a whole-model handle would reach.
+    async fn admit_growth(&self, growth: &Growth) -> Result<(), AsyncStoreError> {
+        let unknown: Vec<String> = {
+            let held = self
+                .held
+                .lock()
+                .map_err(|_| integrity("read bound lock poisoned"))?;
+            if held.partial {
+                growth
+                    .digests
+                    .iter()
+                    .filter(|digest| !held.digests.contains(digest.as_str()))
+                    .cloned()
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        };
+        let mut known = Vec::new();
+        if !unknown.is_empty() {
+            let reads: Vec<eventlog_core::Read> = unknown
+                .iter()
+                .map(|digest| eventlog_core::Read::Blob {
+                    tenant: self.tenant.clone(),
+                    digest: digest.clone(),
+                })
+                .collect();
+            let results = self
+                .backend
+                .read_many(&reads)
+                .await
+                .map_err(map_read_error)?;
+            if results.len() != reads.len() {
+                return Err(integrity(
+                    "provider answered a read batch with another number of results",
+                ));
+            }
+            for (digest, result) in unknown.into_iter().zip(results) {
+                if matches!(result, eventlog_core::ReadResult::Blob(Some(_))) {
+                    known.push(digest);
+                }
+            }
+        }
+        let mut held = self
             .held
             .lock()
             .map_err(|_| integrity("read bound lock poisoned"))?;
+        // Already counted in the provider's usage: known bound, not added by this write.
+        held.digests.extend(known);
         let added_blobs = growth
             .digests
             .iter()
@@ -1420,6 +1655,9 @@ impl AsyncStateReader for EventlogRecordedStore {
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>> {
         Box::pin(async move {
+            if self.policy == CapturePolicy::ProviderTracked {
+                return self.tracked_state(subject).await;
+            }
             let model = self.capture_model().await?;
             refuse_forked(&model, subject)?;
             Ok(model.terminals.get(subject).cloned())
@@ -1427,12 +1665,18 @@ impl AsyncStateReader for EventlogRecordedStore {
     }
 }
 
+/// Under `ProviderTracked` a state, record or batch is answered from the whole verified model,
+/// or, on a handle opened from a checkpoint, from the provider's verified rows; a history from the
+/// model or per entity; a complete snapshot always from a complete verification.
 impl AsyncRecordedReader for EventlogRecordedStore {
     fn lookup_record<'a>(
         &'a self,
         record_id: &'a str,
     ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>> {
         Box::pin(async move {
+            if self.policy == CapturePolicy::ProviderTracked {
+                return self.tracked_record(record_id).await;
+            }
             Ok(self
                 .capture_model()
                 .await?
@@ -1446,6 +1690,9 @@ impl AsyncRecordedReader for EventlogRecordedStore {
         key: &'a BatchKey,
     ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>> {
         Box::pin(async move {
+            if self.policy == CapturePolicy::ProviderTracked {
+                return self.tracked_batch(key).await;
+            }
             Ok(self
                 .capture_model()
                 .await?
@@ -1458,7 +1705,12 @@ impl AsyncRecordedReader for EventlogRecordedStore {
         &'a self,
         subject: &'a Subject,
     ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>> {
-        Box::pin(async move { Ok(model_history(&*self.capture_model().await?, subject)) })
+        Box::pin(async move {
+            if self.policy == CapturePolicy::ProviderTracked {
+                return self.tracked_history(subject).await;
+            }
+            Ok(model_history(&*self.capture_model().await?, subject))
+        })
     }
     fn complete_snapshot<'a>(
         &'a self,
@@ -1699,6 +1951,7 @@ impl EventlogOperationStore<'_> {
         };
         self.store
             .admit_growth(&growth)
+            .await
             .map_err(WriteFailure::NotCommitted)?;
         let command_key = key_for_value("er.eventlog.batch-command-key/1", json!({"authority":self.store.authority,"batch_key":crate::encoding::BatchKeyWire::from(&key)})).map_err(WriteFailure::NotCommitted)?;
         let meta = self
@@ -3652,6 +3905,10 @@ struct CaptureHeld {
     rows: u64,
     /// Which blobs are already bound, so a batch counts only the ones it would add.
     digests: BTreeSet<String>,
+    /// Whether `digests` is only what this handle has seen bound, not every bound digest: a
+    /// handle opened from a checkpoint holds the provider's counts, never its digest set, and asks
+    /// the provider about each digest it does not know.
+    partial: bool,
 }
 
 /// The blob digests one record's projection row repeats.
@@ -3867,6 +4124,7 @@ fn capture_held(capture: &TenantCapture, blobs: &BTreeMap<&str, &[u8]>, rows: u6
         blobs: blobs.len() as u64,
         rows,
         digests: blobs.keys().map(|digest| (*digest).to_owned()).collect(),
+        partial: false,
     }
 }
 
