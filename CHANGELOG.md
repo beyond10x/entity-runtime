@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-10-07
+
 ### Added
 
 - A `service/2` or `service/3` operation outcome may declare `set_if_present`, as a creation
