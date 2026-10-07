@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:unified-site-source-carries-no-project-pages-caller
 kind: story
-status: active
+status: implemented
 title: A unified-site source carries no project Pages caller
 owner: entity-runtime
 relations:
@@ -14,10 +14,11 @@ scope:
   path: AGENTS.md
 - confidence: cited
   path: website/README.md
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-07T00:15:23Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-07T00:15:23Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-10-07T00:28:52Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"verification":1}}}
 ---
 # A unified-site source carries no project Pages caller
 

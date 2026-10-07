@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:verified-model-holds-each-record-once
 kind: story
-status: active
+status: implemented
 title: A verified model holds each committed record once
 owner: entity-runtime
 refs:
@@ -28,10 +28,11 @@ scope:
   path: crates/entity-store/src/asynchronous.rs
 - confidence: inferred
   path: crates/entity-store/src/asynchronous/verify.rs
-revision: 14
+revision: 15
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-06T22:56:53Z", actor: "human:timo", revision: 9}
 - {from: "proposed", to: "active", at: "2026-10-06T22:56:56Z", actor: "human:timo", revision: 10}
+- {from: "active", to: "implemented", at: "2026-10-07T00:28:52Z", actor: "human:timo", revision: 15, decided_on: {"recorded":{"test_result":1,"review_outcome":2,"verification":1}}}
 ---
 # A verified model holds each committed record once
 

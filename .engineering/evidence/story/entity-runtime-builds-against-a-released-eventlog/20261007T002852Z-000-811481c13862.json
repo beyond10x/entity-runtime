@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T00:28:52Z",
+  "actor": "human:timo",
+  "artifact": "story:entity-runtime-builds-against-a-released-eventlog",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "Cargo.lock and checks/ess-conformance/Cargo.lock diff: only eventlog-core/file/sqlite/postgres/tree change, 0.6.0 at 6983cc25 -> 0.7.0 at cf7f61e1; eventlog-runtime-check 0 and provider-ess-check 0 (17/17) on 5dd64a6b",
+    "reference": "12d421b9"
+  }
+}

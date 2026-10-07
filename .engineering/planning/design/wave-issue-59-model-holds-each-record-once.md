@@ -16,7 +16,7 @@ relations:
 - designs: story:website-dependencies-pass-npm-audit
 - designs: story:unified-site-source-carries-no-project-pages-caller
 - designs: story:entity-runtime-builds-against-a-released-eventlog
-revision: 3
+revision: 4
 ---
 # Wave: a verified model holds each committed record once (#59)
 
@@ -60,9 +60,12 @@ wave 1
 | unit | story | stage | branch | worktree id | build dir | scratch |
 |---|---|---|---|---|---|---|
 | integration | — | opened | `wave/er-59` | `er-59-int` | in-tree `target/` | `~/.cache/er-59/int` |
-| U1 | `story:verified-model-holds-each-record-once` | green round 2, committed `d9fcaf1f`; adversary dispatched | `impl/verified-model-holds-each-record-once` | `er-59-u1` | in-tree `target/` | `~/.cache/er-59/u1/scratch` |
+| U1 | `story:verified-model-holds-each-record-once` | implemented; `d9fcaf1f` + `3b6e9108` merged as `ab641aeb` | `impl/verified-model-holds-each-record-once` | `er-59-u1` | in-tree `target/` | `~/.cache/er-59/u1/scratch` |
 | U2 | `story:website-dependencies-pass-npm-audit` | implemented; `9c254cf2` + `317f83f0` merged as `a98e0d2b` | `fix/website-npm-audit` | `er-audit` (finished, archived) | — | `~/.cache/er-59/audit/scratch` |
-| U3 | `story:aep-lifecycle-fixture-matches-aep-main` | dispatched | `impl/aep-lifecycle-fixture-matches-aep-main` | `er-59-u3` | in-tree `target/` | `~/.cache/er-59/u3/scratch` |
+| U3 | `story:aep-lifecycle-fixture-matches-aep-main` | implemented; `1119f592` merged as `db96cd8d` | `impl/aep-lifecycle-fixture-matches-aep-main` | `er-59-u3` | in-tree `target/` | `~/.cache/er-59/u3/scratch` |
+| U4 | `story:unified-site-source-carries-no-project-pages-caller` | implemented; coordinator commit `79738ffe` | `wave/er-59` | `er-59-int` | — | `~/.cache/er-59/int` |
+| U5 | `story:entity-runtime-builds-against-a-released-eventlog` | implemented; coordinator commit `12d421b9` | `wave/er-59` | `er-59-int` | — | `~/.cache/er-59/int` |
+| release | `task:release-0-28-0` | prepared `5dd64a6b` | `wave/er-59` | `er-59-int` | — | `~/.cache/er-59/int` |
 
 Brief: `~/.cache/er-59/u1/brief.md`. Dispatch types: `aep:implementor`, then `aep:adversary`.
 
@@ -120,3 +123,29 @@ Agent cost: 186,793 tokens, 97 tool uses, 16 min.
 
 `/` was at 18–19G free during round 2 (`df -h /`). Under the floor: package-scoped gates only;
 the full gate waits until `/` is above 20G.
+
+## Adversary pass 1 (U1) and its answer
+
+`review-result:er-59-u1-adversary-pass-1`: no changed answer or refusal; 3 findings, all
+introduced. A rebuild over a remembered prefix kept the previous model's records in memory (fixed,
+`3b6e9108`); the changelog line overstated the default policy (fixed in the wording at the U1
+merge); the probe measures resident bytes (no-op, decided before dispatch). The coordinator read the
+correction diff: the adversary's rebuild case passes unchanged, the decode-cache case pins today's
+bounded cache at 12 of 12. Agent cost: adversary 233,952 tokens, 63 tool uses, 13 min; correction 2
+559,300 tokens, 19 tool uses, 4 min.
+
+## U3, U4, U5
+
+U3: AEP lifecycle fixture 35b5c99 → 5a2a0e5, `aep_lifecycles` 14 → 15 tests (128,359 tokens, 51
+tool uses, 5 min). U4 and U5 are coordinator commits added to the wave on request: the project
+Pages caller removed (Atlas admits one per unified-site source), and Eventlog pinned at its `0.7.0`
+tag instead of the unmerged `6983cc25`.
+
+## Gate
+
+Full `task check` on `5dd64a6b` in the `er-59-u1` tree's own `target/`, each step alone:
+fmt-check 0, clippy 0, test 0 (678 passed), doc-check 0, docs-check 0, example-check 0, req-check 0
+(129 requirements, 0 findings), pin-check 0, postgres-check 0 (**skipped**: `ENTITY_POSTGRES_URL`
+unset; CI runs it), eventlog-runtime-check 0 (194 passed, 6 ignored), notes-check 0, ess-check 0
+(435/435), provider-ess-check 0 (17/17). The logs show this tree's new tests ran. Free disk fell
+from 31G to 26G during the run.
