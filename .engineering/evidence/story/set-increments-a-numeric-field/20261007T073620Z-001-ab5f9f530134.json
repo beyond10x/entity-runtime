@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T07:36:20Z",
+  "actor": "human:timo",
+  "artifact": "story:set-increments-a-numeric-field",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "task ess-check (U2 red run before code vs final)",
+    "reference": "U2 build/scratch: ess-check 439/445 before code, 445/445 at 353ee095"
+  }
+}
