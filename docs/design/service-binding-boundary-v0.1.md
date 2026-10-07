@@ -451,10 +451,27 @@ Compatibility rules are exact:
   older build admits decides the same bytes after it.
 - a `set` clear `{cleared: true}` (issue 54, `kernel-v0.1.md` § 3.3) adds no domain either: the
   decision frames by its semantics like any other, and under `er.record/1` to `/3` it is the first
-  to carry a non-empty `removed`. A build that predates the keyword reads the value as an object
-  template, so replaying such a decision recomputes another record and is refused by the byte
-  comparison, and its event fold refuses removal evidence on any `kernel/1` event. Every
-  definition that does not write the one-key `cleared` mapping decides the same bytes as before.
+  to carry a non-empty `removed`. Every definition none of whose `set` values is a mapping made
+  only of assignment keywords (`increment`, `cleared`) decides the same bytes as before. Of those
+  mappings, the one-key `cleared` mapping is now a clear, and a mapping of both keywords, which
+  wrote that object into a `json` or `object` field before, is now refused at registration as
+  `SetAssignmentConflict`.
+- an entity-core that predates the keyword (0.29.0 and earlier) reads `{cleared: true}` as an
+  object template, and fails closed on most of what this release writes but not all of it:
+  - replaying a clear decision is refused — at step 9 when the field's schema does not admit the
+    literal object (`expected string` for a `string`), by the byte comparison when it does, as a
+    `json` field does;
+  - its event fold, from 0.19.0, refuses removal evidence on every `kernel/1` event. Before
+    0.19.0, `DomainEvent` has no `removed` and no closed key set, so the key is dropped unread; the
+    0.17.x fold applies `changed` alone and returns the cleared field still present, a different
+    state rather than a refusal;
+  - deciding is the case that does not fail closed: given a definition that clears an optional
+    field whose schema admits the literal object `{"cleared": true}` — a `json` field, an `object`
+    field that does — it writes that object where this release removes the field, appends that
+    decision, and this release's replay of the store then refuses the store. **Every process that
+    writes a store must run a release with this change before any definition uses
+    `{cleared: true}` on a `json` or `object` field, or any field whose schema admits that
+    object.**
 
 The implementation extends `record_domain`, `request_domain`, original-request reconstruction,
 retry verification, and their readers together. A `service/2` branchless creation records and

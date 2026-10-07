@@ -54,12 +54,24 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   still an object template. `CoreError` and `DefinitionError` gain variants, so an exhaustive
   `match` on either needs new arms.
 - A `set` value that is a mapping whose only key is `cleared` is now a clear, not an object
-  template, so an `object` or `json` field can no longer be written with that one literal mapping;
-  a mapping of `cleared` and `increment` and nothing else is refused as `set_assignment_conflict`.
+  template, so an `object` or `json` field can no longer be written with that one literal mapping.
+  A mapping of `cleared` and `increment` and nothing else, which wrote that object into a `json`
+  or `object` field before, is now refused at registration as `set_assignment_conflict`.
   `SetAssignment` gains `Cleared` and `Conflicting`, and `DefinitionError` four variants.
+- Upgrade every process that writes a store to this release before any definition uses
+  `{cleared: true}` on a `json` or `object` field, or any field whose schema admits the object
+  `{"cleared": true}`. A build before this release reads the value as an object template and
+  writes that literal object into the field where this release removes it; once it appends that
+  decision, replay refuses the store. On a field the object does not fit, an older build refuses
+  the operation instead.
 - `rehydrate` no longer refuses every `kernel/1` event that carries `removed`: an operation event
   may name exactly the fields its operation's `set` clears. Removal evidence on a creation event,
   or naming a field no operation emitting the event on its transition clears, is still refused.
+  An entity-core before 0.19.0 drops `removed` from an event unread, and its fold returns a
+  cleared field still present; from 0.19.0 an older fold refuses the event.
+- The OpenAPI `DomainEvent` schema and every AsyncAPI event message `entity generate docs` writes
+  declare the optional `removed` array. Before, both closed the event without it, so they refused
+  every event that carried it: a clear's, and already a `service/3` fulfillment `Remove`'s.
 
 - `DefinitionError::ConditionalSetOnOperation` (`conditional_set_on_operation`) is removed: every
   definition it refused is now admitted, and `kernel/1` and `service/1` refuse the key earlier as

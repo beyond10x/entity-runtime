@@ -151,8 +151,9 @@ keyword — is a template, read exactly as before. The keywords are `increment` 
 refinement came with the second keyword: a mapping of two or more keys **every one of which is a
 keyword**, `{cleared: true, increment: 1}`, is neither a template nor an assignment but two
 assignments of one field, and registration refuses it (`SetAssignmentConflict`); a mapping with any
-key that is not a keyword is still a template. The rule applies under every semantics and to an
-operation's `set` and a branch's `set` alike.
+key that is not a keyword is still a template. That refusal changes meaning too: before it, such a
+mapping was an object template that wrote itself into a `json` or `object` field. The rule
+applies under every semantics and to an operation's `set` and a branch's `set` alike.
 
 The value stays a `serde_json::Value` in `set`, read through the public `SetAssignment::of`, rather
 than becoming a typed enum field. Four reasons, all about not moving bytes or types nobody asked to
@@ -220,7 +221,10 @@ definition did, exactly as a `Remove` of an absent field already does: `removed`
 thing — the fields this decision left absent by an action — whichever action it was, and a reader
 that applies events without the previous instance learns the field is absent either way. The
 other reading, `removed` as the difference between the two field maps the way `changed` is, would
-have given one carrier two meanings depending on which action wrote it.
+have given one carrier two meanings depending on which action wrote it. The event both API
+projections publish (OpenAPI `DomainEvent`, each AsyncAPI message) declares `removed` as an
+optional array of unique names; before this, both closed the event without it and refused every
+event that carried it, a `service/3` `Remove`'s included.
 
 **Where it may stand.** Registration refuses, each with its path:
 
@@ -252,9 +256,20 @@ cleared set to the event's `removed` exactly, as it holds its written fields to 
 `kernel/1`, `service/1` or `service/2` decision that clears a field is the first such decision to
 carry a non-empty `removed`. `DecisionRecord` is one type under every record framing, so every
 reader of this release decodes it; a reader built before `removed` existed (0.19.0) refuses such a
-record by its closed key set, but `DomainEvent` has no closed key set and such a reader would drop
-an event's `removed` unread. Whether the `er.record/1` to `/3` framings should take a new version
-for the key is the store's question (`record_domain`), and is open.
+record by its closed key set, but `DomainEvent` has no closed key set and such a reader drops an
+event's `removed` unread, so its event fold (0.17.x) returns the cleared field still present. From
+0.19.0 to 0.29.0 the fold refuses removal evidence on every `kernel/1` event. Whether the
+`er.record/1` to `/3` framings should take a new version for the key is the store's question
+(`record_domain`), and is open.
+
+**An older build decides a clear differently.** A build without this keyword (0.29.0 and earlier)
+reads `{cleared: true}` as an object template. On a field whose schema does not admit the literal
+object that fails closed at step 9, but on one that does — a `json` field, an `object` field that
+does — it writes `{"cleared": true}` where this release removes the field, and appends that
+decision; this release's replay of the store then refuses it. Every process that writes a store
+must therefore run a release with this change before any definition uses `{cleared: true}` on a
+`json` or `object` field, or any field whose schema admits that object.
+`service-binding-boundary-v0.1.md` § 3 lists each older reader's behaviour.
 
 `revision` is `1` after creation and `+1` per successful operation; a refusal consumes none, and
 each event carries the revision it produced (R-44). That is the number a store compares for
