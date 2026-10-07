@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:projection-keys-read-collection-addresses
 kind: story
-status: draft
+status: active
 title: Projection keys read collection addresses, or refuse them for new definitions only
 owner: entity-runtime
 relations:
@@ -39,7 +39,10 @@ scope:
   path: ess/generated/suite.json
 - confidence: inferred
   path: ess/scenarios/store/projection-collection-address-keys.yaml
-revision: 4
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-07T09:15:43Z", actor: "human:timo", revision: 5}
+- {from: "proposed", to: "active", at: "2026-10-07T09:15:43Z", actor: "human:timo", revision: 6}
 ---
 # Projection keys read collection addresses, or refuse them for new definitions only
 

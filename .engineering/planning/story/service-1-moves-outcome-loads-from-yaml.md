@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:service-1-moves-outcome-loads-from-yaml
 kind: story
-status: draft
+status: active
 title: A service/1 outcome with a moves effect loads through entity-yaml and the entity command
 owner: entity-runtime
 relations:
@@ -28,7 +28,10 @@ scope:
   path: website/docs/reference/definitions.md
 - confidence: inferred
   path: website/docs/status.md
-revision: 4
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-07T09:15:43Z", actor: "human:timo", revision: 5}
+- {from: "proposed", to: "active", at: "2026-10-07T09:15:44Z", actor: "human:timo", revision: 6}
 ---
 # A service/1 outcome with a moves effect loads through entity-yaml and the entity command
 

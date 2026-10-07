@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:binder-elements-carry-their-declaration
 kind: story
-status: draft
+status: active
 title: Quantifier binder elements carry their declaration at run time
 owner: entity-runtime
 relations:
@@ -40,7 +40,10 @@ scope:
   path: ess/scenarios/core/service1-text-count-registration.yaml
 - confidence: cited
   path: website/docs/concepts/service-semantics.md
-revision: 4
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-07T09:15:40Z", actor: "human:timo", revision: 5}
+- {from: "proposed", to: "active", at: "2026-10-07T09:15:40Z", actor: "human:timo", revision: 6}
 ---
 # Quantifier binder elements carry their declaration at run time
 
