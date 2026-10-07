@@ -24,12 +24,16 @@ is diagnostic material: inventory membership alone is not an executable behavior
 The corresponding requirements are traced to actual scenarios in the core register.
 
 The separate [`provider-tracking` contract](../../ess/provider-tracking/ess-inputs.yaml) covers
-the explicit SQLite read-verification policy and scoped facade calls. `task provider-ess-check`
-uses the same checker with its `eventlog` feature and Rust 1.91 to execute actual SQLite/facade
-operations, including mutations from a second SQL connection. It keeps its own generated suite,
-coverage baseline and reports. This is a bounded provider contract; it does not claim coverage
-of all Eventlog providers. `task check` runs both contracts. The original five-library checker
-retains its Rust 1.85 build without that feature.
+the explicit SQLite read-verification policy, scoped facade calls, and the bounded open from a
+persisted checkpoint ([design](../design/recorded-open-checkpoint-v0.1.md)). `task
+provider-ess-check` uses the same checker with its `eventlog` feature and Rust 1.91 to execute
+actual SQLite/facade operations, including mutations from a second SQL connection, the
+administrative enable and discard calls, and two file fixtures: `KeepCopy` copies the closed store
+aside and `TruncateTail` puts that copy back with the newer checkpoint carried into it. `Reopen`
+reports how the open verified (`complete`, `checkpoint`, or `suffix` with its event count). It
+keeps its own generated suite, coverage baseline and reports. This is a bounded provider contract;
+it does not claim coverage of all Eventlog providers. `task check` runs both contracts. The
+original five-library checker retains its Rust 1.85 build without that feature.
 
 ## Calls, values and observations
 

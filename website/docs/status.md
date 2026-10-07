@@ -9,7 +9,7 @@ custom_edit_url: null
 
 # Status
 
-39 capabilities are shipped and 7 are planned, as of 2026-10-06. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
+40 capabilities are shipped and 7 are planned, as of 2026-10-06. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
 
 ## Kernel
 
@@ -56,6 +56,7 @@ custom_edit_url: null
 | [Batch import of legacy histories](./concepts/storage.md) | ● shipped | import_anchors establishes a batch of imported boundaries in one append group, and a retry of it settles. |
 | [Tree stores keep each text once](./concepts/storage.md) | ● shipped | A new tree store is eventlog-tree/2; an eventlog-tree/1 store reads the same after migration (0.25.0). |
 | [Provider-tracked reads on SQLite](./concepts/storage.md) | ● shipped | CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract. |
+| [Open from a persisted checkpoint on SQLite](./concepts/storage.md) | ● shipped | With durable open checkpoints enabled, a ProviderTracked open verifies the persisted checkpoint and the appends since it, not the whole history. |
 
 ## Surfaces
 

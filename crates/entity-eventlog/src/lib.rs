@@ -16,7 +16,8 @@ pub use adapter::{
     AsyncBindingProvisioner, AsyncImportedAnchorWriter, CapturePolicy, EventlogBackend,
     EventlogBindingProvisioner, EventlogOperationContext, EventlogOperationStore,
     EventlogRecordedStore, ImportAnchorFailure, ImportAnchorOutcome, ImportAnchorUncertainty,
-    ProvisionBindingFailure, ProvisionBindingOutcome, ProvisionBindingUncertainty, StoreCalls,
+    OpenVerification, ProvisionBindingFailure, ProvisionBindingOutcome,
+    ProvisionBindingUncertainty, StoreCalls,
 };
 pub use encoding::{Authority, PhysicalRef};
 #[cfg(all(feature = "sync-bridge", feature = "file"))]

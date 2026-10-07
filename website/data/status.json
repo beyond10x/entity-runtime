@@ -220,6 +220,13 @@
       "status": "shipped"
     },
     {
+      "area": "Recorded execution",
+      "detail": "With durable open checkpoints enabled, a ProviderTracked open verifies the persisted checkpoint and the appends since it, not the whole history.",
+      "href": "/docs/concepts/storage",
+      "label": "Open from a persisted checkpoint on SQLite",
+      "status": "shipped"
+    },
+    {
       "area": "Surfaces",
       "detail": "Validate, inspect, graph, create, execute, list and store migrations from one Rust binary with typed exit codes.",
       "href": "/docs/reference/cli",

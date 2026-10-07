@@ -290,6 +290,13 @@ pub const CAPABILITIES: &[Capability] = &[
         "/docs/concepts/storage",
     ),
     shipped(
+        "Recorded execution",
+        "Open from a persisted checkpoint on SQLite",
+        "With durable open checkpoints enabled, a ProviderTracked open verifies the persisted checkpoint and the appends since it, not the whole history.",
+        "crates/entity-eventlog/tests/bounded_open.rs::an_open_after_appends_verifies_only_the_suffix",
+        "/docs/concepts/storage",
+    ),
+    shipped(
         "Surfaces",
         "The entity command",
         "Validate, inspect, graph, create, execute, list and store migrations from one Rust binary with typed exit codes.",
