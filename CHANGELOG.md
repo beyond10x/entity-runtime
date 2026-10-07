@@ -4,6 +4,28 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- A `service/2` or `service/3` operation outcome may declare `set_if_present`, as a creation
+  outcome already could. When the named optional argument leaf is present, the field takes its
+  value, inserted or replaced; when it is absent, the field is left as it was, present with its old
+  value or absent. The schema check, invariants, events, response and `changed` read the result,
+  and replay reproduces it. The destination keeps the creation rule — a declared optional field
+  with no default and the argument leaf's exact definition — so a required field is refused as the
+  destination on an operation too. `kernel/1` and `service/1` still refuse the key.
+- A `service/3` outcome naming one field in both `fulfills` and `set_if_present` is refused at
+  registration as `DefinitionError::FulfillmentConditionalSetConflict`
+  (`fulfillment_conditional_set_conflict`).
+
+### Changed
+
+- `DefinitionError::ConditionalSetOnOperation` (`conditional_set_on_operation`) is removed: every
+  definition it refused is now admitted, and `kernel/1` and `service/1` refuse the key earlier as
+  `semantics_key_not_available`, so nothing could return it. Code that names the variant no longer
+  compiles. A build before this release refuses a definition with an operation `set_if_present`,
+  and so a history recorded under one, as `conditional_set_on_operation` rather than ignoring the
+  map; open a store holding such records with this release or later.
+
 ## [0.28.0] — 2026-10-07
 
 ### Added

@@ -182,15 +182,6 @@ pub enum DefinitionError {
         /// The duplicated field.
         field: String,
     },
-    /// Conditional state insertion was declared on an operation rather than creation.
-    ConditionalSetOnOperation {
-        /// The operation.
-        operation: String,
-        /// The outcome.
-        outcome: String,
-        /// The field it tried to insert.
-        field: String,
-    },
     /// Operation-field fulfillment was declared on a creation branch.
     FulfillmentOnCreate {
         /// The creation outcome.
@@ -218,6 +209,18 @@ pub enum DefinitionError {
     },
     /// One field is present in both `set` and `fulfills`.
     FulfillmentSetConflict {
+        /// The operation.
+        operation: String,
+        /// The outcome.
+        outcome: String,
+        /// The conflicting field.
+        field: String,
+    },
+    /// One field is present in both `set_if_present` and `fulfills`.
+    ///
+    /// The host's action and the copied argument would both decide the field, and the branch
+    /// would not say which one wins.
+    FulfillmentConditionalSetConflict {
         /// The operation.
         operation: String,
         /// The outcome.
@@ -542,11 +545,13 @@ impl DefinitionError {
             Self::ConditionalArgumentInvalid { .. } => "conditional_argument_invalid",
             Self::ConditionalTargetInvalid { .. } => "conditional_target_invalid",
             Self::ConditionalTargetConflict { .. } => "conditional_target_conflict",
-            Self::ConditionalSetOnOperation { .. } => "conditional_set_on_operation",
             Self::FulfillmentOnCreate { .. } => "fulfillment_on_create",
             Self::FulfillmentFieldUnknown { .. } => "fulfillment_field_unknown",
             Self::FulfillmentIdentityField { .. } => "fulfillment_identity_field",
             Self::FulfillmentSetConflict { .. } => "fulfillment_set_conflict",
+            Self::FulfillmentConditionalSetConflict { .. } => {
+                "fulfillment_conditional_set_conflict"
+            }
             Self::FulfillmentPresenceMismatch { .. } => "fulfillment_presence_mismatch",
             Self::EmptyOutcomeName { .. } => "empty_outcome_name",
             Self::DuplicateOutcome { .. } => "duplicate_outcome",
@@ -699,14 +704,6 @@ impl fmt::Display for DefinitionError {
                 f,
                 "conditional target '{field}' at '{path}' is also produced by the ordinary map"
             ),
-            Self::ConditionalSetOnOperation {
-                operation,
-                outcome,
-                field,
-            } => write!(
-                f,
-                "operation '{operation}' outcome '{outcome}' conditionally writes field '{field}'; conditional state insertion is creation-only"
-            ),
             Self::FulfillmentOnCreate { outcome, field } => write!(
                 f,
                 "creation outcome '{outcome}' requests fulfillment for field '{field}'; fulfillment is operation-only"
@@ -734,6 +731,14 @@ impl fmt::Display for DefinitionError {
             } => write!(
                 f,
                 "operation '{operation}' outcome '{outcome}' names field '{field}' in both `set` and `fulfills`"
+            ),
+            Self::FulfillmentConditionalSetConflict {
+                operation,
+                outcome,
+                field,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' names field '{field}' in both `set_if_present` and `fulfills`"
             ),
             Self::FulfillmentPresenceMismatch {
                 operation,

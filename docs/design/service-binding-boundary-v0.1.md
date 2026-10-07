@@ -13,7 +13,8 @@ The two additions form one boundary:
    instance, or return an opaque continuation that binds the validated definition, normalized
    input, operation, and expected subject.
 2. A new definition semantics version can say that one typed argument is copied into an optional
-   creation field, event member, or response member exactly when that argument is present.
+   creation field, event member, or response member exactly when that argument is present. Issue 54
+   extended the entity-field copy to operation outcomes (§ 2.2).
 
 Both additions remain deterministic and IO-free. The host supplies an identity address and bound
 values, performs the load requested by ER, and persists an accepted decision. It never evaluates a
@@ -316,8 +317,14 @@ Registration accumulates these new `DefinitionError` variants with existing defe
 ConditionalArgumentInvalid { path: String, argument: String, message: String },
 ConditionalTargetInvalid { path: String, field: String, message: String },
 ConditionalTargetConflict { path: String, field: String },
-ConditionalSetOnOperation { operation: String, outcome: String, field: String },
+FulfillmentConditionalSetConflict { operation: String, outcome: String, field: String },
 ```
+
+The first contract also had `ConditionalSetOnOperation`, which refused `set_if_present` on every
+operation outcome. Issue 54 gave operation outcomes the map (§ 2.2) and removed the variant: no
+definition reaches it any more, because `kernel/1` and `service/1` refuse the key as
+`SemanticsKeyNotAvailable` first. `FulfillmentConditionalSetConflict` arrived with that change and
+applies under `service/3` only.
 
 For every `PresentArgument`, registration requires:
 
@@ -328,8 +335,14 @@ For every `PresentArgument`, registration requires:
 4. the leaf is optional and has `DeclaredDefault::Absent`; a required leaf is an ordinary template,
    and a defaulted leaf is always materialized after normalization;
 5. the destination key does not also occur in the ordinary `set`, `payload`, or `responds` map;
-6. `set_if_present` appears only on a creation outcome, targets a declared optional entity field
-   with no default, and its complete `FieldDefinition` equals the source leaf definition;
+6. `set_if_present` appears on a creation outcome or an operation outcome. On either, it targets a
+   declared optional entity field with no default, and its complete `FieldDefinition` equals the
+   source leaf definition. An operation admits no required destination either, although an absent
+   leaf would leave one present: the map copies an optional input into an optional field, and
+   admitting a required destination later is additive where refusing it later is not. Under
+   `service/3` the destination is absent from the outcome's `fulfills`
+   (`FulfillmentConditionalSetConflict`), so the host's action and the copied argument never both
+   decide one field;
 7. `responds_if_present` targets a declared optional response field with no default and the same
    complete field definition as the source leaf;
 8. `payload_if_present` is attached to an event whose ordinary `payload` is an object. Its target
@@ -369,8 +382,16 @@ enum Presence<'value> {
 
 At creation step 8, ordinary `set` members are resolved and then each `set_if_present` entry is
 read in key order. `Present(v)` inserts the canonical clone; `Absent` inserts nothing. Defaults and
-entity-schema validation then run unchanged. Operation outcomes cannot declare this map, so no new
-patch/update meaning is introduced.
+entity-schema validation then run unchanged.
+
+At operation step 8, the selected outcome's ordinary `set` members resolve against the
+pre-operation fields, and then each `set_if_present` entry is read in key order. `Present(v)`
+inserts or replaces the field with the canonical clone; `Absent` writes nothing, so the field keeps
+the value it held, or stays absent. Under `service/3` the fulfillment actions follow; registration
+keeps the three maps' destinations disjoint, so their order cannot change the result. Schema
+validation, the identity mirror, invariants, events and the response then read the result, and
+`changed` names the field only when its value moved. A present `null` is written where the source
+type admits it, as at creation. An absent leaf never removes a field.
 
 At event step 13, the ordinary payload resolves first to an object, then
 `payload_if_present` inserts present members in key order. At response step 14, ordinary `responds`
@@ -416,7 +437,12 @@ Compatibility rules are exact:
 - a store containing `/3` records must not be opened by an older build; no record is rewritten or
   downgraded, and there is no implicit `/2` fallback;
 - a new reader accepts `/1`, `/2`, and `/3`, selecting the request shape by domain rather than by
-  the incidental presence of a key.
+  the incidental presence of a key;
+- an operation outcome's `set_if_present` (issue 54) adds no domain: such a decision frames as
+  `er.record/3` or `/4` like any other `service/2` or `service/3` decision. A build that predates
+  it refuses the definition snapshot with `conditional_set_on_operation` when it registers or
+  replays one, so an older reader fails closed rather than ignoring the map. Every definition an
+  older build admits decides the same bytes after it.
 
 The implementation extends `record_domain`, `request_domain`, original-request reconstruction,
 retry verification, and their readers together. A `service/2` branchless creation records and

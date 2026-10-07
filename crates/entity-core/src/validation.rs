@@ -324,7 +324,6 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 &path,
                 &definition.create.arguments,
                 &definition.create.response,
-                None,
             ));
         }
     }
@@ -470,7 +469,6 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 &path,
                 &operation.arguments,
                 &operation.response,
-                Some(operation_name),
             ));
             defects.extend(validate_fulfillment_outcome(
                 definition,
@@ -524,6 +522,13 @@ fn validate_fulfillment_outcome(
         }
         if outcome.set.contains_key(field) {
             defects.push(DefinitionError::FulfillmentSetConflict {
+                operation: operation.to_owned(),
+                outcome: outcome.name.clone(),
+                field: field.clone(),
+            });
+        }
+        if outcome.set_if_present.contains_key(field) {
+            defects.push(DefinitionError::FulfillmentConditionalSetConflict {
                 operation: operation.to_owned(),
                 outcome: outcome.name.clone(),
                 field: field.clone(),
@@ -615,14 +620,14 @@ fn validate_outcome_expressions(
     defects
 }
 
-/// The closed `service/2` conditional-presence maps and their typed source/target relation.
+/// The closed `service/2` conditional-presence maps and their typed source/target relation, on a
+/// creation and an operation branch alike.
 fn validate_conditional_outcome(
     definition: &EntityDefinition,
     outcome: &OutcomeDefinition,
     path: &str,
     arguments: &ObjectSchema,
     response: &ObjectSchema,
-    operation: Option<&String>,
 ) -> Vec<DefinitionError> {
     let mut defects = Vec::new();
     if !definition.semantics.has_conditional_presence() {
@@ -660,14 +665,10 @@ fn validate_conditional_outcome(
                 field: field.clone(),
             });
         }
-        if let Some(operation) = operation {
-            defects.push(DefinitionError::ConditionalSetOnOperation {
-                operation: operation.clone(),
-                outcome: outcome.name.clone(),
-                field: field.clone(),
-            });
-            continue;
-        }
+        // A creation and an operation hold the destination to one rule. On an operation an absent
+        // leaf leaves the field as it was, so a required destination would stay present; it is
+        // refused anyway, because this map exists to copy an optional input into an optional
+        // field, and admitting a required one later is additive where refusing it later is not.
         validate_conditional_target(
             definition.schema.fields.get(field),
             leaf,

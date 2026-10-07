@@ -91,6 +91,7 @@
       "entity.core/authored/numeric-underflow-remains-stored",
       "entity.core/authored/numeric-wire-and-literal-doors",
       "entity.core/authored/operation-cannot-change-identity-mirror",
+      "entity.core/authored/operation-conditional-set-keeps-the-creation-target-rules",
       "entity.core/authored/owns-carriers-are-required-on-the-target",
       "entity.core/authored/post-set-fields-are-revalidated",
       "entity.core/authored/precondition-cannot-read-next-state",
@@ -121,6 +122,7 @@
       "entity.core/authored/returned-kernel1-decisions-replay-and-reject-tampering",
       "entity.core/authored/returned-service1-decisions-replay-and-reject-tampering",
       "entity.core/authored/returned-service2-decisions-replay-and-reject-tampering",
+      "entity.core/authored/returned-service2-operation-decisions-replay-and-reject-tampering",
       "entity.core/authored/returned-service3-decisions-replay-and-reject-tampering",
       "entity.core/authored/revision-exhaustion-refuses-before-effects",
       "entity.core/authored/rule-refusals-retain-names-and-default-messages",
@@ -179,6 +181,8 @@
       "entity.core/authored/service1-truthy-zero",
       "entity.core/authored/service1-union-refuses-unknown-tag",
       "entity.core/authored/service1-unknown-negation",
+      "entity.core/authored/service2-operation-presence-absent",
+      "entity.core/authored/service2-operation-presence-present",
       "entity.core/authored/service2-presence-absent",
       "entity.core/authored/service2-presence-null",
       "entity.core/authored/service2-presence-present",
@@ -358,7 +362,7 @@
         "scenario": "entity.core/authored/condition-documents-have-one-known-nonempty-operator"
       },
       "scenarios/core/conditional-presence-registration-requires-one-typed-optional-leaf.yaml": {
-        "digest": "sha256:6ed0fcfbb31a2a819657cf3cdc0696db132fd987221f6608ec1b4f7daf3f6012",
+        "digest": "sha256:db2e6a54f02e9799b61142264e14456f06c0899c8b08d82f3e5a7be2ffdfef1b",
         "disposition": "accepted",
         "scenario": "entity.core/authored/conditional-presence-registration-requires-one-typed-optional-leaf"
       },
@@ -777,6 +781,11 @@
         "disposition": "accepted",
         "scenario": "entity.core/authored/operation-cannot-change-identity-mirror"
       },
+      "scenarios/core/operation-conditional-set-keeps-the-creation-target-rules.yaml": {
+        "digest": "sha256:81b03afe1b21c9ff24a12aa17ac010183ddc14441edcc7dfb92af3b5615e9308",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/operation-conditional-set-keeps-the-creation-target-rules"
+      },
       "scenarios/core/owns-carriers-are-required-on-the-target.yaml": {
         "digest": "sha256:0a7907c00b3fb1d2a7bfd141baedbcdf2a86a58c42380b98533a5aeaccfc1e77",
         "disposition": "accepted",
@@ -926,6 +935,11 @@
         "digest": "sha256:2b18d426f4fefd6cefcbdc26bfa7a8e1318d02855bacfce8e289337b6a416419",
         "disposition": "accepted",
         "scenario": "entity.core/authored/returned-service2-decisions-replay-and-reject-tampering"
+      },
+      "scenarios/core/returned-service2-operation-decisions-replay-and-reject-tampering.yaml": {
+        "digest": "sha256:1d01c6650ede403d18990a36c2e68406e8af0cdbb2b0aa2e27449aff57c6c615",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/returned-service2-operation-decisions-replay-and-reject-tampering"
       },
       "scenarios/core/returned-service3-decisions-replay-and-reject-tampering.yaml": {
         "digest": "sha256:cf4a5e462751c9a0e1bd0e0355259e4de424795dae10229c6ae6feb00884a332",
@@ -1216,6 +1230,16 @@
         "digest": "sha256:ce8d32d34f3134f9a6a75d474129a3b7e880173ba65954c1c89f74de947c2f46",
         "disposition": "accepted",
         "scenario": "entity.core/authored/service1-unknown-negation"
+      },
+      "scenarios/core/service2-operation-presence-absent.yaml": {
+        "digest": "sha256:3787a48bbf3c1a8ce0420a75f48b687a26e6b5825a2a08ab82a6862af6cbc41b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service2-operation-presence-absent"
+      },
+      "scenarios/core/service2-operation-presence-present.yaml": {
+        "digest": "sha256:b87b3c3a4a4d8a905ecd1ad3153e9d5ae881b74df7edbe3917feaff3bb7b4c87",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service2-operation-presence-present"
       },
       "scenarios/core/service2-presence-absent.yaml": {
         "digest": "sha256:62a640472a38fd18fa17560b166e0a96f5f01eeeb389f6b94902eea47bd90e34",
@@ -1949,7 +1973,7 @@
       }
     },
     "counts": {
-      "authored": 324,
+      "authored": 328,
       "generated": 111,
       "outside": 0,
       "refused": 0
@@ -7062,11 +7086,7 @@
             "command": "entity.core.ValidateDefinition",
             "declarations": {},
             "expected": {
-              "defect_kinds": [
-                "conditional_set_on_operation"
-              ],
-              "error_kind": "definition",
-              "status": "error"
+              "status": "ok"
             },
             "fields": [
               {
@@ -24530,6 +24550,939 @@
         }
       ]
     },
+    "entity.core/authored/operation-conditional-set-keeps-the-creation-target-rules": {
+      "purpose": "Operation set_if_present keeps the creation target rules: a required target is refused, and so is one also in set or fulfills.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.ValidateDefinition"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "conditional_target_invalid",
+                "conditional_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"default\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "conditional_target_invalid",
+                "conditional_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"max_length\":3}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "conditional_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"missing\":{\"argument\":\"bound.note\"}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "conditional_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"set\":{\"note\":\"fixed\"}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "conditional_target_conflict"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "semantics_key_not_available"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"fulfills\":{\"note\":{\"actions\":\"optional\"}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "fulfillment_conditional_set_conflict"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
     "entity.core/authored/owns-carriers-are-required-on-the-target": {
       "purpose": "owns carriers are required on the target.",
       "source": [
@@ -35178,6 +36131,592 @@
             "patch": {
               "kind": "literal",
               "value": "{\"outcome\":\"forged\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ReplayTampered",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ReplayTampered",
+            "declarations": {},
+            "expected": {
+              "error_kind": "validation",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ReplayTampered",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/returned-service2-operation-decisions-replay-and-reject-tampering": {
+      "purpose": "Operation set_if_present decisions, present then absent, replay to the returned instance; a forged change is refused.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.ReplayReturned"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.ReplayTampered"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.ReplayReturned",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.ReplayTampered",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"title\":\"T\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "m-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"title\":\"T\"}}",
+              "outcome": "opened",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"bound\":{\"note\":\"memo\"}}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"title\":\"T\"}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "annotate"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}",
+              "outcome": "annotated",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"bound\":{}}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "annotate"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}",
+              "outcome": "annotated",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ReplayReturned",
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ReplayReturned",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ReplayReturned",
+            "declarations": {},
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ReplayReturned",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ReplayTampered",
+          "input": {
+            "patch": {
+              "kind": "literal",
+              "value": "{\"changed\":{\"note\":\"memo\"}}"
             }
           },
           "step": "execute_command"
@@ -51548,6 +53087,526 @@
             ],
             "outcome": {
               "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service2-operation-presence-absent": {
+      "purpose": "An absent argument leaves an operation set_if_present field as it was: present keeps its value, absent stays absent.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"bound\":{}}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"note\":\"kept\",\"title\":\"T\"}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "annotate"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "events": "[{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"revision\":2,\"type\":\"Annotated\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{},\"args\":{\"bound\":{}},\"payload\":{\"after\":{\"note\":\"kept\",\"title\":\"T\"},\"before\":{\"note\":\"kept\",\"title\":\"T\"}}}]",
+              "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"kept\",\"title\":\"T\"}}",
+              "outcome": "annotated",
+              "response": "{\"after\":{\"note\":\"kept\",\"title\":\"T\"}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"bound\":{}}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"title\":\"T\"}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "annotate"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "events": "[{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"revision\":2,\"type\":\"Annotated\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{},\"args\":{\"bound\":{}},\"payload\":{\"after\":{\"title\":\"T\"},\"before\":{\"title\":\"T\"}}}]",
+              "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"title\":\"T\"}}",
+              "outcome": "annotated",
+              "response": "{\"after\":{\"title\":\"T\"}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service2-operation-presence-present": {
+      "purpose": "A present argument is written by an operation set_if_present, and the event and response after set read the result.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"bound\":{\"note\":\"memo\"}}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"title\":\"T\"}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "annotate"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "events": "[{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"revision\":2,\"type\":\"Annotated\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"note\":\"memo\"},\"args\":{\"bound\":{\"note\":\"memo\"}},\"payload\":{\"after\":{\"note\":\"memo\",\"title\":\"T\"},\"before\":{\"title\":\"T\"}}}]",
+              "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}",
+              "outcome": "annotated",
+              "response": "{\"after\":{\"note\":\"memo\",\"title\":\"T\"}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"bound\":{\"note\":\"new\"}}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"old\",\"title\":\"T\"}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "annotate"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "events": "[{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"revision\":3,\"type\":\"Annotated\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"note\":\"new\"},\"args\":{\"bound\":{\"note\":\"new\"}},\"payload\":{\"after\":{\"note\":\"new\",\"title\":\"T\"},\"before\":{\"note\":\"old\",\"title\":\"T\"}}}]",
+              "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"note\":\"new\",\"title\":\"T\"}}",
+              "outcome": "annotated",
+              "response": "{\"after\":{\"note\":\"new\",\"title\":\"T\"}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
               "outcome": "returned"
             }
           },

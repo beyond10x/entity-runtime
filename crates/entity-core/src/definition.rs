@@ -767,7 +767,9 @@ pub struct OutcomeDefinition {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fulfills: BTreeMap<String, OperationFieldRequirement>,
 
-    /// Creation fields copied from optional argument leaves when those leaves are present.
+    /// Entity fields copied from optional argument leaves when those leaves are present, on a
+    /// creation or an operation branch. On an operation an absent leaf writes nothing, so the field
+    /// keeps the value it held, or stays absent.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub set_if_present: BTreeMap<String, PresentArgument>,
 

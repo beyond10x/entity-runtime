@@ -1,8 +1,11 @@
 //! The pre-load and typed-presence boundary used by service bindings.
 
+use std::collections::BTreeMap;
+
 use entity_core::{
-    decide, decide_before_load, replay, CoreError, DefinitionError, EntityDefinition,
-    EntityInstance, Evaluation, PreloadDecision, ValidatedDefinition,
+    decide, decide_before_load, replay, CoreError, Decision, DecisionEffect, DefinitionError,
+    EntityDefinition, EntityInstance, Evaluation, LoadedDecision, OperationFieldAction,
+    PreloadDecision, ValidatedDefinition,
 };
 use serde_json::{json, Value};
 
@@ -690,20 +693,6 @@ fn conditional_presence_refuses_wrong_types_and_missing_required_neighbors_befor
             if message.contains("must be an object")
     )));
 
-    let mut operation_set = presence_definition();
-    operation_set["operations"]["Update"] = json!({
-        "arguments": operation_set["create"]["arguments"].clone(),
-        "outcomes": [{
-            "name": "updated",
-            "set_if_present": {"note": {"argument": "bound.note"}}
-        }]
-    });
-    let defects = ValidatedDefinition::new(definition(operation_set)).unwrap_err();
-    assert!(defects.iter().any(|defect| matches!(
-        defect, DefinitionError::ConditionalSetOnOperation { operation, field, .. }
-            if operation == "Update" && field == "note"
-    )));
-
     let mut refusing = presence_definition();
     refusing["create"]["outcomes"][0]["refuses"] = json!({"error": "No"});
     let defects = ValidatedDefinition::new(definition(refusing)).unwrap_err();
@@ -798,4 +787,436 @@ fn kernel_1_and_service_1_keep_their_definitions_decisions_and_refusal_order() {
         .outcome,
         "rejected"
     );
+}
+
+/// A `service/2` entity whose `annotate` operation writes `note` from the optional argument leaf
+/// `bound.note` when that leaf is present, and publishes the post-`set` fields in its event and
+/// its response.
+fn operation_presence_definition() -> Value {
+    json!({
+        "entity": "memo", "version": 1, "semantics": "service/2",
+        "schema": { "fields": {
+            "title": { "type": "string", "required": true },
+            "note": { "type": "string" }
+        }},
+        "lifecycle": { "initial": "Open", "states": ["Open"] },
+        "create": {
+            "arguments": { "fields": { "title": { "type": "string", "required": true } } },
+            "outcomes": [{
+                "name": "opened", "effect": "creates", "set": { "title": "$args.title" }
+            }]
+        },
+        "operations": { "annotate": {
+            "arguments": { "fields": {
+                "bound": { "type": "object", "required": true, "properties": {
+                    "note": { "type": "string" }
+                }}
+            }},
+            "response": { "fields": { "after": { "type": "json", "required": true } } },
+            "outcomes": [{
+                "name": "annotated", "effect": "updates",
+                "set_if_present": { "note": { "argument": "bound.note" } },
+                "emits": [{ "type": "Annotated",
+                    "payload": { "after": "$fields", "before": "$old_fields" } }],
+                "responds": { "after": "$fields" }
+            }]
+        }}
+    })
+}
+
+fn memo(revision: u64, fields: Value) -> EntityInstance {
+    EntityInstance {
+        entity: "memo".to_owned(),
+        version: 1,
+        id: "m-1".to_owned(),
+        lifecycle_state: "Open".to_owned(),
+        revision,
+        fields: serde_json::from_value(fields).expect("the fields are an object"),
+    }
+}
+
+fn annotate(
+    definition: &ValidatedDefinition,
+    instance: &EntityInstance,
+    arguments: Value,
+) -> Decision {
+    decide(definition, instance, "annotate", arguments)
+        .expect("the operation evaluates")
+        .into_decision()
+        .expect("the operation accepts")
+}
+
+/// The smallest `service/2` definition with an operation `set_if_present`, for the registration
+/// rules to mutate.
+fn operation_target_definition() -> Value {
+    json!({
+        "entity": "probe", "semantics": "service/2",
+        "schema": { "fields": { "note": { "type": "string" } } },
+        "lifecycle": { "initial": "Open", "states": ["Open"] },
+        "operations": { "act": {
+            "arguments": { "fields": {
+                "bound": { "type": "object", "required": true, "properties": {
+                    "note": { "type": "string" }
+                }}
+            }},
+            "outcomes": [{
+                "name": "updated", "effect": "updates",
+                "set_if_present": { "note": { "argument": "bound.note" } }
+            }]
+        }}
+    })
+}
+
+#[test]
+fn an_operation_set_if_present_writes_a_present_argument_and_every_step_after_set_reads_it() {
+    let definition = validated(operation_presence_definition());
+
+    // Absent before: the present argument inserts the field.
+    let inserted = annotate(
+        &definition,
+        &memo(1, json!({"title": "T"})),
+        json!({"bound": {"note": "memo"}}),
+    );
+    let after = json!({"note": "memo", "title": "T"});
+    assert_eq!(Value::Object(inserted.instance.fields.clone()), after);
+    assert_eq!(inserted.instance.revision, 2);
+    assert_eq!(inserted.record.result, inserted.instance);
+    assert_eq!(inserted.record.effect, Some(DecisionEffect::Updated));
+    assert_eq!(
+        Value::Object(inserted.record.changed.clone()),
+        json!({"note": "memo"})
+    );
+    assert_eq!(
+        Value::Object(inserted.events[0].changed.clone()),
+        json!({"note": "memo"})
+    );
+    assert_eq!(
+        inserted.events[0].payload,
+        json!({"after": after, "before": {"title": "T"}})
+    );
+    assert_eq!(
+        inserted.record.response.clone().map(Value::Object),
+        Some(json!({"after": after}))
+    );
+
+    // Present before: the present argument replaces the old value.
+    let replaced = annotate(
+        &definition,
+        &memo(2, json!({"note": "old", "title": "T"})),
+        json!({"bound": {"note": "new"}}),
+    );
+    let after = json!({"note": "new", "title": "T"});
+    assert_eq!(Value::Object(replaced.instance.fields.clone()), after);
+    assert_eq!(
+        Value::Object(replaced.record.changed.clone()),
+        json!({"note": "new"})
+    );
+    assert_eq!(
+        replaced.events[0].payload,
+        json!({"after": after, "before": {"note": "old", "title": "T"}})
+    );
+
+    // The invariants of step 12 judge the written value too.
+    let mut guarded = operation_presence_definition();
+    guarded["invariants"] = json!([{
+        "name": "note_is_not_banned",
+        "assert": { "ne": ["$fields.note", "banned"] }
+    }]);
+    let guarded = validated(guarded);
+    assert!(matches!(
+        decide(
+            &guarded,
+            &memo(2, json!({"note": "old", "title": "T"})),
+            "annotate",
+            json!({"bound": {"note": "banned"}})
+        ),
+        Err(CoreError::InvariantViolation { rule: Some(rule), .. }) if rule == "note_is_not_banned"
+    ));
+}
+
+#[test]
+fn an_operation_set_if_present_leaves_its_field_as_it_was_when_the_argument_is_absent() {
+    let definition = validated(operation_presence_definition());
+
+    let kept = annotate(
+        &definition,
+        &memo(1, json!({"note": "kept", "title": "T"})),
+        json!({"bound": {}}),
+    );
+    let after = json!({"note": "kept", "title": "T"});
+    assert_eq!(Value::Object(kept.instance.fields.clone()), after);
+    assert_eq!(kept.instance.revision, 2);
+    assert_eq!(Value::Object(kept.record.changed.clone()), json!({}));
+    assert_eq!(Value::Object(kept.events[0].changed.clone()), json!({}));
+    assert_eq!(
+        kept.events[0].payload,
+        json!({"after": after, "before": after})
+    );
+
+    let still_absent = annotate(
+        &definition,
+        &memo(1, json!({"title": "T"})),
+        json!({"bound": {}}),
+    );
+    assert_eq!(
+        Value::Object(still_absent.instance.fields.clone()),
+        json!({"title": "T"})
+    );
+    assert_eq!(
+        Value::Object(still_absent.record.changed.clone()),
+        json!({})
+    );
+    assert_eq!(
+        still_absent.record.response.clone().map(Value::Object),
+        Some(json!({"after": {"title": "T"}}))
+    );
+}
+
+#[test]
+fn a_present_null_argument_is_written_by_an_operation_only_where_its_type_admits_null() {
+    let mut document = operation_presence_definition();
+    document["schema"]["fields"]["note"]["type"] = json!("json");
+    document["operations"]["annotate"]["arguments"]["fields"]["bound"]["properties"]["note"]
+        ["type"] = json!("json");
+    let json_note = validated(document);
+    let nulled = annotate(
+        &json_note,
+        &memo(1, json!({"note": "old", "title": "T"})),
+        json!({"bound": {"note": null}}),
+    );
+    assert_eq!(nulled.instance.fields["note"], Value::Null);
+    assert_eq!(
+        Value::Object(nulled.record.changed.clone()),
+        json!({"note": null})
+    );
+
+    let text_note = validated(operation_presence_definition());
+    assert!(matches!(
+        decide(
+            &text_note,
+            &memo(1, json!({"title": "T"})),
+            "annotate",
+            json!({"bound": {"note": null}})
+        ),
+        Err(CoreError::Validation(errors))
+            if errors.iter().any(|error| error.path == "arguments.bound.note")
+    ));
+}
+
+#[test]
+fn an_operation_set_if_present_keeps_the_creation_target_rules_and_admits_no_required_target() {
+    ValidatedDefinition::new(definition(operation_target_definition()))
+        .expect("a service/2 operation outcome may declare set_if_present");
+
+    // The fixture that asserted the creation-only refusal registers beside the creation map.
+    let mut beside_creation = presence_definition();
+    beside_creation["operations"]["Update"] = json!({
+        "arguments": beside_creation["create"]["arguments"].clone(),
+        "outcomes": [{
+            "name": "updated",
+            "set_if_present": {"note": {"argument": "bound.note"}}
+        }]
+    });
+    ValidatedDefinition::new(definition(beside_creation))
+        .expect("creation and operation maps register together");
+
+    let path = "operations.act.outcomes.updated.set_if_present";
+    let optional = "must be optional and have no default";
+    let same_leaf = "must have the complete source leaf definition";
+    for (mutate, field, expected) in [
+        ("required", "note", vec![optional, same_leaf]),
+        ("defaulted", "note", vec![optional, same_leaf]),
+        ("different_type", "note", vec![same_leaf]),
+        (
+            "undeclared",
+            "missing",
+            vec!["is not a declared entity field"],
+        ),
+    ] {
+        let mut document = operation_target_definition();
+        match mutate {
+            "required" => document["schema"]["fields"]["note"]["required"] = json!(true),
+            "defaulted" => document["schema"]["fields"]["note"]["default"] = json!("default"),
+            "different_type" => document["schema"]["fields"]["note"]["max_length"] = json!(3),
+            "undeclared" => {
+                document["operations"]["act"]["outcomes"][0]["set_if_present"] =
+                    json!({"missing": {"argument": "bound.note"}})
+            }
+            _ => unreachable!(),
+        }
+        let defects = ValidatedDefinition::new(definition(document)).unwrap_err();
+        let messages = defects
+            .iter()
+            .map(|defect| match defect {
+                DefinitionError::ConditionalTargetInvalid {
+                    path: at,
+                    field: target,
+                    message,
+                } if at == path && target == field => message.as_str(),
+                other => panic!("{mutate}: unexpected defect {other}"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(messages.len(), expected.len(), "{mutate}: {defects}");
+        for (message, expected) in messages.iter().zip(&expected) {
+            assert!(message.contains(expected), "{mutate}: {message}");
+        }
+    }
+
+    let mut overlapping = operation_target_definition();
+    overlapping["operations"]["act"]["outcomes"][0]["set"] = json!({"note": "fixed"});
+    let defects = ValidatedDefinition::new(definition(overlapping)).unwrap_err();
+    assert_eq!(
+        defects.as_slice(),
+        [DefinitionError::ConditionalTargetConflict {
+            path: path.to_owned(),
+            field: "note".to_owned(),
+        }]
+    );
+
+    let mut service_1 = operation_target_definition();
+    service_1["semantics"] = json!("service/1");
+    let defects = ValidatedDefinition::new(definition(service_1)).unwrap_err();
+    assert_eq!(
+        defects.as_slice(),
+        [DefinitionError::SemanticsKeyNotAvailable {
+            path: path.to_owned(),
+            key: "set_if_present".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn a_field_named_in_both_fulfills_and_set_if_present_of_one_outcome_is_refused_at_registration() {
+    let mut document = operation_target_definition();
+    document["semantics"] = json!("service/3");
+    ValidatedDefinition::new(definition(document.clone()))
+        .expect("service/3 inherits the operation set_if_present");
+
+    document["operations"]["act"]["outcomes"][0]["fulfills"] =
+        json!({"note": {"actions": "optional"}});
+    let defects = ValidatedDefinition::new(definition(document)).unwrap_err();
+    assert_eq!(
+        defects.as_slice(),
+        [DefinitionError::FulfillmentConditionalSetConflict {
+            operation: "act".to_owned(),
+            outcome: "updated".to_owned(),
+            field: "note".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn a_service_3_outcome_applies_set_if_present_and_fulfillment_actions_to_one_result() {
+    let definition = validated(json!({
+        "entity": "memo", "version": 1, "semantics": "service/3",
+        "schema": { "fields": {
+            "title": { "type": "string", "required": true },
+            "note": { "type": "string" },
+            "stamp": { "type": "string" }
+        }},
+        "lifecycle": { "initial": "Open", "states": ["Open"] },
+        "operations": { "annotate": {
+            "arguments": { "fields": {
+                "bound": { "type": "object", "required": true, "properties": {
+                    "note": { "type": "string" }
+                }}
+            }},
+            "outcomes": [{
+                "name": "annotated", "effect": "updates",
+                "set_if_present": { "note": { "argument": "bound.note" } },
+                "fulfills": { "stamp": { "actions": "optional" } },
+                "emits": [{ "type": "Annotated", "payload": { "after": "$fields" } }]
+            }]
+        }}
+    }));
+    let created = entity_core::decide_create(&definition, "m-1".to_owned(), json!({"title": "T"}))
+        .unwrap()
+        .into_decision()
+        .unwrap();
+    let arguments = json!({"bound": {"note": "memo"}});
+    assert!(matches!(
+        decide(&definition, &created.instance, "annotate", arguments.clone()),
+        Err(CoreError::FulfillmentRequired { fields, .. }) if fields == ["stamp"]
+    ));
+
+    let PreloadDecision::Load(operation) =
+        decide_before_load(&definition, "m-1", "annotate", arguments).unwrap()
+    else {
+        panic!("the outcome needs the subject")
+    };
+    let LoadedDecision::NeedsFulfillment(prepared) =
+        operation.select_with(&created.instance).unwrap()
+    else {
+        panic!("the outcome requests its stamp")
+    };
+    let decision = prepared
+        .complete(BTreeMap::from([(
+            "stamp".to_owned(),
+            OperationFieldAction::Set {
+                value: json!("s-1"),
+            },
+        )]))
+        .unwrap()
+        .into_decision()
+        .unwrap();
+    let after = json!({"note": "memo", "stamp": "s-1", "title": "T"});
+    assert_eq!(Value::Object(decision.instance.fields.clone()), after);
+    assert_eq!(decision.events[0].payload, json!({"after": after}));
+    assert_eq!(
+        Value::Object(decision.record.changed.clone()),
+        json!({"note": "memo", "stamp": "s-1"})
+    );
+    assert_eq!(
+        replay(&[created.record, decision.record]).unwrap(),
+        decision.instance
+    );
+}
+
+#[test]
+fn a_replayed_history_with_an_operation_set_if_present_yields_the_bytes_execute_returned() {
+    let definition = validated(operation_presence_definition());
+    let created = entity_core::decide_create(&definition, "m-1".to_owned(), json!({"title": "T"}))
+        .unwrap()
+        .into_decision()
+        .unwrap();
+    let present = annotate(
+        &definition,
+        &created.instance,
+        json!({"bound": {"note": "memo"}}),
+    );
+    let absent = annotate(&definition, &present.instance, json!({"bound": {}}));
+    let records = vec![created.record, present.record, absent.record];
+
+    let replayed = replay(&records).expect("the history replays");
+    assert_eq!(
+        serde_json::to_vec(&replayed).unwrap(),
+        serde_json::to_vec(&absent.instance).unwrap()
+    );
+    assert_eq!(replayed.fields["note"], json!("memo"));
+
+    // Each forged position is refused at the record that carries it.
+    let mut forged_change = records.clone();
+    forged_change[2]
+        .changed
+        .insert("note".to_owned(), json!("memo"));
+    let mut forged_argument = records.clone();
+    if let entity_core::DecisionCommand::Execute { arguments, .. } = &mut forged_argument[1].command
+    {
+        arguments.get_mut("bound").unwrap()["note"] = json!("other");
+    }
+    let mut forged_absence = records.clone();
+    forged_absence[2].result.fields.remove("note");
+    for (index, forged) in [
+        (2, forged_change),
+        (1, forged_argument),
+        (2, forged_absence),
+    ] {
+        assert!(
+            matches!(
+                replay(&forged),
+                Err(CoreError::Validation(errors)) if errors[0].path == format!("records[{index}]")
+            ),
+            "records[{index}]"
+        );
+    }
 }
