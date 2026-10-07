@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T11:33:53Z",
+  "actor": "human:timo",
+  "artifact": "story:generated-yaml-contracts-write-numbers",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p entity-cli --test cli generated_yaml_contracts_write_every_number_the_json_contracts_write (U4 red vs 7d30cc10)",
+    "reference": "U4 build/scratch: 24 private-map numbers in openapi.yaml before, 0 after"
+  }
+}
