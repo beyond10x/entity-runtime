@@ -515,6 +515,33 @@ pub enum DefinitionError {
         /// The scale.
         scale: String,
     },
+    /// A `set` entry `{increment: …}` names a field an increment cannot add to: one the schema
+    /// does not declare, one whose kind is not `integer` or `number`, or one that is not
+    /// `required` and so may be absent, where absent plus `n` has no value.
+    IncrementTargetInvalid {
+        /// Where, such as `operations.bump.set.hits`.
+        path: String,
+        /// The field.
+        field: String,
+        /// What is wrong.
+        message: String,
+    },
+    /// An increment's amount is not a number the field's kind can add, or may be absent: a literal
+    /// that is not a number of the field's kind, or a reference without a declared numeric type
+    /// that every segment of its path guarantees present.
+    IncrementAmountInvalid {
+        /// Where, such as `operations.bump.set.hits.increment`.
+        path: String,
+        /// What is wrong.
+        message: String,
+    },
+    /// A creation branch's `set` increments a field, which has no value before the creation.
+    IncrementOnCreate {
+        /// Where, such as `create.outcomes.opened.set.hits`.
+        path: String,
+        /// The field.
+        field: String,
+    },
 }
 
 impl DefinitionError {
@@ -589,6 +616,9 @@ impl DefinitionError {
             Self::CompareOperandNotAddressable { .. } => "compare_operand_not_addressable",
             Self::ScaleUnnamed => "scale_unnamed",
             Self::ScaleEmpty { .. } => "scale_empty",
+            Self::IncrementTargetInvalid { .. } => "increment_target_invalid",
+            Self::IncrementAmountInvalid { .. } => "increment_amount_invalid",
+            Self::IncrementOnCreate { .. } => "increment_on_create",
         }
     }
 }
@@ -956,6 +986,22 @@ impl fmt::Display for DefinitionError {
             Self::ScaleEmpty { scale } => {
                 write!(f, "scale '{scale}' declares no values")
             }
+            Self::IncrementTargetInvalid {
+                path,
+                field,
+                message,
+            } => write!(
+                f,
+                "increment of '{field}' at '{path}' is invalid: {message}"
+            ),
+            Self::IncrementAmountInvalid { path, message } => {
+                write!(f, "increment amount at '{path}' is invalid: {message}")
+            }
+            Self::IncrementOnCreate { path, field } => write!(
+                f,
+                "creation increments '{field}' at '{path}'; a field has no value to add to before \
+                 the creation, so an increment is an operation's assignment only"
+            ),
         }
     }
 }
@@ -1335,6 +1381,24 @@ pub enum CoreError {
         /// The required field.
         field: String,
     },
+    /// An increment's exact sum is outside what the field's kind holds under the definition's
+    /// semantics, so it is refused at step 8 rather than wrapped, saturated or rounded.
+    ///
+    /// `kernel/1` integers span `i64` and `u64` together; service integers span `i64`; a service
+    /// number is a finite binary64. A `number` sum is computed by aligning both operands, and two
+    /// operands spanning more than 1,024 decimal places, the units place included, have no sum.
+    IncrementOverflow {
+        /// The operation.
+        operation: String,
+        /// The field.
+        field: String,
+        /// The value the instance held, as written.
+        value: String,
+        /// The amount, as resolved.
+        amount: String,
+        /// What the field's kind holds here.
+        range: String,
+    },
 }
 
 impl CoreError {
@@ -1365,6 +1429,7 @@ impl CoreError {
             Self::FulfillmentRequired { .. } => "fulfillment_required",
             Self::FulfillmentKeysMismatch { .. } => "fulfillment_keys_mismatch",
             Self::RequiredFieldRemoval { .. } => "required_field_removal",
+            Self::IncrementOverflow { .. } => "increment_overflow",
         }
     }
 }
@@ -1539,6 +1604,17 @@ impl fmt::Display for CoreError {
             } => write!(
                 f,
                 "operation '{operation}' outcome '{outcome}' cannot remove required field '{field}'"
+            ),
+            Self::IncrementOverflow {
+                operation,
+                field,
+                value,
+                amount,
+                range,
+            } => write!(
+                f,
+                "operation '{operation}' increments '{field}' from {value} by {amount}, and the \
+                 sum is outside {range}; it is refused, not wrapped"
             ),
         }
     }

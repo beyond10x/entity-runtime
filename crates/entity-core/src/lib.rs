@@ -137,8 +137,8 @@ pub use definition::{
     LifecycleDefinition, MapKey, NumberObservation, ObjectSchema, OneOrMany, OperationDefinition,
     OperationFieldAction, OperationFieldActions, OperationFieldRequirement, OutcomeDefinition,
     OutcomeEffect, PresentArgument, ProjectionDefinition, Quantifier, RefusalDefinition,
-    RelationDefinition, RelationKind, RuleDefinition, Semantics, TransitionDefinition,
-    CONDITION_OPERATORS, MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
+    RelationDefinition, RelationKind, RuleDefinition, Semantics, SetAssignment,
+    TransitionDefinition, CONDITION_OPERATORS, MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
 };
 pub use error::{CoreError, DefinitionError, DefinitionErrors, ValidationError};
 pub use observed::Observed;

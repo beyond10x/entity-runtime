@@ -135,6 +135,66 @@ argument may still produce a field that is not. Events are materialised last, fr
 see the **post-operation** fields (R-43, R-61). `create` may emit one event, whose templates see
 `$id`, `$state` and `$fields` and nothing about a previous state.
 
+#### Typed assignments: `{increment: n}` (R-164)
+
+```yaml
+set:
+  views: { increment: 1 }
+  spent: { increment: $args.amount }
+```
+
+**How a typed assignment is told apart from a template.** A `set:` value is a typed assignment
+when it is a mapping with **exactly one key** and that key is an assignment keyword; every other
+value — a scalar, a list, a mapping with two or more keys, a one-key mapping whose key is not a
+keyword — is a template, read exactly as before. `increment` is the only keyword so far;
+`{cleared: true}` is meant to be the next, under the same rule, and adding one is a new arm of
+`SetAssignment::of` and nothing else. The rule applies under every semantics and to an operation's
+`set` and a branch's `set` alike.
+
+The value stays a `serde_json::Value` in `set`, read through the public `SetAssignment::of`, rather
+than becoming a typed enum field. Four reasons, all about not moving bytes or types nobody asked to
+move: a definition serializes to the bytes it had, and every decision record embeds its definition,
+so replay's snapshot comparison is untouched; the derived `Debug` of a recorded definition, which
+`entity-eventlog`'s model pins hash, is untouched; `set` keeps its public type, which other
+repositories build and read; and the plain mapping loads through `entity_yaml::from_str`, which
+reads an externally tagged enum only in its `!tag` form. Every reader in the kernel — registration,
+step 8 and the legacy event fold — goes through the one function, so the rule is written once.
+
+**No semantics gate.** The story asks for `kernel/1` too, and a gate would exclude it. Reserving the
+shape changes the meaning only of a definition that already wrote a one-key `{increment: …}`
+mapping as a template. No definition or fixture in this repository does, and a search of the four
+consumers that pin `entity-core` found none; on a numeric field such a template could never have
+passed step 9 anyway. Because the increment stays inside `set`, the checks that already refuse a
+`set` key also named in `set_if_present` or `fulfills` cover it unchanged. The cost is that an `object`
+or `json` field can no longer be written with that one literal mapping; a second key, or an
+argument carrying the object, still writes it.
+
+**Where it may stand.** Registration refuses an increment on a creation's `set`, where nothing holds
+a value yet (`IncrementOnCreate`); on a field the schema does not declare, or whose kind is not
+`integer` or `number`, or that is not `required` — absent plus `n` has no value, and no scenario
+states one (`IncrementTargetInvalid`). `binary64` is refused with the other kinds: its sum would need
+IEEE rounding and signed-zero rules no scenario states. The amount is a number literal of the
+field's kind under the definition's semantics, or a reference whose declared kind is one and whose
+every path segment is guaranteed present — a required member, or an argument member with a default
+— with `$version` and, under the service rules, a final `count` on a declared collection or text as
+integers (`IncrementAmountInvalid`). An `integer` field adds only an integer. A reference the scope
+cannot see stays `InvalidTemplate`. Each defect carries its path.
+
+**The sum, and where overflow is refused.** The sum is computed at step 8, inside the decision,
+against the pre-operation value, so the record carries the result and replay and the event fold
+recompute it through the same function (invariant 2). An `integer` sum is exact and must lie in the
+range the semantics' integers span — `i64` and `u64` together under `kernel/1`, `i64` under the
+service rules — or the operation is refused with `IncrementOverflow` at step 8, never wrapped;
+before this, an out-of-range value reached step 9 as a wrong-type `Validation`. A `number` sum is
+exact decimal, written positionally with no exponent and no trailing fractional zero (`0.1 + 0.2` is
+`0.3`); two operands spanning more than 1,024 decimal places, the units place included, have no sum,
+and under the service rules the sum must stay a finite binary64. Both are `IncrementOverflow`. A sum
+the kind holds but a `min` or `max` refuses is step 9's `Validation`, as for any written value.
+
+Open: a source whose arithmetic over non-integers is binary64 would answer `0.1 + 0.2` differently
+from this exact sum. The scenarios state the exact sum; the ESS lowering should confirm that is what
+its `increment` means for decimals before it emits one into a service definition.
+
 `revision` is `1` after creation and `+1` per successful operation; a refusal consumes none, and
 each event carries the revision it produced (R-44). That is the number a store compares for
 optimistic concurrency — the kernel supplies it and does nothing with it.
@@ -367,7 +427,7 @@ An operation runs in exactly this order (R-70), and a refusal at any step return
  3. arguments: defaults, then validation                    Validation
  4. transition selected from the current state              InvalidTransition
  5. preconditions, against current state + arguments        PreconditionFailed
- 6. set, every assignment against pre-operation fields      Template
+ 6. set, every assignment against pre-operation fields      Template, IncrementOverflow
  7. resulting fields validated against the schema           Validation
  8. next instance constructed: new state, revision + 1
  9. invariants, against the next state                      InvariantViolation
