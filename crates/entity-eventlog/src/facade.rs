@@ -167,10 +167,17 @@ impl RecordedProviderFacade {
         )
     }
 
-    /// Opens with an explicit capture policy after complete initial authority verification.
+    /// Opens with an explicit capture policy.
+    ///
+    /// `FullVerification` verifies the whole authority on open. `ProviderTracked` does too unless
+    /// durable open checkpoints are enabled on the store
+    /// ([`Self::enable_durable_open_checkpoints`]): then the open verifies the persisted checkpoint
+    /// and only the suffix after it, and [`Self::open_verification`] says which happened.
     ///
     /// # Errors
-    /// The same provider-open refusals as [`Self::start`].
+    /// The same provider-open refusals as [`Self::start`], and a `ProviderTracked` open of a store
+    /// whose head is behind its open checkpoint
+    /// ([`EventlogRecordedStoreOwner::discard_open_checkpoint`] recovers it).
     pub fn start_with_read_policy(
         registry: Registry,
         owner: EventlogRecordedStoreOwner,
@@ -427,7 +434,43 @@ impl RecordedProviderFacade {
         })
     }
 
-    /// Closes admission and reports actual provider retirement.
+    /// How the open verified the authority: completely, from the open checkpoint, or from the
+    /// checkpoint and the suffix after it.
+    #[must_use]
+    pub fn open_verification(&self) -> crate::OpenVerification {
+        self.bridge.open_verification()
+    }
+
+    /// Enables durable open checkpoints on this facade's SQLite store; see
+    /// [`RecordedEventlogBridge::enable_durable_open_checkpoints`]. **One-way for older readers**
+    /// until [`Self::disable_durable_open_checkpoints`] runs.
+    ///
+    /// # Errors
+    /// `InvalidInput` for a provider other than SQLite, or the provider's refusal.
+    pub fn enable_durable_open_checkpoints(&self, wait: CallWait) -> Result<(), SyncReadError> {
+        self.bridge.enable_durable_open_checkpoints(wait)
+    }
+
+    /// Removes durable open checkpoints from this facade's SQLite store again.
+    ///
+    /// # Errors
+    /// `InvalidInput` for a provider other than SQLite, or the provider's failure.
+    pub fn disable_durable_open_checkpoints(&self, wait: CallWait) -> Result<(), SyncReadError> {
+        self.bridge.disable_durable_open_checkpoints(wait)
+    }
+
+    /// Persists the last verified observation as the open checkpoint now, as a drain shutdown
+    /// does; for a long-lived owner. Returns whether a record was written.
+    ///
+    /// # Errors
+    /// The provider's failure reading or writing the snapshot.
+    pub fn write_open_checkpoint(&self, wait: CallWait) -> Result<bool, SyncReadError> {
+        self.bridge.write_open_checkpoint(wait)
+    }
+
+    /// Closes admission and reports actual provider retirement. A [`ShutdownMode::Drain`]
+    /// persists the open checkpoint first, by the rules of
+    /// [`crate::EventlogRecordedStore::write_open_checkpoint`].
     pub fn shutdown(&mut self, mode: ShutdownMode, wait: CallWait) -> ShutdownOutcome {
         self.bridge.shutdown(mode, wait)
     }

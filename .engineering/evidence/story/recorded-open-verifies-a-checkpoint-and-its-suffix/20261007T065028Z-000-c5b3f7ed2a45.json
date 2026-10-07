@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-07T06:50:28Z",
+  "actor": "human:timo",
+  "artifact": "story:recorded-open-verifies-a-checkpoint-and-its-suffix",
+  "kind": "story",
+  "revision": 20,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:er-55-u1-adversary-pass-1",
+    "review": "review-result:er-55-u1-adversary-pass-1",
+    "outcome": "fixed"
+  }
+}

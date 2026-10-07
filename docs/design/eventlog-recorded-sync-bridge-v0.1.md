@@ -496,7 +496,15 @@ semantics, final dependency pins or legacy import.
 `RecordedProviderFacade::start_with_read_policy(registry, owner, config, policy)` and the bridge's
 matching constructor select the read policy documented in the recorded-adapter design. Existing
 `start` constructors retain `FullVerification`; `BridgeConfig` keeps its source-compatible shape.
-`ProviderTracked` is explicit and still performs complete verification during startup.
+`ProviderTracked` is explicit. It performs complete verification during startup unless durable
+open checkpoints are enabled on the store; then startup verifies the persisted checkpoint and the
+suffix after it, and `open_verification()` reports which happened
+([recorded open checkpoint](recorded-open-checkpoint-v0.1.md)). The facade and the bridge offer
+`enable_durable_open_checkpoints`, `disable_durable_open_checkpoints` and `write_open_checkpoint`
+as worker requests with the ordinary per-call wait; the owner offers `discard_open_checkpoint`
+before a facade is started from it. A `Drain` shutdown persists the checkpoint after the last
+accepted request and before provider retirement; `CancelQueued`, a drop and a worker panic persist
+nothing, and a checkpoint that cannot be written does not fail retirement.
 
 `facade.scoped()` exposes `load_recorded`, `read_history`, `read_histories`, `lookup_record` and
 `lookup_batch` with the ordinary per-call wait. `read_histories(&subjects, wait)` submits one worker

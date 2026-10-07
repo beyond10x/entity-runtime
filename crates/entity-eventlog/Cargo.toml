@@ -17,15 +17,15 @@ postgres = ["dep:eventlog-postgres"]
 tree = ["dep:eventlog-tree"]
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.28.0" }
-entity-store = { path = "../entity-store", version = "0.28.0" }
-entity-executor = { path = "../entity-executor", version = "0.28.0", optional = true }
-entity-query = { path = "../entity-query", version = "0.28.0", optional = true }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.7.0" }
-eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.7.0", optional = true }
-eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", tag = "0.7.0", optional = true }
-eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", tag = "0.7.0", optional = true }
-eventlog-tree = { git = "https://github.com/beyond10x/eventlog", tag = "0.7.0", optional = true }
+entity-core = { path = "../entity-core", version = "0.29.0" }
+entity-store = { path = "../entity-store", version = "0.29.0" }
+entity-executor = { path = "../entity-executor", version = "0.29.0", optional = true }
+entity-query = { path = "../entity-query", version = "0.29.0", optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.0" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.0", optional = true }
+eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.0", optional = true }
+eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.0", optional = true }
+eventlog-tree = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.0", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"

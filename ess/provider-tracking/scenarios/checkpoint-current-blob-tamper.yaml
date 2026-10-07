@@ -1,0 +1,45 @@
+type: ess-scenario/4
+domain: entity-provider.tracking
+scenario: checkpoint-current-blob-tamper
+summary: With a checkpoint at the head, a second SQLite connection changes blob content without moving the head; the next ProviderTracked open refuses.
+# The second Reopen drains a handle that opened from the checkpoint and never read after the
+# mutation, so the open that follows starts from a checkpoint whose provider proof names the
+# observation before the mutation.
+timeline:
+  - at: 2026-10-07T00:00:00Z
+    command: entity-provider.tracking.Register
+    input:
+      request: '{"definition":{"entity":"ticket","version":1,"schema":{"fields":{}},"lifecycle":{"initial":"Open","states":["Open"]},"operations":{"Touch":{"transitions":[{"from":"Open","to":"Open"}],"emits":[]}}}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-07T00:00:01Z
+    command: entity-provider.tracking.Provision
+    input: {request: '{"policy":"ProviderTracked"}'}
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-07T00:00:02Z
+    command: entity-provider.tracking.EnableDurableCheckpoints
+    input: {request: '{}'}
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-07T00:00:03Z
+    command: entity-provider.tracking.Create
+    input:
+      request: '{"entity":"ticket","id":"a","version":1,"fields":{},"recording":{"record_id":"create-a","recorded_at":"2026-10-07T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-07T00:00:04Z
+    command: entity-provider.tracking.Reopen
+    input: {request: '{"policy":"ProviderTracked"}'}
+    outcome: returned
+    response: {status: ok, value: '{"open":"checkpoint"}'}
+  - at: 2026-10-07T00:00:05Z
+    command: entity-provider.tracking.SqlMutate
+    input: {request: '{"kind":"blob"}'}
+    outcome: returned
+    response: {status: ok, value: '{"changed":1,"same_event_head":true}'}
+  - at: 2026-10-07T00:00:06Z
+    command: entity-provider.tracking.Reopen
+    input: {request: '{"policy":"ProviderTracked"}'}
+    outcome: returned
+    response: {status: error, error: ProviderIntegrity}

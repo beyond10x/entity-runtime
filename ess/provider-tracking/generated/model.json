@@ -16,14 +16,18 @@
       "commands": [
         "entity-provider.tracking.Batch",
         "entity-provider.tracking.Create",
+        "entity-provider.tracking.DiscardCheckpoint",
+        "entity-provider.tracking.EnableDurableCheckpoints",
         "entity-provider.tracking.Histories",
+        "entity-provider.tracking.KeepCopy",
         "entity-provider.tracking.Load",
         "entity-provider.tracking.LookupBatch",
         "entity-provider.tracking.Provision",
         "entity-provider.tracking.Register",
         "entity-provider.tracking.Reopen",
         "entity-provider.tracking.Snapshot",
-        "entity-provider.tracking.SqlMutate"
+        "entity-provider.tracking.SqlMutate",
+        "entity-provider.tracking.TruncateTail"
       ],
       "events": [],
       "errors": [],
@@ -163,8 +167,164 @@
       ],
       "naming": {}
     },
+    "entity-provider.tracking.DiscardCheckpoint": {
+      "name": "entity-provider.tracking.DiscardCheckpoint",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.EnableDurableCheckpoints": {
+      "name": "entity-provider.tracking.EnableDurableCheckpoints",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
     "entity-provider.tracking.Histories": {
       "name": "entity-provider.tracking.Histories",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.KeepCopy": {
+      "name": "entity-provider.tracking.KeepCopy",
       "domain": "entity-provider.tracking",
       "input": [
         {
@@ -529,6 +689,58 @@
     },
     "entity-provider.tracking.SqlMutate": {
       "name": "entity-provider.tracking.SqlMutate",
+      "domain": "entity-provider.tracking",
+      "input": [
+        {
+          "name": "request",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "status",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "error",
+          "type_ref": {
+            "kind": "primitive",
+            "name": "string"
+          },
+          "naming": {}
+        },
+        {
+          "name": "value",
+          "type_ref": {
+            "kind": "declared",
+            "name": "entity-provider.tracking.JsonDocument"
+          },
+          "naming": {}
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "returned",
+          "condition": {
+            "kind": "otherwise"
+          },
+          "test_strategy": "default_branch",
+          "emits": [],
+          "returns": true
+        }
+      ],
+      "naming": {}
+    },
+    "entity-provider.tracking.TruncateTail": {
+      "name": "entity-provider.tracking.TruncateTail",
       "domain": "entity-provider.tracking",
       "input": [
         {

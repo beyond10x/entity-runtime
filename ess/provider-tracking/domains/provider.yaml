@@ -4,12 +4,17 @@ summary: Explicit transient read policy for an Eventlog-backed Entity Runtime ha
 # This policy belongs to a live reader. It is never persisted in authority events,
 # stored decisions, requests, receipts, or provider bindings.
 # FullVerification is the existing constructors' default: every complete read
-# obtains fresh provider content. ProviderTracked is an explicit opt-in after a
-# complete verification on open; a supported provider may attest to unchanged
-# SQL-visible content or an exact append suffix. Unsupported or invalidated
-# attestations fall back to complete verification. SQLite tracking covers SQL
-# writes through any connection; raw file edits bypassing SQLite are outside
-# the warm tracking guarantee and are checked when the handle opens again.
+# obtains fresh provider content, and an open never reads or writes an open
+# checkpoint. ProviderTracked is an explicit opt-in; a supported provider may
+# attest to unchanged SQL-visible content or an exact append suffix.
+# Unsupported or invalidated attestations fall back to complete verification.
+# A ProviderTracked open verifies completely unless the store's owner enabled
+# durable open checkpoints: then it verifies the persisted checkpoint of the
+# last completely verified observation, the provider's proof that only
+# acknowledged appends followed it, and those appends. SQLite tracking covers
+# SQL writes through any connection, live or between opens; raw file edits
+# bypassing SQLite are outside that guarantee and are checked by a
+# FullVerification open or a complete read.
 types:
   - name: entity-provider.tracking.CapturePolicy
     kind: enum

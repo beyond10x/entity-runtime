@@ -1,0 +1,125 @@
+type: ess-scenario/4
+domain: entity-provider.tracking
+scenario: bounded-answers-equal-complete-answers
+summary: Every state, history, batch and complete snapshot a handle opened from a checkpoint answers equals what a completely verified handle answers on the same store.
+# The bounded handle answers states and batches from verified index rows and histories per
+# entity; its complete snapshot is a complete verification, which is why it is read last.
+timeline:
+  - at: 2026-10-07T00:00:00Z
+    command: entity-provider.tracking.Register
+    input:
+      request: '{"definition":{"entity":"ticket","version":1,"schema":{"fields":{}},"lifecycle":{"initial":"Open","states":["Open","Closed"]},"operations":{"Close":{"transitions":[{"from":"Open","to":"Closed"}],"emits":[]}}}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-07T00:00:01Z
+    command: entity-provider.tracking.Provision
+    input: {request: '{"policy":"ProviderTracked"}'}
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-07T00:00:02Z
+    command: entity-provider.tracking.EnableDurableCheckpoints
+    input: {request: '{}'}
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-07T00:00:03Z
+    command: entity-provider.tracking.Create
+    input:
+      request: '{"entity":"ticket","id":"a","version":1,"fields":{},"recording":{"record_id":"create-a","recorded_at":"2026-10-07T00:00:00Z","actor":null,"correlation":null,"causation":null}}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-07T00:00:04Z
+    command: entity-provider.tracking.Batch
+    input:
+      request: '{"key":{"named":"pair"},"actions":[{"kind":"execute","entity":"ticket","id":"a","expected_revision":1,"operation":"Close","arguments":{},"recording":{"record_id":"close-a","recorded_at":"2026-10-07T00:00:00Z","actor":null,"correlation":null,"causation":null}},{"kind":"create","entity":"ticket","id":"b","version":1,"fields":{},"recording":{"record_id":"create-b","recorded_at":"2026-10-07T00:00:00Z","actor":null,"correlation":null,"causation":null}}]}'
+    outcome: returned
+    response: {status: ok}
+  - at: 2026-10-07T00:00:05Z
+    command: entity-provider.tracking.Reopen
+    input: {request: '{"policy":"ProviderTracked"}'}
+    outcome: returned
+    response: {status: ok, value: '{"open":"checkpoint"}'}
+  - at: 2026-10-07T00:00:06Z
+    command: entity-provider.tracking.Load
+    input: {request: '{"entity":"ticket","id":"a"}'}
+    outcome: returned
+    response: {status: ok, value: '{"entity":"ticket","fields":{},"id":"a","lifecycle_state":"Closed","revision":2,"version":1}'}
+  - at: 2026-10-07T00:00:07Z
+    command: entity-provider.tracking.Load
+    input: {request: '{"entity":"ticket","id":"b"}'}
+    outcome: returned
+    response: {status: ok, value: '{"entity":"ticket","fields":{},"id":"b","lifecycle_state":"Open","revision":1,"version":1}'}
+  - at: 2026-10-07T00:00:08Z
+    command: entity-provider.tracking.Load
+    input: {request: '{"entity":"ticket","id":"missing"}'}
+    outcome: returned
+    response: {status: ok, value: 'null'}
+  - at: 2026-10-07T00:00:09Z
+    command: entity-provider.tracking.Histories
+    input:
+      request: '{"subjects":[{"entity":"ticket","id":"b"},{"entity":"ticket","id":"a"},{"entity":"ticket","id":"b"},{"entity":"ticket","id":"missing"}]}'
+    outcome: returned
+    response:
+      status: ok
+      value: '[{"entity":"ticket","id":"b","records":[{"record_id":"create-b","revision":1}]},{"entity":"ticket","id":"a","records":[{"record_id":"create-a","revision":1},{"record_id":"close-a","revision":2}]},{"entity":"ticket","id":"b","records":[{"record_id":"create-b","revision":1}]},{"entity":"ticket","id":"missing","records":[]}]'
+  - at: 2026-10-07T00:00:10Z
+    command: entity-provider.tracking.LookupBatch
+    input: {request: '{"key":{"named":"pair"}}'}
+    outcome: returned
+    response: {status: ok, value: '{"present":true}'}
+  - at: 2026-10-07T00:00:11Z
+    command: entity-provider.tracking.LookupBatch
+    input: {request: '{"key":{"named":"absent"}}'}
+    outcome: returned
+    response: {status: ok, value: '{"present":false}'}
+  - at: 2026-10-07T00:00:12Z
+    command: entity-provider.tracking.Snapshot
+    input: {request: '{}'}
+    outcome: returned
+    response:
+      status: ok
+      value: '[{"entity":"ticket","id":"a","records":[{"record_id":"create-a","revision":1},{"record_id":"close-a","revision":2}]},{"entity":"ticket","id":"b","records":[{"record_id":"create-b","revision":1}]}]'
+  - at: 2026-10-07T00:00:13Z
+    command: entity-provider.tracking.Reopen
+    input: {request: '{"policy":"FullVerification"}'}
+    outcome: returned
+    response: {status: ok, value: '{"open":"complete"}'}
+  - at: 2026-10-07T00:00:14Z
+    command: entity-provider.tracking.Load
+    input: {request: '{"entity":"ticket","id":"a"}'}
+    outcome: returned
+    response: {status: ok, value: '{"entity":"ticket","fields":{},"id":"a","lifecycle_state":"Closed","revision":2,"version":1}'}
+  - at: 2026-10-07T00:00:15Z
+    command: entity-provider.tracking.Load
+    input: {request: '{"entity":"ticket","id":"b"}'}
+    outcome: returned
+    response: {status: ok, value: '{"entity":"ticket","fields":{},"id":"b","lifecycle_state":"Open","revision":1,"version":1}'}
+  - at: 2026-10-07T00:00:16Z
+    command: entity-provider.tracking.Load
+    input: {request: '{"entity":"ticket","id":"missing"}'}
+    outcome: returned
+    response: {status: ok, value: 'null'}
+  - at: 2026-10-07T00:00:17Z
+    command: entity-provider.tracking.Histories
+    input:
+      request: '{"subjects":[{"entity":"ticket","id":"b"},{"entity":"ticket","id":"a"},{"entity":"ticket","id":"b"},{"entity":"ticket","id":"missing"}]}'
+    outcome: returned
+    response:
+      status: ok
+      value: '[{"entity":"ticket","id":"b","records":[{"record_id":"create-b","revision":1}]},{"entity":"ticket","id":"a","records":[{"record_id":"create-a","revision":1},{"record_id":"close-a","revision":2}]},{"entity":"ticket","id":"b","records":[{"record_id":"create-b","revision":1}]},{"entity":"ticket","id":"missing","records":[]}]'
+  - at: 2026-10-07T00:00:18Z
+    command: entity-provider.tracking.LookupBatch
+    input: {request: '{"key":{"named":"pair"}}'}
+    outcome: returned
+    response: {status: ok, value: '{"present":true}'}
+  - at: 2026-10-07T00:00:19Z
+    command: entity-provider.tracking.LookupBatch
+    input: {request: '{"key":{"named":"absent"}}'}
+    outcome: returned
+    response: {status: ok, value: '{"present":false}'}
+  - at: 2026-10-07T00:00:20Z
+    command: entity-provider.tracking.Snapshot
+    input: {request: '{}'}
+    outcome: returned
+    response:
+      status: ok
+      value: '[{"entity":"ticket","id":"a","records":[{"record_id":"create-a","revision":1},{"record_id":"close-a","revision":2}]},{"entity":"ticket","id":"b","records":[{"record_id":"create-b","revision":1}]}]'

@@ -386,9 +386,13 @@ or migration outcome, and no generic in-memory test replaces actual three-provid
 
 `CapturePolicy::FullVerification` remains the default of existing constructors.
 `EventlogRecordedStore::open_with_policy(backend, authority, limits, policy)` additionally admits
-`ProviderTracked`. Both policies fully verify the native capture on open. The tracked policy
-subsequently accepts only provider-owned proof of an unchanged observation or a complete,
-contiguous acknowledged append suffix. It never treats an unchanged event head as that proof.
+`ProviderTracked`. `FullVerification` fully verifies the native capture on open. So does
+`ProviderTracked`, unless the store's owner enabled durable open checkpoints: then the open
+verifies the persisted checkpoint of the last completely verified observation, the provider's
+durable proof that only its acknowledged appends followed it, and those appends
+([recorded open checkpoint](recorded-open-checkpoint-v0.1.md)). The tracked policy accepts only
+provider-owned proof of an unchanged observation or a complete, contiguous acknowledged append
+suffix. It never treats an unchanged event head as that proof.
 
 The optional Eventlog `capture_tenant_since` capability binds an opaque, nonserializable checkpoint
 to the provider instance, tenant generation, ordered projection specifications and complete-capture
@@ -396,8 +400,12 @@ limits. Unsupported providers, foreign or expired checkpoints, lost journal cont
 unaccounted mutations return a complete capture. SQLite samples external commits, its own changes
 and schema changes under its connection mutex and native transaction boundary. The operator
 accepted this SQL-visible integrity boundary: writes through other SQLite connections invalidate
-warm reuse, including altered old blob bytes with an unchanged event head. Raw database-file edits
-that bypass SQLite are outside the warm guarantee; a newly opened handle still verifies content.
+warm reuse, including altered old blob bytes with an unchanged event head. With durable open
+checkpoints the same boundary holds between opens: a write through any SQLite connection while no
+handle is open makes the next open complete. Raw database-file edits that bypass SQLite are outside
+the warm guarantee. A `FullVerification` open and every complete read still verify content, as
+does a `ProviderTracked` open of a store without durable open checkpoints; a `ProviderTracked` open
+from a checkpoint does not, and a read of a raw-edited blob refuses it by its digest.
 
 The runtime retains an already verified model. An unchanged proof permits direct reads from it.
 A linear recorded-entry suffix verifies every new complete batch, exact physical positions,
