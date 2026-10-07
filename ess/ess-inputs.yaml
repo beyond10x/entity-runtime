@@ -153,6 +153,7 @@ scenarios:
   - scenarios/core/service1-bare-state-guard-is-a-selector.yaml
   - scenarios/core/service1-binary64-refuses-nonfinite-magnitude.yaml
   - scenarios/core/service1-binary64-retains-negative-zero.yaml
+  - scenarios/core/service1-collection-address-declared-kind.yaml
   - scenarios/core/service1-collection-count.yaml
   - scenarios/core/service1-compare-missing.yaml
   - scenarios/core/service1-compare-number.yaml

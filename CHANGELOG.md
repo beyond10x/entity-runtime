@@ -80,6 +80,16 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   and so a history recorded under one, as `conditional_set_on_operation` rather than ignoring the
   map; open a store holding such records with this release or later.
 
+### Fixed
+
+- Under `service/1`, `<path>.count` and `<path>.<n>` answer only for the kind the path's
+  declaration names. A stored value of another kind used to answer that kind's size or member: a
+  declared `map` holding a seven-element array counted 7, a declared `array` holding
+  `{"count": 7}` counted 7, and a declared `object` holding an array counted its length. Each now
+  answers nothing, so a rule reading it is unobservable. A value nothing types — an undeclared
+  member, a `json` field — keeps its answers. Only an instance a store kept without checking it
+  against its definition can hold such a value.
+
 ## [0.29.0] — 2026-10-07
 
 ### Added

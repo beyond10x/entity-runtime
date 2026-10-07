@@ -1697,6 +1697,16 @@ answer. Under `service/1` they resolve as above, and a `map`'s keys stay unaddre
 size. `validate_reference_path` gains the same two forms so an address into a collection is checked at
 registration, which is invariant 5's requirement and not a new rule.
 
+**Keyed on the declared kind (R-148).** Where a path has a declaration, the declaration decides
+which form applies: a map's size only under a declared `map`, an array's length and elements only
+under a declared `array`, and nothing else past either. A stored value of another kind answers
+nothing, so the rule reading it is unobservable: a declared `map` holding an array has no size, a
+declared `array` holding `{count: 7}` has neither a count nor a member `0`, and a declared `object`
+holding an array has no length. Only an instance a store kept without checking it can hold such a
+value, because arguments are validated before any rule reads them and no store validates an
+instance on load. A value nothing types — no declaration, a `json` field, a quantifier element —
+keeps the array forms, read from the value.
+
 **The length of a text (R-160).** A third address form, added after ESS decided what a text's `count`
 means (ESS `docs/design/string-alphabet-and-length.md` § 3) and lowers a guard or invariant over one
 to this address:
@@ -1872,6 +1882,11 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `an_empty_any_of_is_unknown_when_unobserved_and_false_when_observed` | § 10.4 |
 | `a_collection_count_resolves_under_service_1_and_resolves_to_nothing_under_kernel_1` | § 10.6 |
 | `an_array_ordinal_address_resolves_under_service_1_only` | § 10.6 |
+| `a_stored_map_holding_an_array_answers_no_count` | § 10.6, R-148: a declared map's size is read only from an object |
+| `a_stored_array_holding_an_object_answers_no_count` | § 10.6, R-148: a declared array has no member named `count` |
+| `a_stored_array_holding_an_object_answers_no_element` | § 10.6, R-148: nor one named `0` |
+| `a_stored_array_under_another_declared_kind_answers_no_count_from_its_size` | § 10.6, R-148: an object's property, an open object's member and a union variant's payload |
+| `a_value_nothing_types_keeps_its_collection_addresses` | § 10.6, R-148: a `json` field and an undeclared field keep the array forms |
 | `a_text_count_is_its_number_of_unicode_scalar_values_under_service_1` | § 10.6, R-160: scalar values, not bytes, UTF-16 units or a normalized form |
 | `a_text_count_is_read_from_a_field_an_argument_and_a_nested_property_in_every_rule_position` | § 10.6, R-160: invariant, precondition and outcome guard, at and over the bound, and replay |
 | `a_text_count_through_a_path_registration_does_not_type_keeps_resolving_to_nothing` | § 10.6, R-160, R-97: union payload, open schema, `json` and additional properties |

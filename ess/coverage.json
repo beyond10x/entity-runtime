@@ -1,6 +1,6 @@
 {
   "format": "er-ess-coverage/2",
-  "review": "Add six entity.core scenarios for a set assignment {cleared: true}: removal of a present field, an absent field recorded removed, post-set templates, invariants, registration refusals and replay/rehydration. No existing scenario assertion changes.",
+  "review": "Add one entity.core scenario, service1-collection-address-declared-kind: a stored value whose kind disagrees with its declared map, array or object answers no collection address, so a precondition reading it is unobservable. No existing scenario assertion changes.",
   "scenarios": [
     "entity.core.Address/outcome/returned",
     "entity.core.CompareNumbers/outcome/returned",
@@ -161,6 +161,7 @@
     "entity.core/authored/service1-bare-state-guard-is-a-selector",
     "entity.core/authored/service1-binary64-refuses-nonfinite-magnitude",
     "entity.core/authored/service1-binary64-retains-negative-zero",
+    "entity.core/authored/service1-collection-address-declared-kind",
     "entity.core/authored/service1-collection-count",
     "entity.core/authored/service1-compare-missing",
     "entity.core/authored/service1-compare-number",
@@ -614,6 +615,7 @@
     "entity.core/authored/service1-bare-state-guard-is-a-selector": "sha256:c4d75067783670459fb23f2d0ddbf47015b37adebf75e230dbb01a6386eac3a8",
     "entity.core/authored/service1-binary64-refuses-nonfinite-magnitude": "sha256:6ab7445909a9fdcc4ff7433d652f645f63a9a36fd79f3b81fc6f498346b85c44",
     "entity.core/authored/service1-binary64-retains-negative-zero": "sha256:c8cae8e379c238a7b2821058543854459484393d41d544973d58a6682394961e",
+    "entity.core/authored/service1-collection-address-declared-kind": "sha256:2ceef0e17eb513fb4d4b6f09208505105afd0c2797a8d0253410a4fad09f67cc",
     "entity.core/authored/service1-collection-count": "sha256:50c17d2683303bd104865bc82027db6926b6c34669c7c5b49fc518647a372f24",
     "entity.core/authored/service1-compare-missing": "sha256:ef0b5e4fe4e0adc668ff692e8d4d52532845635e979572b1ba7d4889985a1675",
     "entity.core/authored/service1-compare-number": "sha256:71dc1fa6af01f57f49a9765b134b3f229c07fe8eb531851bf39117780da64350",
