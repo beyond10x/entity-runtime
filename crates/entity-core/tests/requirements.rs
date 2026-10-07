@@ -5,7 +5,7 @@
 
 use entity_core::{
     execute, CoreError, DefinitionError, DefinitionErrors, EntityDefinition, EntityInstance,
-    Registry, Runtime, Truth,
+    Registry, Runtime, SetAssignment, Truth,
 };
 use serde_json::{json, Value};
 
@@ -1158,6 +1158,335 @@ fn fields_are_revalidated_after_set() {
             .fields["points"],
         json!(50)
     );
+}
+
+// --- Increment assignments (R-164) ---------------------------------------------------------------
+
+/// A counter whose `bump` writes `set` and takes `arguments`: two required numeric fields an
+/// increment may add to, and the kinds and optionalities it may not.
+fn counter(set: Value, arguments: Value) -> Value {
+    json!({
+        "entity": "counter",
+        "version": 1,
+        "schema": { "fields": {
+            "hits":      { "type": "integer", "required": true },
+            "total":     { "type": "number", "required": true },
+            "step":      { "type": "integer", "required": true },
+            "label":     { "type": "string" },
+            "maybe":     { "type": "integer" },
+            "defaulted": { "type": "integer", "default": 0 },
+            "extra":     { "type": "json" }
+        }},
+        "lifecycle": { "initial": "open", "states": ["open"] },
+        "operations": { "bump": {
+            "arguments": { "fields": arguments },
+            "transitions": [ { "from": "open", "to": "open" } ],
+            "set": set,
+            "emits": [ { "type": "Bumped", "payload": {
+                "before": "$old_fields.hits", "after": "$fields.hits"
+            }}]
+        }}
+    })
+}
+
+fn open_counter(registry: &Registry, fields: Value) -> EntityInstance {
+    Runtime::new(registry)
+        .create("counter", 1, "c-1", fields)
+        .expect("a valid counter")
+        .instance
+}
+
+/// The text a value serializes to, which is what a record stores and replay compares.
+fn text(value: &Value) -> String {
+    serde_json::to_string(value).expect("a value serializes")
+}
+
+#[test]
+fn an_increment_adds_a_literal_to_the_pre_operation_value_inside_the_decision() {
+    let registry = register(counter(
+        json!({ "hits": { "increment": 1 }, "total": { "increment": 0.25 } }),
+        json!({}),
+    ))
+    .unwrap();
+    let before = open_counter(&registry, json!({ "hits": 41, "total": 1.5, "step": 0 }));
+    let decision = Runtime::new(&registry)
+        .execute(&before, "bump", json!({}))
+        .expect("an increment within range");
+
+    assert_eq!(text(&decision.instance.fields["hits"]), "42");
+    assert_eq!(text(&decision.instance.fields["total"]), "1.75");
+    let changed = &decision.events[0].changed;
+    assert_eq!(
+        text(&Value::Object(changed.clone())),
+        r#"{"hits":42,"total":1.75}"#
+    );
+    assert_eq!(
+        text(&decision.events[0].payload),
+        r#"{"after":42,"before":41}"#
+    );
+    // The record carries the sum, not the assignment: it is computed inside the decision.
+    assert_eq!(decision.record.result, decision.instance);
+    assert_eq!(&decision.record.changed, changed);
+    assert_eq!(text(&before.fields["hits"]), "41");
+}
+
+#[test]
+fn an_increment_adds_what_an_argument_or_a_pre_operation_field_resolves_to() {
+    let registry = register(counter(
+        json!({
+            "hits": { "increment": "$args.by" },
+            "step": { "increment": "$fields.hits" },
+            "total": { "increment": "$old_fields.step" }
+        }),
+        json!({ "by": { "type": "integer", "default": 1 } }),
+    ))
+    .unwrap();
+    let runtime = Runtime::new(&registry);
+    let before = open_counter(&registry, json!({ "hits": 10, "total": 0.5, "step": 3 }));
+
+    // `by` takes its default; `step` and `total` read the fields as they were before `set`.
+    let after = runtime
+        .execute(&before, "bump", json!({}))
+        .expect("defaulted argument")
+        .instance;
+    assert_eq!(text(&after.fields["hits"]), "11");
+    assert_eq!(text(&after.fields["step"]), "13");
+    assert_eq!(text(&after.fields["total"]), "3.5");
+
+    // A negative amount decrements: there is no separate `decrement`.
+    let after = runtime
+        .execute(&before, "bump", json!({ "by": -20 }))
+        .expect("negative argument")
+        .instance;
+    assert_eq!(text(&after.fields["hits"]), "-10");
+}
+
+#[test]
+fn an_increment_past_the_field_maximum_is_refused_after_set_and_leaves_the_instance_untouched() {
+    let document = with(
+        counter(
+            json!({ "hits": { "increment": "$args.by" } }),
+            json!({ "by": { "type": "integer", "required": true } }),
+        ),
+        "schema.fields.hits.max",
+        json!(100),
+    );
+    let registry = register(document).unwrap();
+    let runtime = Runtime::new(&registry);
+    let before = open_counter(&registry, json!({ "hits": 99, "total": 0, "step": 0 }));
+    let untouched = before.clone();
+
+    let error = runtime
+        .execute(&before, "bump", json!({ "by": 2 }))
+        .expect_err("the argument is fine; the sum is not");
+    assert!(
+        matches!(&error, CoreError::Validation(errors) if errors.len() == 1 && errors[0].path == "fields.hits"),
+        "{error}"
+    );
+    assert_eq!(before, untouched);
+    assert_eq!(
+        text(
+            &runtime
+                .execute(&before, "bump", json!({ "by": 1 }))
+                .expect("the boundary itself")
+                .instance
+                .fields["hits"]
+        ),
+        "100"
+    );
+}
+
+#[test]
+fn an_integer_increment_outside_the_kernel_1_range_is_refused_as_overflow_and_never_wraps() {
+    let registry = register(counter(
+        json!({ "hits": { "increment": "$args.by" } }),
+        json!({ "by": { "type": "integer", "required": true } }),
+    ))
+    .unwrap();
+    let runtime = Runtime::new(&registry);
+    let overflow = |hits: Value, by: i64| {
+        let before = open_counter(&registry, json!({ "hits": hits, "total": 0, "step": 0 }));
+        runtime.execute(&before, "bump", json!({ "by": by }))
+    };
+
+    for (hits, by) in [(json!(u64::MAX), 1), (json!(i64::MIN), -1)] {
+        let error = overflow(hits.clone(), by).expect_err("outside i64 and u64");
+        assert!(
+            matches!(&error, CoreError::IncrementOverflow { operation, field, .. }
+                if operation == "bump" && field == "hits"),
+            "{hits} + {by}: {error}"
+        );
+    }
+    // `kernel/1` integers span i64 and u64, so i64::MAX + 1 is a value, not an overflow.
+    let crossed = overflow(json!(i64::MAX), 1).expect("inside u64");
+    assert_eq!(
+        text(&crossed.instance.fields["hits"]),
+        "9223372036854775808"
+    );
+    let below = overflow(json!(u64::MAX), -1).expect("inside u64");
+    assert_eq!(text(&below.instance.fields["hits"]), "18446744073709551614");
+}
+
+#[test]
+fn registration_refuses_an_increment_on_a_field_that_is_not_a_required_integer_or_number() {
+    for field in ["label", "extra", "maybe", "defaulted"] {
+        let errors = register(counter(json!({ field: { "increment": 1 } }), json!({})))
+            .expect_err("not a required integer or number");
+        assert!(
+            matches!(errors.as_slice(), [DefinitionError::IncrementTargetInvalid { path, field: named, .. }]
+                if path == &format!("operations.bump.set.{field}") && named == field),
+            "{field}: {errors}"
+        );
+    }
+
+    // An undeclared field has no kind to add to, even where the schema admits it.
+    let open = with(
+        counter(json!({ "undeclared": { "increment": 1 } }), json!({})),
+        "schema.additional_fields",
+        json!(true),
+    );
+    let errors = register(open).expect_err("no declared kind");
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::IncrementTargetInvalid { path, field, .. }]
+            if path == "operations.bump.set.undeclared" && field == "undeclared"),
+        "{errors}"
+    );
+    // Where it does not, the field is unknown, and that is the one defect reported.
+    let errors = register(counter(
+        json!({ "undeclared": { "increment": 1 } }),
+        json!({}),
+    ))
+    .expect_err("undeclared");
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::UnknownSetField { field, .. }] if field == "undeclared"),
+        "{errors}"
+    );
+}
+
+#[test]
+fn registration_refuses_an_increment_amount_that_is_not_an_always_present_number_of_the_fields_kind(
+) {
+    let arguments = json!({
+        "by":      { "type": "integer", "required": true },
+        "deflt":   { "type": "integer", "default": 2 },
+        "maybe":   { "type": "integer" },
+        "ratio":   { "type": "number", "required": true },
+        "note":    { "type": "string", "required": true },
+        "blob":    { "type": "json", "required": true },
+        "opts":    { "type": "object", "required": true, "properties": {
+            "by":    { "type": "integer", "required": true },
+            "maybe": { "type": "integer" }
+        }},
+        "loose":   { "type": "object", "properties": { "by": { "type": "integer", "required": true } } }
+    });
+    let amount = |field: &str, amount: Value| {
+        register(counter(
+            json!({ field: { "increment": amount } }),
+            arguments.clone(),
+        ))
+    };
+
+    for (field, admitted) in [
+        ("hits", json!(1)),
+        ("hits", json!(-1)),
+        ("hits", json!(u64::MAX)),
+        ("hits", json!("$args.by")),
+        ("hits", json!("$args.deflt")),
+        ("hits", json!("$args.opts.by")),
+        ("hits", json!("$fields.step")),
+        ("hits", json!("$old_fields.step")),
+        ("hits", json!("$version")),
+        ("total", json!(0.5)),
+        ("total", json!("$args.ratio")),
+        ("total", json!("$args.by")),
+    ] {
+        assert!(
+            amount(field, admitted.clone()).is_ok(),
+            "{field} + {admitted} is an always-present number of the field's kind"
+        );
+    }
+
+    for (field, refused) in [
+        ("hits", json!("5")),
+        ("hits", json!("$$5")),
+        ("hits", json!(true)),
+        ("hits", Value::Null),
+        ("hits", json!([1])),
+        ("hits", json!({ "by": 1 })),
+        ("hits", json!(0.5)),
+        ("hits", json!(1.0)),
+        ("hits", json!("$args.ratio")),
+        ("hits", json!("$args.note")),
+        ("hits", json!("$args.blob")),
+        ("hits", json!("$args.maybe")),
+        ("hits", json!("$args.opts.maybe")),
+        ("hits", json!("$args.loose.by")),
+        ("hits", json!("$fields.label")),
+        ("hits", json!("$fields.maybe")),
+        ("hits", json!("$fields.extra")),
+        ("hits", json!("$id")),
+        ("hits", json!("$state")),
+        ("hits", json!("$args")),
+        ("total", json!("$args.note")),
+    ] {
+        let errors = amount(field, refused.clone()).expect_err("not an always-present number");
+        assert!(
+            matches!(errors.as_slice(), [DefinitionError::IncrementAmountInvalid { path, .. }]
+                if path == &format!("operations.bump.set.{field}.increment")),
+            "{field} + {refused}: {errors}"
+        );
+    }
+    // An integer literal past the u64 span is no integer `kernel/1` holds.
+    let past: Value = serde_json::from_str("18446744073709551616").unwrap();
+    let errors = amount("hits", past).expect_err("past u64");
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [DefinitionError::IncrementAmountInvalid { .. }]
+        ),
+        "{errors}"
+    );
+    // A reference its scope cannot see stays the template defect it always was.
+    let errors = amount("hits", json!("$args.nope")).expect_err("undeclared argument");
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::InvalidTemplate { path, .. }]
+            if path == "operations.bump.set.hits.increment"),
+        "{errors}"
+    );
+}
+
+#[test]
+fn a_set_value_is_an_increment_only_when_it_is_a_mapping_of_the_increment_key_alone() {
+    assert!(matches!(
+        SetAssignment::of(&json!({ "increment": 1 })),
+        SetAssignment::Increment(amount) if *amount == json!(1)
+    ));
+    for template in [
+        json!({ "increment": 1, "by": 2 }),
+        json!({ "incremnt": 1 }),
+        json!({}),
+        json!("$args.by"),
+        json!(5),
+        json!([{ "increment": 1 }]),
+    ] {
+        assert!(
+            matches!(SetAssignment::of(&template), SetAssignment::Template(value) if *value == template),
+            "{template}"
+        );
+    }
+
+    // A mapping with more than the one key is an object template, written as the object it is.
+    let registry = register(counter(
+        json!({ "extra": { "increment": 1, "by": "$fields.hits" } }),
+        json!({}),
+    ))
+    .unwrap();
+    let before = open_counter(&registry, json!({ "hits": 41, "total": 0, "step": 0 }));
+    let after = Runtime::new(&registry)
+        .execute(&before, "bump", json!({}))
+        .expect("an object template")
+        .instance;
+    assert_eq!(text(&after.fields["extra"]), r#"{"by":41,"increment":1}"#);
 }
 
 #[test]

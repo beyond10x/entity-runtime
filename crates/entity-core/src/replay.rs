@@ -93,9 +93,9 @@ use serde_json::{Map, Value};
 use crate::definition::OperationDefinition;
 use crate::error::CoreError;
 use crate::runtime::{
-    canonical_object, canonicalize, changed_fields, check_invariants, check_preconditions, create,
-    decide_before_load, resolve_template, DecisionCommand, DecisionRecord, DomainEvent,
-    EntityInstance, LoadedDecision, PreloadDecision, TemplateContext,
+    assigned_value, canonical_object, canonicalize, changed_fields, check_invariants,
+    check_preconditions, create, decide_before_load, resolve_template, DecisionCommand,
+    DecisionRecord, DomainEvent, EntityInstance, LoadedDecision, PreloadDecision, TemplateContext,
 };
 use crate::validation::validate_object;
 use crate::ValidatedDefinition;
@@ -700,8 +700,10 @@ fn operations_that_would_have_produced<'a>(
 
         let mut written = canonical_object(before.fields.clone());
         let mut unresolved = None;
-        for (field, template) in &operation.set {
-            match resolve_template(template, &context) {
+        for (field, assignment) in &operation.set {
+            // Through the function `execute` uses, so an increment is recomputed as the sum of
+            // the field before this revision and the amount, never read as an object template.
+            match assigned_value(name, field, assignment, &context) {
                 Ok(value) => {
                     written.insert(field.clone(), value);
                 }

@@ -19,8 +19,27 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - A `service/3` outcome naming one field in both `fulfills` and `set_if_present` is refused at
   registration as `DefinitionError::FulfillmentConditionalSetConflict`
   (`fulfillment_conditional_set_conflict`).
+- An operation's `set`, and an operation outcome's `set`, may write `{increment: n}` under every
+  semantics: the field becomes its value before the operation plus `n`, a number or a template
+  that resolves to one, and a negative `n` decrements. The sum is exact (`0.1` plus `0.2` is `0.3`)
+  and computed inside the decision, so the record carries it and replay reproduces it. A sum the
+  field's kind cannot hold — outside `i64` and `u64` for a `kernel/1` integer, outside `i64` for a
+  service integer, no finite binary64 for a service number — is refused as
+  `CoreError::IncrementOverflow` (`increment_overflow`) instead of reaching the schema check as a
+  wrong type; a sum past `min` or `max` is still `validation`. `SetAssignment::of` reads a `set`
+  value the way the kernel does.
+- Registration refuses an increment on a creation outcome (`increment_on_create`), on a field that
+  is not a declared required `integer` or `number` (`increment_target_invalid`), and with an amount
+  that is not an always-present number of the field's kind (`increment_amount_invalid`), each with
+  its path.
 
 ### Changed
+
+- A `set` value that is a mapping whose only key is `increment` is now an increment, not an object
+  template, so an `object` or `json` field can no longer be written with that one literal mapping;
+  registration refuses it as `increment_target_invalid`. A mapping with any second key is still an
+  object template. `CoreError` and `DefinitionError` gain variants, so an exhaustive `match` on
+  either needs new arms.
 
 - `DefinitionError::ConditionalSetOnOperation` (`conditional_set_on_operation`) is removed: every
   definition it refused is now admitted, and `kernel/1` and `service/1` refuse the key earlier as

@@ -6,10 +6,10 @@ use crate::{
     CompareOp, Comparison, Condition, CoreError, EntityDefinition, EventDefinition, FieldKind,
     ObjectSchema, OperationDefinition, OperationFieldAction, OperationFieldActions,
     OperationFieldRequirement, OutcomeDefinition, OutcomeEffect, PresentArgument, Quantifier,
-    RefusalDefinition, Registry, RuleDefinition, Truth, ValidatedDefinition,
+    RefusalDefinition, Registry, RuleDefinition, SetAssignment, Truth, ValidatedDefinition,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{Map, Number, Value};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -1138,6 +1138,7 @@ pub fn decide_before_load<'definition>(
 ///   6  a refusing branch returns here                           Evaluation::Refused
 ///   7  preconditions, against current state + arguments         PreconditionFailed
 ///   8  the selected branch's set, against pre-operation fields  Template
+///      an increment adds to the pre-operation value exactly     IncrementOverflow
 ///      then its set_if_present (service/2 on), from the normalized arguments
 ///   9  resulting fields validated against the schema            Validation
 ///  10  next instance: state from the branch's effect, +1 rev    —
@@ -1266,8 +1267,8 @@ fn decide_with_fulfillments(
     // writes cannot change the result. An absent leaf writes nothing: the field keeps whatever the
     // instance held, including its absence.
     let mut new_fields = canonical_object(old_fields.clone());
-    for (field, template) in selected.set {
-        let value = resolve_template(template, &context)?;
+    for (field, value) in selected.set {
+        let value = assigned_value(operation_name, field, value, &context)?;
         new_fields.insert(field.clone(), value);
     }
     insert_present_arguments(&mut new_fields, selected.set_if_present, &args);
@@ -2757,6 +2758,113 @@ pub(crate) struct TemplateContext<'a> {
     pub(crate) new_fields: &'a Map<String, Value>,
     pub(crate) from_state: Option<&'a str>,
     pub(crate) to_state: &'a str,
+}
+
+/// Step 8, for one `set:` entry of an operation: what the field becomes.
+///
+/// A template resolves against the pre-operation fields. An increment adds its amount to the value
+/// the field held before the operation, exactly, so the sum belongs to the decision: the record
+/// carries it, and replay and the legacy event fold recompute it through this same function. A sum
+/// the field's kind cannot hold under the definition's semantics is
+/// [`CoreError::IncrementOverflow`], never a wrapped, saturated or rounded value; a sum it can hold
+/// but the schema bounds refuse is step 9's `Validation`, like any other written value.
+///
+/// Registration admits an increment only on a required `integer` or `number` field with an
+/// always-present amount of the field's kind, so the `Validation` and `Template` refusals below are
+/// reached only through an instance that does not satisfy its own schema.
+pub(crate) fn assigned_value(
+    operation: &str,
+    field: &str,
+    value: &Value,
+    context: &TemplateContext<'_>,
+) -> Result<Value, CoreError> {
+    let amount = match SetAssignment::of(value) {
+        SetAssignment::Template(template) => return resolve_template(template, context),
+        SetAssignment::Increment(amount) => amount,
+    };
+    let not_held = |detail: String| {
+        CoreError::Validation(vec![crate::ValidationError::new(
+            format!("fields.{field}"),
+            detail,
+        )])
+    };
+    let not_an_amount = |resolved: &Value| CoreError::Template {
+        expression: amount
+            .as_str()
+            .map_or_else(|| amount.to_string(), ToOwned::to_owned),
+        message: format!(
+            "an increment of '{field}' adds a number of the field's kind, and this is {resolved}"
+        ),
+    };
+    let Some(Value::Number(held)) = context.old_fields.get(field) else {
+        return Err(not_held(
+            "an increment adds to the number the instance holds, and it holds none".to_owned(),
+        ));
+    };
+    let resolved = resolve_template(amount, context)?;
+    let Value::Number(by) = &resolved else {
+        return Err(not_an_amount(&resolved));
+    };
+    let service = context.definition.semantics.has_service_semantics();
+    let overflow = |range: String| CoreError::IncrementOverflow {
+        operation: operation.to_owned(),
+        field: field.to_owned(),
+        value: held.to_string(),
+        amount: by.to_string(),
+        range,
+    };
+    let kind = context
+        .definition
+        .schema
+        .fields
+        .get(field)
+        .map(|declared| declared.kind);
+    if kind == Some(FieldKind::Integer) {
+        let integer = |number: &Number| {
+            number
+                .as_i64()
+                .map(i128::from)
+                .or_else(|| number.as_u64().map(i128::from))
+        };
+        let Some(left) = integer(held) else {
+            return Err(not_held(format!(
+                "an integer increment adds to an integer, and the instance holds {held}"
+            )));
+        };
+        let Some(right) = integer(by) else {
+            return Err(not_an_amount(&resolved));
+        };
+        // Both operands lie in [i64::MIN, u64::MAX], so their sum cannot leave i128.
+        let sum = left + right;
+        let (range, written) = if service {
+            (
+                format!("the service integer range [{}, {}]", i64::MIN, i64::MAX),
+                i64::try_from(sum).ok().map(Number::from),
+            )
+        } else {
+            (
+                format!("the kernel/1 integer range [{}, {}]", i64::MIN, u64::MAX),
+                i64::try_from(sum)
+                    .ok()
+                    .map(Number::from)
+                    .or_else(|| u64::try_from(sum).ok().map(Number::from)),
+            )
+        };
+        return written.map(Value::Number).ok_or_else(|| overflow(range));
+    }
+    // A `number` field, the only other kind registration admits.
+    let sum = crate::number::add(held, by).ok_or_else(|| {
+        overflow(format!(
+            "an exact sum whose operands span at most {} decimal places",
+            crate::number::MAX_SUM_PLACES
+        ))
+    })?;
+    if service && Observed::of_number(&sum).is_none() {
+        return Err(overflow(
+            "the source observation domain, a finite binary64".to_owned(),
+        ));
+    }
+    Ok(Value::Number(sum))
 }
 
 pub(crate) fn resolve_template(

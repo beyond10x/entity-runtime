@@ -122,6 +122,13 @@ operations:
 - `preconditions` run against the current fields, validated arguments, and selected transition.
 - `set` assigns fields from templates. Every assignment reads the pre-operation fields, so entry
   order has no meaning. The resulting fields are validated again.
+- A `set` value `{increment: n}`, a mapping whose only key is `increment`, adds `n` to the field's
+  value before the operation instead of replacing it. `n` is a number or a template that resolves
+  to one, such as `$args.amount`; a negative `n` decrements. The field must be a required
+  `integer` or `number`, and the amount must always be present and of the field's kind. The sum is
+  exact: `0.1` plus `0.2` is `0.3`. A sum the field's kind cannot hold is refused as
+  `increment_overflow` rather than wrapped, and a sum past `min` or `max` is a `validation`
+  refusal. A mapping with any second key is an ordinary object template.
 - `emits` contains zero or more event templates. `emit` is accepted as an alias for the same
   list (under `create`, `emit` is a single template). Events see the post-operation fields and
   are materialized last. An operation that emits nothing leaves no event, so an event-only
@@ -236,6 +243,7 @@ lifecycle with a duplicate state is one finding, not one per transition it inval
 | an empty operation name, an operation without transitions, an empty `from` list | `empty_operation_name`, `no_transitions`, `empty_from_states` |
 | a transition through an undeclared state, two transitions of one operation from one state | `unknown_from_state`, `unknown_to_state`, `ambiguous_transition` |
 | `set` writing an undeclared field, an empty event type | `unknown_set_field`, `empty_event_type` |
+| a `set` increment on a creation, on a field that is not a required `integer` or `number`, or with an amount that is not an always-present number of the field's kind | `increment_on_create`, `increment_target_invalid`, `increment_amount_invalid` |
 | an inconsistent field: `min` above `max`, an enum without `values`, an array without `items`, a default that fails its own field | `invalid_field` |
 | a constraint on a kind it does not govern, such as `min_length` on an `integer` | `constraint_not_applicable` |
 | an inconsistent rule: an empty name or message, an empty `all` or `any`, a reference its scope cannot see or the schema does not declare | `invalid_rule` |
@@ -261,7 +269,7 @@ next and leaves the caller's instance untouched:
 | 3 | arguments are defaulted, then validated | `validation` |
 | 4 | a transition is selected from the current state | `invalid_transition` |
 | 5 | preconditions, against the current state and the arguments | `precondition_failed`, `precondition_unobservable` |
-| 6 | `set`, every assignment read from the fields before the operation | `template` |
+| 6 | `set`, every assignment read from the fields before the operation | `template`, `increment_overflow` |
 | 7 | the resulting fields are validated against the schema | `validation` |
 | 8 | the next instance is built: the new state, revision plus one | |
 | 9 | invariants, against the next state | `invariant_violation`, `invariant_unobservable` |

@@ -1,0 +1,61 @@
+entity: counter
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    name:
+      type: string
+      required: true
+      min_length: 1
+    views:
+      type: integer
+      required: true
+      min: 0
+      default: 0
+    spent:
+      type: number
+      required: true
+      default: 0
+
+lifecycle:
+  initial: open
+  states: [open, closed]
+
+create:
+  emit:
+    type: CounterOpened
+    payload: { name: $fields.name, views: $fields.views }
+
+operations:
+  view:
+    transitions:
+      - { from: open, to: open }
+    set:
+      views:
+        increment: 1
+    emits:
+      - type: Viewed
+        payload: { before: $old_fields.views, after: $fields.views }
+
+  unview:
+    transitions:
+      - { from: open, to: open }
+    set:
+      views: { increment: -1 }
+
+  charge:
+    arguments:
+      fields:
+        amount: { type: number, required: true, min: 0 }
+    transitions:
+      - { from: open, to: open }
+    set:
+      spent: { increment: $args.amount }
+    emits:
+      - type: Charged
+        payload: { amount: $args.amount, spent: $fields.spent }
+
+  close:
+    transitions:
+      - { from: open, to: closed }

@@ -10,7 +10,8 @@ use crate::{
     observed::Observed, Cardinality, Condition, DeclaredDefault, DefinitionError, DefinitionErrors,
     EntityDefinition, EventDefinition, FieldDefinition, FieldKind, MapKey, ObjectSchema,
     OperationFieldActions, OutcomeDefinition, OutcomeEffect, PresentArgument, RelationKind,
-    RuleDefinition, Semantics, ValidationError, MAX_CONDITION_DEPTH, SERVICE_CONDITION_OPERATORS,
+    RuleDefinition, Semantics, SetAssignment, ValidationError, MAX_CONDITION_DEPTH,
+    SERVICE_CONDITION_OPERATORS,
 };
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -277,7 +278,9 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                         field: field.clone(),
                     });
                 }
-                defects.check(validate_template(
+                defects.extend(validate_set_entry(
+                    definition,
+                    field,
                     value,
                     &format!("{path}.set.{field}"),
                     create_set,
@@ -422,7 +425,9 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 });
                 // The template is checked anyway: its own references are a separate fault.
             }
-            defects.check(validate_template(
+            defects.extend(validate_set_entry(
+                definition,
+                field,
                 template,
                 &format!("operations.{operation_name}.set.{field}"),
                 template_scope,
@@ -580,9 +585,13 @@ fn validate_outcome_expressions(
                 field: field.clone(),
             });
         }
-        if let Err(defect) = validate_template(value, &format!("{path}.set.{field}"), template) {
-            defects.push(defect);
-        }
+        defects.extend(validate_set_entry(
+            definition,
+            field,
+            value,
+            &format!("{path}.set.{field}"),
+            template,
+        ));
     }
     for (index, event) in outcome.emits.iter().enumerate() {
         if let Err(defect) = validate_event_definition(
@@ -2132,6 +2141,195 @@ fn validate_operand(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), D
 /// The same walk for a `set` value or an event payload, reported as a template defect.
 fn validate_template(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), DefinitionError> {
     validate_operand(value, path, scope)
+}
+
+/// One `set:` entry, read through [`SetAssignment::of`]: a template in its scope, or an increment
+/// and the rules that give its sum a value (R-164).
+///
+/// An increment needs a value before it and a number to add, so it is refused on a creation, on a
+/// field that is not a declared required `integer` or `number`, and with an amount that is not an
+/// always-present number of the field's kind. A field the schema neither declares nor admits is
+/// already the caller's `UnknownSetField`, and once the target is refused its amount is not judged
+/// against a kind it does not have.
+fn validate_set_entry(
+    definition: &EntityDefinition,
+    field: &str,
+    value: &Value,
+    path: &str,
+    scope: Scope<'_>,
+) -> Vec<DefinitionError> {
+    let amount = match SetAssignment::of(value) {
+        SetAssignment::Template(template) => {
+            return validate_template(template, path, scope)
+                .err()
+                .into_iter()
+                .collect()
+        }
+        SetAssignment::Increment(amount) => amount,
+    };
+    if scope.kind == ScopeKind::CreateSet {
+        return vec![DefinitionError::IncrementOnCreate {
+            path: path.to_owned(),
+            field: field.to_owned(),
+        }];
+    }
+    let target = |message: String| {
+        vec![DefinitionError::IncrementTargetInvalid {
+            path: path.to_owned(),
+            field: field.to_owned(),
+            message,
+        }]
+    };
+    let kind = match definition.schema.fields.get(field) {
+        None if !definition.schema.additional_fields => return Vec::new(),
+        None => {
+            return target("the schema does not declare it, so it has no kind to add to".to_owned())
+        }
+        Some(declared) if !matches!(declared.kind, FieldKind::Integer | FieldKind::Number) => {
+            return target(format!(
+                "it is a {} field; an increment adds to an integer or a number",
+                declared.kind
+            ))
+        }
+        Some(declared) if !declared.required => {
+            return target(
+                "it is not required, so it may be absent, and absent plus an amount has no value"
+                    .to_owned(),
+            )
+        }
+        Some(declared) => declared.kind,
+    };
+    validate_increment_amount(
+        amount,
+        kind,
+        &format!("{path}.{}", SetAssignment::INCREMENT),
+        scope,
+    )
+    .err()
+    .into_iter()
+    .collect()
+}
+
+/// An increment's amount: a number literal of the field's kind under the definition's semantics,
+/// or a reference whose declared type is one and which every segment of its path keeps present.
+fn validate_increment_amount(
+    amount: &Value,
+    kind: FieldKind,
+    path: &str,
+    scope: Scope<'_>,
+) -> Result<(), DefinitionError> {
+    let invalid = |message: String| {
+        Err(DefinitionError::IncrementAmountInvalid {
+            path: path.to_owned(),
+            message,
+        })
+    };
+    let service = scope.service();
+    let adds = |amount_kind: FieldKind| match kind {
+        FieldKind::Integer => amount_kind == FieldKind::Integer,
+        _ => matches!(amount_kind, FieldKind::Integer | FieldKind::Number),
+    };
+    let wanted = match kind {
+        FieldKind::Integer => "an integer",
+        _ => "an integer or a number",
+    };
+    match amount {
+        Value::Number(number) => {
+            let fits = match kind {
+                FieldKind::Integer if service => number.is_i64(),
+                FieldKind::Integer => number.is_i64() || number.is_u64(),
+                _ => !service || Observed::of_number(number).is_some(),
+            };
+            if fits {
+                Ok(())
+            } else {
+                invalid(format!(
+                    "{number} is not {wanted} a {} {kind} field holds",
+                    scope.semantics
+                ))
+            }
+        }
+        Value::String(expression)
+            if expression.starts_with('$') && !expression.starts_with("$$") =>
+        {
+            validate_template(amount, path, scope)?;
+            match present_numeric_kind(expression, scope) {
+                Ok(found) if adds(found) => Ok(()),
+                Ok(found) => invalid(format!(
+                    "'{expression}' is declared {found}, and a {kind} field adds {wanted}"
+                )),
+                Err(detail) => invalid(format!("'{expression}' {detail}")),
+            }
+        }
+        other => invalid(format!(
+            "{other} is neither a number nor a reference; an increment adds {wanted}"
+        )),
+    }
+}
+
+/// The declared kind a reference reads, where every segment of its path is guaranteed present: a
+/// required member, or an argument member with a default, which normalization fills in.
+///
+/// Under the service rules a final `count` on a declared `array`, `map` or `string` is an integer,
+/// as the run-time walk reads it. Anything else — an optional member, a path through `json` or an
+/// open schema, a bare root, `$id` or a state — has no such kind and is refused.
+fn present_numeric_kind(expression: &str, scope: Scope<'_>) -> Result<FieldKind, String> {
+    if expression == "$version" {
+        return Ok(FieldKind::Integer);
+    }
+    let (members, path, defaults_fill) = if let Some(path) = expression.strip_prefix("$args.") {
+        (scope.args.map(|args| &args.fields), path, true)
+    } else if let Some(path) = expression
+        .strip_prefix("$fields.")
+        .or_else(|| expression.strip_prefix("$old_fields."))
+    {
+        (Some(&scope.fields.fields), path, false)
+    } else {
+        return Err("has no declared numeric type".to_owned());
+    };
+    let Some(mut members) = members else {
+        return Err("has no declared numeric type".to_owned());
+    };
+    let segments: Vec<&str> = path.split('.').collect();
+    for (index, segment) in segments.iter().enumerate() {
+        let Some(declared) = members.get(*segment) else {
+            return Err(format!(
+                "reaches '{segment}', which no schema declares with a type"
+            ));
+        };
+        let present = declared.required || (defaults_fill && declared.default.as_value().is_some());
+        if !present {
+            return Err(format!(
+                "reaches '{segment}', which is not required{}, so it may be absent",
+                if defaults_fill {
+                    " and declares no default"
+                } else {
+                    ""
+                }
+            ));
+        }
+        match segments.get(index + 1) {
+            None => return Ok(declared.kind),
+            Some(&"count")
+                if scope.service()
+                    && index + 2 == segments.len()
+                    && matches!(
+                        declared.kind,
+                        FieldKind::Array | FieldKind::Map | FieldKind::String
+                    ) =>
+            {
+                return Ok(FieldKind::Integer)
+            }
+            Some(_) if declared.kind == FieldKind::Object => members = &declared.properties,
+            Some(_) => {
+                return Err(format!(
+                    "walks past '{segment}', a {} member with no declared numeric member",
+                    declared.kind
+                ))
+            }
+        }
+    }
+    Err("has no declared numeric type".to_owned())
 }
 
 /// Visits every `$` string inside a value, at any depth. `$$literal` is not a reference.
