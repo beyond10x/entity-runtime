@@ -1,6 +1,7 @@
-//! Real SQLite provider and synchronous facade calls; SQL corruption is an explicit fixture.
-//! These scenarios prove returned semantics and integrity. Bounded calls and retained-path cost
-//! are verified separately by runtime counter tests and the measured workload.
+//! Real SQLite provider and synchronous facade calls; SQL corruption, a copy of the closed store
+//! and a truncated tail are explicit fixtures. These scenarios prove returned semantics and
+//! integrity, and how each open verified as the facade reports it. Bounded calls and retained-path
+//! cost are verified separately by runtime counter tests and the measured workload.
 use std::num::NonZeroU16;
 
 use entity_core::{EntityDefinition, Registry};

@@ -32,3 +32,14 @@ No consumer adoption or complete consumer-invocation benchmark is claimed.
 `source.sha256` identifies the implementation and Cargo inputs tested. Verify it from the
 repository root with `sha256sum --check`. The final commit additionally records documents
 and evidence without changing those inputs.
+
+## Opening from a persisted checkpoint (issue 55)
+
+The provider suite gained four commands and ten authored scenarios for the bounded open
+([design](../../../design/recorded-open-checkpoint-v0.1.md)); the seventeen issue 51 contracts kept
+their digests. `open-cost-baseline.txt` measures today's complete `ProviderTracked` open before the
+change; `open-cost-checkpoint.txt` measures the open from a checkpoint at the previous head and from
+one with a two-event suffix after it, with the same seeded stores, sizes and median-of-five method,
+and holds the bound the implementation story set: the median open at 1,203 events is at most twice
+the median at 55. Neither file is a gate: the probes are `#[ignore]`d release tests, run on a
+host shared with other builds, so each file records the load average around each run.

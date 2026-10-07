@@ -9,10 +9,11 @@
 
 use std::{num::NonZeroU16, path::Path, sync::Arc};
 
-use entity_core::Registry;
+use entity_core::{Registry, Runtime};
 use entity_eventlog::{
-    Authority, CapturePolicy, ErRecordedProjector, EventlogOperationContext, EventlogRecordedStore,
-    OpenVerification, RecordedProviderFacade, StoreCalls,
+    AsyncImportedAnchorWriter, Authority, CapturePolicy, ErRecordedProjector,
+    EventlogOperationContext, EventlogRecordedStore, OpenVerification, RecordedProviderFacade,
+    StoreCalls,
     sync::{
         BridgeConfig, CallWait, EventlogRecordedStoreOwner, EventlogRecordedStoreProvisioner,
         ProvisionAuthority, ShutdownMode, ShutdownOutcome, SyncReadError,
@@ -20,9 +21,11 @@ use entity_eventlog::{
 };
 use entity_executor::{BatchAction, CreateRequest, ExecuteRequest, ExecutionError, Executor};
 use entity_store::{
-    RecordedObservation, Recording,
+    RecordedCommit, RecordedObservation, Recording,
     asynchronous::{
-        AsyncRecordedReader, AsyncStateReader, AsyncStoreError, BatchKey, Subject, WriteFailure,
+        AsyncRecordedReader, AsyncStateReader, AsyncStoreError, BatchKey, HistoryOrigin,
+        ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness, LegacyEvidence,
+        LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory, WriteFailure,
     },
 };
 use eventlog_core::{CaptureLimits, EventStore, InlineProjectionAdmin, TenantId};
@@ -245,11 +248,36 @@ async fn populated(path: &Path) -> Authority {
         vec![execute("c", 1, "close", "close-c")],
     )
     .await;
+    // An imported subject: its state source is its anchor until a decision follows it.
+    let store = open(path, &authority, LIMITS, CapturePolicy::FullVerification)
+        .await
+        .expect("full open");
+    store
+        .operation(context("import"))
+        .import_anchor(imported("y"))
+        .await
+        .expect("import y");
+    store
+        .operation(context("import"))
+        .import_anchor(imported("z"))
+        .await
+        .expect("import z");
+    drop(store);
+    write(
+        path,
+        &authority,
+        "after-import",
+        vec![execute("z", 1, "touch", "touch-z")],
+    )
+    .await;
     authority
 }
 
 fn subjects() -> Vec<Subject> {
-    ["a", "b", "c", "absent"].into_iter().map(ticket).collect()
+    ["a", "b", "c", "y", "z", "absent"]
+        .into_iter()
+        .map(ticket)
+        .collect()
 }
 
 fn records() -> Vec<&'static str> {
@@ -260,12 +288,43 @@ fn records() -> Vec<&'static str> {
         "create-c",
         "observe-a",
         "close-c",
+        "legacy-y",
+        "legacy-z",
+        "touch-z",
         "absent",
     ]
 }
 
+/// A legacy history for `id`: one preserved decision behind an imported anchor.
+fn imported(id: &str) -> SubjectHistory {
+    let registry = registry();
+    let decision = Runtime::new(&registry)
+        .create("ticket", 1, id, json!({ "title": id }))
+        .expect("legacy decision");
+    let commit =
+        RecordedCommit::new(decision, &recording(&format!("legacy-{id}"))).expect("legacy record");
+    SubjectHistory {
+        subject: ticket(id),
+        origin: HistoryOrigin::Imported(LegacyAnchor {
+            instance: commit.instance.clone(),
+            completeness: LegacyCompleteness::AvailableEvidenceOnly,
+            order: LegacyOrderDeclaration::PerKindOnly,
+            evidence: vec![LegacyEvidence::Envelope(
+                ImportedRecordEvidence::new(
+                    RecordedEntry::Decision(commit),
+                    "bounded-open-source".to_owned(),
+                    format!("legacy/{id}"),
+                    KnownLegacyOrder::PerKind(0),
+                )
+                .expect("imported evidence"),
+            )],
+        }),
+        records: Vec::new(),
+    }
+}
+
 fn keys() -> Vec<BatchKey> {
-    ["first", "pair", "seen", "closing", "absent"]
+    ["first", "pair", "seen", "closing", "after-import", "absent"]
         .into_iter()
         .map(|key| BatchKey::Named(key.into()))
         .collect()
@@ -330,7 +389,13 @@ fn an_open_after_appends_verifies_only_the_suffix() {
             &path,
             &authority,
             "later",
-            vec![create("d", "delta"), execute("b", 1, "touch", "touch-b")],
+            vec![
+                create("d", "delta"),
+                execute("b", 1, "touch", "touch-b"),
+                // An observation keeps its subject's state source: the row the suffix verifier
+                // renders carries the prior row's.
+                observe("a", 2, "observe-a-later"),
+            ],
         )
         .await;
         let store = open(&path, &authority, LIMITS, CapturePolicy::ProviderTracked)
@@ -338,7 +403,7 @@ fn an_open_after_appends_verifies_only_the_suffix() {
             .expect("suffix open");
         assert_eq!(
             store.open_verification(),
-            OpenVerification::Suffix { events: 2 }
+            OpenVerification::Suffix { events: 3 }
         );
         let calls = store.calls();
         assert_eq!(
@@ -348,8 +413,8 @@ fn an_open_after_appends_verifies_only_the_suffix() {
                 calls.model_advances,
                 calls.records_decoded
             ),
-            (0, 0, 1, 2),
-            "one advance decoding exactly the two appended records: {calls:?}"
+            (0, 0, 1, 3),
+            "one advance decoding exactly the three appended records: {calls:?}"
         );
         assert_eq!(
             store
@@ -359,6 +424,36 @@ fn an_open_after_appends_verifies_only_the_suffix() {
                 .expect("b")
                 .revision,
             2
+        );
+        // The rows the suffix changed answer what a complete verification answers.
+        let full = open(&path, &authority, LIMITS, CapturePolicy::FullVerification)
+            .await
+            .expect("full open");
+        let mut subjects = subjects();
+        subjects.push(ticket("d"));
+        for subject in &subjects {
+            assert_eq!(
+                format!("{:?}", store.load(subject).await),
+                format!("{:?}", full.load(subject).await),
+                "{subject:?}"
+            );
+        }
+        for record in ["touch-b", "create-d", "observe-a-later"] {
+            assert_eq!(
+                format!("{:?}", store.lookup_record(record).await),
+                format!("{:?}", full.lookup_record(record).await),
+                "{record}"
+            );
+        }
+        let later = BatchKey::Named("later".into());
+        assert_eq!(
+            format!("{:?}", store.lookup_batch(&later).await),
+            format!("{:?}", full.lookup_batch(&later).await)
+        );
+        assert_eq!(
+            (store.calls().captures, store.calls().model_builds),
+            (0, 0),
+            "answered from the rows the suffix verifier held"
         );
     });
 }
@@ -379,8 +474,8 @@ fn full_verification_verifies_the_whole_history_beside_a_valid_checkpoint() {
         assert_eq!(full.open_verification(), OpenVerification::Complete);
         assert_eq!(
             (calls.captures, calls.model_builds, calls.records_decoded),
-            (1, 1, 6),
-            "one complete capture and one whole-model build decoding all six records: {calls:?}"
+            (1, 1, 9),
+            "one complete capture and one whole-model build decoding all nine records, the two imported ones included: {calls:?}"
         );
         assert!(
             !full.write_open_checkpoint().await.expect("write call"),
@@ -780,7 +875,11 @@ fn a_drain_shutdown_persists_the_checkpoint_and_a_cancelling_one_does_not() {
         ShutdownOutcome::Joined { provider: Ok(()) }
     );
     let mut facade = start();
-    assert_eq!(facade.open_verification(), OpenVerification::Checkpoint);
+    assert_eq!(
+        facade.open_verification(),
+        OpenVerification::Checkpoint,
+        "the drain shutdown persisted the checkpoint this open starts from"
+    );
     assert!(
         !facade
             .write_open_checkpoint(CallWait::Forever)

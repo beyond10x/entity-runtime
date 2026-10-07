@@ -573,7 +573,7 @@ fn a_checkpoint_beyond_the_head_refuses_tracked_opens_until_discarded() {
                         "the open checkpoint names tenant position {position}, beyond the provider's head {head}"
                     ))
             ),
-            "{:?}",
+            "a checkpoint beyond the head was opened instead of refused: {:?}",
             refused.map(|store| store.open_verification())
         );
         fixture
@@ -619,7 +619,11 @@ fn a_checkpoint_naming_another_binding_event_is_not_applied() {
         };
         fixture.persist(foreign.state().expect("seals")).await;
         let handle = fixture.tracked().await;
-        assert_eq!(handle.open_verification(), OpenVerification::Complete);
+        assert_eq!(
+            handle.open_verification(),
+            OpenVerification::Complete,
+            "a checkpoint naming another binding event was started from"
+        );
         assert_eq!(handle.calls().model_builds, 1);
     });
 }

@@ -1095,7 +1095,7 @@ impl EventlogRecordedStore {
         };
         let record = checkpoint::Record::new(
             &self.authority,
-            observation.binding,
+            observation.binding.clone(),
             self.limits,
             durable.as_bytes().to_vec(),
             observation.position,
@@ -1115,10 +1115,9 @@ impl EventlogRecordedStore {
             self.limits,
         )
         .await?;
-        if persisted
-            .reach()
-            .is_some_and(|(position, _)| position > observation.position)
-            || (matches!(persisted, checkpoint::Loaded::Tombstone(_)) && persisted != loaded)
+        if persisted.reach().is_some_and(|(position, binding)| {
+            *binding == observation.binding && position > observation.position
+        }) || (matches!(persisted, checkpoint::Loaded::Tombstone(_)) && persisted != loaded)
         {
             return Ok(false);
         }
