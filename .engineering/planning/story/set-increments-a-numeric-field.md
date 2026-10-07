@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:set-increments-a-numeric-field
 kind: story
-status: draft
+status: active
 title: 'A set: assignment increments a numeric field'
 owner: entity-runtime
 refs:
@@ -34,7 +34,10 @@ scope:
   path: crates/entity-core/tests/service_semantics.rs
 - confidence: inferred
   path: docs/design/kernel-v0.1.md
-revision: 13
+revision: 15
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-07T02:42:40Z", actor: "human:timo", revision: 14}
+- {from: "proposed", to: "active", at: "2026-10-07T02:42:40Z", actor: "human:timo", revision: 15}
 ---
 # A `set:` assignment increments a numeric field
 
