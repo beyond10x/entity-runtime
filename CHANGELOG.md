@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-10-07
+
 ### Added
 
 - `entity-cli` gains a library target: `entity_cli::cli::Cli` is the clap definition the `entity`
