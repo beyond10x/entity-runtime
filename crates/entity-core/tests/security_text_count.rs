@@ -135,14 +135,13 @@ fn a_projection_keyed_on_an_array_count_registers_where_it_is_written_and_reads_
 // --- § 10.6: the only `count` a map has is its size, wherever the map is reached --------------
 
 /// Registration admits `$m.count` on a quantifier element declared as a `map` (the element's
-/// declaration is walked), but the run-time walk reads a binder's element with no declaration
-/// (`runtime.rs` `resolve_expression_optional`, `walk(element, path, None, false, ..)`), so a
-/// map element is walked as an ordinary object: `count` reads its own `count` member when it has
-/// one, and nothing when it does not, instead of its size. The base answered it so, and replay
-/// re-validates every recorded definition, so it keeps doing so until
-/// story:binder-elements-carry-their-declaration.
+/// declaration is walked), and the run-time walk now carries that declaration, but a binder reads a
+/// declared map by its members as every release since 0.19.0 did: `count` reads its own `count`
+/// member when it has one, and nothing when it does not, instead of its size. Replay reruns each
+/// recorded decision under the current kernel, so it keeps doing so until
+/// story:binder-map-elements-read-their-size.
 #[test]
-fn a_map_inside_a_quantifier_element_reads_its_count_member_until_binder_elements_carry_their_declaration(
+fn a_map_inside_a_quantifier_element_reads_its_count_member_until_binder_map_elements_read_their_size(
 ) {
     let schema = json!({ "fields": { "maps": {
         "type": "array", "required": true,
@@ -152,7 +151,7 @@ fn a_map_inside_a_quantifier_element_reads_its_count_member_until_binder_element
         "in": "$fields.maps", "as": "m", "that": compare("$m.count", "eq", 1)
     }});
     // Both answers in one comparison, so a run shows each. Each one-member map has size 1, so both
-    // become `Held` when the element carries its declaration.
+    // become `Held` when the binder reads a map's size.
     assert_eq!(
         (
             answer(schema.clone(), one.clone(), json!({ "maps": [{ "a": 7 }] })),
@@ -163,7 +162,7 @@ fn a_map_inside_a_quantifier_element_reads_its_count_member_until_binder_element
             Answer::Violated
         ),
         "'$m.count' reads the element's `count` member (absent, then 5), as on the base; when \
-         story:binder-elements-carry-their-declaration lands it reads the size and this case flips \
+         story:binder-map-elements-read-their-size lands it reads the size and this case flips \
          to (Held, Held)"
     );
 }

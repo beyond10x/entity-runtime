@@ -1,0 +1,20 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-quantifier-map-count-recorded-replay",
+  "summary": "A creation every release since 0.19.0 recorded while it read a quantifier map element's count as the member named count (1, where the size is 6) replays to the instance it recorded.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Replay",
+      "input": {
+        "records": "[{\"definition\":{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"groups\":{\"type\":\"array\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":{\"type\":\"map\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":{\"type\":\"integer\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null},\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null,\"key\":\"string\"},\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"small\",\"assert\":{\"for_all\":{\"in\":\"$fields.groups\",\"as\":\"g\",\"that\":{\"compare\":{\"left\":\"$g.count\",\"op\":\"lte\",\"right\":5}}}},\"message\":\"small\"}],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{},\"semantics\":\"service/1\"},\"command\":{\"command\":\"create\",\"fields\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]},\"arguments\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]}},\"entity\":\"probe\",\"id\":\"p-1\",\"revision\":1,\"from_state\":null,\"to_state\":\"Held\",\"result\":{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]}},\"changed\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]},\"events\":[]}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]}}"
+      }
+    }
+  ]
+}

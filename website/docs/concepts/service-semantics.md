@@ -234,10 +234,14 @@ Registration refuses each misuse by path, with every other defect of the documen
 | `default: "12x"` beside that alphabet | `invalid field definition at 'create.arguments.number': invalid default: character 'x' (U+0078) at position 3 is not in the alphabet` |
 | `alphabet` in a `kernel/1` definition | ``'alphabet' at 'schema.code.alphabet' is available only under `semantics: service/1`; a definition with older semantics would declare a rule nothing evaluates`` |
 
-Registration also refuses a length read through a quantifier element or used as a projection key.
-A path into a `json` field, a union payload, an undeclared member or a quantifier element still
-resolves to nothing, so recorded decisions replay unchanged, and a stored value under a declared
-`string` that is not a text has no length. A definition without an alphabet keeps its bytes.
+Registration also refuses a length used as a projection key. Inside `for_all` and `for_any` a text
+element's length reads as any other: over a declared list of text, `$t.count` is each element's
+length, and `$t.name.count` reads a declared property of an object element. A path into a `json`
+field, a union payload or an undeclared member, and a quantifier over a list reached through one of
+them, still resolves to nothing, so recorded decisions replay unchanged, and a stored value under a
+declared `string` that is not a text has no length. A declared `map` inside a quantifier element is
+still read by its members: `$g.count` there reads a member named `count`, not the map's size. A
+definition without an alphabet keeps its bytes.
 
 `entity generate docs` carries an alphabet into the OpenAPI and AsyncAPI schemas as `x-alphabet`;
 in the `openapi.yaml` generated for `extension.yaml`:
