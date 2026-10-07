@@ -1986,6 +1986,16 @@ fn refusal(error: &CoreError) -> Value {
             outcome,
             field,
         } => json!({ "operation": operation, "outcome": outcome, "field": field }),
+        CoreError::IncrementOverflow {
+            operation,
+            field,
+            value,
+            amount,
+            range,
+        } => json!({
+            "operation": operation, "field": field, "value": value, "amount": amount,
+            "range": range
+        }),
         // Every defect, not the first: a caller fixing a definition from this output should not
         // have to run the command once per fault.
         CoreError::Definition(errors) => json!({
