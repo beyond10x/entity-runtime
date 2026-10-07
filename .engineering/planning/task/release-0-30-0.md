@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: task:release-0-30-0
 kind: task
-status: draft
+status: implemented
 title: Prepare and publish the 0.30.0 release
 refs:
 - provider: github
@@ -11,7 +11,11 @@ relations:
 - serves: vision:O2
 - delivers: design:wave-filed-defects
 - delivers: design:wave-issue-54-entity-core-features
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-07T13:24:37Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1,"verification":1}}}
+- {from: "proposed", to: "active", at: "2026-10-07T13:24:37Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1,"verification":1}}}
+- {from: "active", to: "implemented", at: "2026-10-07T13:24:37Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1,"verification":1}}}
 ---
 # Prepare and publish the 0.30.0 release
 
