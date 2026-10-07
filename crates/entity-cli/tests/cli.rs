@@ -75,6 +75,71 @@ fn validate_accepts_the_example_and_exits_zero() {
 }
 
 #[test]
+fn a_moves_outcome_in_a_yaml_or_json_definition_validates_and_executes() {
+    let invoice = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../entity-yaml/tests/fixtures/invoice.yaml");
+    let yaml = fs::read_to_string(&invoice).expect("the fixture is readable");
+    let document: serde_json::Value = serde_yaml_ng::from_str(&yaml).expect("the fixture is YAML");
+    let json = scratch(
+        "invoice.json",
+        &serde_json::to_string_pretty(&document).expect("serializes"),
+    );
+    let invoice = invoice.to_str().unwrap();
+
+    // One run per spelling: one set may not register `invoice` v1 twice.
+    for definition in [invoice, json.to_str().unwrap()] {
+        let output = run(&["validate", definition], None);
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}{}",
+            stdout(&output),
+            stderr(&output)
+        );
+        assert!(
+            stdout(&output).contains("valid (invoice v1)"),
+            "{}",
+            stdout(&output)
+        );
+    }
+
+    let created = run(
+        &[
+            "create",
+            "--definition",
+            invoice,
+            "--id",
+            "s:INV-1",
+            "--fields",
+            r#"{"invoice_id": "INV-1", "amount": 120}"#,
+        ],
+        None,
+    );
+    assert_eq!(created.status.code(), Some(0), "{}", stderr(&created));
+    let paid = run(
+        &[
+            "execute",
+            "--definition",
+            invoice,
+            "--instance",
+            "-",
+            "--operation",
+            "pay",
+            "--arguments",
+            "{}",
+            "--format",
+            "text",
+        ],
+        Some(&stdout(&created)),
+    );
+    assert_eq!(paid.status.code(), Some(0), "{}", stderr(&paid));
+    assert_eq!(
+        stdout(&paid),
+        "invoice s:INV-1 is paid (revision 2); events: InvoicePaid\n"
+    );
+}
+
+#[test]
 fn validate_names_the_defect_and_exits_one() {
     let broken = scratch(
         "broken.yaml",

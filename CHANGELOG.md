@@ -97,6 +97,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   member, a `json` field — keeps its answers. Only an instance a store kept without checking it
   against its definition can hold such a value.
 
+- `entity-yaml`, and so the `entity` command, reads a `service/1` outcome whose effect is `moves`
+  written as a mapping with one key, `effect: { moves: { from: open, to: paid } }`, the spelling
+  JSON uses. Before, the document was refused with `expected a YAML tag starting with '!'`, and so
+  was its JSON spelling given to the command, which reads JSON definitions through the same
+  reader. A unit effect is still a plain word (`effect: creates`), every document the reader
+  accepted before reads to the same definition, and the YAML tag form `!moves { … }` is still
+  refused.
+
 ## [0.29.0] — 2026-10-07
 
 ### Added

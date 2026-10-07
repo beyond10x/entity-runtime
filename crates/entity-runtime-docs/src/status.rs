@@ -319,6 +319,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Surfaces",
+        "Moves outcomes in YAML",
+        "A service/1 outcome with a moves effect, written as the one-key mapping JSON uses, loads through entity-yaml and the entity command.",
+        "crates/entity-cli/tests/cli.rs::a_moves_outcome_in_a_yaml_or_json_definition_validates_and_executes",
+        "/docs/concepts/service-semantics#named-outcomes",
+    ),
+    shipped(
+        "Surfaces",
         "Eventlog File through the command",
         "A build with the eventlog-providers feature provisions and uses an Eventlog File store; no gate step builds that feature.",
         "crates/entity-cli/tests/cli.rs::explicit_eventlog_file_selection_provisions_creates_executes_retries_and_lists",
@@ -395,12 +402,6 @@ pub const CAPABILITIES: &[Capability] = &[
         "Responses checked against their schema",
         "A service response checked against its declared fields, including alphabet and max_length.",
         "/docs/concepts/service-semantics#text-length-and-alphabets",
-    ),
-    planned(
-        "Planned",
-        "Moves outcomes in YAML",
-        "A service/1 outcome with a moves effect loads through entity-yaml and the entity command.",
-        "/docs/concepts/service-semantics",
     ),
     planned(
         "Planned",

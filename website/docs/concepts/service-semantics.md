@@ -28,6 +28,10 @@ caller asks for the operation and never names a branch.
 | `moves` | moves the instance from one declared state to another |
 | none | accepts and changes no state |
 
+`moves` is the one effect that carries data. It is a mapping with one key, written the same way in
+YAML and in JSON: `effect: { moves: { from: open, to: paid } }`, where `from` is one state or a
+list of states. The YAML tag form, `effect: !moves { … }`, is refused.
+
 This definition validates with `entity 0.27.0` and runs through the `entity` command:
 
 ```yaml
@@ -108,16 +112,6 @@ refused: outcome 'rejected' refuses with 'AmountNotPositive': an invoice total i
 The accepted decision's record names the outcome (`adjusted`), the effect (`updated`) and the
 response (`{"new_total": 150}`). In Rust, `create` and `execute` return a declared refusal as
 `CoreError::Refused`; `decide` and `decide_create` return it as the value `Evaluation::Refused`.
-
-:::caution[Known limitation]
-
-A `moves` effect carries its states as a map, `effect: { moves: { from: open, to: paid } }`.
-`entity-yaml`, and so the `entity` command, cannot read that form today: it refuses the document
-with `expected a YAML tag starting with '!'`, and the tagged form with `expected unambiguous YAML`.
-A definition with a `moves` outcome loads only through `serde_json` in Rust, as the kernel's own
-tests do. A fix is planned.
-
-:::
 
 ## Identity and relations
 
