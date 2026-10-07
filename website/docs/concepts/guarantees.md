@@ -98,9 +98,8 @@ the Eventlog facades, not a search service.
 :::caution[Planned]
 
 Migrating stored instances between definition versions, a JSON Schema for the definition format,
-an `entity explain` command, named reusable predicates and schema fragments, checking a service
-response against its declared schema, and serving definitions over HTTP and NATS are planned, not
-shipped.
+an `entity explain` command, named reusable predicates and schema fragments, and serving
+definitions over HTTP and NATS are planned, not shipped.
 
 :::
 

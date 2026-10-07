@@ -318,6 +318,23 @@ pub struct PreparedOperation<'definition> {
     operation: String,
     expected_id: String,
     arguments: Map<String, Value>,
+    response_check: ResponseCheck,
+}
+
+/// Whether step 14 holds the answered response to the command's declared `response` schema.
+///
+/// Every decision a caller takes is [`ResponseCheck::Checked`]. Only [`replay`](fn@crate::replay)
+/// recomputes with [`ResponseCheck::Recorded`]: a record is a decision that was already answered,
+/// and a release before the check answered every response unchecked, so holding its recomputation
+/// to the check would strand a history that was honest when it was written. The exemption is the
+/// check alone: replay still byte-compares the recomputed response with the recorded one, so a
+/// record carrying a response its branch does not answer is refused exactly as before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResponseCheck {
+    /// A decision being taken: the response is validated against its declared schema.
+    Checked,
+    /// A recorded decision being recomputed by replay: the response is compared, not validated.
+    Recorded,
 }
 
 /// The post-load result of selecting one prepared operation.
@@ -338,6 +355,7 @@ pub struct PreparedOutcome<'definition> {
     instance: EntityInstance,
     arguments: Map<String, Value>,
     outcome: String,
+    response_check: ResponseCheck,
 }
 
 impl PreparedOutcome<'_> {
@@ -378,6 +396,7 @@ impl PreparedOutcome<'_> {
             &self.operation,
             Value::Object(self.arguments),
             Some(&actions),
+            self.response_check,
         )
     }
 }
@@ -441,6 +460,7 @@ impl<'definition> PreparedOperation<'definition> {
             &self.operation,
             Value::Object(self.arguments.clone()),
             None,
+            self.response_check,
         ) {
             Err(CoreError::FulfillmentRequired { outcome, .. }) => {
                 Ok(LoadedDecision::NeedsFulfillment(PreparedOutcome {
@@ -449,6 +469,7 @@ impl<'definition> PreparedOperation<'definition> {
                     instance: instance.clone(),
                     arguments: self.arguments,
                     outcome,
+                    response_check: self.response_check,
                 }))
             }
             result => result.map(LoadedDecision::Complete),
@@ -694,7 +715,8 @@ pub fn create_derived(
 /// # Errors
 ///
 /// * [`CoreError::Validation`] — `id` is empty, the input is not an object, or a value does not
-///   satisfy its schema; every failure is listed.
+///   satisfy its schema — the answered response included, at `response.<field>`; every failure is
+///   listed.
 /// * [`CoreError::NoOutcomeSelected`] / [`CoreError::OutcomeUnobservable`] — no branch applies, or
 ///   a branch's guard could not be answered.
 /// * [`CoreError::IdentityMismatch`] — the identity field does not mirror the storage address.
@@ -705,6 +727,16 @@ pub fn decide_create(
     id: String,
     input: Value,
 ) -> Result<Evaluation, CoreError> {
+    decide_create_as(definition, id, input, ResponseCheck::Checked)
+}
+
+/// [`decide_create`], with the response check `replay` selects.
+pub(crate) fn decide_create_as(
+    definition: &ValidatedDefinition,
+    id: String,
+    input: Value,
+    response_check: ResponseCheck,
+) -> Result<Evaluation, CoreError> {
     if id.trim().is_empty() {
         return Err(CoreError::Validation(vec![crate::ValidationError::new(
             "id",
@@ -712,7 +744,7 @@ pub fn decide_create(
         )]));
     }
     if definition.semantics.has_service_semantics() && !definition.create.outcomes.is_empty() {
-        return service_create(definition, Some(id), input);
+        return service_create(definition, Some(id), input, response_check);
     }
 
     // Step 3. This creation's input *is* its fields — a `kernel/1` one always, a `service/1` one
@@ -818,7 +850,7 @@ pub fn decide_create_derived(
     input: Value,
 ) -> Result<Evaluation, CoreError> {
     if definition.semantics.has_service_semantics() && !definition.create.outcomes.is_empty() {
-        return service_create(definition, None, input);
+        return service_create(definition, None, input, ResponseCheck::Checked);
     }
 
     let mut fields = into_object(input, "fields")?;
@@ -840,6 +872,7 @@ fn service_create(
     definition: &ValidatedDefinition,
     supplied_id: Option<String>,
     input: Value,
+    response_check: ResponseCheck,
 ) -> Result<Evaluation, CoreError> {
     // Step 3. Defaults, then validation, against the creation command's declared arguments.
     let mut args = into_object(input, "arguments")?;
@@ -968,7 +1001,13 @@ fn service_create(
     }
 
     // Step 14, after the events, so both read one set of post-`set` fields.
-    let response = materialize_response(&outcome.responds, &outcome.responds_if_present, &context)?;
+    let response = materialize_response(
+        &outcome.responds,
+        &outcome.responds_if_present,
+        &definition.create.response,
+        response_check,
+        &context,
+    )?;
 
     let record = DecisionRecord {
         definition: Some(definition_snapshot(definition)),
@@ -1040,7 +1079,23 @@ pub fn decide_before_load<'definition>(
     operation_name: &str,
     arguments: Value,
 ) -> Result<PreloadDecision<'definition>, CoreError> {
-    let expected_id = expected_id.into();
+    decide_before_load_as(
+        definition,
+        expected_id.into(),
+        operation_name,
+        arguments,
+        ResponseCheck::Checked,
+    )
+}
+
+/// [`decide_before_load`], with the response check `replay` selects, carried by the continuation.
+pub(crate) fn decide_before_load_as<'definition>(
+    definition: &'definition ValidatedDefinition,
+    expected_id: String,
+    operation_name: &str,
+    arguments: Value,
+    response_check: ResponseCheck,
+) -> Result<PreloadDecision<'definition>, CoreError> {
     if expected_id.trim().is_empty() {
         return Err(CoreError::Validation(vec![crate::ValidationError::new(
             "id",
@@ -1061,6 +1116,7 @@ pub fn decide_before_load<'definition>(
             operation: operation_name.to_owned(),
             expected_id: expected_id.clone(),
             arguments: arguments.clone(),
+            response_check,
         })
     };
 
@@ -1147,6 +1203,7 @@ pub fn decide_before_load<'definition>(
 ///  12  invariants, against the next state                       InvariantViolation
 ///  13  the selected branch's events, in declaration order       Template
 ///  14  the selected branch's response, in schema order          Template
+///      then validated against the declared response            Validation
 ///  15  Evaluation::Accepted(Decision)                           —
 /// ```
 ///
@@ -1164,7 +1221,14 @@ pub fn decide(
     operation_name: &str,
     arguments: Value,
 ) -> Result<Evaluation, CoreError> {
-    decide_with_fulfillments(definition, instance, operation_name, arguments, None)
+    decide_with_fulfillments(
+        definition,
+        instance,
+        operation_name,
+        arguments,
+        None,
+        ResponseCheck::Checked,
+    )
 }
 
 fn decide_with_fulfillments(
@@ -1173,6 +1237,7 @@ fn decide_with_fulfillments(
     operation_name: &str,
     arguments: Value,
     fulfillments: Option<&BTreeMap<String, OperationFieldAction>>,
+    response_check: ResponseCheck,
 ) -> Result<Evaluation, CoreError> {
     // Steps 0 and 1, in the order the code has always checked them.
     ensure_instance_matches(definition, instance)?;
@@ -1412,9 +1477,13 @@ fn decide_with_fulfillments(
 
     // Step 14, after the events, so both read one set of post-`set` fields.
     let response = match selected.responds {
-        Some((responds, conditional)) => {
-            Some(materialize_response(responds, conditional, &context)?)
-        }
+        Some((responds, conditional)) => Some(materialize_response(
+            responds,
+            conditional,
+            &operation.response,
+            response_check,
+            &context,
+        )?),
         None => None,
     };
 
@@ -1711,10 +1780,18 @@ fn derive_creation_identity(
     })
 }
 
-/// Step 14: the branch's declared response, resolved in the scope its command sits in.
+/// Step 14: the branch's declared response, resolved in the scope its command sits in and validated
+/// against the command's declared `response`.
+///
+/// The check reads the whole answered map — the `responds` templates and the members
+/// `responds_if_present` copied — so every offending member is one `ValidationError` at
+/// `response.<field>`, accumulated as step 9 accumulates the fields'. A [`ResponseCheck::Recorded`]
+/// recomputation skips the check and nothing else.
 fn materialize_response(
     responds: &BTreeMap<String, Value>,
     responds_if_present: &BTreeMap<String, PresentArgument>,
+    schema: &ObjectSchema,
+    response_check: ResponseCheck,
     context: &TemplateContext<'_>,
 ) -> Result<Map<String, Value>, CoreError> {
     let mut response = Map::new();
@@ -1725,6 +1802,13 @@ fn materialize_response(
         );
     }
     insert_present_arguments(&mut response, responds_if_present, context.args);
+    if response_check == ResponseCheck::Checked {
+        let errors =
+            validate_object_under(schema, &response, "response", context.definition.semantics);
+        if !errors.is_empty() {
+            return Err(CoreError::Validation(errors));
+        }
+    }
     Ok(response)
 }
 

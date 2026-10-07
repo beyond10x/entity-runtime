@@ -2,7 +2,7 @@
   "type": "ess-scenario/4",
   "domain": "entity.core",
   "scenario": "service-responses-must-be-declared-and-complete",
-  "summary": "Required responses need a producing expression; unknown response fields and responses on refusing branches are rejected.",
+  "summary": "Responses must be declared, complete and inside their schema; a decision recorded before that check still replays.",
   "timeline": [
     {
       "at": "2026-09-28T00:00:00Z",
@@ -47,6 +47,86 @@
         "defect_kinds": [
           "refusal_mutates_state"
         ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}",
+        "id": "k-1",
+        "fields": "{\"label\":\"front door\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "details": "Validation([ValidationError { path: \"response.label\", message: \"length 10 exceeds maximum 3\" }])",
+        "paths": [
+          "response.label"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}",
+        "id": "k-1",
+        "fields": "{\"label\":\"pin\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "made",
+        "response": "{\"label\":\"pin\"}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}",
+        "instance": "{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{}}",
+        "operation": "Dial",
+        "arguments": "{\"keys\":\"12x\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "details": "Validation([ValidationError { path: \"response.echo\", message: \"character 'x' (U+0078) at position 3 is not in the alphabet\" }])",
+        "paths": [
+          "response.echo"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:03Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}",
+        "instance": "{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{}}",
+        "operation": "Dial",
+        "arguments": "{\"keys\":\"12\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "dialled",
+        "response": "{\"echo\":\"12\"}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:04Z",
+      "command": "entity.core.Replay",
+      "input": {
+        "records": "[{\"definition\":{\"entity\":\"keypad\",\"version\":1,\"schema\":{\"fields\":{\"last\":{\"type\":\"string\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"invariants\":[],\"create\":{\"emit\":null,\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":3,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"transitions\":[],\"preconditions\":[],\"set\":{},\"emits\":[],\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"alphabet\":\"0123456789\",\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}},\"projections\":{},\"semantics\":\"service/1\"},\"command\":{\"command\":\"create\",\"fields\":{},\"arguments\":{\"label\":\"front door\"}},\"entity\":\"keypad\",\"id\":\"k-1\",\"revision\":1,\"from_state\":null,\"to_state\":\"held\",\"result\":{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{}},\"changed\":{},\"events\":[],\"outcome\":\"made\",\"effect\":\"created\",\"response\":{\"label\":\"front door\"}},{\"definition\":{\"entity\":\"keypad\",\"version\":1,\"schema\":{\"fields\":{\"last\":{\"type\":\"string\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"invariants\":[],\"create\":{\"emit\":null,\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":3,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"transitions\":[],\"preconditions\":[],\"set\":{},\"emits\":[],\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"alphabet\":\"0123456789\",\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}},\"projections\":{},\"semantics\":\"service/1\"},\"command\":{\"command\":\"execute\",\"operation\":\"Dial\",\"arguments\":{\"keys\":\"12x\"}},\"entity\":\"keypad\",\"id\":\"k-1\",\"revision\":2,\"from_state\":\"held\",\"to_state\":\"held\",\"result\":{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":2,\"fields\":{\"last\":\"12x\"}},\"changed\":{\"last\":\"12x\"},\"events\":[],\"outcome\":\"dialled\",\"effect\":\"updated\",\"response\":{\"echo\":\"12x\"}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":2,\"fields\":{\"last\":\"12x\"}}"
       }
     }
   ]

@@ -97,8 +97,9 @@ use crate::definition::{OperationDefinition, SetAssignment};
 use crate::error::CoreError;
 use crate::runtime::{
     assigned_value, canonical_object, canonicalize, changed_fields, check_invariants,
-    check_preconditions, create, decide_before_load, resolve_template, DecisionCommand,
-    DecisionRecord, DomainEvent, EntityInstance, LoadedDecision, PreloadDecision, TemplateContext,
+    check_preconditions, decide_before_load_as, decide_create_as, resolve_template,
+    DecisionCommand, DecisionRecord, DomainEvent, EntityInstance, LoadedDecision, PreloadDecision,
+    ResponseCheck, TemplateContext,
 };
 use crate::validation::validate_object;
 use crate::ValidatedDefinition;
@@ -108,6 +109,11 @@ use crate::ValidatedDefinition;
 /// Unlike legacy event folding, this reruns defaults, schemas, transition selection,
 /// preconditions, `set`, invariants and event templates. Recorded `changed` fields and event types
 /// are comparison evidence, never instructions trusted to mutate state.
+///
+/// A `service/1` response is recomputed and byte-compared like every other product, but it is not
+/// validated against the command's declared `response`: the record is a decision already answered,
+/// and one taken before step 14 checked responses may carry a response that check refuses
+/// (R-169). Every decision a caller takes is checked.
 ///
 /// # Errors
 ///
@@ -148,11 +154,13 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
                     } else {
                         fields.clone()
                     };
-                    create(
+                    decide_create_as(
                         &definition,
                         record.id.clone(),
                         serde_json::Value::Object(input),
+                        ResponseCheck::Recorded,
                     )?
+                    .into_decision()?
                 }
                 DecisionCommand::Create { .. } => {
                     return Err(refuse(index, "creation may only be the first record"))
@@ -165,11 +173,12 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
                     let before = instance.as_ref().ok_or_else(|| {
                         refuse(index, "history begins with an operation, not creation")
                     })?;
-                    let prepared = match decide_before_load(
+                    let prepared = match decide_before_load_as(
                         &definition,
                         record.id.clone(),
                         operation,
                         serde_json::Value::Object(arguments.clone()),
+                        ResponseCheck::Recorded,
                     )? {
                         PreloadDecision::Load(prepared) => prepared,
                         PreloadDecision::Refused(refusal) => {

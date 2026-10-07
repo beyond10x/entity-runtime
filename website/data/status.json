@@ -81,6 +81,13 @@
     },
     {
       "area": "Kernel",
+      "detail": "A service response is validated against its declared fields, alphabet and max_length included, before the decision is returned.",
+      "href": "/docs/concepts/service-semantics#text-length-and-alphabets",
+      "label": "Responses checked against their schema",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
       "detail": "A copied optional argument stays absent, present or null through replay and retry.",
       "href": "/docs/concepts/service-semantics",
       "label": "Optional values keep their absence (service/2)",
@@ -329,13 +336,6 @@
       "detail": "Reusable named rules, reusable schema fragments and definition inheritance.",
       "href": "/docs/reference/definitions",
       "label": "Named predicates and schema fragments",
-      "status": "planned"
-    },
-    {
-      "area": "Planned",
-      "detail": "A service response checked against its declared fields, including alphabet and max_length.",
-      "href": "/docs/concepts/service-semantics#text-length-and-alphabets",
-      "label": "Responses checked against their schema",
       "status": "planned"
     },
     {

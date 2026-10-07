@@ -86,6 +86,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   size, an empty array under `0`, and leaves out an instance whose index is past the end. A map
   holding a member named `count` is filed under its size, no longer under that member's value.
   `kernel/1` read models are unchanged, and so is registration.
+- A `service/1` decision's response is checked against the command's declared `response` before
+  the decision is returned. A response member outside its declaration — a text longer than its
+  `max_length` or outside its `alphabet`, a number past its `max`, a wrong kind — refuses the
+  creation or operation as `validation`, naming every offending member at `response.<field>`;
+  before, it was answered and recorded unchecked. `entity_core::replay` still replays a decision
+  recorded before this release whose response breaks its schema. A recorded store does not yet:
+  `entity_store::asynchronous::validate_entry_against_state`, which the recorded stores use to
+  verify a stored decision, recomputes it through the checked entry points and refuses such a
+  record as `CorruptHistory`.
 
 ### Fixed
 
