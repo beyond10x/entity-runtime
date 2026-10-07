@@ -105,6 +105,7 @@ scenarios:
   - scenarios/core/numeric-underflow-remains-stored.yaml
   - scenarios/core/numeric-wire-and-literal-doors.yaml
   - scenarios/core/operation-cannot-change-identity-mirror.yaml
+  - scenarios/core/operation-conditional-set-keeps-the-creation-target-rules.yaml
   - scenarios/core/owns-carriers-are-required-on-the-target.yaml
   - scenarios/core/post-set-fields-are-revalidated.yaml
   - scenarios/core/precondition-cannot-read-next-state.yaml
@@ -135,6 +136,7 @@ scenarios:
   - scenarios/core/returned-kernel1-decisions-replay-and-reject-tampering.yaml
   - scenarios/core/returned-service1-decisions-replay-and-reject-tampering.yaml
   - scenarios/core/returned-service2-decisions-replay-and-reject-tampering.yaml
+  - scenarios/core/returned-service2-operation-decisions-replay-and-reject-tampering.yaml
   - scenarios/core/returned-service3-decisions-replay-and-reject-tampering.yaml
   - scenarios/core/revision-exhaustion-refuses-before-effects.yaml
   - scenarios/core/rule-refusals-retain-names-and-default-messages.yaml
@@ -193,6 +195,8 @@ scenarios:
   - scenarios/core/service1-truthy-zero.yaml
   - scenarios/core/service1-union-refuses-unknown-tag.yaml
   - scenarios/core/service1-unknown-negation.yaml
+  - scenarios/core/service2-operation-presence-absent.yaml
+  - scenarios/core/service2-operation-presence-present.yaml
   - scenarios/core/service2-presence-absent.yaml
   - scenarios/core/service2-presence-null.yaml
   - scenarios/core/service2-presence-present.yaml
@@ -205,6 +209,18 @@ scenarios:
   - scenarios/core/service3-fulfillment-remove-required.yaml
   - scenarios/core/service3-fulfillment-set-remove.yaml
   - scenarios/core/service3-refusal-needs-no-loaded-instance.yaml
+  - scenarios/core/set-clear-event-templates-see-the-field-absent.yaml
+  - scenarios/core/set-clear-invariants-judge-the-cleared-fields.yaml
+  - scenarios/core/set-clear-of-an-absent-field-is-recorded-removed.yaml
+  - scenarios/core/set-clear-registration-refusals.yaml
+  - scenarios/core/set-clear-removes-a-present-optional-field.yaml
+  - scenarios/core/set-clear-replays-to-the-execute-bytes.yaml
+  - scenarios/core/set-increment-adds-a-literal.yaml
+  - scenarios/core/set-increment-adds-an-argument.yaml
+  - scenarios/core/set-increment-overflow-is-refused.yaml
+  - scenarios/core/set-increment-registration-refusals.yaml
+  - scenarios/core/set-increment-replays-to-the-execute-bytes.yaml
+  - scenarios/core/set-increment-result-is-revalidated.yaml
   - scenarios/core/silent-execution-advances-once-with-no-events.yaml
   - scenarios/core/templates-recurse-escape-dollar-and-read-post-set-fields.yaml
   - scenarios/core/timestamp-48.yaml

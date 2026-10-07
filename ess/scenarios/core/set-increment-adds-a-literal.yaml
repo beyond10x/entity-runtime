@@ -1,0 +1,41 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "set-increment-adds-a-literal",
+  "summary": "An increment adds a literal to the pre-operation value under kernel/1 and a service/1 outcome; any other mapping stays a template.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true},\"total\":{\"type\":\"number\",\"required\":true},\"note\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"bump\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":1},\"total\":{\"increment\":0.25},\"note\":{\"increment\":1,\"by\":\"$fields.hits\"}},\"emits\":[{\"type\":\"Bumped\",\"payload\":{\"before\":\"$old_fields.hits\",\"after\":\"$fields.hits\"}}]}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":41,\"total\":1.5}}",
+        "operation": "bump",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42,\"note\":{\"by\":41,\"increment\":1},\"total\":1.75}}",
+        "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":2,\"type\":\"Bumped\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":42,\"note\":{\"by\":41,\"increment\":1},\"total\":1.75},\"args\":{},\"payload\":{\"after\":42,\"before\":41}}]"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"bump\":{\"outcomes\":[{\"name\":\"bumped\",\"effect\":\"updates\",\"set\":{\"hits\":{\"increment\":-3}},\"emits\":[{\"type\":\"Bumped\",\"payload\":{\"hits\":\"$fields.hits\"}}]}]}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":4,\"fields\":{\"hits\":10}}",
+        "operation": "bump",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "bumped",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":5,\"fields\":{\"hits\":7}}",
+        "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":5,\"type\":\"Bumped\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":7},\"args\":{},\"payload\":{\"hits\":7}}]"
+      }
+    }
+  ]
+}

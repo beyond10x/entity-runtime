@@ -1,0 +1,39 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "set-clear-invariants-judge-the-cleared-fields",
+  "summary": "Invariants run after the clear: one that needs the cleared field refuses the operation, one that does not admits it.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"reminder\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"snoozed_until\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Active\",\"states\":[\"Active\",\"Snoozed\"]},\"invariants\":[{\"name\":\"snoozed-has-a-wake-time\",\"assert\":{\"any\":[{\"ne\":[\"$state\",\"Snoozed\"]},{\"exists\":\"$fields.snoozed_until\"}]},\"message\":\"a snoozed reminder needs snoozed_until\"}],\"operations\":{\"forget\":{\"transitions\":[{\"from\":\"Snoozed\",\"to\":\"Snoozed\"}],\"set\":{\"snoozed_until\":{\"cleared\":true}}},\"wake\":{\"transitions\":[{\"from\":\"Snoozed\",\"to\":\"Active\"}],\"set\":{\"snoozed_until\":{\"cleared\":true}}}}}",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Snoozed\",\"revision\":2,\"fields\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"}}",
+        "operation": "forget",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_violation"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"reminder\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"snoozed_until\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Active\",\"states\":[\"Active\",\"Snoozed\"]},\"invariants\":[{\"name\":\"snoozed-has-a-wake-time\",\"assert\":{\"any\":[{\"ne\":[\"$state\",\"Snoozed\"]},{\"exists\":\"$fields.snoozed_until\"}]},\"message\":\"a snoozed reminder needs snoozed_until\"}],\"operations\":{\"forget\":{\"transitions\":[{\"from\":\"Snoozed\",\"to\":\"Snoozed\"}],\"set\":{\"snoozed_until\":{\"cleared\":true}}},\"wake\":{\"transitions\":[{\"from\":\"Snoozed\",\"to\":\"Active\"}],\"set\":{\"snoozed_until\":{\"cleared\":true}}}}}",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Snoozed\",\"revision\":2,\"fields\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"}}",
+        "operation": "wake",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":3,\"fields\":{\"title\":\"call back\"}}",
+        "events": "[]"
+      }
+    }
+  ]
+}

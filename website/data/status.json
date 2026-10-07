@@ -53,6 +53,20 @@
     },
     {
       "area": "Kernel",
+      "detail": "A set value written as increment: n adds n to a required integer or number field inside the decision, exactly, and a sum the field's kind cannot hold is refused rather than wrapped.",
+      "href": "/docs/reference/definitions",
+      "label": "Increment assignments",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
+      "detail": "A set value written as cleared: true leaves an optional field absent after the operation, names it in the decision's removed fields, and replays to the same bytes.",
+      "href": "/docs/reference/definitions",
+      "label": "Clear assignments",
+      "status": "shipped"
+    },
+    {
+      "area": "Kernel",
       "detail": "A ref field names another entity type; validate_all refuses a reference to a type nobody registered.",
       "href": "/docs/reference/definitions",
       "label": "Typed references",

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:set-clears-an-optional-field
 kind: story
-status: draft
+status: implemented
 title: 'A set: assignment clears an Optional field'
 owner: entity-runtime
 refs:
@@ -30,7 +30,11 @@ scope:
   path: docs/design/kernel-v0.1.md
 - confidence: inferred
   path: docs/design/service-semantics-v0.1.md
-revision: 10
+revision: 13
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-07T02:42:40Z", actor: "human:timo", revision: 11}
+- {from: "proposed", to: "active", at: "2026-10-07T02:42:40Z", actor: "human:timo", revision: 12}
+- {from: "active", to: "implemented", at: "2026-10-07T09:06:34Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"test_result":1,"review_outcome":1,"verification":1}}}
 ---
 # A `set:` assignment clears an Optional field
 

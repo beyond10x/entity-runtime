@@ -1,0 +1,77 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "returned-service2-operation-decisions-replay-and-reject-tampering",
+  "summary": "Operation set_if_present decisions, present then absent, replay to the returned instance; a forged change is refused.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}",
+        "id": "m-1",
+        "fields": "{\"title\":\"T\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "opened",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"title\":\"T\"}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"title\":\"T\"}}",
+        "operation": "annotate",
+        "arguments": "{\"bound\":{\"note\":\"memo\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "annotated",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}",
+        "operation": "annotate",
+        "arguments": "{\"bound\":{}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "annotated",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:03Z",
+      "command": "entity.core.ReplayReturned",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:04Z",
+      "command": "entity.core.ReplayTampered",
+      "input": {
+        "patch": "{\"changed\":{\"note\":\"memo\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    }
+  ]
+}

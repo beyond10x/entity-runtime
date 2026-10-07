@@ -1,0 +1,98 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "set-increment-overflow-is-refused",
+  "summary": "A sum outside the range the field's kind holds under its semantics is refused as increment_overflow, never wrapped.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":18446744073709551615}}",
+        "operation": "add",
+        "arguments": "{\"by\":1}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "increment_overflow"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":9223372036854775807}}",
+        "operation": "add",
+        "arguments": "{\"by\":1}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":9223372036854775808}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":-9223372036854775808}}",
+        "operation": "add",
+        "arguments": "{\"by\":-1}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "increment_overflow"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:03Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"outcomes\":[{\"name\":\"added\",\"effect\":\"updates\",\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}]}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":9223372036854775807}}",
+        "operation": "add",
+        "arguments": "{\"by\":1}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "increment_overflow"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:04Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"wallet\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"total\":{\"type\":\"number\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"deposit\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"number\",\"required\":true}}},\"outcomes\":[{\"name\":\"deposited\",\"effect\":\"updates\",\"set\":{\"total\":{\"increment\":\"$args.by\"}}}]}}}",
+        "instance": "{\"entity\":\"wallet\",\"version\":1,\"id\":\"w-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"total\":1.7976931348623157E+308}}",
+        "operation": "deposit",
+        "arguments": "{\"by\":1.7976931348623157E+308}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "increment_overflow"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:05Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"wallet\",\"version\":1,\"schema\":{\"fields\":{\"total\":{\"type\":\"number\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"deposit\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"number\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"total\":{\"increment\":\"$args.by\"}}}}}",
+        "instance": "{\"entity\":\"wallet\",\"version\":1,\"id\":\"w-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"total\":1E+2000}}",
+        "operation": "deposit",
+        "arguments": "{\"by\":1}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "increment_overflow"
+      }
+    }
+  ]
+}

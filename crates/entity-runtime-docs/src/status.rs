@@ -123,6 +123,20 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Kernel",
+        "Increment assignments",
+        "A set value written as increment: n adds n to a required integer or number field inside the decision, exactly, and a sum the field's kind cannot hold is refused rather than wrapped.",
+        "crates/entity-core/tests/requirements.rs::an_integer_increment_outside_the_kernel_1_range_is_refused_as_overflow_and_never_wraps",
+        "/docs/reference/definitions",
+    ),
+    shipped(
+        "Kernel",
+        "Clear assignments",
+        "A set value written as cleared: true leaves an optional field absent after the operation, names it in the decision's removed fields, and replays to the same bytes.",
+        "crates/entity-core/tests/requirements.rs::a_cleared_field_leaves_the_instance_and_the_decision_names_it_removed",
+        "/docs/reference/definitions",
+    ),
+    shipped(
+        "Kernel",
         "Typed references",
         "A ref field names another entity type; validate_all refuses a reference to a type nobody registered.",
         "crates/entity-core/tests/requirements.rs::validate_all_names_every_reference_whose_type_nobody_registered",

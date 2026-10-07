@@ -182,15 +182,6 @@ pub enum DefinitionError {
         /// The duplicated field.
         field: String,
     },
-    /// Conditional state insertion was declared on an operation rather than creation.
-    ConditionalSetOnOperation {
-        /// The operation.
-        operation: String,
-        /// The outcome.
-        outcome: String,
-        /// The field it tried to insert.
-        field: String,
-    },
     /// Operation-field fulfillment was declared on a creation branch.
     FulfillmentOnCreate {
         /// The creation outcome.
@@ -218,6 +209,18 @@ pub enum DefinitionError {
     },
     /// One field is present in both `set` and `fulfills`.
     FulfillmentSetConflict {
+        /// The operation.
+        operation: String,
+        /// The outcome.
+        outcome: String,
+        /// The conflicting field.
+        field: String,
+    },
+    /// One field is present in both `set_if_present` and `fulfills`.
+    ///
+    /// The host's action and the copied argument would both decide the field, and the branch
+    /// would not say which one wins.
+    FulfillmentConditionalSetConflict {
         /// The operation.
         operation: String,
         /// The outcome.
@@ -512,6 +515,71 @@ pub enum DefinitionError {
         /// The scale.
         scale: String,
     },
+    /// A `set` entry `{increment: …}` names a field an increment cannot add to: one the schema
+    /// does not declare, one whose kind is not `integer` or `number`, or one that is not
+    /// `required` and so may be absent, where absent plus `n` has no value.
+    IncrementTargetInvalid {
+        /// Where, such as `operations.bump.set.hits`.
+        path: String,
+        /// The field.
+        field: String,
+        /// What is wrong.
+        message: String,
+    },
+    /// An increment's amount is not a number the field's kind can add, or may be absent: a literal
+    /// that is not a number of the field's kind, or a reference without a declared numeric type
+    /// that every segment of its path guarantees present.
+    IncrementAmountInvalid {
+        /// Where, such as `operations.bump.set.hits.increment`.
+        path: String,
+        /// What is wrong.
+        message: String,
+    },
+    /// A creation branch's `set` increments a field, which has no value before the creation.
+    IncrementOnCreate {
+        /// Where, such as `create.outcomes.opened.set.hits`.
+        path: String,
+        /// The field.
+        field: String,
+    },
+    /// A `set` entry `{cleared: …}` names a field a clear cannot remove: one the schema does not
+    /// declare, or one that is `required` and so always present.
+    ClearTargetInvalid {
+        /// Where, such as `operations.wake.set.title`.
+        path: String,
+        /// The field.
+        field: String,
+        /// What is wrong.
+        message: String,
+    },
+    /// A `set` entry `{cleared: …}` carries anything but the literal `true`. A clear is stated,
+    /// not computed, so `false`, a reference or any other value is a defect rather than a no-op.
+    ClearFlagInvalid {
+        /// Where, such as `operations.wake.set.note.cleared`.
+        path: String,
+        /// The field.
+        field: String,
+        /// The flag as written.
+        flag: String,
+    },
+    /// A creation branch's `set` clears a field. A creation writes only what its branch sets and
+    /// its schema defaults, so a field it does not mention is already absent.
+    ClearOnCreate {
+        /// Where, such as `create.outcomes.opened.set.note`.
+        path: String,
+        /// The field.
+        field: String,
+    },
+    /// A `set` value is a mapping of two or more assignment keywords and nothing else, such as
+    /// `{cleared: true, increment: 1}`: two assignments of one field.
+    SetAssignmentConflict {
+        /// Where, such as `operations.wake.set.hits`.
+        path: String,
+        /// The field.
+        field: String,
+        /// The keywords the value names, in order.
+        keywords: Vec<String>,
+    },
 }
 
 impl DefinitionError {
@@ -542,11 +610,13 @@ impl DefinitionError {
             Self::ConditionalArgumentInvalid { .. } => "conditional_argument_invalid",
             Self::ConditionalTargetInvalid { .. } => "conditional_target_invalid",
             Self::ConditionalTargetConflict { .. } => "conditional_target_conflict",
-            Self::ConditionalSetOnOperation { .. } => "conditional_set_on_operation",
             Self::FulfillmentOnCreate { .. } => "fulfillment_on_create",
             Self::FulfillmentFieldUnknown { .. } => "fulfillment_field_unknown",
             Self::FulfillmentIdentityField { .. } => "fulfillment_identity_field",
             Self::FulfillmentSetConflict { .. } => "fulfillment_set_conflict",
+            Self::FulfillmentConditionalSetConflict { .. } => {
+                "fulfillment_conditional_set_conflict"
+            }
             Self::FulfillmentPresenceMismatch { .. } => "fulfillment_presence_mismatch",
             Self::EmptyOutcomeName { .. } => "empty_outcome_name",
             Self::DuplicateOutcome { .. } => "duplicate_outcome",
@@ -584,6 +654,13 @@ impl DefinitionError {
             Self::CompareOperandNotAddressable { .. } => "compare_operand_not_addressable",
             Self::ScaleUnnamed => "scale_unnamed",
             Self::ScaleEmpty { .. } => "scale_empty",
+            Self::IncrementTargetInvalid { .. } => "increment_target_invalid",
+            Self::IncrementAmountInvalid { .. } => "increment_amount_invalid",
+            Self::IncrementOnCreate { .. } => "increment_on_create",
+            Self::ClearTargetInvalid { .. } => "clear_target_invalid",
+            Self::ClearFlagInvalid { .. } => "clear_flag_invalid",
+            Self::ClearOnCreate { .. } => "clear_on_create",
+            Self::SetAssignmentConflict { .. } => "set_assignment_conflict",
         }
     }
 }
@@ -699,14 +776,6 @@ impl fmt::Display for DefinitionError {
                 f,
                 "conditional target '{field}' at '{path}' is also produced by the ordinary map"
             ),
-            Self::ConditionalSetOnOperation {
-                operation,
-                outcome,
-                field,
-            } => write!(
-                f,
-                "operation '{operation}' outcome '{outcome}' conditionally writes field '{field}'; conditional state insertion is creation-only"
-            ),
             Self::FulfillmentOnCreate { outcome, field } => write!(
                 f,
                 "creation outcome '{outcome}' requests fulfillment for field '{field}'; fulfillment is operation-only"
@@ -734,6 +803,14 @@ impl fmt::Display for DefinitionError {
             } => write!(
                 f,
                 "operation '{operation}' outcome '{outcome}' names field '{field}' in both `set` and `fulfills`"
+            ),
+            Self::FulfillmentConditionalSetConflict {
+                operation,
+                outcome,
+                field,
+            } => write!(
+                f,
+                "operation '{operation}' outcome '{outcome}' names field '{field}' in both `set_if_present` and `fulfills`"
             ),
             Self::FulfillmentPresenceMismatch {
                 operation,
@@ -951,6 +1028,47 @@ impl fmt::Display for DefinitionError {
             Self::ScaleEmpty { scale } => {
                 write!(f, "scale '{scale}' declares no values")
             }
+            Self::IncrementTargetInvalid {
+                path,
+                field,
+                message,
+            } => write!(
+                f,
+                "increment of '{field}' at '{path}' is invalid: {message}"
+            ),
+            Self::IncrementAmountInvalid { path, message } => {
+                write!(f, "increment amount at '{path}' is invalid: {message}")
+            }
+            Self::IncrementOnCreate { path, field } => write!(
+                f,
+                "creation increments '{field}' at '{path}'; a field has no value to add to before \
+                 the creation, so an increment is an operation's assignment only"
+            ),
+            Self::ClearTargetInvalid {
+                path,
+                field,
+                message,
+            } => write!(f, "clear of '{field}' at '{path}' is invalid: {message}"),
+            Self::ClearFlagInvalid { path, field, flag } => write!(
+                f,
+                "clear of '{field}' at '{path}' carries {flag}; a clear is written \
+                 {{cleared: true}} and nothing else"
+            ),
+            Self::ClearOnCreate { path, field } => write!(
+                f,
+                "creation clears '{field}' at '{path}'; a creation writes only what it sets and \
+                 its defaults, so a field it leaves out is already absent and a clear is an \
+                 operation's assignment only"
+            ),
+            Self::SetAssignmentConflict {
+                path,
+                field,
+                keywords,
+            } => write!(
+                f,
+                "'{field}' at '{path}' names the assignments {}; a field takes one assignment",
+                keywords.join(" and ")
+            ),
         }
     }
 }
@@ -1330,6 +1448,24 @@ pub enum CoreError {
         /// The required field.
         field: String,
     },
+    /// An increment's exact sum is outside what the field's kind holds under the definition's
+    /// semantics, so it is refused at step 8 rather than wrapped, saturated or rounded.
+    ///
+    /// `kernel/1` integers span `i64` and `u64` together; service integers span `i64`; a service
+    /// number is a finite binary64. A `number` sum is computed by aligning both operands, and two
+    /// operands spanning more than 1,024 decimal places, the units place included, have no sum.
+    IncrementOverflow {
+        /// The operation.
+        operation: String,
+        /// The field.
+        field: String,
+        /// The value the instance held, as written.
+        value: String,
+        /// The amount, as resolved.
+        amount: String,
+        /// What the field's kind holds here.
+        range: String,
+    },
 }
 
 impl CoreError {
@@ -1360,6 +1496,7 @@ impl CoreError {
             Self::FulfillmentRequired { .. } => "fulfillment_required",
             Self::FulfillmentKeysMismatch { .. } => "fulfillment_keys_mismatch",
             Self::RequiredFieldRemoval { .. } => "required_field_removal",
+            Self::IncrementOverflow { .. } => "increment_overflow",
         }
     }
 }
@@ -1534,6 +1671,17 @@ impl fmt::Display for CoreError {
             } => write!(
                 f,
                 "operation '{operation}' outcome '{outcome}' cannot remove required field '{field}'"
+            ),
+            Self::IncrementOverflow {
+                operation,
+                field,
+                value,
+                amount,
+                range,
+            } => write!(
+                f,
+                "operation '{operation}' increments '{field}' from {value} by {amount}, and the \
+                 sum is outside {range}; it is refused, not wrapped"
             ),
         }
     }

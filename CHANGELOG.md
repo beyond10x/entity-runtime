@@ -4,6 +4,82 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- A `service/2` or `service/3` operation outcome may declare `set_if_present`, as a creation
+  outcome already could. When the named optional argument leaf is present, the field takes its
+  value, inserted or replaced; when it is absent, the field is left as it was, present with its old
+  value or absent. The schema check, invariants, events, response and `changed` read the result,
+  and replay reproduces it. The destination keeps the creation rule — a declared optional field
+  with no default and the argument leaf's exact definition — so a required field is refused as the
+  destination on an operation too. No parent on the operation map's argument path may declare a
+  default, since normalization would then make the leaf present for a caller who sent none; such a
+  definition is refused as `conditional_argument_invalid`. `kernel/1` and `service/1` still refuse
+  the key.
+- A `service/3` outcome naming one field in both `fulfills` and `set_if_present` is refused at
+  registration as `DefinitionError::FulfillmentConditionalSetConflict`
+  (`fulfillment_conditional_set_conflict`).
+- An operation's `set`, and an operation outcome's `set`, may write `{increment: n}` under every
+  semantics: the field becomes its value before the operation plus `n`, a number or a template
+  that resolves to one, and a negative `n` decrements. The sum is exact (`0.1` plus `0.2` is `0.3`)
+  and computed inside the decision, so the record carries it and replay reproduces it. A sum the
+  field's kind cannot hold — outside `i64` and `u64` for a `kernel/1` integer, outside `i64` for a
+  service integer, no finite binary64 for a service number — is refused as
+  `CoreError::IncrementOverflow` (`increment_overflow`) instead of reaching the schema check as a
+  wrong type; a sum past `min` or `max` is still `validation`. `SetAssignment::of` reads a `set`
+  value the way the kernel does.
+- Registration refuses an increment on a creation outcome (`increment_on_create`), on a field that
+  is not a declared required `integer` or `number` (`increment_target_invalid`), and with an amount
+  that is not an always-present number of the field's kind (`increment_amount_invalid`), each with
+  its path.
+- An operation's `set`, and an operation outcome's `set`, may write `{cleared: true}` under every
+  semantics: the field is absent after the operation, and the decision and every event it emits
+  name it in `removed` — also when it was already absent, which is accepted. The schema check,
+  invariants, events and response read the instance without it, so an invariant that needs the
+  field refuses the operation, and replay reproduces the decision. A field with a declared
+  `default` may be cleared; the default fills it at creation only.
+- Registration refuses a clear on a field the schema requires or does not declare
+  (`clear_target_invalid`), with a flag other than `true` (`clear_flag_invalid`), on a creation
+  outcome (`clear_on_create`), and a `set` value naming both `cleared` and `increment`
+  (`set_assignment_conflict`), each with its path. A cleared field also named in the outcome's
+  `set_if_present` or `fulfills` is refused as `conditional_target_conflict` or
+  `fulfillment_set_conflict`.
+
+### Changed
+
+- A `set` value that is a mapping whose only key is `increment` is now an increment, not an object
+  template, so an `object` or `json` field can no longer be written with that one literal mapping;
+  registration refuses it as `increment_target_invalid`, and on a creation outcome as
+  `increment_on_create`. A mapping with any second key that is not an assignment keyword is
+  still an object template. `CoreError` and `DefinitionError` gain variants, so an exhaustive
+  `match` on either needs new arms.
+- A `set` value that is a mapping whose only key is `cleared` is now a clear, not an object
+  template, so an `object` or `json` field can no longer be written with that one literal mapping.
+  A mapping of `cleared` and `increment` and nothing else, which wrote that object into a `json`
+  or `object` field before, is now refused at registration as `set_assignment_conflict`.
+  `SetAssignment` gains `Cleared` and `Conflicting`, and `DefinitionError` four variants.
+- Upgrade every process that writes a store to this release before any definition uses
+  `{cleared: true}` on a `json` or `object` field, or any field whose schema admits the object
+  `{"cleared": true}`. A build before this release reads the value as an object template and
+  writes that literal object into the field where this release removes it; once it appends that
+  decision, replay refuses the store. On a field the object does not fit, an older build refuses
+  the operation instead.
+- `rehydrate` no longer refuses every `kernel/1` event that carries `removed`: an operation event
+  may name exactly the fields its operation's `set` clears. Removal evidence on a creation event,
+  or naming a field no operation emitting the event on its transition clears, is still refused.
+  An entity-core before 0.19.0 drops `removed` from an event unread, and its fold returns a
+  cleared field still present; from 0.19.0 an older fold refuses the event.
+- The OpenAPI `DomainEvent` schema and every AsyncAPI event message `entity generate docs` writes
+  declare the optional `removed` array. Before, both closed the event without it, so they refused
+  every event that carried it: a clear's, and already a `service/3` fulfillment `Remove`'s.
+
+- `DefinitionError::ConditionalSetOnOperation` (`conditional_set_on_operation`) is removed: every
+  definition it refused is now admitted, and `kernel/1` and `service/1` refuse the key earlier as
+  `semantics_key_not_available`, so nothing could return it. Code that names the variant no longer
+  compiles. A build before this release refuses a definition with an operation `set_if_present`,
+  and so a history recorded under one, as `conditional_set_on_operation` rather than ignoring the
+  map; open a store holding such records with this release or later.
+
 ## [0.29.0] — 2026-10-07
 
 ### Added

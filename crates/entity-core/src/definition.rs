@@ -11,7 +11,7 @@
 //! would silently enforce less than it says, so it is refused where it is read.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Number, Value};
+use serde_json::{Map, Number, Value};
 use std::collections::BTreeMap;
 
 fn default_version() -> u32 {
@@ -704,7 +704,8 @@ pub struct OperationDefinition {
 
     /// Field assignments applied after the transition is selected and the preconditions hold.
     ///
-    /// Values are templates. Every assignment is resolved against the *pre-operation* fields, so
+    /// Each value is a template or a typed assignment, `{increment: n}` or `{cleared: true}`, told
+    /// apart by [`SetAssignment::of`]. Every assignment is resolved against the *pre-operation* fields, so
     /// the map has no ordering semantics and the result is the same whatever order the entries are
     /// written in.
     #[serde(default)]
@@ -722,6 +723,79 @@ pub struct OperationDefinition {
     /// The ordered named branches of the operation. `service/1` only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub outcomes: Vec<OutcomeDefinition>,
+}
+
+/// How one `set:` value is read: a template, or a typed assignment.
+///
+/// **The rule:** a mapping whose every key is an assignment keyword is a typed assignment — the
+/// assignment its one key names, or, with two or more keyword keys and nothing else,
+/// [`Conflicting`](Self::Conflicting), which registration refuses because a field takes one
+/// assignment. Every other value — a scalar, a list, an empty mapping, or a mapping with any key
+/// that is not a keyword — is a template, read exactly as before. The keywords are `increment` and
+/// `cleared` ([`SetAssignment::KEYWORDS`]).
+///
+/// The value stays a [`Value`] in [`OperationDefinition::set`] and [`OutcomeDefinition::set`]
+/// rather than becoming this type, and that is deliberate. A definition serializes to the bytes it
+/// had, so every recorded definition snapshot and every [`Debug`] rendering of one is unchanged;
+/// the field keeps its public type, which five other repositories build and read; and the plain
+/// mapping loads through every front door, a YAML reader that takes an externally tagged enum only
+/// in its `!tag` form included. Every reader in this crate goes through [`SetAssignment::of`], so
+/// the rule is written once. `docs/design/kernel-v0.1.md` § 3.3 records the decision.
+///
+/// The shapes are reserved for every field: registration refuses `{increment: …}` on a field that
+/// is not a required `integer` or `number`, and `{cleared: …}` on a field that is not a declared
+/// optional one, so an object or `json` field can no longer be written with either one-key literal.
+/// A mapping with any key that is not a keyword is still an object template.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub enum SetAssignment<'a> {
+    /// A template, resolved against the pre-operation fields.
+    Template(&'a Value),
+    /// `{increment: n}`: the field's pre-operation value plus `n`, computed exactly inside the
+    /// decision. `n` is a number literal or a template the operation's scope resolves to a number;
+    /// a negative `n` decrements.
+    Increment(&'a Value),
+    /// `{cleared: true}`: the field is absent after the operation, whether or not it was present
+    /// before, and the decision names it in its `removed` set. Carries the flag as written;
+    /// registration admits only `true`.
+    Cleared(&'a Value),
+    /// Two or more keyword keys and nothing else, such as `{cleared: true, increment: 1}`: two
+    /// assignments of one field, which registration refuses.
+    Conflicting(&'a Map<String, Value>),
+}
+
+impl<'a> SetAssignment<'a> {
+    /// The key of an increment assignment.
+    pub const INCREMENT: &'static str = "increment";
+
+    /// The key of a clear assignment.
+    pub const CLEARED: &'static str = "cleared";
+
+    /// Every assignment keyword, in the order the documentation lists them.
+    pub const KEYWORDS: &'static [&'static str] = &[Self::INCREMENT, Self::CLEARED];
+
+    /// Reads one `set:` value.
+    #[must_use]
+    pub fn of(value: &'a Value) -> Self {
+        let Value::Object(members) = value else {
+            return Self::Template(value);
+        };
+        if members.is_empty()
+            || !members
+                .keys()
+                .all(|key| Self::KEYWORDS.contains(&key.as_str()))
+        {
+            return Self::Template(value);
+        }
+        if members.len() > 1 {
+            return Self::Conflicting(members);
+        }
+        match members.iter().next() {
+            Some((key, operand)) if key == Self::INCREMENT => Self::Increment(operand),
+            Some((key, operand)) if key == Self::CLEARED => Self::Cleared(operand),
+            _ => Self::Template(value),
+        }
+    }
 }
 
 /// One named branch of a creation or an operation.
@@ -759,7 +833,9 @@ pub struct OutcomeDefinition {
     #[serde(default, skip_serializing_if = "OutcomeEffect::is_none")]
     pub effect: OutcomeEffect,
 
-    /// Field assignments, resolved against the pre-operation fields.
+    /// Field assignments, resolved against the pre-operation fields. Each value is a template or a
+    /// typed assignment, told apart by [`SetAssignment::of`]; a creation branch admits templates
+    /// only.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub set: BTreeMap<String, Value>,
 
@@ -767,7 +843,9 @@ pub struct OutcomeDefinition {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fulfills: BTreeMap<String, OperationFieldRequirement>,
 
-    /// Creation fields copied from optional argument leaves when those leaves are present.
+    /// Entity fields copied from optional argument leaves when those leaves are present, on a
+    /// creation or an operation branch. On an operation an absent leaf writes nothing, so the field
+    /// keeps the value it held, or stays absent.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub set_if_present: BTreeMap<String, PresentArgument>,
 

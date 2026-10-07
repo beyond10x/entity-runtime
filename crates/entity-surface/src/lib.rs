@@ -446,6 +446,11 @@ fn recording_schema() -> Value {
     })
 }
 
+/// The `DomainEvent` both projections publish, closed as the kernel's type is.
+///
+/// `removed` is optional because the kernel omits it when empty: it names the fields a decision
+/// left absent, through a `set` clear under every semantics or a `service/3` fulfillment `Remove`,
+/// so an event of any definition may carry it.
 fn domain_event_schema() -> Value {
     json!({
         "type": "object", "additionalProperties": false,
@@ -455,6 +460,7 @@ fn domain_event_schema() -> Value {
             "id": { "type": "string" }, "revision": { "type": "integer", "minimum": 1 },
             "type": { "type": "string" }, "from_state": { "type": ["string", "null"] },
             "to_state": { "type": "string" }, "changed": { "type": "object" },
+            "removed": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
             "args": { "type": "object" }, "payload": {}
         }
     })
