@@ -139,6 +139,7 @@
       "entity.core/authored/service1-bare-state-guard-is-a-selector",
       "entity.core/authored/service1-binary64-refuses-nonfinite-magnitude",
       "entity.core/authored/service1-binary64-retains-negative-zero",
+      "entity.core/authored/service1-collection-address-declared-kind",
       "entity.core/authored/service1-collection-count",
       "entity.core/authored/service1-compare-missing",
       "entity.core/authored/service1-compare-number",
@@ -1032,6 +1033,11 @@
         "digest": "sha256:2d8d58bb9438f88765f6de4d7e702349e8e004d63a37374c667c27c30fbb5f5c",
         "disposition": "accepted",
         "scenario": "entity.core/authored/service1-binary64-retains-negative-zero"
+      },
+      "scenarios/core/service1-collection-address-declared-kind.yaml": {
+        "digest": "sha256:d0edbc20737c6ff709355939092de9b7fddf75087eda1de7b76b528ee688decd",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-collection-address-declared-kind"
       },
       "scenarios/core/service1-collection-count.yaml": {
         "digest": "sha256:c0d683edcc5a7f325a2efa9e673a1c7f6c831fe5fe992b47ce7ce387bbc4f118",
@@ -2045,7 +2051,7 @@
       }
     },
     "counts": {
-      "authored": 340,
+      "authored": 341,
       "generated": 111,
       "outside": 0,
       "refused": 0
@@ -43712,6 +43718,492 @@
             ],
             "outcome": {
               "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service1-collection-address-declared-kind": {
+      "purpose": "A stored value whose kind disagrees with its declared map, array or object answers no collection address, so the precondition reading it is unobservable.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"meta\":[1,2,3,4,5,6,7]}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "CountMeta"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "precondition_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$fields.meta.count"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"tags\":{\"count\":7}}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "CountTags"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "precondition_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$fields.tags.count"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"tags\":{\"0\":7}}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "FirstTag"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "precondition_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$fields.tags.0"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"stats\":[1,2,3,4,5,6,7]}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "StatsCount"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "precondition_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$fields.stats.count"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
               "outcome": "returned"
             }
           },

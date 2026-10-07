@@ -1488,6 +1488,166 @@ fn an_array_ordinal_address_resolves_under_service_1_only() {
     );
 }
 
+/// Executes `touch`, whose one precondition is `<address> lte 5`, over an instance whose optional
+/// field `held` is declared as `declaration` and holds `stored`.
+///
+/// The instance is created without the field and the value is put in afterwards, because only a
+/// stored instance can disagree with its definition: arguments are validated before any rule reads
+/// them, and no store validates an instance on load.
+fn execute_over_stored(declaration: Value, address: &str, stored: Value) -> Result<(), CoreError> {
+    execute_over_stored_in(
+        json!({ "fields": { "held": declaration } }),
+        address,
+        stored,
+    )
+}
+
+/// The same over a whole `schema`, where `held` may be declared by nothing at all.
+fn execute_over_stored_in(schema: Value, address: &str, stored: Value) -> Result<(), CoreError> {
+    let validated = ValidatedDefinition::new(definition(json!({
+        "entity": "probe", "version": 1, "semantics": "service/1",
+        "schema": schema,
+        "lifecycle": { "initial": "held", "states": ["held"] },
+        "operations": { "touch": {
+            "transitions": [{ "from": "held", "to": "held" }],
+            "preconditions": [{
+                "name": "few",
+                "assert": compare(address, "lte", 5),
+                "message": "at most five"
+            }]
+        }}
+    })))
+    .expect("registers");
+    let mut instance = create(&validated, "p-1".to_owned(), json!({}))
+        .expect("creates")
+        .instance;
+    instance.fields.insert("held".to_owned(), stored);
+    entity_core::execute(&validated, &instance, "touch", json!({})).map(|_| ())
+}
+
+/// Whether `outcome` is the precondition refused as unobservable at exactly `address`.
+fn unobservable_at(outcome: &Result<(), CoreError>, address: &str) -> bool {
+    matches!(
+        outcome,
+        Err(CoreError::PreconditionUnobservable { unresolved, .. })
+            if unresolved == &[address.to_owned()]
+    )
+}
+
+/// A declared `map`'s only `count` is its size, so a stored value that is not an object has none —
+/// not the length of the array the store happens to hold.
+#[test]
+fn a_stored_map_holding_an_array_answers_no_count() {
+    let map = json!({ "type": "map", "key": "string", "items": { "type": "integer" } });
+    let outcome = execute_over_stored(
+        map.clone(),
+        "$fields.held.count",
+        json!([1, 2, 3, 4, 5, 6, 7]),
+    );
+    assert!(
+        unobservable_at(&outcome, "$fields.held.count"),
+        "a declared map holding an array answered the array's length: {outcome:?}"
+    );
+    // The same address over a conforming map reads its size, 7, which `lte 5` refuses.
+    let conforming = execute_over_stored(
+        map,
+        "$fields.held.count",
+        json!({ "a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7 }),
+    );
+    assert!(
+        matches!(conforming, Err(CoreError::PreconditionFailed { .. })),
+        "{conforming:?}"
+    );
+}
+
+/// A declared `array` addresses its length and its elements, and has no members by name, so a
+/// stored object's `count` member is not read as the array's length.
+#[test]
+fn a_stored_array_holding_an_object_answers_no_count() {
+    let array = json!({ "type": "array", "items": { "type": "integer" } });
+    let outcome = execute_over_stored(array.clone(), "$fields.held.count", json!({ "count": 7 }));
+    assert!(
+        unobservable_at(&outcome, "$fields.held.count"),
+        "a declared array holding an object answered its `count` member: {outcome:?}"
+    );
+    let conforming = execute_over_stored(array, "$fields.held.count", json!([1, 2, 3, 4, 5, 6, 7]));
+    assert!(
+        matches!(conforming, Err(CoreError::PreconditionFailed { .. })),
+        "{conforming:?}"
+    );
+}
+
+/// The ordinal form of the same defect: a stored object's member named `"0"` is not the declared
+/// array's first element.
+#[test]
+fn a_stored_array_holding_an_object_answers_no_element() {
+    let array = json!({ "type": "array", "items": { "type": "integer" } });
+    let outcome = execute_over_stored(array.clone(), "$fields.held.0", json!({ "0": 7 }));
+    assert!(
+        unobservable_at(&outcome, "$fields.held.0"),
+        "a declared array holding an object answered its `0` member: {outcome:?}"
+    );
+    let conforming = execute_over_stored(array, "$fields.held.0", json!([7]));
+    assert!(
+        matches!(conforming, Err(CoreError::PreconditionFailed { .. })),
+        "{conforming:?}"
+    );
+}
+
+/// The array forms belong to a value declared an `array`, so every other declaration registration
+/// admits `count` under — an object's `count` property, an open object's undeclared member, a union
+/// variant's payload — answers nothing from the size of an array the store holds instead.
+#[test]
+fn a_stored_array_under_another_declared_kind_answers_no_count_from_its_size() {
+    let seven = json!([1, 2, 3, 4, 5, 6, 7]);
+    for (declaration, address, stored) in [
+        (
+            json!({ "type": "object", "properties": { "count": { "type": "integer" } } }),
+            "$fields.held.count",
+            seven.clone(),
+        ),
+        (
+            json!({ "type": "object", "additional_properties": true }),
+            "$fields.held.count",
+            seven.clone(),
+        ),
+        (
+            json!({ "type": "union", "tag": "kind", "variants": {
+                "name": { "type": "string", "required": true }
+            }}),
+            "$fields.held.value.count",
+            json!({ "kind": "name", "value": seven.clone() }),
+        ),
+    ] {
+        let outcome = execute_over_stored(declaration, address, stored);
+        assert!(
+            unobservable_at(&outcome, address),
+            "{address} answered the size of an array its declaration does not allow: {outcome:?}"
+        );
+    }
+}
+
+/// The other half of keying on the declaration: a value nothing types — a `json` field, an open
+/// schema's undeclared field — keeps the collection addresses it had, read from the value.
+#[test]
+fn a_value_nothing_types_keeps_its_collection_addresses() {
+    for schema in [
+        json!({ "fields": { "held": { "type": "json" } } }),
+        json!({ "fields": {}, "additional_fields": true }),
+    ] {
+        for (address, stored) in [
+            ("$fields.held.count", json!([1, 2, 3, 4, 5, 6, 7])),
+            ("$fields.held.0", json!([7])),
+        ] {
+            let outcome = execute_over_stored_in(schema.clone(), address, stored);
+            assert!(
+                matches!(outcome, Err(CoreError::PreconditionFailed { .. })),
+                "{address} under {schema} no longer reads 7 from the value: {outcome:?}"
+            );
+        }
+    }
+}
+
 // --- § 10.6: the length of a text ----------------------------------------------------------------
 
 /// A schema with one optional `string` field named `name`.

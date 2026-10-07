@@ -3007,7 +3007,8 @@ impl TemplateContext<'_> {
 /// `<array>.<n>` resolve to nothing and every existing definition keeps the answer it has. Under
 /// `service/1` those address forms resolve, and a declared `map`'s **keys** stay unaddressable: the
 /// only `count` a map has is its size, so `{metadata: {count: "7"}}` cannot be read as its own
-/// `count` key.
+/// `count` key. Each form answers only for the kind its declaration names, so a stored value of
+/// another kind answers nothing rather than another kind's size.
 fn lookup(
     root: &Map<String, Value>,
     path: &str,
@@ -3067,8 +3068,9 @@ fn walk(
                 Some(rest) => walk(&next, rest, next_field, checked, service),
             };
         }
-        // A declared map's keys are not addressable, so nothing but its size resolves.
-        if field.is_some_and(|field| field.kind == FieldKind::Map) {
+        // A declared map's keys and a declared array's members are not addressable, so nothing
+        // but the collection forms resolves past either, whatever the stored value is.
+        if field.is_some_and(|field| matches!(field.kind, FieldKind::Map | FieldKind::Array)) {
             return None;
         }
     }
@@ -3114,20 +3116,29 @@ fn selected_variant<'a>(
 
 /// The two `service/1` collection address forms, with the field the walk continues under, or
 /// `None` where neither applies.
+///
+/// **Keyed on the declaration where there is one.** A map's size is read only under a declared
+/// `map`, and an array's length and elements only under a declared `array` or where nothing types
+/// the value (no declaration, or `json`). A stored value whose kind disagrees with its declaration
+/// — no store validates an instance on load — answers what the declaration says it has, so a
+/// declared map holding an array has no size and a declared object holding one has no length.
 fn collection_address<'a>(
     value: &Value,
     field: Option<&'a crate::FieldDefinition>,
     segment: &str,
 ) -> Option<(Value, Option<&'a crate::FieldDefinition>)> {
     let declared = field.map(|field| field.kind);
+    let array = matches!(declared, None | Some(FieldKind::Array | FieldKind::Json));
     match value {
         // A declared map's size, and nothing else it holds.
         Value::Object(members) if declared == Some(FieldKind::Map) && segment == "count" => {
             Some((Value::from(members.len()), None))
         }
-        Value::Array(values) if segment == "count" => Some((Value::from(values.len()), None)),
+        Value::Array(values) if array && segment == "count" => {
+            Some((Value::from(values.len()), None))
+        }
         // `0`, or a digit string with no leading zero.
-        Value::Array(values) => {
+        Value::Array(values) if array => {
             if segment != "0" && segment.starts_with('0') {
                 return None;
             }
