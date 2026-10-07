@@ -117,6 +117,6 @@ A refused definition reports every defect, each with one of these kinds.
   `quantifier_body_scope`, `condition_too_deep`, `compare_operand_not_addressable`,
   `scale_unnamed`, `scale_empty`.
 - Optional values and field actions (`service/2`, `service/3`): `conditional_argument_invalid`,
-  `conditional_target_invalid`, `conditional_target_conflict`, `conditional_set_on_operation`,
-  `fulfillment_on_create`, `fulfillment_field_unknown`, `fulfillment_identity_field`,
-  `fulfillment_set_conflict`, `fulfillment_presence_mismatch`.
+  `conditional_target_invalid`, `conditional_target_conflict`, `fulfillment_on_create`,
+  `fulfillment_field_unknown`, `fulfillment_identity_field`, `fulfillment_set_conflict`,
+  `fulfillment_conditional_set_conflict`, `fulfillment_presence_mismatch`.

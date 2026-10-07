@@ -271,7 +271,7 @@ responses is planned.
 | Semantics | Adds | Record and request framing |
 |---|---|---|
 | `service/1` | named outcomes, effects, declared refusals and responses; identity, relations, the new field kinds and operators; text length and alphabets (0.27.0) | `er.record/2`, `er.request/2` |
-| `service/2` | an optional argument copied into creation state, events and responses keeps its absence through replay and retry | `er.record/3`, `er.request/3` |
+| `service/2` | an optional argument copied into creation or operation state, events and responses keeps its absence through replay and retry; on an operation an absent argument leaves the field as it was | `er.record/3`, `er.request/3` |
 | `service/3` | after the loaded outcome is selected, an operation may ask the host for typed `Set`, `Preserve` and optional `Remove` actions on its fields; events, responses and replay use the resulting values | `er.record/4`, `er.request/4` |
 
 `kernel/1` records stay `er.record/1`. A reader that knows only an older framing refuses a newer

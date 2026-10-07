@@ -1138,6 +1138,7 @@ pub fn decide_before_load<'definition>(
 ///   6  a refusing branch returns here                           Evaluation::Refused
 ///   7  preconditions, against current state + arguments         PreconditionFailed
 ///   8  the selected branch's set, against pre-operation fields  Template
+///      then its set_if_present (service/2 on), from the normalized arguments
 ///   9  resulting fields validated against the schema            Validation
 ///  10  next instance: state from the branch's effect, +1 rev    —
 ///  11  identity mirror, when declared                           IdentityMismatch
@@ -1260,12 +1261,16 @@ fn decide_with_fulfillments(
     // Step 7.
     check_preconditions(operation_name, &operation.preconditions, &context)?;
 
-    // Step 8.
+    // Step 8. `set_if_present` reads the normalized arguments rather than the fields, and
+    // registration keeps its destinations out of `set` and `fulfills`, so the order of the three
+    // writes cannot change the result. An absent leaf writes nothing: the field keeps whatever the
+    // instance held, including its absence.
     let mut new_fields = canonical_object(old_fields.clone());
     for (field, template) in selected.set {
         let value = resolve_template(template, &context)?;
         new_fields.insert(field.clone(), value);
     }
+    insert_present_arguments(&mut new_fields, selected.set_if_present, &args);
     let mut removed = BTreeSet::new();
     let requirements = selected.fulfills.unwrap_or(&EMPTY_FULFILLMENTS);
     if !requirements.is_empty() {
@@ -1440,6 +1445,7 @@ type ResponseMembers<'a> = (
 );
 
 static EMPTY_FULFILLMENTS: BTreeMap<String, OperationFieldRequirement> = BTreeMap::new();
+static EMPTY_PRESENT_ARGUMENTS: BTreeMap<String, PresentArgument> = BTreeMap::new();
 
 /// The branch a command's evaluation selected, resolved to the five things every step after it
 /// needs.
@@ -1449,6 +1455,7 @@ struct Branch<'a> {
     name: Option<&'a str>,
     to_state: String,
     set: &'a BTreeMap<String, Value>,
+    set_if_present: &'a BTreeMap<String, PresentArgument>,
     fulfills: Option<&'a BTreeMap<String, OperationFieldRequirement>>,
     emits: &'a [EventDefinition],
     responds: Option<ResponseMembers<'a>>,
@@ -1464,6 +1471,7 @@ impl<'a> Branch<'a> {
             name: None,
             to_state: to_state.to_owned(),
             set: &operation.set,
+            set_if_present: &EMPTY_PRESENT_ARGUMENTS,
             fulfills: None,
             emits: &operation.emits,
             responds: None,
@@ -1486,6 +1494,7 @@ impl<'a> Branch<'a> {
             name: Some(&outcome.name),
             to_state,
             set: &outcome.set,
+            set_if_present: &outcome.set_if_present,
             fulfills: Some(&outcome.fulfills),
             emits: &outcome.emits,
             responds: Some((&outcome.responds, &outcome.responds_if_present)),
