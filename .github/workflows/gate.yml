@@ -151,6 +151,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
+      - name: Install the sqlite3 shell the foreign-writer tests use
+        run: command -v sqlite3 || (sudo apt-get update && sudo apt-get install -y sqlite3)
+
       - name: Test every Eventlog provider and bridge
         run: cargo test -p entity-eventlog --all-features --locked
 
