@@ -9,7 +9,7 @@ custom_edit_url: null
 
 # Status
 
-40 capabilities are shipped and 7 are planned, as of 2026-10-06. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
+40 capabilities are shipped and 7 are planned, as of 2026-10-07. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
 
 ## Kernel
 

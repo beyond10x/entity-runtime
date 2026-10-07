@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-07T07:43:47Z",
+  "actor": "human:timo",
+  "artifact": "story:recorded-open-verifies-a-checkpoint-and-its-suffix",
+  "kind": "story",
+  "revision": 20,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check, each step alone, on 39965110 (13 steps exit 0; postgres-check skipped, ENTITY_POSTGRES_URL unset)"
+  }
+}

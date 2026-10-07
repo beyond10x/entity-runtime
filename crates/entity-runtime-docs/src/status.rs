@@ -19,7 +19,7 @@ pub const DATA: &str = "website/data/status.json";
 pub const PAGE: &str = "website/docs/status.md";
 
 /// The date the list below was last checked against `main`.
-const AS_OF: &str = "2026-10-06";
+const AS_OF: &str = "2026-10-07";
 
 /// One capability on the status page.
 pub struct Capability {

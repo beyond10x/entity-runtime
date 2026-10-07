@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-10-07
+
 ### Added
 
 - `entity-eventlog`: a `CapturePolicy::ProviderTracked` open of a SQLite store can start from a
