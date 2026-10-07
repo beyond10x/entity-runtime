@@ -2,12 +2,16 @@
 format: aep.planning-md/3
 id: task:website-katex-passes-its-advisory
 kind: task
-status: draft
+status: implemented
 title: The website's katex passes its advisory
 relations:
 - serves: vision:O2
 - delivers: design:wave-issue-54-entity-core-features
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-07T09:06:34Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-10-07T09:06:34Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-10-07T09:06:34Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 # The website's katex passes its advisory
 

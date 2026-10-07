@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T09:06:34Z",
+  "actor": "human:timo",
+  "artifact": "story:set-increments-a-numeric-field",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check, each step alone, on 79aaf49d: fmt-check 0, clippy 0, test 0 (738 passed), doc-check 0, docs-check 0, example-check 0, req-check 0 (131 requirements, 0 findings), pin-check 0, postgres-check 0 (skipped: ENTITY_POSTGRES_URL unset), eventlog-runtime-check 0 (232 passed, 7 ignored), notes-check 0, ess-check 0 (451/451), provider-ess-check 0 (31/31)",
+    "reference": "79aaf49d"
+  }
+}

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:operation-writes-an-optional-field-from-an-optional-argument
 kind: story
-status: active
+status: implemented
 title: An operation writes an Optional field from an Optional argument
 owner: entity-runtime
 refs:
@@ -26,10 +26,11 @@ scope:
   path: docs/design/service-binding-boundary-v0.1.md
 - confidence: cited
   path: ess/scenarios/core/conditional-presence-registration-requires-one-typed-optional-leaf.yaml
-revision: 13
+revision: 14
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-07T02:42:39Z", actor: "human:timo", revision: 12, decided_on: {"recorded":{"review_outcome":1}}}
 - {from: "proposed", to: "active", at: "2026-10-07T02:42:39Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "active", to: "implemented", at: "2026-10-07T09:06:34Z", actor: "human:timo", revision: 14, decided_on: {"recorded":{"test_result":1,"review_outcome":4,"verification":1}}}
 ---
 # An operation outcome writes an Optional field from an Optional argument
 
