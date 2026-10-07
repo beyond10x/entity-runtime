@@ -343,6 +343,7 @@ scenarios:
   - scenarios/store/observation-revisions-are-positive-signed-range.yaml
   - scenarios/store/observations-are-tips-but-not-decision-heads.yaml
   - scenarios/store/older-framing-reader-refuses-before-payload.yaml
+  - scenarios/store/projection-collection-address-keys.yaml
   - scenarios/store/projection-groups-sorted-identities.yaml
   - scenarios/store/projection-scalar-and-nested-keys.yaml
   - scenarios/store/record-domain-kernel-1.yaml

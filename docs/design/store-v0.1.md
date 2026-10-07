@@ -141,6 +141,12 @@ model is readable. An instance whose key resolves to nothing is **left out**, no
 empty key: a bucket of instances sharing only the property of not having been classified is a bucket
 nobody can act on.
 
+**R-167**: a key is read as the kernel reads the same address of the same instance, so under the
+service rules an array's `count` and index and a declared map's `count` file an instance under the
+size or element a rule over that address would see; a `kernel/1` key walks object members only, as
+the kernel does there. The one address the kernel reads and a key does not is a text's length, which
+registration refuses as a key (`service-semantics-v0.1.md` § 10.6).
+
 ## 8. Conformance, and the provider that is wrong on purpose
 
 **R-101**: the suite lives in the crate that owns the traits and *travels to the provider*, as a

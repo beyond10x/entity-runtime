@@ -1,6 +1,6 @@
 {
   "format": "er-ess-coverage/2",
-  "review": "Add six entity.core scenarios for a set assignment {cleared: true}: removal of a present field, an absent field recorded removed, post-set templates, invariants, registration refusals and replay/rehydration. No existing scenario assertion changes.",
+  "review": "Add entity.store/authored/projection-collection-address-keys: a service/1 projection key reads an array's count and element and a declared map's size as the kernel reads them. Correct the summary of entity.core/authored/service1-text-count-projection-key, which said a projection key reads object members only; its assertions are unchanged.",
   "scenarios": [
     "entity.core.Address/outcome/returned",
     "entity.core.CompareNumbers/outcome/returned",
@@ -441,6 +441,7 @@
     "entity.store/authored/observation-revisions-are-positive-signed-range",
     "entity.store/authored/observations-are-tips-but-not-decision-heads",
     "entity.store/authored/older-framing-reader-refuses-before-payload",
+    "entity.store/authored/projection-collection-address-keys",
     "entity.store/authored/projection-groups-sorted-identities",
     "entity.store/authored/projection-scalar-and-nested-keys",
     "entity.store/authored/record-domain-kernel-1",
@@ -647,7 +648,7 @@
     "entity.core/authored/service1-text-count-non-text-value": "sha256:3fdb45becd3375176e61228b8717f519e2609ed0c4ed61ce1bf25b652102b7dc",
     "entity.core/authored/service1-text-count-outcome-guard": "sha256:cc7f6e607b1a1c2e269d0b0ce11d9a782f6d8e15a5bfcaf767113d7d07be2c2f",
     "entity.core/authored/service1-text-count-precondition": "sha256:bb8ba9ebcff7d44add596e138cb63fbce8bbf7c72f7be2683632bd05802d353e",
-    "entity.core/authored/service1-text-count-projection-key": "sha256:e9174033f31ecec751aad7bf61ed3a23c754c186aa41770b06197d804cbde53b",
+    "entity.core/authored/service1-text-count-projection-key": "sha256:268f81b9b346a2783e48742bf287477ac89ccf79388041927c73d17ff48f1655",
     "entity.core/authored/service1-text-count-registration": "sha256:66b42a9acd75ed38993a9ca2c6b7ce818e7742ac62e3716464c8dd68f8a388e2",
     "entity.core/authored/service1-text-count-scalar-values": "sha256:de2b7ed2ada2c7866d203a4c63d44e164d48ea020d0a3d2d1e37448d37c7b058",
     "entity.core/authored/service1-text-count-untyped-path": "sha256:4be3d184939a48abf7eba471deeff7d335c2fae16941d3a3a5956273d5eb3e31",
@@ -894,6 +895,7 @@
     "entity.store/authored/observation-revisions-are-positive-signed-range": "sha256:14d18ae3fe5f3f64dfb8e454c34f2ac2dbfdd0053121b3409949ea8587730172",
     "entity.store/authored/observations-are-tips-but-not-decision-heads": "sha256:90c4f7645e9678b8c8d9e07c8cee209fa938d4d04f7360ec176f3234672bc21c",
     "entity.store/authored/older-framing-reader-refuses-before-payload": "sha256:7cff7d0c2860612aceac0fe678a258197eb8c84e587689d38f2f7df1d00f457a",
+    "entity.store/authored/projection-collection-address-keys": "sha256:9a72e0078c96b6d4a956e09016b1e154bd6b0e3892e696c490fc3f1ed02c5a28",
     "entity.store/authored/projection-groups-sorted-identities": "sha256:005805b8e7223d20fbb2b292b5ee41706f7e90553aa95788dfd91fef319410b3",
     "entity.store/authored/projection-scalar-and-nested-keys": "sha256:286b44a62186b457247484a4eb72d4eee92da13006deae604060700e2a78d891",
     "entity.store/authored/record-domain-kernel-1": "sha256:9cf0eb7518f358b12d6b7db830aa59ead2b321c87467e390ca48b2a52b68592f",

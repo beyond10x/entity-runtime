@@ -1733,14 +1733,26 @@ path is one something resolves:
 | --- | --- | --- | --- |
 | the kernel, from a schema root | `walk`, carrying each field's declaration | admitted | all collection forms, resolved |
 | the kernel, from a quantifier's binder | `walk(element, path, None, false, …)`: the element without its declaration | refused as `QuantifierBodyScope` (it would resolve to nothing) | an array's `count` and index, read from the value; a map's `count`, which reads the element's own `count` member rather than its size |
-| the store, for a projection key | `entity-store` `key_of`, object members only | refused as `InvalidTemplate` at `projections.<name>` (it would file no instance) | an array's `count` and index and a map's `count`, which file no instance |
+| the store, for a projection key | `entity-store` `key_of`: under the service rules a copy of the kernel's walk from a schema root that does not read a text's length (R-167), under `kernel/1` object members only | refused as `InvalidTemplate` at `projections.<name>` (it would file no instance) | an array's `count` and index and a map's `count`, which file the instance under the value the kernel reads (R-167) |
 
-The last column is not refused, although two of its entries are wrong. `replay` re-validates the
+The last column is not refused, although two of its entries were wrong. `replay` re-validates the
 definition snapshot every record carries (`replay.rs`), so refusing a form the base registered would
 strand every history recorded under it. Those defects are left for later work that changes the
 reader instead: binder elements that carry their declaration, and a projection key walk that reads
 the collection forms. A declared object property that happens to be called `count` is a member, not
 an address form, and stays a valid key.
+
+**A projection key reads a collection address as the kernel does (R-167).** The second of those
+changes the store's reader and leaves registration alone. Under the service rules `key_of` walks the
+definition's schema the way the kernel's `lookup` and `walk` do: an array's `count` and an ordinal
+from the value, a declared map's `count` as its size and none of its keys, object properties and a
+union's selected variant carrying their declarations, and a declared text's length not at all. The
+walk is a copy, because the kernel's is private; `every_collection_address_key_files_an_instance_under_the_value_the_kernel_reads`
+holds it to the kernel's answer through each form, declared and untyped, so a change on either side
+the other does not make fails there. A `kernel/1` key still walks object members only and every
+read model a `kernel/1` definition produced is the same bytes. Nothing records or replays a read
+model, so the instances now filed — and a map holding a member named `count`, now filed under its
+size instead of that member — change no recorded byte.
 
 ## 11. Acceptance
 
@@ -1877,7 +1889,9 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `a_text_count_through_a_path_registration_does_not_type_keeps_resolving_to_nothing` | § 10.6, R-160, R-97: union payload, open schema, `json` and additional properties |
 | `a_text_count_on_a_reference_that_is_not_a_text_array_or_map_is_refused_at_registration` | § 10.6, R-160: every other scalar kind, past the count, `kernel/1` and a quantifier element |
 | `a_stored_text_holding_an_array_answers_no_length` | § 10.6, R-160: a stored non-text under a declared `string` has no length |
-| `a_projection_key_refuses_a_text_length_and_registers_the_base_collection_forms_unchanged` | § 10.6, R-161: a text length is no projection key; the base's collection-form keys and a property named `count` register unchanged |
+| `a_projection_key_refuses_a_text_length_and_registers_the_collection_forms_the_kernel_reads` | § 10.6, R-161, R-167: a text length is no projection key; the base's collection-form keys and a property named `count` register unchanged, and the kernel reads each key's address as the value the store files the instance under |
+| `every_collection_address_key_files_an_instance_under_the_value_the_kernel_reads` | § 10.6, R-167: the store's key walk against the kernel's, through every collection form, declared and untyped, under `service/1` and `kernel/1` |
+| `a_kernel_1_projection_key_keeps_walking_object_members_only` | § 10.6, R-167: a `kernel/1` read model is the same bytes |
 | `a_map_count_anywhere_inside_a_quantifier_element_reads_the_member_until_binder_elements_carry_their_declaration` | § 10.6, R-161: a map's `count` inside a quantifier element registers and reads as on the base |
 | `every_complete_branch_decision_replays_byte_for_byte_from_its_record` | `crates/entity-core/src/replay.rs:113-170` over a create-plus-branch history |
 

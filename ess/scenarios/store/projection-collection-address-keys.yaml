@@ -1,0 +1,14 @@
+type: ess-scenario/4
+domain: entity.store
+scenario: projection-collection-address-keys
+summary: Service projection keys read an array's count and element and a map's size; a property named count stays a member.
+timeline:
+  - at: 2026-10-07T00:00:00Z
+    command: entity.store.Project
+    input:
+      request: '{"definition":{"entity":"probe","version":1,"semantics":"service/1","schema":{"fields":{"tags":{"type":"array","required":true,"items":{"type":"string"}},"rows":{"type":"array","required":true,"items":{"type":"object","properties":{"name":{"type":"string","required":true}}}},"meta":{"type":"map","required":true,"key":"string","items":{"type":"string"}},"stats":{"type":"object","required":true,"properties":{"count":{"type":"integer","required":true}}}}},"lifecycle":{"initial":"held","states":["held"]},"projections":{"by_tag_count":{"key":"$fields.tags.count"},"by_first_tag":{"key":"$fields.tags.0"},"by_first_row":{"key":"$fields.rows.0.name"},"by_meta_size":{"key":"$fields.meta.count"},"by_stat":{"key":"$fields.stats.count"}}},"instances":[{"entity":"probe","version":1,"id":"a","lifecycle_state":"held","revision":1,"fields":{"tags":["x","y"],"rows":[{"name":"r1"}],"meta":{"a":"b"},"stats":{"count":5}}},{"entity":"probe","version":1,"id":"b","lifecycle_state":"held","revision":1,"fields":{"tags":[],"rows":[{"name":"r2"},{"name":"r3"}],"meta":{"a":"b","c":"d","count":"7"},"stats":{"count":6}}}]}'
+    outcome: returned
+    response:
+      status: ok
+      error: ''
+      value: '{"by_first_row":{"r1":["a"],"r2":["b"]},"by_first_tag":{"x":["a"]},"by_meta_size":{"1":["a"],"3":["b"]},"by_stat":{"5":["a"],"6":["b"]},"by_tag_count":{"0":["b"],"2":["a"]}}'

@@ -79,6 +79,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   compiles. A build before this release refuses a definition with an operation `set_if_present`,
   and so a history recorded under one, as `conditional_set_on_operation` rather than ignoring the
   map; open a store holding such records with this release or later.
+- `entity_store::project` reads a projection key of a `service/1`, `service/2` or `service/3`
+  definition the way the kernel reads the same address. A key on `<array>.count`,
+  `<array>.<n>` or a declared map's `count`, which registration has admitted since 0.19.0, filed no
+  instance before; it now files each instance under the array's size, that element or the map's
+  size, an empty array under `0`, and leaves out an instance whose index is past the end. A map
+  holding a member named `count` is filed under its size, no longer under that member's value.
+  `kernel/1` read models are unchanged, and so is registration.
 
 ## [0.29.0] — 2026-10-07
 

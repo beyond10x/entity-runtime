@@ -87,30 +87,38 @@ fn a_projection_keyed_on_a_text_length_is_refused_at_registration() {
     );
 }
 
-/// The same drift for the two R-148 collection forms, which the base already admitted. Replay
-/// re-validates every recorded definition, so the key keeps registering exactly as on the base and
-/// still projects nothing — a defect left open for story:projection-keys-read-collection-addresses.
+/// The two R-148 collection forms, which the base already admitted, keep registering exactly as on
+/// the base, because replay re-validates every recorded definition. Since R-167 the store reads
+/// such a key as the kernel reads the same address of the same instance, so the instance is filed
+/// under its array's size: the kernel's half is asserted here, and the store's in `entity-store`'s
+/// `tests/projections.rs`, which this crate cannot reach (`purity.rs` pins its dependencies).
 #[test]
-fn a_projection_keyed_on_an_array_count_registers_as_on_the_base_until_keys_read_collection_addresses(
-) {
-    let document = definition(projected(
+fn a_projection_keyed_on_an_array_count_registers_as_on_the_base_and_reads_the_size() {
+    let mut document = projected(
         json!({ "fields": { "tags": {
             "type": "array", "required": true, "items": { "type": "string" }
         }}}),
         "$fields.tags.count",
-    ));
+    );
+    document["create"] =
+        json!({ "emit": { "type": "Probed", "payload": { "read": "$fields.tags.count" } } });
+    let document = definition(document);
     let registered = ValidatedDefinition::new(document.clone()).unwrap_or_else(|defects| {
         panic!(
             "a projection keyed on '$fields.tags.count' registered on the base, so a history \
-             recorded under it must keep replaying; it projects nothing until \
-             story:projection-keys-read-collection-addresses, which should change this case to \
-             assert the instance is filed under its count: {defects}"
+             recorded under it must keep replaying: {defects}"
         )
     });
     assert_eq!(
         *registered, document,
-        "the base registered this projection unchanged; story:projection-keys-read-collection-addresses \
-         is where it starts projecting, and this case changes with it"
+        "the base registered this projection unchanged"
+    );
+    let decision = create(&registered, "p-1".to_owned(), json!({ "tags": ["x", "y"] }))
+        .expect("the instance is created");
+    assert_eq!(
+        decision.events[0].payload["read"],
+        json!(2),
+        "the kernel reads the key's address as the array's size, the key the store files it under"
     );
 }
 

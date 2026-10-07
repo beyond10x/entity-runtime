@@ -2,7 +2,7 @@
   "type": "ess-scenario/4",
   "domain": "entity.core",
   "scenario": "service1-text-count-projection-key",
-  "summary": "A projection key reads object members only, so a text length is refused there; an array count or index and a map count register as before, and a property named count stays a key.",
+  "summary": "A projection key never reads a text length, so that key is refused; an array count or index and a map count register as before, and a property named count stays a key.",
   "timeline": [
     {
       "at": "2026-10-06T00:00:00Z",
