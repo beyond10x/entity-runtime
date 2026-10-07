@@ -330,6 +330,7 @@
       "entity.store/authored/observation-revisions-are-positive-signed-range",
       "entity.store/authored/observations-are-tips-but-not-decision-heads",
       "entity.store/authored/older-framing-reader-refuses-before-payload",
+      "entity.store/authored/projection-collection-address-keys",
       "entity.store/authored/projection-groups-sorted-identities",
       "entity.store/authored/projection-scalar-and-nested-keys",
       "entity.store/authored/record-domain-kernel-1",
@@ -1205,7 +1206,7 @@
         "scenario": "entity.core/authored/service1-text-count-precondition"
       },
       "scenarios/core/service1-text-count-projection-key.yaml": {
-        "digest": "sha256:4880af486020e3a35f06b36c2fa3ba005f7eb6ef2412a6400d604e11d9765469",
+        "digest": "sha256:8d5d36cc67669e404de3a9cfb3ec288c7137d72a4961a4fa367481f11fd47ba4",
         "disposition": "accepted",
         "scenario": "entity.core/authored/service1-text-count-projection-key"
       },
@@ -1989,6 +1990,11 @@
         "disposition": "accepted",
         "scenario": "entity.store/authored/older-framing-reader-refuses-before-payload"
       },
+      "scenarios/store/projection-collection-address-keys.yaml": {
+        "digest": "sha256:eaa66239c4fa2fbd102f1e461a0a6b8d5d91c406c53568b81e54dceeeed785e8",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/projection-collection-address-keys"
+      },
       "scenarios/store/projection-groups-sorted-identities.yaml": {
         "digest": "sha256:feff2b73a1d1f82725cb01f7594fabd42de0bc3ab4f625dc1d16a473e791036e",
         "disposition": "accepted",
@@ -2051,7 +2057,7 @@
       }
     },
     "counts": {
-      "authored": 341,
+      "authored": 342,
       "generated": 111,
       "outside": 0,
       "refused": 0
@@ -50893,7 +50899,7 @@
       ]
     },
     "entity.core/authored/service1-text-count-projection-key": {
-      "purpose": "A projection key reads object members only, so a text length is refused there; an array count or index and a map count register as before, and a property named count stays a key.",
+      "purpose": "A projection key never reads a text length, so that key is refused; an array count or index and a map count register as before, and a property named count stays a key.",
       "source": [
         {
           "kind": "domain",
@@ -123049,6 +123055,88 @@
             ],
             "outcome": {
               "command": "entity.store.ReadRecordDomain",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.store/authored/projection-collection-address-keys": {
+      "purpose": "Service projection keys read an array's count and element and a map's size; a property named count stays a member.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.store"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.store.RequestDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.store.Project"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.store.Project",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.store.Project",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}},\"rows\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"required\":true}}}},\"meta\":{\"type\":\"map\",\"required\":true,\"key\":\"string\",\"items\":{\"type\":\"string\"}},\"stats\":{\"type\":\"object\",\"required\":true,\"properties\":{\"count\":{\"type\":\"integer\",\"required\":true}}}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"projections\":{\"by_tag_count\":{\"key\":\"$fields.tags.count\"},\"by_first_tag\":{\"key\":\"$fields.tags.0\"},\"by_first_row\":{\"key\":\"$fields.rows.0.name\"},\"by_meta_size\":{\"key\":\"$fields.meta.count\"},\"by_stat\":{\"key\":\"$fields.stats.count\"}}},\"instances\":[{\"entity\":\"probe\",\"version\":1,\"id\":\"a\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{\"tags\":[\"x\",\"y\"],\"rows\":[{\"name\":\"r1\"}],\"meta\":{\"a\":\"b\"},\"stats\":{\"count\":5}}},{\"entity\":\"probe\",\"version\":1,\"id\":\"b\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{\"tags\":[],\"rows\":[{\"name\":\"r2\"},{\"name\":\"r3\"}],\"meta\":{\"a\":\"b\",\"c\":\"d\",\"count\":\"7\"},\"stats\":{\"count\":6}}}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.store.Project",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.store.Project",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok",
+              "value": "{\"by_first_row\":{\"r1\":[\"a\"],\"r2\":[\"b\"]},\"by_first_tag\":{\"x\":[\"a\"]},\"by_meta_size\":{\"1\":[\"a\"],\"3\":[\"b\"]},\"by_stat\":{\"5\":[\"a\"],\"6\":[\"b\"]},\"by_tag_count\":{\"0\":[\"b\"],\"2\":[\"a\"]}}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.store.Project",
               "outcome": "returned"
             }
           },

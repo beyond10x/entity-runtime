@@ -1977,14 +1977,16 @@ fn a_text_count_on_a_reference_that_is_not_a_text_array_or_map_is_refused_at_reg
     );
 }
 
-/// The store files an instance under a projection key by walking object members only
-/// (`entity-store` `key_of`). A text's length, which this unit made addressable and the base already
-/// refused as a key, is refused where it is written, naming the key. The array and map forms the base
-/// registered keep registering unchanged, because replay re-validates every recorded definition;
-/// they file no instance until story:projection-keys-read-collection-addresses. A declared object
-/// property that happens to be called `count` is a member, not an address form, and stays a key.
+/// The store files an instance under a projection key by reading its address as the kernel does,
+/// except a text's length (`entity-store` `key_of`). A text's length, which this unit made
+/// addressable and the base already refused as a key, is refused where it is written, naming the
+/// key. The array and map forms the base registered keep registering unchanged, because replay
+/// re-validates every recorded definition; since R-167 the kernel's reading of each address, asserted
+/// here, is the key the store files the instance under (`entity-store` `tests/projections.rs`). A
+/// declared object property that happens to be called `count` is a member, not an address form, and
+/// stays a key.
 #[test]
-fn a_projection_key_refuses_a_text_length_and_registers_the_base_collection_forms_unchanged() {
+fn a_projection_key_refuses_a_text_length_and_registers_the_collection_forms_the_kernel_reads() {
     let schema = json!({ "fields": {
         "name": { "type": "string", "required": true },
         "tags": { "type": "array", "required": true, "items": { "type": "string" } },
@@ -2014,17 +2016,35 @@ fn a_projection_key_refuses_a_text_length_and_registers_the_base_collection_form
         )),
         "{defects}"
     );
-    for key in ["$fields.tags.count", "$fields.tags.0", "$fields.meta.count"] {
+    let fields = json!({
+        "name": "probe", "tags": ["x", "y"], "meta": { "a": "b", "count": "7" },
+        "stats": { "count": 5 }
+    });
+    for (key, read) in [
+        ("$fields.tags.count", json!(2)),
+        ("$fields.tags.0", json!("x")),
+        ("$fields.meta.count", json!(2)),
+    ] {
         let document = keyed(key);
         let registered = ValidatedDefinition::new(document.clone()).unwrap_or_else(|defects| {
             panic!(
                 "a projection keyed on '{key}' registered on the base and must keep registering \
-                 so recorded histories replay; it projects nothing until \
-                 story:projection-keys-read-collection-addresses, which should change this row: \
-                 {defects}"
+                 so recorded histories replay: {defects}"
             )
         });
         assert_eq!(*registered, document, "{key} registers unchanged");
+        let mut reading = document.clone();
+        reading.create.emit = Some(
+            serde_json::from_value(json!({ "type": "Probed", "payload": { "read": key } }))
+                .expect("the fixture is an event"),
+        );
+        let reading = ValidatedDefinition::new(reading).expect("the reading registers");
+        let decision =
+            create(&reading, "p-1".to_owned(), fields.clone()).expect("the instance is created");
+        assert_eq!(
+            decision.events[0].payload["read"], read,
+            "the kernel reads '{key}' as the value the store files the instance under"
+        );
     }
     let document = keyed("$fields.stats.count");
     let registered = ValidatedDefinition::new(document.clone())
