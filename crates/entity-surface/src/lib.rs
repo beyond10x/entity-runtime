@@ -18,6 +18,10 @@ pub const DOCS_MARKER: &str = ".entity-runtime-docs.json";
 /// A complete generated documentation directory, keyed by safe relative path.
 pub type DocumentationBundle = BTreeMap<String, String>;
 
+/// The start of the placeholder word a YAML contract carries for a number until its digits are
+/// put in (`yaml`).
+const NUMBER_MARKER: &str = "entity-runtime-number-";
+
 /// Projects an entity object schema into JSON Schema 2020-12 vocabulary.
 #[must_use]
 pub fn object_schema(schema: &ObjectSchema) -> Value {
@@ -276,18 +280,12 @@ pub fn documentation(definitions: &[EntityDefinition]) -> Result<DocumentationBu
         "openapi.json".into(),
         pretty_json(&openapi).map_err(|error| error.to_string())?,
     );
-    files.insert(
-        "openapi.yaml".into(),
-        serde_yaml_ng::to_string(&openapi).map_err(|error| error.to_string())?,
-    );
+    files.insert("openapi.yaml".into(), yaml(&openapi)?);
     files.insert(
         "asyncapi.json".into(),
         pretty_json(&asyncapi).map_err(|error| error.to_string())?,
     );
-    files.insert(
-        "asyncapi.yaml".into(),
-        serde_yaml_ng::to_string(&asyncapi).map_err(|error| error.to_string())?,
-    );
+    files.insert("asyncapi.yaml".into(), yaml(&asyncapi)?);
     files.insert("assets/style.css".into(), STYLE.into());
 
     let grouped = grouped(definitions);
@@ -1008,6 +1006,88 @@ fn pretty_json(value: &Value) -> Result<String, serde_json::Error> {
     })
 }
 
+/// Writes a contract as YAML in which every number is a plain YAML number spelled with the digits
+/// `pretty_json` writes for it.
+///
+/// `serde_json`'s `arbitrary_precision` feature, which the kernel's exact numbers need, serializes
+/// a number as a private one-entry map; the JSON writer knows that map and the YAML writer wrote it
+/// literally. The YAML writer spells a plain number only from a native integer or an `f64`, and an
+/// `f64` changes digits it cannot hold (`1.50`, `1e3`, `0.1000000000000000000001`). So each number
+/// is first written as a placeholder word, then the word is replaced by the number's own digits.
+/// The word spells no null, boolean or number and carries no indicator character, so the writer
+/// leaves it plain and the digits that replace it are a plain scalar too.
+/// A placeholder is trusted only when the text holds its marker exactly once per number; any other
+/// occurrence comes from a string in the contract, and the next marker is tried instead.
+fn yaml(contract: &Value) -> Result<String, String> {
+    let mut generation = 0_u64;
+    loop {
+        let marker = format!("{NUMBER_MARKER}{generation}-");
+        let mut digits = Vec::new();
+        let placeheld = numbers_as_placeholders(contract, &marker, &mut digits);
+        let text = serde_yaml_ng::to_string(&placeheld).map_err(|error| error.to_string())?;
+        if text.matches(marker.as_str()).count() == digits.len() {
+            return digits_for_placeholders(&text, &marker, &digits);
+        }
+        generation += 1;
+    }
+}
+
+/// The contract with each number replaced by `marker` and the number's index into `digits`.
+fn numbers_as_placeholders(value: &Value, marker: &str, digits: &mut Vec<String>) -> Value {
+    match value {
+        Value::Number(number) => {
+            let placeholder = format!("{marker}{}", digits.len());
+            digits.push(number.to_string());
+            Value::String(placeholder)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| numbers_as_placeholders(item, marker, digits))
+                .collect(),
+        ),
+        Value::Object(members) => Value::Object(
+            members
+                .iter()
+                .map(|(name, member)| {
+                    (
+                        name.clone(),
+                        numbers_as_placeholders(member, marker, digits),
+                    )
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// Replaces every placeholder `numbers_as_placeholders` wrote with the digits it stands for.
+fn digits_for_placeholders(text: &str, marker: &str, digits: &[String]) -> Result<String, String> {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(marker) {
+        out.push_str(&rest[..at]);
+        rest = &rest[at + marker.len()..];
+        let end = rest
+            .find(|character: char| !character.is_ascii_digit())
+            .unwrap_or(rest.len());
+        let number = rest[..end]
+            .parse::<usize>()
+            .ok()
+            .and_then(|index| digits.get(index))
+            .ok_or_else(|| {
+                format!(
+                    "YAML number placeholder {marker}{} is not one written",
+                    &rest[..end]
+                )
+            })?;
+        out.push_str(number);
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
 const STYLE: &str = r#":root{color-scheme:light dark;font:16px/1.55 system-ui,sans-serif}body{margin:0}main{max-width:1100px;margin:auto;padding:2rem}a{color:#6854d9}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:1rem}.card{border:1px solid #7775;border-radius:.7rem;padding:1rem;text-decoration:none;display:flex;flex-direction:column}.card span{opacity:.7}table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{border:1px solid #7775;padding:.45rem;text-align:left}code,pre{font-family:ui-monospace,monospace}svg{max-width:100%;height:auto;background:#fff;border-radius:.5rem}section{margin-block:2rem}details{margin-top:3rem}pre{white-space:pre-wrap;overflow:auto}"#;
 
 #[cfg(test)]
@@ -1119,6 +1199,122 @@ mod tests {
                 ["payload"]["properties"]["reason"]["type"],
             "string",
             "event payload references retain their declared argument schema"
+        );
+    }
+
+    /// A definition read from JSON keeps each number's digits, so its contract can carry numbers no
+    /// `u64`, `i64` or `f64` holds and spellings an `f64` would change (`1.50`, `1e3`).
+    fn exact_number_definition() -> EntityDefinition {
+        serde_json::from_str(
+            r#"{
+                "entity": "meter",
+                "schema": { "fields": {
+                    "reading": {
+                        "type": "integer",
+                        "min": -170141183460469231731687303715884105729,
+                        "max": 340282366920938463463374607431768211456,
+                        "default": 18446744073709551616
+                    },
+                    "rate": {
+                        "type": "number",
+                        "min": 0.1000000000000000000001,
+                        "max": 1e3,
+                        "default": 1.50
+                    },
+                    "steps": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "default": [-1.50, 2]
+                    }
+                }},
+                "lifecycle": { "initial": "open", "states": ["open"] },
+                "operations": {}
+            }"#,
+        )
+        .expect("definition")
+    }
+
+    #[test]
+    fn a_yaml_contract_spells_every_number_with_the_json_contracts_digits() {
+        let bundle = documentation(&[exact_number_definition()]).expect("bundle");
+        let yaml = &bundle["openapi.yaml"];
+        let json = &bundle["openapi.json"];
+        for (key, digits) in [
+            ("minimum", "-170141183460469231731687303715884105729"),
+            ("maximum", "340282366920938463463374607431768211456"),
+            ("default", "18446744073709551616"),
+            ("minimum", "0.1000000000000000000001"),
+            // `serde_json` keeps the authored `1e3` as `1e+3`; that is the JSON contract's spelling.
+            ("maximum", "1e+3"),
+            ("default", "1.50"),
+        ] {
+            assert!(
+                json.contains(&format!("\"{key}\": {digits}")),
+                "the JSON contract does not spell {key} {digits}:\n{json}"
+            );
+            assert!(
+                yaml.contains(&format!(" {key}: {digits}\n")),
+                "openapi.yaml does not write {key} as the plain number {digits}:\n{yaml}"
+            );
+        }
+        assert!(
+            yaml.contains(" - -1.50\n"),
+            "openapi.yaml does not write the array default's -1.50 as a plain sequence item:\n{yaml}"
+        );
+        for contract in ["openapi.yaml", "asyncapi.yaml"] {
+            assert!(
+                !bundle[contract].contains("serde_json")
+                    && !bundle[contract].contains(NUMBER_MARKER),
+                "{contract} leaks a private number spelling:\n{}",
+                bundle[contract]
+            );
+        }
+        // Read back into `serde_json::Value`, the one value model here that holds a 128-bit
+        // integer. It would read a private number map as a number too, which the assertion above
+        // has already excluded.
+        let read: Value = serde_yaml_ng::from_str(yaml).expect("openapi.yaml parses");
+        let fields = &read["components"]["schemas"]["MeterV1Fields"]["properties"];
+        for field in ["reading", "rate"] {
+            for key in ["minimum", "maximum", "default"] {
+                assert!(
+                    fields[field][key].is_number(),
+                    "{field} {key} reads back as {}",
+                    fields[field][key]
+                );
+            }
+        }
+        assert_eq!(
+            fields["steps"]["default"]
+                .as_array()
+                .map(|items| items.iter().map(Value::as_f64).collect::<Vec<_>>()),
+            Some(vec![Some(-1.5), Some(2.0)]),
+            "the array default reads back as numbers"
+        );
+    }
+
+    #[test]
+    fn a_contract_string_that_spells_the_number_placeholder_survives_unchanged() {
+        let first = format!("{NUMBER_MARKER}0-0");
+        let second = format!("{NUMBER_MARKER}1-");
+        let mut definition = exact_number_definition();
+        definition.schema.fields.insert(
+            "label".into(),
+            serde_json::from_value(json!({ "type": "enum", "values": [first, second] }))
+                .expect("enum field"),
+        );
+        let bundle = documentation(&[definition]).expect("bundle");
+        let yaml = &bundle["openapi.yaml"];
+        assert!(!yaml.contains("serde_json"), "{yaml}");
+        let read: Value = serde_yaml_ng::from_str(yaml).expect("openapi.yaml parses");
+        let fields = &read["components"]["schemas"]["MeterV1Fields"]["properties"];
+        assert_eq!(
+            fields["label"]["enum"],
+            json!([first, second]),
+            "the enum values are the declared strings:\n{yaml}"
+        );
+        assert!(
+            yaml.contains(" default: 1.50\n") && fields["rate"]["default"].is_number(),
+            "the number beside them is still a number:\n{yaml}"
         );
     }
 

@@ -107,6 +107,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `entity inspect --format yaml` writes a `moves` effect in that mapping form instead of the tag
   form `!moves`, so its output loads back through `entity validate`. `kernel/1` output is
   unchanged.
+- `entity generate docs` writes every number in `openapi.yaml` and `asyncapi.yaml` as a YAML
+  number, spelled with the digits the matching JSON contract writes. Before, each number was a
+  mapping, `$serde_json::private::Number: '1'` — 24 of them in the refund example's
+  `openapi.yaml` and 14 in its `asyncapi.yaml` — so a YAML reader saw an object where the contract
+  has a number. A number no 64-bit integer or binary64 holds keeps its exact digits too. The JSON
+  contracts are unchanged.
 
 ## [0.29.0] — 2026-10-07
 
