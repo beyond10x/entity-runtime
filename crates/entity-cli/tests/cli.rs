@@ -1618,6 +1618,88 @@ fn generated_documentation_is_complete_and_replaces_only_generator_owned_output(
     );
 }
 
+/// Each YAML contract holds what its JSON twin holds, with every number a YAML number of the same
+/// digits. Both are read with their own format's value model: read into `serde_json::Value`, the
+/// YAML would pass even while it wrote `$serde_json::private::Number` maps, because that reader
+/// turns such a map back into a number.
+#[test]
+fn generated_yaml_contracts_write_every_number_the_json_contracts_write() {
+    let output_dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-docs-numbers");
+    let _ = fs::remove_dir_all(&output_dir);
+    let generated = entity()
+        .args(["generate", "docs", "--definition"])
+        .arg(refund_yaml())
+        .arg("--out")
+        .arg(&output_dir)
+        .output()
+        .expect("runs");
+    assert!(
+        generated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    for contract in ["openapi", "asyncapi"] {
+        let yaml_text =
+            fs::read_to_string(output_dir.join(format!("{contract}.yaml"))).expect("YAML contract");
+        let private_numbers = yaml_text.matches("$serde_json::private::Number").count();
+        assert_eq!(
+            private_numbers, 0,
+            "{contract}.yaml writes {private_numbers} number(s) as a private serde_json map"
+        );
+        let json: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(output_dir.join(format!("{contract}.json")))
+                .expect("JSON contract"),
+        )
+        .expect("the JSON contract parses");
+        let yaml: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str(&yaml_text).expect("the YAML contract parses");
+        let mut numbers = 0;
+        same_contract(&json, &yaml, contract, &mut numbers);
+        assert!(
+            numbers > 0,
+            "{contract}: the refund contract carries no number, so nothing was compared"
+        );
+    }
+}
+
+/// Walks a JSON contract and its YAML twin together and counts the numbers it compared.
+fn same_contract(
+    json: &serde_json::Value,
+    yaml: &serde_yaml_ng::Value,
+    path: &str,
+    numbers: &mut usize,
+) {
+    use serde_json::Value as Json;
+    use serde_yaml_ng::Value as Yaml;
+    match (json, yaml) {
+        (Json::Null, Yaml::Null) => {}
+        (Json::Bool(left), Yaml::Bool(right)) => assert_eq!(left, right, "{path}"),
+        (Json::String(left), Yaml::String(right)) => assert_eq!(left, right, "{path}"),
+        (Json::Number(left), Yaml::Number(right)) => {
+            *numbers += 1;
+            assert_eq!(left.to_string(), right.to_string(), "{path}");
+        }
+        (Json::Array(left), Yaml::Sequence(right)) => {
+            assert_eq!(left.len(), right.len(), "{path}: item count");
+            for (index, (left, right)) in left.iter().zip(right).enumerate() {
+                same_contract(left, right, &format!("{path}/{index}"), numbers);
+            }
+        }
+        (Json::Object(left), Yaml::Mapping(right)) => {
+            assert_eq!(left.len(), right.len(), "{path}: key count");
+            for (key, left) in left {
+                let right = right
+                    .get(key.as_str())
+                    .unwrap_or_else(|| panic!("{path}/{key} is missing from the YAML contract"));
+                same_contract(left, right, &format!("{path}/{key}"), numbers);
+            }
+        }
+        _ => {
+            panic!("{path}: the JSON contract holds {json} where the YAML contract holds {yaml:?}")
+        }
+    }
+}
+
 #[test]
 fn mcp_command_keeps_stdout_as_json_rpc_and_lists_definition_derived_tools() {
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-mcp");
