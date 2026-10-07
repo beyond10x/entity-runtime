@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T01:00:44Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-28-0",
+  "kind": "task",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "release.yml run 37554398776 at tag 0.28.0 (a6dad5c0): Verify tag provenance, gate / Gate, gate / MSRV 1.85, gate / Eventlog runtime (Rust 1.91), 5 platform builds, Assemble verified release: all success; 5 archives verified against SHA256SUMS locally; published by b10x-bot[bot] 2026-10-07T01:00:14Z with 6 assets, latest (https://github.com/beyond10x/entity-runtime/releases/tag/0.28.0); annotated tag reachable from origin/main. VERIFIED",
+    "reference": "https://github.com/beyond10x/entity-runtime/releases/tag/0.28.0"
+  }
+}
