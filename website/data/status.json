@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-10-06",
+  "asOf": "2026-10-07",
   "format": "b10x-status/1",
   "items": [
     {
@@ -217,6 +217,13 @@
       "detail": "CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract.",
       "href": "/docs/concepts/storage",
       "label": "Provider-tracked reads on SQLite",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
+      "detail": "With durable open checkpoints enabled, a ProviderTracked open verifies the persisted checkpoint and the appends since it, not the whole history.",
+      "href": "/docs/concepts/storage",
+      "label": "Open from a persisted checkpoint on SQLite",
       "status": "shipped"
     },
     {

@@ -92,3 +92,47 @@ commands:
       - {name: value, type: entity-provider.tracking.JsonDocument}
     outcomes:
       - {name: returned, returns: true}
+  # Runs the administrative enable call on the open facade's store. Until it runs, no open
+  # checkpoint is ever written and every ProviderTracked open verifies completely.
+  - name: entity-provider.tracking.EnableDurableCheckpoints
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  # Drains and closes the facade, discards the persisted open checkpoint through the owner and
+  # leaves the store closed: the recovery from a checkpoint ahead of the provider's head.
+  - name: entity-provider.tracking.DiscardCheckpoint
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  # Fixture: drains and closes the facade, copies the SQLite file aside, leaves the store closed.
+  - name: entity-provider.tracking.KeepCopy
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}
+  # Fixture: drains and closes the facade, puts the kept copy back with the current open
+  # checkpoint carried into it, leaves the store closed. The result is a self-consistent store
+  # whose head is behind its checkpoint, which no SQL edit of one row produces.
+  - name: entity-provider.tracking.TruncateTail
+    input:
+      - {name: request, type: entity-provider.tracking.JsonDocument}
+    response:
+      - {name: status, type: String}
+      - {name: error, type: String}
+      - {name: value, type: entity-provider.tracking.JsonDocument}
+    outcomes:
+      - {name: returned, returns: true}

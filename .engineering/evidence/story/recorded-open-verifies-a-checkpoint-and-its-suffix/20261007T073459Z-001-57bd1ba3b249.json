@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T07:34:59Z",
+  "actor": "human:timo",
+  "artifact": "story:recorded-open-verifies-a-checkpoint-and-its-suffix",
+  "kind": "story",
+  "revision": 20,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo +1.91.0 test --release -p entity-eventlog --features sqlite,sync-bridge --locked --test shared_clock_cost -- --ignored --nocapture --exact each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store",
+    "reference": "docs/ess/evidence/provider-tracking/open-cost-baseline.txt vs docs/ess/evidence/provider-tracking/open-cost-checkpoint.txt"
+  }
+}

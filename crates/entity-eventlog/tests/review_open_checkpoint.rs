@@ -165,10 +165,11 @@ fn start_tracked(
 }
 
 /// Design, "Where the checkpoint is persisted" and "When it is written": a snapshot of an
-/// Entity-Runtime-owned stream is not captured material, and writing it through the provider's own
-/// connection ends the handle's in-process continuity ("read from the code, not run").
+/// Entity-Runtime-owned stream is not captured material, and since Eventlog 0.8.0 writing it through
+/// the provider's own connection keeps the handle's in-process continuity (Eventlog 0.6.0 and
+/// 0.7.0 ended it, which this test asserted until the pin moved).
 #[test]
-fn a_checkpoint_snapshot_is_not_captured_and_writing_it_ends_in_process_continuity() {
+fn a_checkpoint_snapshot_is_not_captured_and_writing_it_keeps_in_process_continuity() {
     let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("directory");
     let path = directory.path().join("checkpoint.sqlite3");
     let authority = provisioned(&path);
@@ -232,8 +233,8 @@ fn a_checkpoint_snapshot_is_not_captured_and_writing_it_ends_in_process_continui
         assert_eq!(second, first, "the verified history is unchanged");
         assert_eq!(
             store.calls().captures,
-            2,
-            "the provider's own snapshot write ended in-process continuity, so the read recaptured"
+            1,
+            "the provider's own snapshot write kept in-process continuity, so the read took no capture"
         );
 
         let reopened = EventlogRecordedStore::open_with_policy(

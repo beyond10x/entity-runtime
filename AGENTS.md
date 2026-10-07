@@ -278,7 +278,11 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
   and `RemoteStore` uses a caller-provided `Transport`. The `entity-eventlog` stores open the
   caller-selected Eventlog provider their feature names — a `file` or `tree` root, a `sqlite` path,
   a `postgres` connection configuration — and only after an explicit provisioning call has
-  established the binding. `entity-mcp` uses caller-provided readers
+  established the binding. A `ProviderTracked` open of a SQLite store whose owner enabled durable
+  open checkpoints verifies the checkpoint persisted in that provider, the provider's proof that
+  only its acknowledged appends followed it, and those appends, not the whole history, so it does
+  not see raw file edits that bypass SQLite, which a `FullVerification` open or a complete read
+  still verifies. `entity-mcp` uses caller-provided readers
   and writers. `entity-cli` reads files and stdin, invokes Cargo only for explicit Rust CLI
   generation, and prints. No library selects authority, credentials or a clock on the caller's
   behalf; if a verb needs time or identity, the shell supplies it as data.

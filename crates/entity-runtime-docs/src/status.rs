@@ -19,7 +19,7 @@ pub const DATA: &str = "website/data/status.json";
 pub const PAGE: &str = "website/docs/status.md";
 
 /// The date the list below was last checked against `main`.
-const AS_OF: &str = "2026-10-06";
+const AS_OF: &str = "2026-10-07";
 
 /// One capability on the status page.
 pub struct Capability {
@@ -287,6 +287,13 @@ pub const CAPABILITIES: &[Capability] = &[
         "Provider-tracked reads on SQLite",
         "CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract.",
         "Taskfile.yml::provider-ess-check",
+        "/docs/concepts/storage",
+    ),
+    shipped(
+        "Recorded execution",
+        "Open from a persisted checkpoint on SQLite",
+        "With durable open checkpoints enabled, a ProviderTracked open verifies the persisted checkpoint and the appends since it, not the whole history.",
+        "crates/entity-eventlog/tests/bounded_open.rs::an_open_after_appends_verifies_only_the_suffix",
         "/docs/concepts/storage",
     ),
     shipped(
