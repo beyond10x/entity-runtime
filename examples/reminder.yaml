@@ -1,0 +1,61 @@
+entity: reminder
+version: 1
+
+schema:
+  additional_fields: false
+  fields:
+    title:
+      type: string
+      required: true
+      min_length: 1
+    snoozed_until:
+      type: string
+    note:
+      type: string
+
+lifecycle:
+  initial: active
+  states: [active, snoozed]
+
+invariants:
+  - name: snoozed-has-a-wake-time
+    assert:
+      any:
+        - ne: [$state, snoozed]
+        - exists: $fields.snoozed_until
+    message: a snoozed reminder needs snoozed_until
+
+create:
+  emit:
+    type: ReminderOpened
+    payload: { title: $fields.title }
+
+operations:
+  snooze:
+    arguments:
+      fields:
+        until: { type: string, required: true }
+    transitions:
+      - { from: active, to: snoozed }
+    set:
+      snoozed_until: $args.until
+    emits:
+      - type: Snoozed
+        payload: { until: $fields.snoozed_until }
+
+  wake:
+    transitions:
+      - { from: snoozed, to: active }
+    set:
+      snoozed_until:
+        cleared: true
+    emits:
+      - type: Woken
+        payload: { was: $old_fields.snoozed_until, now: $fields }
+
+  forget_note:
+    transitions:
+      - { from: active, to: active }
+      - { from: snoozed, to: snoozed }
+    set:
+      note: { cleared: true }
