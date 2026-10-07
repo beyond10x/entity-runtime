@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T01:00:44Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-28-0",
+  "kind": "task",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check steps on wave/er-59 at 5dd64a6b, each its own exit: fmt-check 0, clippy 0, test 0 (678 passed), doc-check 0, docs-check 0, example-check 0, req-check 0, pin-check 0, postgres-check 0 (skipped locally: ENTITY_POSTGRES_URL unset), eventlog-runtime-check 0 (194 passed), notes-check 0, ess-check 0 (435/435), provider-ess-check 0 (17/17); PR 64 required checks 7/7 pass",
+    "reference": "5dd64a6b"
+  }
+}
