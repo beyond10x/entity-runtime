@@ -128,7 +128,15 @@ operations:
   `integer` or `number`, and the amount must always be present and of the field's kind. The sum is
   exact: `0.1` plus `0.2` is `0.3`. A sum the field's kind cannot hold is refused as
   `increment_overflow` rather than wrapped, and a sum past `min` or `max` is a `validation`
-  refusal. A mapping with any second key is an ordinary object template.
+  refusal. A mapping with any second key that is not `cleared` is an ordinary object template.
+- A `set` value `{cleared: true}`, a mapping whose only key is `cleared`, leaves the field absent
+  after the operation. The field must be declared and not `required`; one with a `default` may be
+  cleared, and the default does not fill it again. Clearing a field that is already absent is
+  accepted. The decision and every event it emits name the field in `removed`, never in
+  `changed`, and the schema check, invariants, events and response see it absent: `$fields`
+  omits it and a template reading it is a `template` refusal. A creation cannot clear, and a
+  field takes one assignment, so `{cleared: true, increment: 1}`, or a cleared field that the
+  same outcome also names in `set_if_present` or `fulfills`, is refused.
 - `emits` contains zero or more event templates. `emit` is accepted as an alias for the same
   list (under `create`, `emit` is a single template). Events see the post-operation fields and
   are materialized last. An operation that emits nothing leaves no event, so an event-only
@@ -244,6 +252,7 @@ lifecycle with a duplicate state is one finding, not one per transition it inval
 | a transition through an undeclared state, two transitions of one operation from one state | `unknown_from_state`, `unknown_to_state`, `ambiguous_transition` |
 | `set` writing an undeclared field, an empty event type | `unknown_set_field`, `empty_event_type` |
 | a `set` increment on a creation, on a field that is not a required `integer` or `number`, or with an amount that is not an always-present number of the field's kind | `increment_on_create`, `increment_target_invalid`, `increment_amount_invalid` |
+| a `set` clear on a creation, on a field that is required or not declared, or with a flag other than `true`; a `set` value naming both `cleared` and `increment` | `clear_on_create`, `clear_target_invalid`, `clear_flag_invalid`, `set_assignment_conflict` |
 | an inconsistent field: `min` above `max`, an enum without `values`, an array without `items`, a default that fails its own field | `invalid_field` |
 | a constraint on a kind it does not govern, such as `min_length` on an `integer` | `constraint_not_applicable` |
 | an inconsistent rule: an empty name or message, an empty `all` or `any`, a reference its scope cannot see or the schema does not declare | `invalid_rule` |

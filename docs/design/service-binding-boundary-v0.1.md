@@ -449,6 +449,12 @@ Compatibility rules are exact:
   it refuses the definition snapshot with `conditional_set_on_operation` when it registers or
   replays one, so an older reader fails closed rather than ignoring the map. Every definition an
   older build admits decides the same bytes after it.
+- a `set` clear `{cleared: true}` (issue 54, `kernel-v0.1.md` § 3.3) adds no domain either: the
+  decision frames by its semantics like any other, and under `er.record/1` to `/3` it is the first
+  to carry a non-empty `removed`. A build that predates the keyword reads the value as an object
+  template, so replaying such a decision recomputes another record and is refused by the byte
+  comparison, and its event fold refuses removal evidence on any `kernel/1` event. Every
+  definition that does not write the one-key `cleared` mapping decides the same bytes as before.
 
 The implementation extends `record_domain`, `request_domain`, original-request reconstruction,
 retry verification, and their readers together. A `service/2` branchless creation records and
