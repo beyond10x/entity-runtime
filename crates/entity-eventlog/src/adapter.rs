@@ -1077,9 +1077,12 @@ impl EventlogRecordedStore {
     /// `ProviderIntegrity` or `CorruptHistory` refusal since the handle's last complete
     /// verification; never when the persisted record is this handle's own; never over a valid
     /// checkpoint at a higher position; and never over a discard's tombstone this handle did not
-    /// load at its open. The record names the observation this handle verified, never the
-    /// provider's state now, so a foreign write since is reported by the next open. Returns
-    /// whether a record was written. A drain shutdown of the synchronous bridge calls this.
+    /// load at its open, as far as it can tell: it reads the persisted record and then writes, and
+    /// the snapshot port offers no compare-and-set, so a discard that lands between the two is
+    /// overwritten. That race needs a discard run while this handle is live, which the discard's
+    /// documented precondition excludes. The record names the observation this handle verified,
+    /// never the provider's state now, so a foreign write since is reported by the next open.
+    /// Returns whether a record was written. A drain shutdown of the synchronous bridge calls this.
     ///
     /// # Errors
     /// A provider failure reading or writing the snapshot.
@@ -1143,8 +1146,11 @@ impl EventlogRecordedStore {
     ///
     /// The recovery from a checkpoint ahead of the provider's head. Run it with no
     /// `ProviderTracked` handle open on the store: a handle opened before it would otherwise
-    /// write its own record again at its drain. It never does over a tombstone it did not load,
-    /// so a violation costs nothing but the recovery.
+    /// write its own record again at its drain. Such a handle checks for a tombstone it did not
+    /// load before it writes, so a violation usually costs nothing but the recovery; a discard
+    /// that lands inside that handle's drain, between its check and its write, is overwritten,
+    /// because the snapshot port offers no compare-and-set. Then run the discard again with the
+    /// handle shut down.
     ///
     /// # Errors
     /// An invalid authority, or a provider failure reading or writing the snapshot.

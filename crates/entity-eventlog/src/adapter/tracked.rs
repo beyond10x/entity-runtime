@@ -50,6 +50,11 @@ pub(super) struct Cache {
     /// The highest tenant position this handle has verified. History is append-only, so a
     /// complete capture whose head is behind it is a store that lost its tail under this handle.
     floor: u64,
+    /// Moves whenever what the handle answers from moves: a verified suffix, a complete
+    /// verification, an installed or forgotten observation; never on a provider `Unchanged`. Reads
+    /// of the provider's rows made between two continuations that leave it in place read the rows
+    /// the provider attested unchanged between them.
+    serial: u64,
 }
 
 /// A handle with no model: what it answers comes from the provider's index rows, which the last
@@ -68,8 +73,9 @@ pub(super) struct Bounded {
 
 /// What a `ProviderTracked` handle answers a read from once it has continued its observation.
 pub(super) enum Tracked {
-    /// The provider's verified rows: the handle has no model.
-    Rows,
+    /// The provider's verified rows: the handle has no model. Carries the serial the continuation
+    /// left, which [`EventlogRecordedStore::unchanged_since`] compares after the rows are read.
+    Rows(u64),
     /// The whole verified model.
     Whole(Arc<CapturedModel>),
 }
@@ -170,6 +176,7 @@ impl EventlogRecordedStore {
                     cache.held = Some(held);
                     cache.bounded = None;
                     cache.generation = next_generation;
+                    cache.serial = cache.serial.wrapping_add(1);
                     return Ok(Tracked::Whole(model));
                 }
                 (TenantCaptureUpdate::Unchanged { checkpoint }, _) => {
@@ -178,7 +185,7 @@ impl EventlogRecordedStore {
                         ..bounded
                     });
                     cache.generation = next_generation;
-                    return Ok(Tracked::Rows);
+                    return Ok(Tracked::Rows(cache.serial));
                 }
                 (TenantCaptureUpdate::AppendDelta { checkpoint, delta }, Some(Ok(suffix))) => {
                     self.install_suffix(&delta, &suffix)?;
@@ -190,13 +197,15 @@ impl EventlogRecordedStore {
                         usage: suffix.usage,
                     });
                     cache.generation = next_generation;
-                    return Ok(Tracked::Rows);
+                    cache.serial = cache.serial.wrapping_add(1);
+                    return Ok(Tracked::Rows(cache.serial));
                 }
                 (TenantCaptureUpdate::AppendDelta { .. }, _) => {
                     // A suffix the rows cannot verify is not the answer: a complete verification
                     // is, and it words any refusal exactly as an open would.
                     cache.bounded = None;
                     cache.generation = next_generation;
+                    cache.serial = cache.serial.wrapping_add(1);
                     break;
                 }
             }
@@ -267,6 +276,7 @@ impl EventlogRecordedStore {
             .generation
             .checked_add(1)
             .ok_or_else(|| integrity("tracked cache generation exhausted"))?;
+        cache.serial = cache.serial.wrapping_add(1);
         Ok(())
     }
 
@@ -284,6 +294,7 @@ impl EventlogRecordedStore {
             .generation
             .checked_add(1)
             .ok_or_else(|| integrity("tracked cache generation exhausted"))?;
+        cache.serial = cache.serial.wrapping_add(1);
         Ok(())
     }
 
@@ -301,6 +312,7 @@ impl EventlogRecordedStore {
             .generation
             .checked_add(1)
             .ok_or_else(|| integrity("tracked cache generation exhausted"))?;
+        cache.serial = cache.serial.wrapping_add(1);
         Ok(())
     }
 
@@ -417,6 +429,7 @@ impl EventlogRecordedStore {
                     }
                 };
                 cache.generation = next_generation;
+                cache.serial = cache.serial.wrapping_add(1);
                 if let Some(verified) = &held {
                     cache.bounded = None;
                     cache.floor = cache.floor.max(verified.last_position);
@@ -501,9 +514,10 @@ impl EventlogRecordedStore {
         &self,
         subject: &Subject,
     ) -> Result<Option<EntityInstance>, AsyncStoreError> {
-        let result = match self.continue_tracked().await? {
-            Tracked::Whole(model) => model_state(&model, subject),
-            Tracked::Rows => self.rows_state(subject).await,
+        let result = match self.tracked_point(Point::State(subject)).await {
+            Ok(Answer::State(state)) => Ok(state),
+            Ok(_) => Err(integrity("a state read answered another read")),
+            Err(error) => Err(error),
         };
         self.noted(result)
     }
@@ -513,9 +527,10 @@ impl EventlogRecordedStore {
         &self,
         id: &str,
     ) -> Result<Option<RecordLookup>, AsyncStoreError> {
-        let result = match self.continue_tracked().await? {
-            Tracked::Whole(model) => Ok(model.records.get(id).map(ModelLookup::to_public)),
-            Tracked::Rows => self.rows_record(id).await,
+        let result = match self.tracked_point(Point::Record(id)).await {
+            Ok(Answer::Record(record)) => Ok(*record),
+            Ok(_) => Err(integrity("a record lookup answered another read")),
+            Err(error) => Err(error),
         };
         self.noted(result)
     }
@@ -525,26 +540,95 @@ impl EventlogRecordedStore {
         &self,
         key: &BatchKey,
     ) -> Result<Option<StoredBatch>, AsyncStoreError> {
-        let result = match self.continue_tracked().await? {
-            Tracked::Whole(model) => Ok(model.batches.get(key).map(ModelBatch::to_public)),
-            Tracked::Rows => self.rows_batch(key).await,
+        let result = match self.tracked_point(Point::Batch(key)).await {
+            Ok(Answer::Batch(batch)) => Ok(batch),
+            Ok(_) => Err(integrity("a batch lookup answered another read")),
+            Err(error) => Err(error),
         };
         self.noted(result)
     }
 
     /// A subject's history: from the whole model, or read per entity on a bounded handle, as a
-    /// `FullVerification` handle reads it.
+    /// `FullVerification` handle reads it, confirmed as [`Self::scoped_model`] confirms it.
     pub(super) async fn tracked_history(
         &self,
         subject: &Subject,
     ) -> Result<SubjectHistory, AsyncStoreError> {
-        match self.continue_tracked().await? {
-            Tracked::Whole(model) => Ok(model_history(&model, subject)),
-            Tracked::Rows => {
-                let read = self.scoped_model(&ReadScope::subject(subject)).await?;
-                Ok(model_history(&read.model, subject))
+        let read = self.scoped_model(&ReadScope::subject(subject)).await?;
+        Ok(model_history(&read.model, subject))
+    }
+
+    /// One point read on a `ProviderTracked` handle.
+    ///
+    /// A bounded handle reads the row and the blobs it names after the provider's continuity
+    /// answer, in transactions of their own: the Eventlog port answers continuity and reads rows
+    /// in separate calls. So the answer is served only if the provider, asked again afterwards,
+    /// still leaves the observation in place: then nothing reached the tenant between the two
+    /// answers, and the rows read are the rows the last verification held. Otherwise the read is
+    /// taken again from the continued observation. After [`CONFIRMATIONS`] attempts that each
+    /// overlapped a write, one complete verification answers it from the whole model.
+    async fn tracked_point(&self, read: Point<'_>) -> Result<Answer, AsyncStoreError> {
+        for _ in 0..CONFIRMATIONS {
+            let serial = match self.continue_tracked().await? {
+                Tracked::Whole(model) => return read.answered_by(&model),
+                Tracked::Rows(serial) => serial,
+            };
+            let answer = match read {
+                Point::State(subject) => self.rows_state(subject).await.map(Answer::State),
+                Point::Record(id) => self
+                    .rows_record(id)
+                    .await
+                    .map(|record| Answer::Record(Box::new(record))),
+                Point::Batch(key) => self.rows_batch(key).await.map(Answer::Batch),
+            };
+            // A refusal is confirmed too: one a concurrent write caused is taken again, and one
+            // the provider still attests nothing changed for is the store's answer.
+            if self.unchanged_since(serial).await? {
+                return answer;
             }
         }
+        let model = self.tracked_model().await?;
+        read.answered_by(&model)
+    }
+
+    /// Whether the provider, asked now, leaves in place the observation `serial` named: nothing
+    /// reached the tenant's captured material since the continuation that returned it.
+    pub(super) async fn unchanged_since(&self, serial: u64) -> Result<bool, AsyncStoreError> {
+        Ok(matches!(
+            self.continue_tracked().await?,
+            Tracked::Rows(now) if now == serial
+        ))
+    }
+}
+
+/// How many times a bounded read is taken again when a write overlapped it before one complete
+/// verification answers it instead.
+pub(super) const CONFIRMATIONS: usize = 3;
+
+/// A point read a `ProviderTracked` handle answers from its model or from the provider's rows.
+#[derive(Clone, Copy)]
+enum Point<'a> {
+    State(&'a Subject),
+    Record(&'a str),
+    Batch(&'a BatchKey),
+}
+
+enum Answer {
+    State(Option<EntityInstance>),
+    /// Boxed: a record lookup is far larger than the other answers.
+    Record(Box<Option<RecordLookup>>),
+    Batch(Option<StoredBatch>),
+}
+
+impl Point<'_> {
+    fn answered_by(self, model: &CapturedModel) -> Result<Answer, AsyncStoreError> {
+        Ok(match self {
+            Self::State(subject) => Answer::State(model_state(model, subject)?),
+            Self::Record(id) => {
+                Answer::Record(Box::new(model.records.get(id).map(ModelLookup::to_public)))
+            }
+            Self::Batch(key) => Answer::Batch(model.batches.get(key).map(ModelBatch::to_public)),
+        })
     }
 }
 

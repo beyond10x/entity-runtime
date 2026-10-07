@@ -12,9 +12,12 @@
 //! - **the binding and the stream identity**: the binding row is read and held to the checkpoint
 //!   on every bounded open; the provider holds a restored checkpoint to the stored identity.
 //! - **each answer**: a state, record or batch is built from the row the verifications above
-//!   held, and every blob it reads is held to its digest on the way. A history is read per entity
-//!   and verified as a `FullVerification` handle verifies it; a complete read is a complete
-//!   verification.
+//!   held, and every blob it reads is held to its digest on the way. The row is read after the
+//!   provider's continuity answer, so the answer is served only if the provider, asked again
+//!   afterwards, still answers that nothing changed (`tracked.rs`, `tracked_point`). A history is
+//!   read per entity, verified as a `FullVerification` handle verifies it and confirmed the same
+//!   way; a complete read is a complete verification. A raw edit of an index row that bypasses
+//!   SQLite is not caught here: only a `FullVerification` open or a complete read sees it.
 
 use eventlog_core::{
     CaptureUsage, CapturedRowChange, DurableCaptureCheckpoint, Read, ReadResult,

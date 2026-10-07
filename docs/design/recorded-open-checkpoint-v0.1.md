@@ -243,7 +243,15 @@ ran (see *What invalidates it*). The fourth is not atomic: the snapshot port has
 accepts any write that names the stream's generation,
 `eventlog@6983cc25:crates/eventlog-sqlite/src/lib.rs:2062-2066`), so two drains racing can still
 leave the lower one last. That costs the next open a longer delta, never correctness, because the
-`provider` bytes of either record name an observation that was verified.
+`provider` bytes of either record name an observation that was verified. The fifth is not atomic
+either, for the same reason: a discard that lands inside a live handle's drain, after the drain
+read the persisted record and before it writes, is overwritten by that drain (the generation the
+checked save compares is minted once and never changes, Eventlog 0.8.0
+`crates/eventlog-sqlite/src/lib.rs:2040-2067`). It needs a discard run while a `ProviderTracked`
+handle is live, which the discard's precondition excludes; the written record still names a
+verified observation of the same file, and running the discard again with every handle shut down
+recovers it. `a_discard_landing_inside_a_live_handles_drain_is_overwritten_as_documented`
+(`crates/entity-eventlog/tests/adversary_bounded_open.rs`) holds this outcome.
 
 The implementation's tests for this rule: a read-only drain after a `verifier` change writes a
 valid checkpoint at the unchanged head, and the next open is bounded; a handle whose held position
@@ -297,8 +305,10 @@ the refusal back. The library cannot see other processes, so the caller knows th
 knows any administrative precondition: within one process, the discard call is offered on the
 owner (`EventlogRecordedStoreOwner`) before a facade is started from it, so no facade of that
 process exists; across processes, the operator shuts down every owner of the store first, as the
-refusal's message says. The fifth drain condition makes a violation harmless rather than relying on
-it: a handle whose loaded record is not the tombstone now persisted writes nothing.
+refusal's message says. The fifth drain condition makes most violations harmless rather than
+relying on it: a handle whose loaded record is not the tombstone now persisted writes nothing. It
+cannot make all of them harmless: a discard landing inside that handle's drain, between its check
+and its write, is overwritten (*When it is written*, the paragraph after the conditions).
 
 Falling back instead of refusing was rejected: it would turn the only detection a bounded open
 adds into silence, while the denial it prevents is one the same writer can already cause by
@@ -357,7 +367,13 @@ read and `rebuild_indexes` stay complete verifications: that is the full verific
 
 Before each read the handle asks the provider to continue from its in-process checkpoint:
 `Unchanged` costs nothing more, `AppendDelta` is verified as above, `Complete` makes the handle a
-whole-model handle through a complete verification. Then:
+whole-model handle through a complete verification. Then it reads rows and blobs, each in a call
+and a transaction of its own: the Eventlog port has no call that answers continuity and reads rows
+in one transaction. So after the read the handle asks the provider again, and serves the answer
+only if the provider still leaves the observation in place, which proves nothing reached the
+tenant between the two answers. A read that overlapped a write is taken again from the continued
+observation; after three that each did, one complete verification answers it. A row-backed answer
+costs two continuity questions instead of one. The reads:
 
 | read | answered from | cost | verified by |
 |---|---|---|---|
@@ -392,8 +408,8 @@ unit tests are in `crates/entity-eventlog/src/adapter/bounded/tests.rs` and
 | the binding and the stream identity | the binding row read on every bounded open; the checkpoint's own `authority`; the provider's check of a restored checkpoint against the stored identity | `a_checkpoint_naming_another_binding_event_is_not_applied`; `checkpoint-current-identity-tamper` |
 | the checkpoint itself | its digest, format, verifier, projections and limits on every open; a damaged one costs a complete open | `a_record_changed_without_its_digest_is_damaged_and_another_verifier_is_foreign`; `tampered-checkpoint-falls-back-to-complete` |
 | a tail the store lost | the position the checkpoint names, after the complete verification it falls back to | `a_checkpoint_beyond_the_head_refuses_tracked_opens_until_discarded`; `checkpoint-ahead-of-head-refuses-until-discarded` |
-| each state, record and batch read | the row the verifications above held, and every blob it reads held to its digest; a raw edit the provider cannot see is refused by the read that reads it | `every_answer_of_a_bounded_handle_equals_a_complete_handles`; `a_raw_file_edit_is_refused_by_the_read_of_the_edited_blob_and_by_full_verification` |
-| each history and a write's preflight | the per-entity verifier, as on a `FullVerification` handle; the write's own append as a suffix | `every_answer_of_a_bounded_handle_equals_a_complete_handles`; `a_bounded_handle_verifies_its_own_write_as_a_suffix` |
+| each state, record and batch read | the row the verifications above held, read after the provider's continuity answer and served only if the provider, asked again, still answers that nothing changed; every blob it reads held to its digest, so a raw edit of a blob the provider cannot see is refused by the read that reads the blob. A raw edit of an index row is not a blob: it is served, and only a `FullVerification` open or a complete read refuses it (*What a bounded open does not detect*) | `every_answer_of_a_bounded_handle_equals_a_complete_handles`; `a_raw_file_edit_is_refused_by_the_read_of_the_edited_blob_and_by_full_verification`; `a_foreign_sql_write_between_the_continuity_answer_and_the_row_read_is_not_served`; `a_foreign_sql_write_between_the_continuity_answer_and_a_record_or_batch_row_read_is_not_served`; `a_raw_edit_of_a_record_row_is_served_by_a_bounded_lookup_and_refused_only_by_complete_verification` |
+| each history and a write's preflight | the per-entity verifier, as on a `FullVerification` handle, confirmed as the point reads are: a write that rolls a subject back consistently between its calls is seen by the provider asked again; the write's own append as a suffix | `every_answer_of_a_bounded_handle_equals_a_complete_handles`; `a_bounded_handle_verifies_its_own_write_as_a_suffix`; `a_consistent_foreign_rollback_during_a_bounded_per_entity_read_is_not_served` |
 | the read-bound totals | the usage the provider bound to the checkpoint, advanced by each verified suffix; a digest the handle has not seen bound is asked of the provider | `a_bounded_handle_refuses_a_write_past_its_read_bound_as_a_whole_handle_does` |
 
 ### Tenant totals for `admit_growth`
@@ -429,8 +445,10 @@ Against a complete open, a bounded open does not detect:
 - **Changes that bypass SQL while no handle is open**: raw writes to the database file, a copied-in
   page, media damage. Today they are outside the live-handle guarantee but caught by the next open
   (`eventlog-recorded-adapter-v0.1.md:399-400`); after this change only a `FullVerification` open
-  or a complete read catches them. The implementation states this narrowing in R-151,
-  `AGENTS.md:245` and `CHANGELOG.md`.
+  or a complete read catches them. Of the reads a bounded handle answers from rows, one that
+  reads an edited blob refuses it by the blob's digest; an edited index row it serves
+  (`a_raw_edit_of_a_record_row_is_served_by_a_bounded_lookup_and_refused_only_by_complete_verification`).
+  The implementation states this narrowing in R-151, `AGENTS.md:245` and `CHANGELOG.md`.
 - **A writer that defeats the provider's change recording on purpose**: a connection that disables
   triggers (`SQLITE_DBCONFIG_ENABLE_TRIGGER`) or rewrites the provider's continuity tables
   consistently. It is in the same class as the informed writer above.

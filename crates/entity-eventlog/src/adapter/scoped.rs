@@ -150,15 +150,7 @@ impl EventlogRecordedStore {
         scope: &ReadScope,
     ) -> Result<ScopedModel, AsyncStoreError> {
         if self.policy == super::CapturePolicy::ProviderTracked {
-            // A whole-model handle answers from its model. A handle opened from a checkpoint has
-            // none: once its observation is continued it reads per entity, as below.
-            if let super::tracked::Tracked::Whole(model) = self.continue_tracked().await? {
-                return Ok(ScopedModel {
-                    #[cfg(feature = "sync-bridge")]
-                    covered: scope.clone(),
-                    model,
-                });
-            }
+            return self.tracked_scoped(scope).await;
         }
         for _ in 0..ATTEMPTS {
             self.scoped_reads.fetch_add(1, Ordering::Relaxed);
@@ -176,6 +168,52 @@ impl EventlogRecordedStore {
         // one consistent observation can tell them apart. A complete capture is one, so it decides:
         // contention then ends as the revision conflict or success it is, and damage is refused
         // from the capture exactly as a complete read refuses it.
+        self.complete_scope(scope).await
+    }
+
+    /// A `ProviderTracked` handle's scoped read: its whole model, or, on a handle opened from a
+    /// checkpoint, a per-entity read confirmed against the provider.
+    ///
+    /// The per-entity read is several provider calls made after the continuity answer. A write
+    /// that rewrites a subject's stream and rows consistently between them would verify, so the
+    /// read is accepted only if the provider, asked again afterwards, leaves the observation in
+    /// place (as the point reads are). A read the store did not change under but that does not
+    /// verify, and a store that changes under every attempt, are decided by one complete
+    /// verification.
+    async fn tracked_scoped(&self, scope: &ReadScope) -> Result<ScopedModel, AsyncStoreError> {
+        for _ in 0..super::tracked::CONFIRMATIONS {
+            let serial = match self.continue_tracked().await? {
+                super::tracked::Tracked::Whole(model) => {
+                    return Ok(ScopedModel {
+                        #[cfg(feature = "sync-bridge")]
+                        covered: scope.clone(),
+                        model,
+                    });
+                }
+                super::tracked::Tracked::Rows(serial) => serial,
+            };
+            self.scoped_reads.fetch_add(1, Ordering::Relaxed);
+            let read = self.scoped_once(scope).await;
+            if !self.unchanged_since(serial).await? {
+                continue;
+            }
+            match read {
+                Ok(scoped) => return Ok(scoped),
+                Err(Retry::Final(error)) => {
+                    self.note_refusal(&error);
+                    return Err(error);
+                }
+                Err(Retry::Again) => break,
+            }
+        }
+        self.complete_scope(scope).await
+    }
+
+    /// `scope` answered from one complete verification, covering every subject it holds.
+    async fn complete_scope(&self, scope: &ReadScope) -> Result<ScopedModel, AsyncStoreError> {
+        // Only the executor's batch reads, behind `sync-bridge`, ask what a read covers.
+        #[cfg(not(feature = "sync-bridge"))]
+        let _ = scope;
         let complete = self.capture_model().await?;
         Ok(ScopedModel {
             #[cfg(feature = "sync-bridge")]

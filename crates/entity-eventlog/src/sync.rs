@@ -257,8 +257,11 @@ impl EventlogRecordedStoreOwner {
     /// The recovery from a checkpoint ahead of the provider's head, after an operator has decided
     /// the store is to be used as it is. Run it before a facade is started from this owner, with
     /// every other owner of the store shut down: a handle that opened before the discard would
-    /// otherwise write its own checkpoint again at its drain. It never writes over a tombstone it
-    /// did not load at its open, so a violation costs the recovery and nothing else. Only SQLite
+    /// otherwise write its own checkpoint again at its drain. Such a handle checks for a tombstone
+    /// it did not load before it writes, so a violation usually costs the recovery and nothing
+    /// else; a discard that lands inside that handle's drain, between its check and its write, is
+    /// overwritten, because the snapshot port offers no compare-and-set. Then run the discard again
+    /// with that handle shut down. Only SQLite
     /// stores hold an open checkpoint; every other owner returns `false` without opening its store.
     ///
     /// # Errors

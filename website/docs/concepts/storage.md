@@ -122,8 +122,9 @@ explicit Cargo feature:
   that checkpoint, SQLite's proof that only acknowledged appends followed it, and those appends:
   its cost follows what was written since, not the store's size. `open_verification()` reports
   `Complete`, `Checkpoint` or `Suffix`. A write through any SQLite connection in between makes the
-  next open complete; a raw edit of the file is seen only by a `FullVerification` open, a complete
-  read, or a read of the edited bytes. Enabling is one-way for older binaries: Entity Runtime
+  next open complete. A raw edit of the file is seen only by a `FullVerification` open or a complete
+  read, except that a read of an edited blob refuses it by the blob's digest; an edited index row is
+  served. Enabling is one-way for older binaries: Entity Runtime
   0.28.0 and earlier cannot open the store until `disable_durable_open_checkpoints` runs. A store
   whose head is behind its checkpoint refuses `ProviderTracked` opens until
   `EventlogRecordedStoreOwner::discard_open_checkpoint` runs.
