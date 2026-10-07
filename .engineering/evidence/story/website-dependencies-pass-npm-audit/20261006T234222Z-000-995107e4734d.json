@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-06T23:42:22Z",
+  "actor": "human:timo",
+  "artifact": "story:website-dependencies-pass-npm-audit",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "website/ on 9c254cf2, each its own exit: npm ci 0, npm run vendor-check 0 (image-size 3 hostile + 2 honest; braces 11 hostile + 7 ordinary, source and installed copy), npm audit --audit-level=high 0, npm run typecheck 0, npm run build 0; braces hostile set against published 3.0.3: 11 failures, exit 1",
+    "reference": "9c254cf2"
+  }
+}
