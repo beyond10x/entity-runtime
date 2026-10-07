@@ -13,7 +13,9 @@ refs:
 relations:
 - designs: story:verified-model-holds-each-record-once
 - designs: story:aep-lifecycle-fixture-matches-aep-main
-revision: 2
+- designs: story:website-dependencies-pass-npm-audit
+- designs: story:unified-site-source-carries-no-project-pages-caller
+revision: 3
 ---
 # Wave: a verified model holds each committed record once (#59)
 
@@ -27,8 +29,11 @@ Run: non-interactive. The wave was approved under the operator's standing grant 
 repository's issue work, which also authorises the commits below; no operator turn is available
 in this session.
 
-Commits this wave makes: one unit commit, the merge of the unit branch into `wave/er-59`, the
-closing planning-store commit, and the merge of `wave/er-59` into `main` through a pull request.
+Commits this wave makes: one commit per unit, the merge of each unit branch into `wave/er-59`, the
+store commits, and the merge of `wave/er-59` into `main` through one pull request. Standing rule
+from 2026-10-07: one integration branch and one pull request per wave; units get no pull request
+of their own. The website audit branch already had pull request #63 open; it joined this wave by
+merge, so #63 closes when this wave lands.
 
 ## Selection
 
@@ -54,7 +59,9 @@ wave 1
 | unit | story | stage | branch | worktree id | build dir | scratch |
 |---|---|---|---|---|---|---|
 | integration | — | opened | `wave/er-59` | `er-59-int` | in-tree `target/` | `~/.cache/er-59/int` |
-| U1 | `story:verified-model-holds-each-record-once` | correction round 1 (threshold missed in round 1) | `impl/verified-model-holds-each-record-once` | `er-59-u1` | in-tree `target/` | `~/.cache/er-59/u1/scratch` |
+| U1 | `story:verified-model-holds-each-record-once` | green round 2, committed `d9fcaf1f`; adversary dispatched | `impl/verified-model-holds-each-record-once` | `er-59-u1` | in-tree `target/` | `~/.cache/er-59/u1/scratch` |
+| U2 | `story:website-dependencies-pass-npm-audit` | implemented; `9c254cf2` + `317f83f0` merged as `a98e0d2b` | `fix/website-npm-audit` | `er-audit` (finished, archived) | — | `~/.cache/er-59/audit/scratch` |
+| U3 | `story:aep-lifecycle-fixture-matches-aep-main` | dispatched | `impl/aep-lifecycle-fixture-matches-aep-main` | `er-59-u3` | in-tree `target/` | `~/.cache/er-59/u3/scratch` |
 
 Brief: `~/.cache/er-59/u1/brief.md`. Dispatch types: `aep:implementor`, then `aep:adversary`.
 
@@ -90,3 +97,25 @@ field. Accepted deviations: three private-type renames in tests (`adapter.rs:612
 `crates/entity-store/src/asynchronous.rs`.
 
 Agent cost, round 1: 408,740 tokens, 162 tool uses, 35 min.
+
+## Round 2 (implementor)
+
+The ProviderTracked open builds by ownership: verification over the borrowed capture, then record
+and batch blobs move into the model, and the handle keeps no second copy. Committed `d9fcaf1f`.
+Implementor's medians (bytes per event): 55 events 511,255 → 266,314 (0.521), 601 events 472,525 →
+221,252 (0.468), 1,203 events 441,336 → 189,662 (0.430). Coordinator re-run: base 601 events
+472,675; treatment 601 events 221,238, 1,203 events 189,791. Verdict VERIFIED.
+
+Agent cost, round 2: 537,955 tokens, 235 tool uses, 59 min.
+
+## U2: website npm audit
+
+`npm audit --audit-level=high` in `website/`: 47 vulnerabilities (3 low, 13 moderate, 14 high,
+17 critical), exit 1 → 4 low, exit 0. `braces` vendored with the depth guards of
+micromatch/braces#78; `tinypool`, `serialize-javascript`, `postcss-selector-parser` overridden.
+Agent cost: 186,793 tokens, 97 tool uses, 16 min.
+
+## Disk
+
+`/` was at 18–19G free during round 2 (`df -h /`). Under the floor: package-scoped gates only;
+the full gate waits until `/` is above 20G.

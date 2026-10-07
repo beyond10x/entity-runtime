@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T00:09:22Z",
+  "actor": "human:timo",
+  "artifact": "story:aep-lifecycle-fixture-matches-aep-main",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "1119f592 on er-59-u3, each its own exit: cargo fmt -p entity-yaml --check 0, cargo test -p entity-yaml 0 (29 passed), cargo clippy -p entity-yaml -D warnings 0, task pin-check 0 (13 pinned files, 0 findings), entity validate examples/aep/*.yaml 0 (13 files, 0 invalid)",
+    "reference": "1119f592"
+  }
+}
