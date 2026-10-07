@@ -1,0 +1,59 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "set-increment-result-is-revalidated",
+  "summary": "The sum is validated against the field's schema after set: a passed max or min is a validation refusal, the boundary is admitted.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":9}}",
+        "operation": "add",
+        "arguments": "{\"by\":2}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "fields.hits"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":9}}",
+        "operation": "add",
+        "arguments": "{\"by\":1}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":10}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true,\"min\":0}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"take\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"outcomes\":[{\"name\":\"taken\",\"effect\":\"updates\",\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}]}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":1}}",
+        "operation": "take",
+        "arguments": "{\"by\":-2}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "fields.hits"
+        ]
+      }
+    }
+  ]
+}

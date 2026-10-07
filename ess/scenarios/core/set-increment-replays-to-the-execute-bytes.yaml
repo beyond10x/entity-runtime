@@ -1,0 +1,90 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "set-increment-replays-to-the-execute-bytes",
+  "summary": "An increment replays and rehydrates to the instance execute returned, and a record or event claiming another sum is refused.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"hits\":\"$fields.hits\"}}},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}},\"emits\":[{\"type\":\"Added\",\"payload\":{\"hits\":\"$fields.hits\"}}]}}}",
+        "id": "c-1",
+        "fields": "{\"hits\":40}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":40}}",
+        "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"hits\":40},\"args\":{\"hits\":40},\"payload\":{\"hits\":40}}]"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"hits\":\"$fields.hits\"}}},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}},\"emits\":[{\"type\":\"Added\",\"payload\":{\"hits\":\"$fields.hits\"}}]}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":40}}",
+        "operation": "add",
+        "arguments": "{\"by\":2}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42}}",
+        "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":2,\"type\":\"Added\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":42},\"args\":{\"by\":2},\"payload\":{\"hits\":42}}]"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.ReplayReturned",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:03Z",
+      "command": "entity.core.ReplayTampered",
+      "input": {
+        "patch": "{\"changed\":{\"hits\":43}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:04Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"hits\":\"$fields.hits\"}}},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}},\"emits\":[{\"type\":\"Added\",\"payload\":{\"hits\":\"$fields.hits\"}}]}}}",
+        "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"hits\":40},\"args\":{\"hits\":40},\"payload\":{\"hits\":40}},{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":2,\"type\":\"Added\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":42},\"args\":{\"by\":2},\"payload\":{\"hits\":42}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:05Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"hits\":\"$fields.hits\"}}},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}},\"emits\":[{\"type\":\"Added\",\"payload\":{\"hits\":\"$fields.hits\"}}]}}}",
+        "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"hits\":40},\"args\":{\"hits\":40},\"payload\":{\"hits\":40}},{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":2,\"type\":\"Added\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":2},\"args\":{\"by\":2},\"payload\":{\"hits\":2}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "events"
+        ]
+      }
+    }
+  ]
+}

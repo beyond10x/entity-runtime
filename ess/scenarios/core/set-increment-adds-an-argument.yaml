@@ -1,0 +1,71 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "set-increment-adds-an-argument",
+  "summary": "An increment adds what an argument or a pre-operation field resolves to; a negative amount decrements and a number sums exactly.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true},\"step\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}},\"tick\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"default\":1}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"},\"step\":{\"increment\":\"$fields.hits\"}}}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":37,\"step\":0}}",
+        "operation": "add",
+        "arguments": "{\"by\":5}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42,\"step\":0}}",
+        "events": "[]"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true},\"step\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}},\"tick\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"default\":1}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"},\"step\":{\"increment\":\"$fields.hits\"}}}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42,\"step\":0}}",
+        "operation": "tick",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"hits\":43,\"step\":42}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true},\"step\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}},\"tick\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"default\":1}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"},\"step\":{\"increment\":\"$fields.hits\"}}}}}",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"hits\":43,\"step\":42}}",
+        "operation": "add",
+        "arguments": "{\"by\":-50}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":4,\"fields\":{\"hits\":-7,\"step\":42}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:03Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"wallet\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"total\":{\"type\":\"number\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"deposit\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"number\",\"required\":true}}},\"response\":{\"fields\":{\"total\":{\"type\":\"number\",\"required\":true}}},\"outcomes\":[{\"name\":\"deposited\",\"effect\":\"updates\",\"set\":{\"total\":{\"increment\":\"$args.by\"}},\"responds\":{\"total\":\"$fields.total\"}}]}}}",
+        "instance": "{\"entity\":\"wallet\",\"version\":1,\"id\":\"w-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"total\":0.1}}",
+        "operation": "deposit",
+        "arguments": "{\"by\":0.2}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "deposited",
+        "instance": "{\"entity\":\"wallet\",\"version\":1,\"id\":\"w-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"total\":0.3}}",
+        "response": "{\"total\":0.3}"
+      }
+    }
+  ]
+}

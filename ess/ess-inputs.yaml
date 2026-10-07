@@ -209,6 +209,12 @@ scenarios:
   - scenarios/core/service3-fulfillment-remove-required.yaml
   - scenarios/core/service3-fulfillment-set-remove.yaml
   - scenarios/core/service3-refusal-needs-no-loaded-instance.yaml
+  - scenarios/core/set-increment-adds-a-literal.yaml
+  - scenarios/core/set-increment-adds-an-argument.yaml
+  - scenarios/core/set-increment-overflow-is-refused.yaml
+  - scenarios/core/set-increment-registration-refusals.yaml
+  - scenarios/core/set-increment-replays-to-the-execute-bytes.yaml
+  - scenarios/core/set-increment-result-is-revalidated.yaml
   - scenarios/core/silent-execution-advances-once-with-no-events.yaml
   - scenarios/core/templates-recurse-escape-dollar-and-read-post-set-fields.yaml
   - scenarios/core/timestamp-48.yaml

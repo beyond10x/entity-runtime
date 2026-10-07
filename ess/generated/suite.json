@@ -195,6 +195,12 @@
       "entity.core/authored/service3-fulfillment-remove-required",
       "entity.core/authored/service3-fulfillment-set-remove",
       "entity.core/authored/service3-refusal-needs-no-loaded-instance",
+      "entity.core/authored/set-increment-adds-a-literal",
+      "entity.core/authored/set-increment-adds-an-argument",
+      "entity.core/authored/set-increment-overflow-is-refused",
+      "entity.core/authored/set-increment-registration-refusals",
+      "entity.core/authored/set-increment-replays-to-the-execute-bytes",
+      "entity.core/authored/set-increment-result-is-revalidated",
       "entity.core/authored/silent-execution-advances-once-with-no-events",
       "entity.core/authored/templates-recurse-escape-dollar-and-read-post-set-fields",
       "entity.core/authored/timestamp-48",
@@ -1301,6 +1307,36 @@
         "disposition": "accepted",
         "scenario": "entity.core/authored/service3-refusal-needs-no-loaded-instance"
       },
+      "scenarios/core/set-increment-adds-a-literal.yaml": {
+        "digest": "sha256:26c2d74b97587aea5f9d1e2cb5d52dc40aab89c43f59449ae2df159a1e3bcfc2",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/set-increment-adds-a-literal"
+      },
+      "scenarios/core/set-increment-adds-an-argument.yaml": {
+        "digest": "sha256:bd0b814a0e3187df966d1df47ebd2f581319af1ccb7d88ecf7a05baf88427aa8",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/set-increment-adds-an-argument"
+      },
+      "scenarios/core/set-increment-overflow-is-refused.yaml": {
+        "digest": "sha256:57e94d9a336e2c03bf1c533b4215f81eace2f9f6cd18eff61df25be407c330c8",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/set-increment-overflow-is-refused"
+      },
+      "scenarios/core/set-increment-registration-refusals.yaml": {
+        "digest": "sha256:50b5e4809322d9e280779cb4d2b28debc518bac0ff277d9f2c26bb522914fd20",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/set-increment-registration-refusals"
+      },
+      "scenarios/core/set-increment-replays-to-the-execute-bytes.yaml": {
+        "digest": "sha256:ec5eb9960b3a87ff4f4cac444b50fda875181b0625b7fa625e57420e827c5c08",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/set-increment-replays-to-the-execute-bytes"
+      },
+      "scenarios/core/set-increment-result-is-revalidated.yaml": {
+        "digest": "sha256:f48a6112cdb24c5f1deb0dc3e1c427b6cb963b5dfa1c6115431957855acf873b",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/set-increment-result-is-revalidated"
+      },
       "scenarios/core/silent-execution-advances-once-with-no-events.yaml": {
         "digest": "sha256:d0780ea8d7f2e5fd0877ba4b7411cc48ee5321c8d3101c1f63441c978b08ae80",
         "disposition": "accepted",
@@ -1973,7 +2009,7 @@
       }
     },
     "counts": {
-      "authored": 328,
+      "authored": 334,
       "generated": 111,
       "outside": 0,
       "refused": 0
@@ -55461,6 +55497,4038 @@
             ],
             "outcome": {
               "command": "entity.core.Prepare",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/set-increment-adds-a-literal": {
+      "purpose": "An increment adds a literal to the pre-operation value under kernel/1 and a service/1 outcome; any other mapping stays a template.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true},\"total\":{\"type\":\"number\",\"required\":true},\"note\":{\"type\":\"json\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"bump\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":1},\"total\":{\"increment\":0.25},\"note\":{\"increment\":1,\"by\":\"$fields.hits\"}},\"emits\":[{\"type\":\"Bumped\",\"payload\":{\"before\":\"$old_fields.hits\",\"after\":\"$fields.hits\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":41,\"total\":1.5}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "bump"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":2,\"type\":\"Bumped\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":42,\"note\":{\"by\":41,\"increment\":1},\"total\":1.75},\"args\":{},\"payload\":{\"after\":42,\"before\":41}}]",
+              "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42,\"note\":{\"by\":41,\"increment\":1},\"total\":1.75}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"bump\":{\"outcomes\":[{\"name\":\"bumped\",\"effect\":\"updates\",\"set\":{\"hits\":{\"increment\":-3}},\"emits\":[{\"type\":\"Bumped\",\"payload\":{\"hits\":\"$fields.hits\"}}]}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":4,\"fields\":{\"hits\":10}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "bump"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":5,\"type\":\"Bumped\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":7},\"args\":{},\"payload\":{\"hits\":7}}]",
+              "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":5,\"fields\":{\"hits\":7}}",
+              "outcome": "bumped",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/set-increment-adds-an-argument": {
+      "purpose": "An increment adds what an argument or a pre-operation field resolves to; a negative amount decrements and a number sums exactly.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":5}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true},\"step\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}},\"tick\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"default\":1}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"},\"step\":{\"increment\":\"$fields.hits\"}}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":37,\"step\":0}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "add"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "events": "[]",
+              "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42,\"step\":0}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true},\"step\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}},\"tick\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"default\":1}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"},\"step\":{\"increment\":\"$fields.hits\"}}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42,\"step\":0}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "tick"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"hits\":43,\"step\":42}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":-50}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true},\"step\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}},\"tick\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"default\":1}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"},\"step\":{\"increment\":\"$fields.hits\"}}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"hits\":43,\"step\":42}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "add"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":4,\"fields\":{\"hits\":-7,\"step\":42}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":0.2}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"wallet\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"total\":{\"type\":\"number\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"deposit\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"number\",\"required\":true}}},\"response\":{\"fields\":{\"total\":{\"type\":\"number\",\"required\":true}}},\"outcomes\":[{\"name\":\"deposited\",\"effect\":\"updates\",\"set\":{\"total\":{\"increment\":\"$args.by\"}},\"responds\":{\"total\":\"$fields.total\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"wallet\",\"version\":1,\"id\":\"w-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"total\":0.1}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "deposit"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "instance": "{\"entity\":\"wallet\",\"version\":1,\"id\":\"w-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"total\":0.3}}",
+              "outcome": "deposited",
+              "response": "{\"total\":0.3}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/set-increment-overflow-is-refused": {
+      "purpose": "A sum outside the range the field's kind holds under its semantics is refused as increment_overflow, never wrapped.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":1}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":18446744073709551615}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "add"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "increment_overflow",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":1}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":9223372036854775807}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "add"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":9223372036854775808}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":-1}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":-9223372036854775808}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "add"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "increment_overflow",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":1}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"outcomes\":[{\"name\":\"added\",\"effect\":\"updates\",\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":9223372036854775807}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "add"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "increment_overflow",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":1.7976931348623157E+308}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"wallet\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"total\":{\"type\":\"number\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"deposit\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"number\",\"required\":true}}},\"outcomes\":[{\"name\":\"deposited\",\"effect\":\"updates\",\"set\":{\"total\":{\"increment\":\"$args.by\"}}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"wallet\",\"version\":1,\"id\":\"w-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"total\":1.7976931348623157E+308}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "deposit"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "increment_overflow",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":1}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"wallet\",\"version\":1,\"schema\":{\"fields\":{\"total\":{\"type\":\"number\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"deposit\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"number\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"total\":{\"increment\":\"$args.by\"}}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"wallet\",\"version\":1,\"id\":\"w-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"total\":1E+2000}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "deposit"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "increment_overflow",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/set-increment-registration-refusals": {
+      "purpose": "Registration admits an increment only on a required integer or number operation field, with an always-present number amount.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.ValidateDefinition"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true},\"total\":{\"type\":\"number\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":1},\"total\":{\"increment\":\"$args.by\"}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"title\":{\"increment\":1}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"object\",\"required\":true,\"properties\":{\"increment\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"meta\":{\"increment\":1}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":1}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"default\":0}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":1}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"ratio\":{\"type\":\"binary64\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"outcomes\":[{\"name\":\"acted\",\"effect\":\"updates\",\"set\":{\"ratio\":{\"increment\":1}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{},\"additional_fields\":true},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"extra\":{\"increment\":1}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_target_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"5\"}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_amount_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"note\":{\"type\":\"string\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.note\"}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_amount_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\"}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_amount_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":0.5}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_amount_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"number\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_amount_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$id\"}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_amount_invalid"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.nope\"}}}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "invalid_template"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"hits\":{\"increment\":1}}}]}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "increment_on_create"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/set-increment-replays-to-the-execute-bytes": {
+      "purpose": "An increment replays and rehydrates to the instance execute returned, and a record or event claiming another sum is refused.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Rehydrate"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.ReplayReturned"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.ReplayTampered"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Rehydrate",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.ReplayReturned",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.ReplayTampered",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"hits\":\"$fields.hits\"}}},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}},\"emits\":[{\"type\":\"Added\",\"payload\":{\"hits\":\"$fields.hits\"}}]}}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"hits\":40}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "c-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"hits\":40},\"args\":{\"hits\":40},\"payload\":{\"hits\":40}}]",
+              "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":40}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":2}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"hits\":\"$fields.hits\"}}},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}},\"emits\":[{\"type\":\"Added\",\"payload\":{\"hits\":\"$fields.hits\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":40}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "add"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "events": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":2,\"type\":\"Added\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":42},\"args\":{\"by\":2},\"payload\":{\"hits\":42}}]",
+              "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ReplayReturned",
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ReplayReturned",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ReplayReturned",
+            "declarations": {},
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42}}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ReplayReturned",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ReplayTampered",
+          "input": {
+            "patch": {
+              "kind": "literal",
+              "value": "{\"changed\":{\"hits\":43}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ReplayTampered",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ReplayTampered",
+            "declarations": {},
+            "expected": {
+              "error_kind": "validation",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ReplayTampered",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Rehydrate",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"hits\":\"$fields.hits\"}}},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}},\"emits\":[{\"type\":\"Added\",\"payload\":{\"hits\":\"$fields.hits\"}}]}}}"
+            },
+            "events": {
+              "kind": "literal",
+              "value": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"hits\":40},\"args\":{\"hits\":40},\"payload\":{\"hits\":40}},{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":2,\"type\":\"Added\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":42},\"args\":{\"by\":2},\"payload\":{\"hits\":42}}]"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Rehydrate",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Rehydrate",
+            "declarations": {},
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":42}}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Rehydrate",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Rehydrate",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"hits\":\"$fields.hits\"}}},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}},\"emits\":[{\"type\":\"Added\",\"payload\":{\"hits\":\"$fields.hits\"}}]}}}"
+            },
+            "events": {
+              "kind": "literal",
+              "value": "[{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Open\",\"changed\":{\"hits\":40},\"args\":{\"hits\":40},\"payload\":{\"hits\":40}},{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"revision\":2,\"type\":\"Added\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"hits\":2},\"args\":{\"by\":2},\"payload\":{\"hits\":2}}]"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Rehydrate",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Rehydrate",
+            "declarations": {},
+            "expected": {
+              "error_kind": "validation",
+              "paths": [
+                "events"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Rehydrate",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/set-increment-result-is-revalidated": {
+      "purpose": "The sum is validated against the field's schema after set: a passed max or min is a validation refusal, the boundary is admitted.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":2}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":9}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "add"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "validation",
+              "paths": [
+                "fields.hits"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":1}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true,\"max\":10}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"add\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":9}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "add"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "instance": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"hits\":10}}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"by\":-2}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"hits\":{\"type\":\"integer\",\"required\":true,\"min\":0}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"take\":{\"arguments\":{\"fields\":{\"by\":{\"type\":\"integer\",\"required\":true}}},\"outcomes\":[{\"name\":\"taken\",\"effect\":\"updates\",\"set\":{\"hits\":{\"increment\":\"$args.by\"}}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"counter\",\"version\":1,\"id\":\"c-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"hits\":1}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "take"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "validation",
+              "paths": [
+                "fields.hits"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
               "outcome": "returned"
             }
           },
