@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T03:24:01Z",
+  "actor": "human:timo",
+  "artifact": "story:operation-writes-an-optional-field-from-an-optional-argument",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "task ess-check (U1 red run before code vs final)",
+    "reference": "U1 build/scratch: ess-check 434/439 before code, 439/439 at 81baf64b"
+  }
+}

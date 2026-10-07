@@ -113,8 +113,21 @@ explicit Cargo feature:
   nothing.
 - **Provider-tracked reads (SQLite).** `RecordedProviderFacade::start_with_read_policy` with
   `CapturePolicy::ProviderTracked` reuses a verified observation when SQLite proves nothing
-  changed, or verifies only a proven append suffix. Every open still verifies the whole store; edits
-  that bypass SQLite are outside this guarantee. The default is `FullVerification`.
+  changed, or verifies only a proven append suffix. An open verifies the whole store, unless the
+  store has durable open checkpoints enabled (below). Edits that bypass SQLite are outside this
+  guarantee. The default is `FullVerification`, whose open always verifies the whole store.
+- **Open from a checkpoint (SQLite).** After
+  `RecordedProviderFacade::enable_durable_open_checkpoints`, a `Drain` shutdown persists the last
+  verified observation as the store's open checkpoint, and the next `ProviderTracked` open verifies
+  that checkpoint, SQLite's proof that only acknowledged appends followed it, and those appends:
+  its cost follows what was written since, not the store's size. `open_verification()` reports
+  `Complete`, `Checkpoint` or `Suffix`. A write through any SQLite connection in between makes the
+  next open complete. A raw edit of the file is seen only by a `FullVerification` open or a complete
+  read, except that a read of an edited blob refuses it by the blob's digest; an edited index row is
+  served. Enabling is one-way for older binaries: Entity Runtime
+  0.28.0 and earlier cannot open the store until `disable_durable_open_checkpoints` runs. A store
+  whose head is behind its checkpoint refuses `ProviderTracked` opens until
+  `EventlogRecordedStoreOwner::discard_open_checkpoint` runs.
 - **Scoped reads.** `RecordedProviderFacade::scoped` reads only the subjects a caller names;
   `read_histories` reads several in one call, in the order requested.
 - **Tree text kept once.** With `tree`, a new store is created as `eventlog-tree/2`, which keeps

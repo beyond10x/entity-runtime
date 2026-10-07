@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-07T08:04:49Z",
+  "actor": "human:timo",
+  "artifact": "task:website-katex-passes-its-advisory",
+  "kind": "task",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "npm audit in website/: found 0 vulnerabilities (exit 0); task site-build: exit 0 with katex 0.19.0"
+  }
+}

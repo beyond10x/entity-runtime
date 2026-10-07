@@ -1554,3 +1554,301 @@ fn a_creation_selector_free_default_that_is_not_last_is_still_refused_beside_a_s
         }
     ));
 }
+
+// --- Increment assignments on a branch (R-164) ----------------------------------------------------
+
+/// A `service/1` counter whose one branch increments an integer and a number field.
+fn service_counter() -> Value {
+    json!({
+        "entity": "counter",
+        "version": 1,
+        "semantics": "service/1",
+        "schema": { "fields": {
+            "hits": { "type": "integer", "required": true },
+            "total": { "type": "number", "required": true },
+            "tags": { "type": "array", "required": true, "items": { "type": "string" } }
+        }},
+        "lifecycle": { "initial": "Open", "states": ["Open"] },
+        "operations": { "add": {
+            "arguments": { "fields": {
+                "by": { "type": "integer", "required": true },
+                "ratio": { "type": "number", "required": true },
+                "labels": { "type": "array", "required": true, "items": { "type": "string" } }
+            }},
+            "response": { "fields": { "hits": { "type": "integer", "required": true } } },
+            "outcomes": [{
+                "name": "added",
+                "effect": "updates",
+                "set": {
+                    "hits": { "increment": "$args.by" },
+                    "total": { "increment": "$args.ratio" }
+                },
+                "emits": [{ "type": "Added", "payload": { "hits": "$fields.hits" } }],
+                "responds": { "hits": "$fields.hits" }
+            }]
+        }}
+    })
+}
+
+fn spelled(value: &Value) -> String {
+    serde_json::to_string(value).expect("a value serializes")
+}
+
+fn add_to(
+    definition: &ValidatedDefinition,
+    fields: Value,
+    arguments: Value,
+) -> Result<Evaluation, CoreError> {
+    decide(
+        definition,
+        &instance("counter", "Open", fields),
+        "add",
+        arguments,
+    )
+}
+
+#[test]
+fn a_service_outcome_increment_adds_inside_the_decision_and_every_step_after_set_reads_the_sum() {
+    let definition = validated(service_counter());
+    let Evaluation::Accepted(decision) = add_to(
+        &definition,
+        json!({ "hits": 40, "total": 0.1, "tags": [] }),
+        json!({ "by": 2, "ratio": 0.2, "labels": [] }),
+    )
+    .expect("within range") else {
+        panic!("the branch accepts");
+    };
+    assert_eq!(decision.record.outcome.as_deref(), Some("added"));
+    assert_eq!(spelled(&decision.instance.fields["hits"]), "42");
+    // A number sums exactly in decimal: 0.1 + 0.2 is 0.3, where binary64 addition would give
+    // 0.30000000000000004.
+    assert_eq!(spelled(&decision.instance.fields["total"]), "0.3");
+    assert_eq!(spelled(&decision.events[0].payload), r#"{"hits":42}"#);
+    assert_eq!(
+        spelled(&Value::Object(
+            decision.record.response.expect("a response")
+        )),
+        r#"{"hits":42}"#
+    );
+}
+
+#[test]
+fn a_service_increment_outside_the_source_domain_is_refused_as_overflow() {
+    let definition = validated(service_counter());
+    let arguments = |by: Value, ratio: Value| json!({ "by": by, "ratio": ratio, "labels": [] });
+
+    let Evaluation::Accepted(edge) = add_to(
+        &definition,
+        json!({ "hits": i64::MAX - 1, "total": 0, "tags": [] }),
+        arguments(json!(1), json!(0)),
+    )
+    .expect("i64::MAX itself") else {
+        panic!("the branch accepts");
+    };
+    assert_eq!(spelled(&edge.instance.fields["hits"]), i64::MAX.to_string());
+
+    // Service integers span i64 only, unlike `kernel/1`'s i64 and u64.
+    let error = add_to(
+        &definition,
+        json!({ "hits": i64::MAX, "total": 0, "tags": [] }),
+        arguments(json!(1), json!(0)),
+    )
+    .expect_err("past i64");
+    assert!(
+        matches!(&error, CoreError::IncrementOverflow { operation, field, .. } if operation == "add" && field == "hits"),
+        "{error}"
+    );
+
+    // A service number stays a finite binary64; the exact sum of two maxima is not one.
+    let max: Value = serde_json::from_str("1.7976931348623157e308").unwrap();
+    let error = add_to(
+        &definition,
+        json!({ "hits": 0, "total": max, "tags": [] }),
+        arguments(json!(0), max.clone()),
+    )
+    .expect_err("past binary64");
+    assert!(
+        matches!(&error, CoreError::IncrementOverflow { field, .. } if field == "total"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_service_increment_may_add_a_declared_collection_count() {
+    let mut document = service_counter();
+    document["operations"]["add"]["outcomes"][0]["set"] = json!({
+        "hits": { "increment": "$args.labels.count" },
+        "total": { "increment": "$fields.tags.count" }
+    });
+    let definition = validated(document);
+    let Evaluation::Accepted(decision) = add_to(
+        &definition,
+        json!({ "hits": 1, "total": 0.5, "tags": ["x", "y"] }),
+        json!({ "by": 0, "ratio": 0, "labels": ["a", "b", "c"] }),
+    )
+    .expect("counts are integers") else {
+        panic!("the branch accepts");
+    };
+    assert_eq!(spelled(&decision.instance.fields["hits"]), "4");
+    assert_eq!(spelled(&decision.instance.fields["total"]), "2.5");
+}
+
+#[test]
+fn an_increment_on_a_creation_outcome_or_a_binary64_field_is_refused_at_registration() {
+    let mut document = service_counter();
+    document["create"] = json!({ "outcomes": [{
+        "name": "opened",
+        "effect": "creates",
+        "set": { "hits": { "increment": 1 } }
+    }]});
+    let defects = refused(document);
+    assert_eq!(
+        defects,
+        DefinitionError::IncrementOnCreate {
+            path: "create.outcomes.opened.set.hits".to_owned(),
+            field: "hits".to_owned(),
+        }
+    );
+
+    let mut document = service_counter();
+    document["schema"]["fields"]["ratio"] = json!({ "type": "binary64", "required": true });
+    document["operations"]["add"]["outcomes"][0]["set"] = json!({ "ratio": { "increment": 1 } });
+    let defects = refused(document);
+    assert!(
+        matches!(defects.as_slice(), [DefinitionError::IncrementTargetInvalid { path, field, .. }]
+            if path == "operations.add.outcomes.added.set.ratio" && field == "ratio"),
+        "{defects}"
+    );
+
+    // An increment is a `set` entry, so a field also named in `set_if_present` is the overlap the
+    // conditional map already refuses, whatever else is wrong with the pair.
+    let mut document = service_counter();
+    document["semantics"] = json!("service/2");
+    document["schema"]["fields"]["note"] = json!({ "type": "integer" });
+    document["operations"]["add"]["arguments"]["fields"]["bound"] = json!({
+        "type": "object", "required": true, "properties": { "note": { "type": "integer" } }
+    });
+    document["operations"]["add"]["outcomes"][0]["set"] = json!({ "note": { "increment": 1 } });
+    document["operations"]["add"]["outcomes"][0]["set_if_present"] =
+        json!({ "note": { "argument": "bound.note" } });
+    let defects = refused(document);
+    assert!(
+        defects.iter().any(|defect| matches!(defect,
+            DefinitionError::ConditionalTargetConflict { field, .. } if field == "note")),
+        "{defects}"
+    );
+
+    // The service integer span narrows a literal amount as it narrows a value.
+    let mut document = service_counter();
+    document["operations"]["add"]["outcomes"][0]["set"] =
+        json!({ "hits": { "increment": u64::MAX } });
+    let defects = refused(document);
+    assert!(
+        matches!(defects.as_slice(), [DefinitionError::IncrementAmountInvalid { path, .. }]
+            if path == "operations.add.outcomes.added.set.hits.increment"),
+        "{defects}"
+    );
+}
+
+// --- Clear assignments on a branch (R-165) --------------------------------------------------------
+
+/// A `service/1` memo whose `strip` branch clears an optional note and answers with the fields.
+fn service_memo() -> Value {
+    json!({
+        "entity": "memo",
+        "version": 1,
+        "semantics": "service/1",
+        "schema": { "fields": {
+            "title": { "type": "string", "required": true },
+            "note": { "type": "string" }
+        }},
+        "lifecycle": { "initial": "Open", "states": ["Open"] },
+        "operations": { "strip": {
+            "response": { "fields": { "after": { "type": "json", "required": true } } },
+            "outcomes": [{
+                "name": "stripped",
+                "effect": "updates",
+                "set": { "note": { "cleared": true } },
+                "emits": [{ "type": "Stripped", "payload": { "after": "$fields", "was": "$old_fields.note" } }],
+                "responds": { "after": "$fields" }
+            }]
+        }}
+    })
+}
+
+#[test]
+fn a_service_outcome_clear_removes_the_field_and_every_step_after_set_reads_its_absence() {
+    let definition = validated(service_memo());
+    let before = instance("memo", "Open", json!({ "title": "T", "note": "draft" }));
+    let Evaluation::Accepted(decision) =
+        decide(&definition, &before, "strip", json!({})).expect("a clear is no fault")
+    else {
+        panic!("the branch accepts");
+    };
+    assert_eq!(decision.record.outcome.as_deref(), Some("stripped"));
+    assert_eq!(
+        spelled(&Value::Object(decision.instance.fields.clone())),
+        r#"{"title":"T"}"#
+    );
+    assert_eq!(
+        decision.record.removed,
+        std::collections::BTreeSet::from(["note".to_owned()])
+    );
+    assert!(decision.record.changed.is_empty());
+    assert_eq!(decision.events[0].removed, decision.record.removed);
+    assert_eq!(
+        spelled(&decision.events[0].payload),
+        r#"{"after":{"title":"T"},"was":"draft"}"#
+    );
+    assert_eq!(
+        spelled(&Value::Object(
+            decision.record.response.expect("a response")
+        )),
+        r#"{"after":{"title":"T"}}"#
+    );
+}
+
+#[test]
+fn a_clear_on_a_creation_outcome_is_refused_at_registration() {
+    let mut document = service_memo();
+    document["create"] = json!({ "outcomes": [{
+        "name": "opened",
+        "effect": "creates",
+        "set": { "note": { "cleared": true } }
+    }]});
+    let defects = refused(document);
+    assert_eq!(
+        defects,
+        DefinitionError::ClearOnCreate {
+            path: "create.outcomes.opened.set.note".to_owned(),
+            field: "note".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn a_cleared_field_cannot_also_be_a_set_if_present_target_or_a_fulfillment_of_its_outcome() {
+    let mut document = service_memo();
+    document["semantics"] = json!("service/2");
+    document["operations"]["strip"]["arguments"] =
+        json!({ "fields": { "note": { "type": "string" } } });
+    document["operations"]["strip"]["outcomes"][0]["set_if_present"] =
+        json!({ "note": { "argument": "note" } });
+    let defects = refused(document);
+    assert!(
+        matches!(defects.as_slice(), [DefinitionError::ConditionalTargetConflict { path, field }]
+            if path == "operations.strip.outcomes.stripped.set_if_present" && field == "note"),
+        "{defects}"
+    );
+
+    let mut document = service_memo();
+    document["semantics"] = json!("service/3");
+    document["operations"]["strip"]["outcomes"][0]["fulfills"] =
+        json!({ "note": { "actions": "optional" } });
+    let defects = refused(document);
+    assert!(
+        matches!(defects.as_slice(), [DefinitionError::FulfillmentSetConflict { operation, outcome, field }]
+            if operation == "strip" && outcome == "stripped" && field == "note"),
+        "{defects}"
+    );
+}

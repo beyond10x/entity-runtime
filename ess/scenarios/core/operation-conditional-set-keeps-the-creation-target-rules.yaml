@@ -1,0 +1,152 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "operation-conditional-set-keeps-the-creation-target-rules",
+  "summary": "Operation set_if_present keeps the creation target rules, refusing a required target, an overlap with set or fulfills and a defaulted parent.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"required\":true}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_invalid",
+          "conditional_target_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"default\":\"default\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_invalid",
+          "conditional_target_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:03Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\",\"max_length\":3}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:04Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"missing\":{\"argument\":\"bound.note\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_invalid"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:05Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"set\":{\"note\":\"fixed\"}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_target_conflict"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:06Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "semantics_key_not_available"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:07Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:08Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/3\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"fulfills\":{\"note\":{\"actions\":\"optional\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "fulfillment_conditional_set_conflict"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:09Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"default\":{\"note\":\"from-default\"},\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "conditional_argument_invalid"
+        ]
+      }
+    }
+  ]
+}

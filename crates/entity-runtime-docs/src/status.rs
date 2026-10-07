@@ -19,7 +19,7 @@ pub const DATA: &str = "website/data/status.json";
 pub const PAGE: &str = "website/docs/status.md";
 
 /// The date the list below was last checked against `main`.
-const AS_OF: &str = "2026-10-06";
+const AS_OF: &str = "2026-10-07";
 
 /// One capability on the status page.
 pub struct Capability {
@@ -119,6 +119,20 @@ pub const CAPABILITIES: &[Capability] = &[
         "Prefix and suffix conditions",
         "starts_with and ends_with compare bytes, case-sensitively, under every semantics (0.24.0).",
         "crates/entity-core/tests/requirements.rs::starts_with_and_ends_with_test_a_string_prefix_and_suffix_byte_for_byte",
+        "/docs/reference/definitions",
+    ),
+    shipped(
+        "Kernel",
+        "Increment assignments",
+        "A set value written as increment: n adds n to a required integer or number field inside the decision, exactly, and a sum the field's kind cannot hold is refused rather than wrapped.",
+        "crates/entity-core/tests/requirements.rs::an_integer_increment_outside_the_kernel_1_range_is_refused_as_overflow_and_never_wraps",
+        "/docs/reference/definitions",
+    ),
+    shipped(
+        "Kernel",
+        "Clear assignments",
+        "A set value written as cleared: true leaves an optional field absent after the operation, names it in the decision's removed fields, and replays to the same bytes.",
+        "crates/entity-core/tests/requirements.rs::a_cleared_field_leaves_the_instance_and_the_decision_names_it_removed",
         "/docs/reference/definitions",
     ),
     shipped(
@@ -287,6 +301,13 @@ pub const CAPABILITIES: &[Capability] = &[
         "Provider-tracked reads on SQLite",
         "CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract.",
         "Taskfile.yml::provider-ess-check",
+        "/docs/concepts/storage",
+    ),
+    shipped(
+        "Recorded execution",
+        "Open from a persisted checkpoint on SQLite",
+        "With durable open checkpoints enabled, a ProviderTracked open verifies the persisted checkpoint and the appends since it, not the whole history.",
+        "crates/entity-eventlog/tests/bounded_open.rs::an_open_after_appends_verifies_only_the_suffix",
         "/docs/concepts/storage",
     ),
     shipped(

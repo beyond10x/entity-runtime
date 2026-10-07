@@ -1,17 +1,23 @@
 //! Provider-attested reuse of a completely verified observation.
 use super::*;
-use eventlog_core::{CaptureCheckpoint, TenantCaptureDelta, TenantCaptureUpdate};
+use eventlog_core::{CaptureCheckpoint, CaptureUsage, TenantCaptureDelta, TenantCaptureUpdate};
 
 /// Integrity boundary for reads through one live provider handle.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CapturePolicy {
     /// Obtain fresh content for every complete read, including providers without change tracking.
+    ///
+    /// An open verifies the whole authority and never reads or writes an open checkpoint.
     #[default]
     FullVerification,
     /// Reuse only provider-attested unchanged content or an exactly verified append suffix.
     ///
-    /// Initial open is always verified completely. SQLite tracks SQL writes through every
-    /// connection; raw file edits bypassing SQLite are outside this live-handle guarantee.
+    /// An open verifies the whole authority, unless the store's owner enabled durable open
+    /// checkpoints: then it verifies the persisted checkpoint of the last completely verified
+    /// observation, the provider's proof that only its acknowledged appends followed it, and those
+    /// appends. SQLite tracks SQL writes through every connection, live or between opens; raw
+    /// file edits bypassing SQLite are outside that guarantee, and only a `FullVerification` open
+    /// or a complete read sees them.
     ProviderTracked,
 }
 
@@ -20,15 +26,70 @@ impl CapturePolicy {
     pub const ALL: [Self; 2] = [Self::FullVerification, Self::ProviderTracked];
 }
 
+/// How a store handle's open verified its authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpenVerification {
+    /// Every event, bound blob and index row of the tenant was captured and verified.
+    Complete,
+    /// The persisted open checkpoint was verified, and the provider proved that nothing changed
+    /// the tenant's captured material since the observation it names.
+    Checkpoint,
+    /// The persisted open checkpoint was verified, and then every event appended after it.
+    Suffix {
+        /// Events in the verified suffix.
+        events: u64,
+    },
+}
+
 #[derive(Default)]
 pub(super) struct Cache {
     generation: u64,
     held: Option<Held>,
+    /// A handle opened from a checkpoint, until a complete read verifies the whole authority.
+    bounded: Option<Bounded>,
+    /// The highest tenant position this handle has verified. History is append-only, so a
+    /// complete capture whose head is behind it is a store that lost its tail under this handle.
+    floor: u64,
+    /// Moves whenever what the handle answers from moves: a verified suffix, a complete
+    /// verification, an installed or forgotten observation; never on a provider `Unchanged`. Reads
+    /// of the provider's rows made between two continuations that leave it in place read the rows
+    /// the provider attested unchanged between them.
+    serial: u64,
 }
 
-struct Held {
+/// A handle with no model: what it answers comes from the provider's index rows, which the last
+/// complete verification held to the events and every verified suffix since kept equal to them,
+/// and which the provider's continuity proof shows nothing else has written.
+#[derive(Clone)]
+pub(super) struct Bounded {
+    pub(super) checkpoint: CaptureCheckpoint,
+    pub(super) last_position: u64,
+    pub(super) binding: PhysicalRef,
+    /// The usage the provider bound to the observation, which a suffix after it must add to
+    /// exactly. Not the handle's read-bound totals, which its own writes advance before the
+    /// provider reports them.
+    pub(super) usage: CaptureUsage,
+}
+
+/// What a `ProviderTracked` handle answers a read from once it has continued its observation.
+pub(super) enum Tracked {
+    /// The provider's verified rows: the handle has no model. Carries the serial the continuation
+    /// left, which [`EventlogRecordedStore::unchanged_since`] compares after the rows are read.
+    Rows(u64),
+    /// The whole verified model.
+    Whole(Arc<CapturedModel>),
+}
+
+/// The observation a handle would persist as its open checkpoint.
+pub(super) struct Observation {
+    pub(super) checkpoint: CaptureCheckpoint,
+    pub(super) position: u64,
+    pub(super) binding: PhysicalRef,
+}
+
+pub(super) struct Held {
     checkpoint: Option<CaptureCheckpoint>,
-    model: Arc<CapturedModel>,
+    pub(super) model: Arc<CapturedModel>,
     /// Bound blobs an advance may read again: wrappers, requests and the rest. Not the record and
     /// batch blobs of committed records, whose bytes the model holds; which digests are bound at
     /// all is `model.held.digests`.
@@ -38,16 +99,283 @@ struct Held {
 }
 
 impl EventlogRecordedStore {
+    /// The whole verified model: the held one continued by the provider, or a complete
+    /// verification. A handle opened from a checkpoint takes a complete one here.
     pub(super) async fn tracked_model(&self) -> Result<Arc<CapturedModel>, AsyncStoreError> {
+        let result = self.tracked_model_once().await;
+        if let Err(error) = &result {
+            self.note_refusal(error);
+        }
+        result
+    }
+
+    /// Continues this handle's observation and says what the next read is answered from.
+    ///
+    /// A bounded handle asks the provider to continue from its checkpoint: `Unchanged` leaves its
+    /// rows verified; an `AppendDelta` is verified against the rows it changes before it is
+    /// accepted; `Complete`, or a suffix that cannot be verified that way, makes it a whole-model
+    /// handle through a complete verification. Any other handle continues its whole model.
+    pub(super) async fn continue_tracked(&self) -> Result<Tracked, AsyncStoreError> {
+        let result = self.continue_tracked_once().await;
+        if let Err(error) = &result {
+            self.note_refusal(error);
+        }
+        result
+    }
+
+    async fn continue_tracked_once(&self) -> Result<Tracked, AsyncStoreError> {
         loop {
-            let (generation, checkpoint) = {
+            let (generation, bounded, floor) = {
+                let cache = self
+                    .tracked
+                    .lock()
+                    .map_err(|_| integrity("tracked cache poisoned"))?;
+                match &cache.bounded {
+                    Some(bounded) => (cache.generation, bounded.clone(), cache.floor),
+                    None => break,
+                }
+            };
+            let update = self
+                .backend
+                .capture_tenant_since(
+                    &self.tenant,
+                    projection_specs(),
+                    self.limits,
+                    Some(&bounded.checkpoint),
+                )
+                .await
+                .map_err(map_capture)?;
+            let suffix = match &update {
+                TenantCaptureUpdate::AppendDelta { delta, .. } => Some(
+                    self.verify_suffix(bounded.usage, bounded.last_position, delta)
+                        .await,
+                ),
+                _ => None,
+            };
+            let mut cache = self
+                .tracked
+                .lock()
+                .map_err(|_| integrity("tracked cache poisoned"))?;
+            if cache.generation != generation {
+                continue;
+            }
+            let next_generation = generation
+                .checked_add(1)
+                .ok_or_else(|| integrity("tracked cache generation exhausted"))?;
+            match (update, suffix) {
+                (
+                    TenantCaptureUpdate::Complete {
+                        capture,
+                        checkpoint,
+                    },
+                    _,
+                ) => {
+                    let held = self.verify_complete(capture, checkpoint, floor)?;
+                    let model = Arc::clone(&held.model);
+                    cache.floor = cache.floor.max(held.last_position);
+                    cache.held = Some(held);
+                    cache.bounded = None;
+                    cache.generation = next_generation;
+                    cache.serial = cache.serial.wrapping_add(1);
+                    return Ok(Tracked::Whole(model));
+                }
+                (TenantCaptureUpdate::Unchanged { checkpoint }, _) => {
+                    cache.bounded = Some(Bounded {
+                        checkpoint,
+                        ..bounded
+                    });
+                    cache.generation = next_generation;
+                    return Ok(Tracked::Rows(cache.serial));
+                }
+                (TenantCaptureUpdate::AppendDelta { checkpoint, delta }, Some(Ok(suffix))) => {
+                    // A verified delta that carries nothing of this tenant is the provider saying
+                    // another tenant of the same file wrote: the rows a read took stay the
+                    // verified ones, so the confirmation serial does not move.
+                    let moved = !delta.events.is_empty()
+                        || !delta.blobs.is_empty()
+                        || delta.projections.iter().any(|p| !p.rows.is_empty());
+                    self.install_suffix(&delta, &suffix)?;
+                    cache.floor = cache.floor.max(suffix.last_position);
+                    cache.bounded = Some(Bounded {
+                        checkpoint,
+                        last_position: suffix.last_position,
+                        binding: bounded.binding,
+                        usage: suffix.usage,
+                    });
+                    cache.generation = next_generation;
+                    if moved {
+                        cache.serial = cache.serial.wrapping_add(1);
+                    }
+                    return Ok(Tracked::Rows(cache.serial));
+                }
+                (TenantCaptureUpdate::AppendDelta { .. }, _) => {
+                    // A suffix the rows cannot verify is not the answer: a complete verification
+                    // is, and it words any refusal exactly as an open would.
+                    cache.bounded = None;
+                    cache.generation = next_generation;
+                    cache.serial = cache.serial.wrapping_add(1);
+                    break;
+                }
+            }
+        }
+        Ok(Tracked::Whole(self.tracked_model().await?))
+    }
+
+    /// A complete capture verified into a whole model, as an open without a checkpoint does.
+    pub(super) fn verify_complete(
+        &self,
+        mut capture: TenantCapture,
+        checkpoint: Option<CaptureCheckpoint>,
+        floor: u64,
+    ) -> Result<Held, AsyncStoreError> {
+        self.native_captures.fetch_add(1, Ordering::Relaxed);
+        if capture.tenant != self.tenant
+            || capture.stream_identity != self.authority.stream_identity
+        {
+            return Err(integrity("native capture substituted tenant generation"));
+        }
+        // The model takes the record and batch blobs; what this handle keeps of the capture is
+        // every other blob, which is all an advance reads again.
+        let model = build_model_owning(&self.authority, &mut capture)?;
+        if model.binding.is_none() {
+            return Err(integrity("the tenant has no authoritative binding"));
+        }
+        self.model_builds.fetch_add(1, Ordering::Relaxed);
+        self.records_decoded
+            .fetch_add(model.decoded, Ordering::Relaxed);
+        let last_position = capture.events.last().map_or(0, |e| e.global_seq);
+        if last_position < floor {
+            return Err(integrity(format!(
+                "the provider's head {last_position} is behind position {floor} this handle already verified"
+            )));
+        }
+        *self
+            .held
+            .lock()
+            .map_err(|_| integrity("read bound lock poisoned"))? = model.held.clone();
+        self.refused.store(false, Ordering::Relaxed);
+        Ok(Held {
+            checkpoint,
+            model: Arc::new(model),
+            last_position,
+            blobs: capture
+                .blobs
+                .into_iter()
+                .map(|b| (b.digest, b.bytes))
+                .collect(),
+            rows: capture
+                .projections
+                .into_iter()
+                .map(|p| p.rows.into_iter().collect())
+                .collect(),
+        })
+    }
+
+    /// Installs a verified whole model as this handle's observation.
+    pub(super) fn install_held(&self, held: Held) -> Result<(), AsyncStoreError> {
+        let mut cache = self
+            .tracked
+            .lock()
+            .map_err(|_| integrity("tracked cache poisoned"))?;
+        cache.floor = cache.floor.max(held.last_position);
+        cache.held = Some(held);
+        cache.bounded = None;
+        cache.generation = cache
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| integrity("tracked cache generation exhausted"))?;
+        cache.serial = cache.serial.wrapping_add(1);
+        Ok(())
+    }
+
+    /// Installs a verified checkpoint, or a checkpoint and its verified suffix, as this handle's
+    /// observation: a handle with no model.
+    pub(super) fn install_bounded(&self, bounded: Bounded) -> Result<(), AsyncStoreError> {
+        let mut cache = self
+            .tracked
+            .lock()
+            .map_err(|_| integrity("tracked cache poisoned"))?;
+        cache.floor = cache.floor.max(bounded.last_position);
+        cache.held = None;
+        cache.bounded = Some(bounded);
+        cache.generation = cache
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| integrity("tracked cache generation exhausted"))?;
+        cache.serial = cache.serial.wrapping_add(1);
+        Ok(())
+    }
+
+    /// Forgets the held observation, so the next read verifies completely; what this handle has
+    /// verified it keeps as its floor.
+    #[cfg(feature = "sync-bridge")]
+    pub(super) fn forget_observation(&self) -> Result<(), AsyncStoreError> {
+        let mut cache = self
+            .tracked
+            .lock()
+            .map_err(|_| integrity("tracked cache poisoned"))?;
+        cache.held = None;
+        cache.bounded = None;
+        cache.generation = cache
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| integrity("tracked cache generation exhausted"))?;
+        cache.serial = cache.serial.wrapping_add(1);
+        Ok(())
+    }
+
+    /// The observation this handle would persist, if it holds one a later open may start from.
+    ///
+    /// A whole model that holds a forked or lineage subject is never persisted: the bounded
+    /// reads and the suffix verifier answer only linear histories.
+    pub(super) fn observation(&self) -> Result<Option<Observation>, AsyncStoreError> {
+        let cache = self
+            .tracked
+            .lock()
+            .map_err(|_| integrity("tracked cache poisoned"))?;
+        if let Some(held) = &cache.held {
+            let (Some(checkpoint), Some(binding)) =
+                (held.checkpoint.clone(), held.model.binding.clone())
+            else {
+                return Ok(None);
+            };
+            if !held.model.forked.is_empty() || !held.model.lineage_subjects.is_empty() {
+                return Ok(None);
+            }
+            return Ok(Some(Observation {
+                checkpoint,
+                position: held.last_position,
+                binding,
+            }));
+        }
+        Ok(cache.bounded.as_ref().map(|bounded| Observation {
+            checkpoint: bounded.checkpoint.clone(),
+            position: bounded.last_position,
+            binding: bounded.binding.clone(),
+        }))
+    }
+
+    /// The highest tenant position this handle has verified.
+    pub(super) fn verified_position(&self) -> Result<u64, AsyncStoreError> {
+        Ok(self
+            .tracked
+            .lock()
+            .map_err(|_| integrity("tracked cache poisoned"))?
+            .floor)
+    }
+
+    async fn tracked_model_once(&self) -> Result<Arc<CapturedModel>, AsyncStoreError> {
+        loop {
+            let (generation, checkpoint, floor) = {
                 let cache = self
                     .tracked
                     .lock()
                     .map_err(|_| integrity("tracked cache poisoned"))?;
                 (
                     cache.generation,
+                    // A bounded handle has no model to continue: it asks for complete content.
                     cache.held.as_ref().and_then(|h| h.checkpoint.clone()),
+                    cache.floor,
                 )
             };
             let update = self
@@ -73,45 +401,9 @@ impl EventlogRecordedStore {
                     .ok_or_else(|| integrity("tracked cache generation exhausted"))?;
                 let held = match update {
                     TenantCaptureUpdate::Complete {
-                        mut capture,
+                        capture,
                         checkpoint,
-                    } => {
-                        self.native_captures.fetch_add(1, Ordering::Relaxed);
-                        if capture.tenant != self.tenant
-                            || capture.stream_identity != self.authority.stream_identity
-                        {
-                            return Err(integrity("native capture substituted tenant generation"));
-                        }
-                        // The model takes the record and batch blobs; what this handle keeps of
-                        // the capture is every other blob, which is all an advance reads again.
-                        let model = build_model_owning(&self.authority, &mut capture)?;
-                        if model.binding.is_none() {
-                            return Err(integrity("the tenant has no authoritative binding"));
-                        }
-                        self.model_builds.fetch_add(1, Ordering::Relaxed);
-                        self.records_decoded
-                            .fetch_add(model.decoded, Ordering::Relaxed);
-                        *self
-                            .held
-                            .lock()
-                            .map_err(|_| integrity("read bound lock poisoned"))? =
-                            model.held.clone();
-                        Some(Held {
-                            checkpoint,
-                            model: Arc::new(model),
-                            last_position: capture.events.last().map_or(0, |e| e.global_seq),
-                            blobs: capture
-                                .blobs
-                                .into_iter()
-                                .map(|b| (b.digest, b.bytes))
-                                .collect(),
-                            rows: capture
-                                .projections
-                                .into_iter()
-                                .map(|p| p.rows.into_iter().collect())
-                                .collect(),
-                        })
-                    }
+                    } => Some(self.verify_complete(capture, checkpoint, floor)?),
                     TenantCaptureUpdate::Unchanged { checkpoint } => {
                         let mut held = cache
                             .held
@@ -145,6 +437,11 @@ impl EventlogRecordedStore {
                     }
                 };
                 cache.generation = next_generation;
+                cache.serial = cache.serial.wrapping_add(1);
+                if let Some(verified) = &held {
+                    cache.bounded = None;
+                    cache.floor = cache.floor.max(verified.last_position);
+                }
                 cache.held = held;
                 if let Some(verified) = &cache.held {
                     // Publish accounting under the same generation lock as its model. A slower
@@ -189,6 +486,9 @@ impl EventlogRecordedStore {
         &self,
         subject: &Subject,
     ) -> Result<Option<EntityInstance>, AsyncStoreError> {
+        if self.policy == CapturePolicy::ProviderTracked {
+            return self.tracked_state(subject).await;
+        }
         let read = self.scoped_model(&ReadScope::subject(subject)).await?;
         model_state(&read.model, subject)
     }
@@ -198,6 +498,9 @@ impl EventlogRecordedStore {
         &self,
         id: &str,
     ) -> Result<Option<RecordLookup>, AsyncStoreError> {
+        if self.policy == CapturePolicy::ProviderTracked {
+            return self.tracked_record(id).await;
+        }
         let read = self.scoped_model(&ReadScope::record(id)).await?;
         Ok(read.model.records.get(id).map(ModelLookup::to_public))
     }
@@ -207,8 +510,133 @@ impl EventlogRecordedStore {
         &self,
         key: &BatchKey,
     ) -> Result<Option<StoredBatch>, AsyncStoreError> {
+        if self.policy == CapturePolicy::ProviderTracked {
+            return self.tracked_batch(key).await;
+        }
         let read = self.scoped_model(&ReadScope::batch(key)).await?;
         Ok(read.model.batches.get(key).map(ModelBatch::to_public))
+    }
+
+    /// A subject's state: from the whole model, or from its row on a bounded handle.
+    pub(super) async fn tracked_state(
+        &self,
+        subject: &Subject,
+    ) -> Result<Option<EntityInstance>, AsyncStoreError> {
+        let result = match self.tracked_point(Point::State(subject)).await {
+            Ok(Answer::State(state)) => Ok(state),
+            Ok(_) => Err(integrity("a state read answered another read")),
+            Err(error) => Err(error),
+        };
+        self.noted(result)
+    }
+
+    /// A record lookup: from the whole model, or from its row on a bounded handle.
+    pub(super) async fn tracked_record(
+        &self,
+        id: &str,
+    ) -> Result<Option<RecordLookup>, AsyncStoreError> {
+        let result = match self.tracked_point(Point::Record(id)).await {
+            Ok(Answer::Record(record)) => Ok(*record),
+            Ok(_) => Err(integrity("a record lookup answered another read")),
+            Err(error) => Err(error),
+        };
+        self.noted(result)
+    }
+
+    /// A batch lookup: from the whole model, or from its row on a bounded handle.
+    pub(super) async fn tracked_batch(
+        &self,
+        key: &BatchKey,
+    ) -> Result<Option<StoredBatch>, AsyncStoreError> {
+        let result = match self.tracked_point(Point::Batch(key)).await {
+            Ok(Answer::Batch(batch)) => Ok(batch),
+            Ok(_) => Err(integrity("a batch lookup answered another read")),
+            Err(error) => Err(error),
+        };
+        self.noted(result)
+    }
+
+    /// A subject's history: from the whole model, or read per entity on a bounded handle, as a
+    /// `FullVerification` handle reads it, confirmed as [`Self::scoped_model`] confirms it.
+    pub(super) async fn tracked_history(
+        &self,
+        subject: &Subject,
+    ) -> Result<SubjectHistory, AsyncStoreError> {
+        let read = self.scoped_model(&ReadScope::subject(subject)).await?;
+        Ok(model_history(&read.model, subject))
+    }
+
+    /// One point read on a `ProviderTracked` handle.
+    ///
+    /// A bounded handle reads the row and the blobs it names after the provider's continuity
+    /// answer, in transactions of their own: the Eventlog port answers continuity and reads rows
+    /// in separate calls. So the answer is served only if the provider, asked again afterwards,
+    /// still leaves the observation in place: then nothing reached the tenant between the two
+    /// answers, and the rows read are the rows the last verification held. Otherwise the read is
+    /// taken again from the continued observation. After [`CONFIRMATIONS`] attempts that each
+    /// overlapped a write, one complete verification answers it from the whole model.
+    async fn tracked_point(&self, read: Point<'_>) -> Result<Answer, AsyncStoreError> {
+        for _ in 0..CONFIRMATIONS {
+            let serial = match self.continue_tracked().await? {
+                Tracked::Whole(model) => return read.answered_by(&model),
+                Tracked::Rows(serial) => serial,
+            };
+            let answer = match read {
+                Point::State(subject) => self.rows_state(subject).await.map(Answer::State),
+                Point::Record(id) => self
+                    .rows_record(id)
+                    .await
+                    .map(|record| Answer::Record(Box::new(record))),
+                Point::Batch(key) => self.rows_batch(key).await.map(Answer::Batch),
+            };
+            // A refusal is confirmed too: one a concurrent write caused is taken again, and one
+            // the provider still attests nothing changed for is the store's answer.
+            if self.unchanged_since(serial).await? {
+                return answer;
+            }
+        }
+        let model = self.tracked_model().await?;
+        read.answered_by(&model)
+    }
+
+    /// Whether the provider, asked now, leaves in place the observation `serial` named: nothing
+    /// reached the tenant's captured material since the continuation that returned it.
+    pub(super) async fn unchanged_since(&self, serial: u64) -> Result<bool, AsyncStoreError> {
+        Ok(matches!(
+            self.continue_tracked().await?,
+            Tracked::Rows(now) if now == serial
+        ))
+    }
+}
+
+/// How many times a bounded read is taken again when a write overlapped it before one complete
+/// verification answers it instead.
+pub(super) const CONFIRMATIONS: usize = 3;
+
+/// A point read a `ProviderTracked` handle answers from its model or from the provider's rows.
+#[derive(Clone, Copy)]
+enum Point<'a> {
+    State(&'a Subject),
+    Record(&'a str),
+    Batch(&'a BatchKey),
+}
+
+enum Answer {
+    State(Option<EntityInstance>),
+    /// Boxed: a record lookup is far larger than the other answers.
+    Record(Box<Option<RecordLookup>>),
+    Batch(Option<StoredBatch>),
+}
+
+impl Point<'_> {
+    fn answered_by(self, model: &CapturedModel) -> Result<Answer, AsyncStoreError> {
+        Ok(match self {
+            Self::State(subject) => Answer::State(model_state(model, subject)?),
+            Self::Record(id) => {
+                Answer::Record(Box::new(model.records.get(id).map(ModelLookup::to_public)))
+            }
+            Self::Batch(key) => Answer::Batch(model.batches.get(key).map(ModelBatch::to_public)),
+        })
     }
 }
 

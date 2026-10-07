@@ -9,11 +9,11 @@
 use entity_core::{Registry, Runtime};
 use entity_eventlog::{
     AsyncBindingProvisioner, Authority, CapturePolicy, ErRecordedProjector,
-    EventlogBindingProvisioner, EventlogOperationContext, EventlogRecordedStore,
+    EventlogBindingProvisioner, EventlogOperationContext, EventlogRecordedStore, OpenVerification,
     RecordedProviderFacade, projection_specs,
     sync::{BridgeConfig, CallWait, EventlogRecordedStoreOwner, ShutdownMode, ShutdownOutcome},
 };
-use entity_executor::{BatchAction, ExecuteRequest};
+use entity_executor::{BatchAction, CreateRequest, ExecuteRequest};
 use entity_store::{
     Expect, RecordedCommit, Recording,
     asynchronous::{
@@ -589,5 +589,168 @@ fn each_provider_tracked_open_verifies_the_whole_store_and_reports_its_median_co
             median(&mut verifies).as_micros(),
             median(&mut decodes).as_micros(),
         );
+    }
+}
+
+/// One seeded group appended after the checkpoint: the clock touched and one new peer, two events,
+/// written through a `FullVerification` facade, which never touches the open checkpoint.
+fn append_group(path: &Path, registry: &Registry, authority: Authority, revision: u64) {
+    let mut facade = RecordedProviderFacade::start(
+        registry.clone(),
+        EventlogRecordedStoreOwner::Sqlite {
+            path: path.to_string_lossy().into_owned(),
+            prefix: PREFIX.into(),
+            authority,
+            limits: LIMITS,
+        },
+        BridgeConfig {
+            queue_capacity: NonZeroU16::new(8).unwrap(),
+        },
+    )
+    .unwrap();
+    facade
+        .execute_batch(
+            context("suffix"),
+            BatchKey::Named("suffix".into()),
+            vec![
+                BatchAction::Execute(ExecuteRequest {
+                    subject: Subject::new("metadata", "clock").unwrap(),
+                    expected_revision: revision,
+                    operation: "touch".into(),
+                    arguments: json!({}),
+                    fulfillments: BTreeMap::new(),
+                    recording: recording("suffix-clock"),
+                }),
+                BatchAction::Create(CreateRequest {
+                    subject: Subject::new("metadata", "suffix-peer").unwrap(),
+                    definition_version: 1,
+                    fields: json!({"title":"suffix-peer"}),
+                    recording: recording("suffix-peer"),
+                }),
+            ],
+            CallWait::Forever,
+        )
+        .unwrap();
+    assert_eq!(
+        facade.shutdown(ShutdownMode::Drain, CallWait::Forever),
+        ShutdownOutcome::Joined { provider: Ok(()) }
+    );
+}
+
+/// The open cost with a persisted checkpoint, against the baseline above (issue 55, acceptance 5).
+///
+/// Each seeded store gets durable open checkpoints enabled and one tracked open whose drain
+/// persists a checkpoint at the head. Two treatments are then measured, [`OPENS`] opens each:
+/// `checkpoint`, the checkpoint at the head the previous process left, which the provider answers
+/// `Unchanged`; and `suffix`, one seeded-sized group (two events) appended after it by a
+/// `FullVerification` writer, which the open verifies as a suffix. Every measured facade is shut
+/// down with `CancelQueued`, which persists nothing, so each open of a treatment starts from the
+/// same checkpoint. `start` is the consumer's whole open, as in the baseline; `verify` is the store
+/// open on an already attached provider. The probe asserts how each open verified, that a
+/// `FullVerification` open of the same store still verifies all of it, and the bound: the median
+/// `start` at the largest store is at most twice the median at the smallest, for both treatments.
+#[test]
+#[ignore = "release performance probe; run explicitly on a quiet host"]
+fn each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store() {
+    assert!(!cfg!(debug_assertions), "this probe requires --release");
+    let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let registry = registry();
+    let mut medians: BTreeMap<&str, Vec<(usize, Duration)>> = BTreeMap::new();
+    for count in [55, 601, 1203] {
+        let path = directory.path().join(format!("checkpoint-{count}.sqlite3"));
+        let (authority, groups) = runtime.block_on(seeded(&path, &registry, count));
+        runtime.block_on(async {
+            eventlog_sqlite::SqliteEventStore::open_existing(path.to_str().unwrap(), PREFIX)
+                .await
+                .unwrap()
+                .enable_durable_continuity()
+                .await
+                .unwrap();
+        });
+        let mut writer = start_tracked(&path, &registry, authority.clone());
+        assert_eq!(writer.open_verification(), OpenVerification::Complete);
+        assert_eq!(
+            writer.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+        let full = runtime
+            .block_on(EventlogRecordedStore::open_with_policy(
+                attached(&runtime, &path),
+                authority.clone(),
+                LIMITS,
+                CapturePolicy::FullVerification,
+            ))
+            .unwrap();
+        let calls = full.calls();
+        assert_eq!(
+            (calls.captures, calls.model_builds, calls.records_decoded),
+            (1, 1, count - 1),
+            "a FullVerification open beside the checkpoint verifies the whole store: {calls:?}"
+        );
+        drop(full);
+        for (treatment, expected) in [
+            ("checkpoint", OpenVerification::Checkpoint),
+            ("suffix", OpenVerification::Suffix { events: 2 }),
+        ] {
+            if treatment == "suffix" {
+                append_group(&path, &registry, authority.clone(), groups);
+            }
+            let (mut starts, mut verifies) = (Vec::new(), Vec::new());
+            for _ in 0..OPENS {
+                let (mut facade, start_time) =
+                    measured(|| start_tracked(&path, &registry, authority.clone()));
+                assert_eq!(facade.open_verification(), expected, "{treatment} {count}");
+                assert_eq!(
+                    facade.shutdown(ShutdownMode::CancelQueued, CallWait::Forever),
+                    ShutdownOutcome::Joined { provider: Ok(()) }
+                );
+                starts.push(start_time);
+                let backend = attached(&runtime, &path);
+                let (store, verify_time) = measured(|| {
+                    runtime
+                        .block_on(EventlogRecordedStore::open_with_policy(
+                            backend,
+                            authority.clone(),
+                            LIMITS,
+                            CapturePolicy::ProviderTracked,
+                        ))
+                        .unwrap()
+                });
+                assert_eq!(store.open_verification(), expected, "{treatment} {count}");
+                let calls = store.calls();
+                assert_eq!(
+                    (calls.captures, calls.model_builds),
+                    (0, 0),
+                    "a bounded open takes no capture and builds no model: {calls:?}"
+                );
+                drop(store);
+                verifies.push(verify_time);
+            }
+            let samples = format!(
+                "start_us=[{}] verify_us=[{}]",
+                micros(&starts),
+                micros(&verifies)
+            );
+            let start = median(&mut starts);
+            println!(
+                "open-cost policy=ProviderTracked treatment={treatment} events={count} opens={OPENS} start_median_us={} verify_median_us={} {samples}",
+                start.as_micros(),
+                median(&mut verifies).as_micros(),
+            );
+            medians.entry(treatment).or_default().push((count, start));
+        }
+    }
+    for (treatment, sizes) in &medians {
+        let small = sizes[0].1;
+        for (count, median) in &sizes[1..] {
+            assert!(
+                *median <= small * 2,
+                "{treatment}: the open at {count} events costs {median:?}, more than twice the 55-event {small:?}; all {sizes:?}"
+            );
+        }
     }
 }

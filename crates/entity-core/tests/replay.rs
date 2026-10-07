@@ -1486,3 +1486,268 @@ fn an_event_naming_an_unknown_state_at_the_second_slot_of_a_revision_is_refused(
         "{error}"
     );
 }
+
+// --- Increment assignments (R-164) ---------------------------------------------------------------
+
+/// A counter whose `add` increments `hits` by an argument, with an event on create and on `add`.
+fn counter(semantics: Option<&str>) -> Registry {
+    let mut document = json!({
+        "entity": "counter",
+        "version": 1,
+        "schema": { "fields": { "hits": { "type": "integer", "required": true } } },
+        "lifecycle": { "initial": "open", "states": ["open"] },
+        "create": { "emit": { "type": "Opened", "payload": { "hits": "$fields.hits" } } },
+        "operations": { "add": {
+            "arguments": { "fields": { "by": { "type": "integer", "required": true } } },
+            "transitions": [{ "from": "open", "to": "open" }],
+            "set": { "hits": { "increment": "$args.by" } },
+            "emits": [{ "type": "Added", "payload": { "hits": "$fields.hits" } }]
+        }}
+    });
+    if let Some(semantics) = semantics {
+        document["semantics"] = json!(semantics);
+        document["create"] = json!({});
+        document["operations"]["add"] = json!({
+            "arguments": { "fields": { "by": { "type": "integer", "required": true } } },
+            "outcomes": [{
+                "name": "added",
+                "effect": "updates",
+                "set": { "hits": { "increment": "$args.by" } },
+                "emits": [{ "type": "Added", "payload": { "hits": "$fields.hits" } }]
+            }]
+        });
+    }
+    let mut registry = Registry::new();
+    registry
+        .register(serde_json::from_value(document).expect("a definition document"))
+        .expect("registers");
+    registry
+}
+
+fn bytes<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_string(value).expect("serializes")
+}
+
+#[test]
+fn an_incremented_field_replays_and_rehydrates_to_the_bytes_execute_returned() {
+    let registry = counter(None);
+    let definition = registry.get("counter", 1).expect("registered");
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("counter", 1, "c-1", json!({ "hits": 40 }))
+        .expect("permitted");
+    let added = runtime
+        .execute(&created.instance, "add", json!({ "by": 2 }))
+        .expect("permitted");
+    let taken = runtime
+        .execute(&added.instance, "add", json!({ "by": -5 }))
+        .expect("permitted");
+    assert_eq!(bytes(&taken.instance.fields), r#"{"hits":37}"#);
+
+    let records = [created.record, added.record, taken.record];
+    let replayed = replay_records(&records).expect("verified replay");
+    assert_eq!(bytes(&replayed), bytes(&taken.instance));
+
+    let events: Vec<DomainEvent> = [created.events, added.events, taken.events].concat();
+    let folded = rehydrate(definition, &events).expect("a history execute wrote");
+    assert_eq!(bytes(&folded), bytes(&taken.instance));
+
+    // The amount recorded as the new value is what an assignment would write, not the sum.
+    let mut assigned = events.clone();
+    assigned[1].changed.insert("hits".to_owned(), json!(2));
+    assigned[1].payload = json!({ "hits": 2 });
+    let error = rehydrate(definition, &assigned).expect_err("not the sum the operation adds");
+    assert!(
+        matches!(&error, entity_core::CoreError::Validation(errors)
+            if errors.len() == 1 && errors[0].path == "events"),
+        "{error}"
+    );
+
+    // A record that claims another sum is refused rather than becoming state.
+    let mut forged = records.clone();
+    forged[2].result.fields.insert("hits".to_owned(), json!(38));
+    forged[2].changed.insert("hits".to_owned(), json!(38));
+    let error = replay_records(&forged).expect_err("another sum");
+    assert!(
+        matches!(&error, entity_core::CoreError::Validation(errors) if errors[0].path == "records[2]"),
+        "{error}"
+    );
+}
+
+#[test]
+fn an_incremented_service_branch_replays_to_the_bytes_execute_returned() {
+    let registry = counter(Some("service/1"));
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("counter", 1, "c-1", json!({ "hits": 9 }))
+        .expect("permitted");
+    let added = runtime
+        .execute(&created.instance, "add", json!({ "by": 33 }))
+        .expect("permitted");
+    assert_eq!(bytes(&added.instance.fields), r#"{"hits":42}"#);
+    let replayed = replay_records(&[created.record, added.record]).expect("verified replay");
+    assert_eq!(bytes(&replayed), bytes(&added.instance));
+}
+
+// --- Clear assignments (R-165) -------------------------------------------------------------------
+
+/// A reminder whose `wake` clears `snoozed_until` and `snooze` writes it, with an event on create
+/// and on both.
+fn reminder(semantics: Option<&str>) -> Registry {
+    let mut document = json!({
+        "entity": "reminder",
+        "version": 1,
+        "schema": { "fields": {
+            "title": { "type": "string", "required": true },
+            "snoozed_until": { "type": "string" }
+        }},
+        "lifecycle": { "initial": "active", "states": ["active"] },
+        "create": { "emit": { "type": "Opened", "payload": { "title": "$fields.title" } } },
+        "operations": {
+            "snooze": {
+                "arguments": { "fields": { "until": { "type": "string", "required": true } } },
+                "transitions": [{ "from": "active", "to": "active" }],
+                "set": { "snoozed_until": "$args.until" },
+                "emits": [{ "type": "Snoozed", "payload": { "until": "$fields.snoozed_until" } }]
+            },
+            "wake": {
+                "transitions": [{ "from": "active", "to": "active" }],
+                "set": { "snoozed_until": { "cleared": true } },
+                "emits": [{ "type": "Woken", "payload": { "now": "$fields" } }]
+            }
+        }
+    });
+    if let Some(semantics) = semantics {
+        document["semantics"] = json!(semantics);
+        document["create"] = json!({});
+        document["operations"]["wake"] = json!({
+            "outcomes": [{
+                "name": "woken",
+                "effect": "updates",
+                "set": { "snoozed_until": { "cleared": true } },
+                "emits": [{ "type": "Woken", "payload": { "now": "$fields" } }]
+            }]
+        });
+    }
+    let mut registry = Registry::new();
+    registry
+        .register(serde_json::from_value(document).expect("a definition document"))
+        .expect("registers");
+    registry
+}
+
+#[test]
+fn a_cleared_field_replays_and_rehydrates_to_the_bytes_execute_returned() {
+    let registry = reminder(None);
+    let definition = registry.get("reminder", 1).expect("registered");
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("reminder", 1, "r-1", json!({ "title": "call back" }))
+        .expect("permitted");
+    let snoozed = runtime
+        .execute(
+            &created.instance,
+            "snooze",
+            json!({ "until": "2026-10-08T09:00:00Z" }),
+        )
+        .expect("permitted");
+    let woken = runtime
+        .execute(&snoozed.instance, "wake", json!({}))
+        .expect("permitted");
+    // Clearing the field again, now that it is absent, is the second decision kind to replay.
+    let woken_again = runtime
+        .execute(&woken.instance, "wake", json!({}))
+        .expect("permitted");
+    assert_eq!(
+        bytes(&woken_again.instance.fields),
+        r#"{"title":"call back"}"#
+    );
+    assert_eq!(bytes(&woken.events[0].removed), r#"["snoozed_until"]"#);
+    assert_eq!(
+        bytes(&woken_again.events[0].removed),
+        r#"["snoozed_until"]"#
+    );
+
+    let records = [
+        created.record,
+        snoozed.record,
+        woken.record,
+        woken_again.record,
+    ];
+    let replayed = replay_records(&records).expect("verified replay");
+    assert_eq!(bytes(&replayed), bytes(&woken_again.instance));
+
+    let events: Vec<DomainEvent> = [
+        created.events,
+        snoozed.events,
+        woken.events,
+        woken_again.events,
+    ]
+    .concat();
+    let folded = rehydrate(definition, &events).expect("a history execute wrote");
+    assert_eq!(bytes(&folded), bytes(&woken_again.instance));
+
+    // An event that drops the removal the clear made folds to an instance still holding the field,
+    // which no `wake` writes.
+    let mut kept = events.clone();
+    kept[2].removed.clear();
+    let error = rehydrate(definition, &kept).expect_err("the clear removed the field");
+    assert!(
+        matches!(&error, entity_core::CoreError::Validation(errors)
+            if errors.len() == 1 && errors[0].path == "events"
+                && errors[0].message.contains("removal evidence")),
+        "{error}"
+    );
+
+    // Removal evidence naming a field no operation clears is refused by name.
+    let mut widened = events.clone();
+    widened[2].removed.insert("title".to_owned());
+    let error = rehydrate(definition, &widened).expect_err("nothing clears title");
+    assert!(
+        matches!(&error, entity_core::CoreError::Validation(errors)
+            if errors.len() == 1 && errors[0].message.contains("removal evidence")),
+        "{error}"
+    );
+
+    // An operation that clears nothing cannot carry removal evidence either.
+    let mut invented = events.clone();
+    invented[1].removed.insert("snoozed_until".to_owned());
+    invented[1].changed.remove("snoozed_until");
+    let error = rehydrate(definition, &invented).expect_err("snooze clears nothing");
+    assert!(
+        matches!(&error, entity_core::CoreError::Validation(errors)
+            if errors.len() == 1 && errors[0].message.contains("removal evidence")),
+        "{error}"
+    );
+
+    // A record whose removal evidence is not what the clear produced is refused rather than
+    // becoming state.
+    let mut forged = records.clone();
+    forged[2].removed.clear();
+    let error = replay_records(&forged).expect_err("another removal");
+    assert!(
+        matches!(&error, entity_core::CoreError::Validation(errors) if errors[0].path == "records[2]"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_cleared_service_branch_replays_to_the_bytes_execute_returned() {
+    let registry = reminder(Some("service/1"));
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create(
+            "reminder",
+            1,
+            "r-1",
+            json!({ "title": "call back", "snoozed_until": "2026-10-08T09:00:00Z" }),
+        )
+        .expect("permitted");
+    let woken = runtime
+        .execute(&created.instance, "wake", json!({}))
+        .expect("permitted");
+    assert_eq!(bytes(&woken.instance.fields), r#"{"title":"call back"}"#);
+    assert_eq!(bytes(&woken.record.removed), r#"["snoozed_until"]"#);
+    let replayed = replay_records(&[created.record, woken.record]).expect("verified replay");
+    assert_eq!(bytes(&replayed), bytes(&woken.instance));
+}

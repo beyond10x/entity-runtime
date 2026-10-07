@@ -5,7 +5,7 @@
 
 use entity_core::{
     execute, CoreError, DefinitionError, DefinitionErrors, EntityDefinition, EntityInstance,
-    Registry, Runtime, Truth,
+    Registry, Runtime, SetAssignment, Truth,
 };
 use serde_json::{json, Value};
 
@@ -1160,6 +1160,335 @@ fn fields_are_revalidated_after_set() {
     );
 }
 
+// --- Increment assignments (R-164) ---------------------------------------------------------------
+
+/// A counter whose `bump` writes `set` and takes `arguments`: two required numeric fields an
+/// increment may add to, and the kinds and optionalities it may not.
+fn counter(set: Value, arguments: Value) -> Value {
+    json!({
+        "entity": "counter",
+        "version": 1,
+        "schema": { "fields": {
+            "hits":      { "type": "integer", "required": true },
+            "total":     { "type": "number", "required": true },
+            "step":      { "type": "integer", "required": true },
+            "label":     { "type": "string" },
+            "maybe":     { "type": "integer" },
+            "defaulted": { "type": "integer", "default": 0 },
+            "extra":     { "type": "json" }
+        }},
+        "lifecycle": { "initial": "open", "states": ["open"] },
+        "operations": { "bump": {
+            "arguments": { "fields": arguments },
+            "transitions": [ { "from": "open", "to": "open" } ],
+            "set": set,
+            "emits": [ { "type": "Bumped", "payload": {
+                "before": "$old_fields.hits", "after": "$fields.hits"
+            }}]
+        }}
+    })
+}
+
+fn open_counter(registry: &Registry, fields: Value) -> EntityInstance {
+    Runtime::new(registry)
+        .create("counter", 1, "c-1", fields)
+        .expect("a valid counter")
+        .instance
+}
+
+/// The text a value serializes to, which is what a record stores and replay compares.
+fn text(value: &Value) -> String {
+    serde_json::to_string(value).expect("a value serializes")
+}
+
+#[test]
+fn an_increment_adds_a_literal_to_the_pre_operation_value_inside_the_decision() {
+    let registry = register(counter(
+        json!({ "hits": { "increment": 1 }, "total": { "increment": 0.25 } }),
+        json!({}),
+    ))
+    .unwrap();
+    let before = open_counter(&registry, json!({ "hits": 41, "total": 1.5, "step": 0 }));
+    let decision = Runtime::new(&registry)
+        .execute(&before, "bump", json!({}))
+        .expect("an increment within range");
+
+    assert_eq!(text(&decision.instance.fields["hits"]), "42");
+    assert_eq!(text(&decision.instance.fields["total"]), "1.75");
+    let changed = &decision.events[0].changed;
+    assert_eq!(
+        text(&Value::Object(changed.clone())),
+        r#"{"hits":42,"total":1.75}"#
+    );
+    assert_eq!(
+        text(&decision.events[0].payload),
+        r#"{"after":42,"before":41}"#
+    );
+    // The record carries the sum, not the assignment: it is computed inside the decision.
+    assert_eq!(decision.record.result, decision.instance);
+    assert_eq!(&decision.record.changed, changed);
+    assert_eq!(text(&before.fields["hits"]), "41");
+}
+
+#[test]
+fn an_increment_adds_what_an_argument_or_a_pre_operation_field_resolves_to() {
+    let registry = register(counter(
+        json!({
+            "hits": { "increment": "$args.by" },
+            "step": { "increment": "$fields.hits" },
+            "total": { "increment": "$old_fields.step" }
+        }),
+        json!({ "by": { "type": "integer", "default": 1 } }),
+    ))
+    .unwrap();
+    let runtime = Runtime::new(&registry);
+    let before = open_counter(&registry, json!({ "hits": 10, "total": 0.5, "step": 3 }));
+
+    // `by` takes its default; `step` and `total` read the fields as they were before `set`.
+    let after = runtime
+        .execute(&before, "bump", json!({}))
+        .expect("defaulted argument")
+        .instance;
+    assert_eq!(text(&after.fields["hits"]), "11");
+    assert_eq!(text(&after.fields["step"]), "13");
+    assert_eq!(text(&after.fields["total"]), "3.5");
+
+    // A negative amount decrements: there is no separate `decrement`.
+    let after = runtime
+        .execute(&before, "bump", json!({ "by": -20 }))
+        .expect("negative argument")
+        .instance;
+    assert_eq!(text(&after.fields["hits"]), "-10");
+}
+
+#[test]
+fn an_increment_past_the_field_maximum_is_refused_after_set_and_leaves_the_instance_untouched() {
+    let document = with(
+        counter(
+            json!({ "hits": { "increment": "$args.by" } }),
+            json!({ "by": { "type": "integer", "required": true } }),
+        ),
+        "schema.fields.hits.max",
+        json!(100),
+    );
+    let registry = register(document).unwrap();
+    let runtime = Runtime::new(&registry);
+    let before = open_counter(&registry, json!({ "hits": 99, "total": 0, "step": 0 }));
+    let untouched = before.clone();
+
+    let error = runtime
+        .execute(&before, "bump", json!({ "by": 2 }))
+        .expect_err("the argument is fine; the sum is not");
+    assert!(
+        matches!(&error, CoreError::Validation(errors) if errors.len() == 1 && errors[0].path == "fields.hits"),
+        "{error}"
+    );
+    assert_eq!(before, untouched);
+    assert_eq!(
+        text(
+            &runtime
+                .execute(&before, "bump", json!({ "by": 1 }))
+                .expect("the boundary itself")
+                .instance
+                .fields["hits"]
+        ),
+        "100"
+    );
+}
+
+#[test]
+fn an_integer_increment_outside_the_kernel_1_range_is_refused_as_overflow_and_never_wraps() {
+    let registry = register(counter(
+        json!({ "hits": { "increment": "$args.by" } }),
+        json!({ "by": { "type": "integer", "required": true } }),
+    ))
+    .unwrap();
+    let runtime = Runtime::new(&registry);
+    let overflow = |hits: Value, by: i64| {
+        let before = open_counter(&registry, json!({ "hits": hits, "total": 0, "step": 0 }));
+        runtime.execute(&before, "bump", json!({ "by": by }))
+    };
+
+    for (hits, by) in [(json!(u64::MAX), 1), (json!(i64::MIN), -1)] {
+        let error = overflow(hits.clone(), by).expect_err("outside i64 and u64");
+        assert!(
+            matches!(&error, CoreError::IncrementOverflow { operation, field, .. }
+                if operation == "bump" && field == "hits"),
+            "{hits} + {by}: {error}"
+        );
+    }
+    // `kernel/1` integers span i64 and u64, so i64::MAX + 1 is a value, not an overflow.
+    let crossed = overflow(json!(i64::MAX), 1).expect("inside u64");
+    assert_eq!(
+        text(&crossed.instance.fields["hits"]),
+        "9223372036854775808"
+    );
+    let below = overflow(json!(u64::MAX), -1).expect("inside u64");
+    assert_eq!(text(&below.instance.fields["hits"]), "18446744073709551614");
+}
+
+#[test]
+fn registration_refuses_an_increment_on_a_field_that_is_not_a_required_integer_or_number() {
+    for field in ["label", "extra", "maybe", "defaulted"] {
+        let errors = register(counter(json!({ field: { "increment": 1 } }), json!({})))
+            .expect_err("not a required integer or number");
+        assert!(
+            matches!(errors.as_slice(), [DefinitionError::IncrementTargetInvalid { path, field: named, .. }]
+                if path == &format!("operations.bump.set.{field}") && named == field),
+            "{field}: {errors}"
+        );
+    }
+
+    // An undeclared field has no kind to add to, even where the schema admits it.
+    let open = with(
+        counter(json!({ "undeclared": { "increment": 1 } }), json!({})),
+        "schema.additional_fields",
+        json!(true),
+    );
+    let errors = register(open).expect_err("no declared kind");
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::IncrementTargetInvalid { path, field, .. }]
+            if path == "operations.bump.set.undeclared" && field == "undeclared"),
+        "{errors}"
+    );
+    // Where it does not, the field is unknown, and that is the one defect reported.
+    let errors = register(counter(
+        json!({ "undeclared": { "increment": 1 } }),
+        json!({}),
+    ))
+    .expect_err("undeclared");
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::UnknownSetField { field, .. }] if field == "undeclared"),
+        "{errors}"
+    );
+}
+
+#[test]
+fn registration_refuses_an_increment_amount_that_is_not_an_always_present_number_of_the_fields_kind(
+) {
+    let arguments = json!({
+        "by":      { "type": "integer", "required": true },
+        "deflt":   { "type": "integer", "default": 2 },
+        "maybe":   { "type": "integer" },
+        "ratio":   { "type": "number", "required": true },
+        "note":    { "type": "string", "required": true },
+        "blob":    { "type": "json", "required": true },
+        "opts":    { "type": "object", "required": true, "properties": {
+            "by":    { "type": "integer", "required": true },
+            "maybe": { "type": "integer" }
+        }},
+        "loose":   { "type": "object", "properties": { "by": { "type": "integer", "required": true } } }
+    });
+    let amount = |field: &str, amount: Value| {
+        register(counter(
+            json!({ field: { "increment": amount } }),
+            arguments.clone(),
+        ))
+    };
+
+    for (field, admitted) in [
+        ("hits", json!(1)),
+        ("hits", json!(-1)),
+        ("hits", json!(u64::MAX)),
+        ("hits", json!("$args.by")),
+        ("hits", json!("$args.deflt")),
+        ("hits", json!("$args.opts.by")),
+        ("hits", json!("$fields.step")),
+        ("hits", json!("$old_fields.step")),
+        ("hits", json!("$version")),
+        ("total", json!(0.5)),
+        ("total", json!("$args.ratio")),
+        ("total", json!("$args.by")),
+    ] {
+        assert!(
+            amount(field, admitted.clone()).is_ok(),
+            "{field} + {admitted} is an always-present number of the field's kind"
+        );
+    }
+
+    for (field, refused) in [
+        ("hits", json!("5")),
+        ("hits", json!("$$5")),
+        ("hits", json!(true)),
+        ("hits", Value::Null),
+        ("hits", json!([1])),
+        ("hits", json!({ "by": 1 })),
+        ("hits", json!(0.5)),
+        ("hits", json!(1.0)),
+        ("hits", json!("$args.ratio")),
+        ("hits", json!("$args.note")),
+        ("hits", json!("$args.blob")),
+        ("hits", json!("$args.maybe")),
+        ("hits", json!("$args.opts.maybe")),
+        ("hits", json!("$args.loose.by")),
+        ("hits", json!("$fields.label")),
+        ("hits", json!("$fields.maybe")),
+        ("hits", json!("$fields.extra")),
+        ("hits", json!("$id")),
+        ("hits", json!("$state")),
+        ("hits", json!("$args")),
+        ("total", json!("$args.note")),
+    ] {
+        let errors = amount(field, refused.clone()).expect_err("not an always-present number");
+        assert!(
+            matches!(errors.as_slice(), [DefinitionError::IncrementAmountInvalid { path, .. }]
+                if path == &format!("operations.bump.set.{field}.increment")),
+            "{field} + {refused}: {errors}"
+        );
+    }
+    // An integer literal past the u64 span is no integer `kernel/1` holds.
+    let past: Value = serde_json::from_str("18446744073709551616").unwrap();
+    let errors = amount("hits", past).expect_err("past u64");
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [DefinitionError::IncrementAmountInvalid { .. }]
+        ),
+        "{errors}"
+    );
+    // A reference its scope cannot see stays the template defect it always was.
+    let errors = amount("hits", json!("$args.nope")).expect_err("undeclared argument");
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::InvalidTemplate { path, .. }]
+            if path == "operations.bump.set.hits.increment"),
+        "{errors}"
+    );
+}
+
+#[test]
+fn a_set_value_is_an_increment_only_when_it_is_a_mapping_of_the_increment_key_alone() {
+    assert!(matches!(
+        SetAssignment::of(&json!({ "increment": 1 })),
+        SetAssignment::Increment(amount) if *amount == json!(1)
+    ));
+    for template in [
+        json!({ "increment": 1, "by": 2 }),
+        json!({ "incremnt": 1 }),
+        json!({}),
+        json!("$args.by"),
+        json!(5),
+        json!([{ "increment": 1 }]),
+    ] {
+        assert!(
+            matches!(SetAssignment::of(&template), SetAssignment::Template(value) if *value == template),
+            "{template}"
+        );
+    }
+
+    // A mapping with more than the one key is an object template, written as the object it is.
+    let registry = register(counter(
+        json!({ "extra": { "increment": 1, "by": "$fields.hits" } }),
+        json!({}),
+    ))
+    .unwrap();
+    let before = open_counter(&registry, json!({ "hits": 41, "total": 0, "step": 0 }));
+    let after = Runtime::new(&registry)
+        .execute(&before, "bump", json!({}))
+        .expect("an object template")
+        .instance;
+    assert_eq!(text(&after.fields["extra"]), r#"{"by":41,"increment":1}"#);
+}
+
 #[test]
 fn every_successful_operation_increments_the_revision_by_one() {
     let registry = register(ticket()).unwrap();
@@ -1265,6 +1594,315 @@ fn assert_verdict(registry: &Registry, condition: &Value, expected: Truth) {
         Err(other) => panic!("{condition} must be decided as a precondition, not as {other}"),
     };
     assert_eq!(verdict, expected, "{condition}");
+}
+
+// --- Clear assignments (R-165) -------------------------------------------------------------------
+
+/// A reminder whose `wake` writes `set`: a required title, an optional `snoozed_until` that the
+/// `snoozed` state needs, an optional `priority` with a default, and kinds a clear may not touch.
+fn reminder(set: Value) -> Value {
+    json!({
+        "entity": "reminder",
+        "version": 1,
+        "schema": { "fields": {
+            "title":         { "type": "string", "required": true },
+            "snoozed_until": { "type": "string" },
+            "priority":      { "type": "integer", "default": 3 },
+            "extra":         { "type": "json" }
+        }},
+        "lifecycle": { "initial": "active", "states": ["active", "snoozed"] },
+        "invariants": [{
+            "name": "snoozed-has-a-wake-time",
+            "assert": { "any": [
+                { "ne": ["$state", "snoozed"] },
+                { "exists": "$fields.snoozed_until" }
+            ]}
+        }],
+        "operations": {
+            "snooze": {
+                "arguments": { "fields": { "until": { "type": "string", "required": true } } },
+                "transitions": [ { "from": "active", "to": "snoozed" } ],
+                "set": { "snoozed_until": "$args.until" }
+            },
+            "wake": {
+                "transitions": [
+                    { "from": "active", "to": "active" },
+                    { "from": "snoozed", "to": "active" }
+                ],
+                "set": set,
+                "emits": [ { "type": "Woken", "payload": {
+                    "was": "$old_fields", "now": "$fields"
+                }}]
+            },
+            "forget": {
+                "transitions": [ { "from": "snoozed", "to": "snoozed" } ],
+                "set": { "snoozed_until": { "cleared": true } }
+            }
+        }
+    })
+}
+
+fn snoozed_reminder(registry: &Registry) -> EntityInstance {
+    let runtime = Runtime::new(registry);
+    let created = runtime
+        .create("reminder", 1, "r-1", json!({ "title": "call back" }))
+        .expect("a valid reminder")
+        .instance;
+    runtime
+        .execute(
+            &created,
+            "snooze",
+            json!({ "until": "2026-10-08T09:00:00Z" }),
+        )
+        .expect("snoozed")
+        .instance
+}
+
+#[test]
+fn a_cleared_field_leaves_the_instance_and_the_decision_names_it_removed() {
+    let registry = register(reminder(json!({
+        "snoozed_until": { "cleared": true },
+        "priority": { "cleared": true }
+    })))
+    .unwrap();
+    let runtime = Runtime::new(&registry);
+    let before = snoozed_reminder(&registry);
+    let untouched = before.clone();
+    assert_eq!(
+        text(&Value::Object(before.fields.clone())),
+        r#"{"priority":3,"snoozed_until":"2026-10-08T09:00:00Z","title":"call back"}"#
+    );
+
+    let decision = runtime
+        .execute(&before, "wake", json!({}))
+        .expect("an optional field may be cleared, a defaulted one too");
+    assert_eq!(
+        text(&Value::Object(decision.instance.fields.clone())),
+        r#"{"title":"call back"}"#
+    );
+    let removed =
+        std::collections::BTreeSet::from(["priority".to_owned(), "snoozed_until".to_owned()]);
+    assert_eq!(decision.record.removed, removed);
+    assert!(
+        decision.record.changed.is_empty(),
+        "{:?}",
+        decision.record.changed
+    );
+    assert_eq!(decision.events[0].removed, removed);
+    assert!(decision.events[0].changed.is_empty());
+    assert_eq!(decision.record.result, decision.instance);
+    assert_eq!(before, untouched);
+
+    // A default fills a field at creation and nowhere else, so a cleared defaulted field stays
+    // absent through the operations after it.
+    let snoozed_again = runtime
+        .execute(
+            &decision.instance,
+            "snooze",
+            json!({ "until": "2026-10-09T09:00:00Z" }),
+        )
+        .expect("snoozed again")
+        .instance;
+    assert!(!snoozed_again.fields.contains_key("priority"));
+}
+
+#[test]
+fn clearing_an_already_absent_field_is_accepted_and_still_names_it_removed() {
+    let registry = register(reminder(json!({ "snoozed_until": { "cleared": true } }))).unwrap();
+    let before = Runtime::new(&registry)
+        .create("reminder", 1, "r-1", json!({ "title": "call back" }))
+        .expect("a valid reminder")
+        .instance;
+    assert!(!before.fields.contains_key("snoozed_until"));
+
+    let decision = Runtime::new(&registry)
+        .execute(&before, "wake", json!({}))
+        .expect("clearing an absent field is no fault");
+    assert_eq!(decision.instance.fields, before.fields);
+    assert_eq!(decision.instance.revision, before.revision + 1);
+    assert!(decision.record.changed.is_empty());
+    // The record states what the definition did, as a fulfillment `Remove` of an absent field
+    // does: the field is absent after this decision.
+    assert_eq!(
+        decision.record.removed,
+        std::collections::BTreeSet::from(["snoozed_until".to_owned()])
+    );
+    assert_eq!(decision.events[0].removed, decision.record.removed);
+}
+
+#[test]
+fn event_templates_after_a_clear_see_the_field_absent() {
+    let registry = register(reminder(json!({ "snoozed_until": { "cleared": true } }))).unwrap();
+    let before = snoozed_reminder(&registry);
+    let decision = Runtime::new(&registry)
+        .execute(&before, "wake", json!({}))
+        .expect("cleared");
+    assert_eq!(
+        text(&decision.events[0].payload),
+        r#"{"now":{"priority":3,"title":"call back"},"was":{"priority":3,"snoozed_until":"2026-10-08T09:00:00Z","title":"call back"}}"#
+    );
+
+    // A template that reads the cleared field finds nothing, and nothing is not a null.
+    let mut document = reminder(json!({ "snoozed_until": { "cleared": true } }));
+    document["operations"]["wake"]["emits"][0]["payload"] =
+        json!({ "until": "$fields.snoozed_until" });
+    let registry = register(document).unwrap();
+    let before = snoozed_reminder(&registry);
+    let untouched = before.clone();
+    let error = Runtime::new(&registry)
+        .execute(&before, "wake", json!({}))
+        .expect_err("the cleared field has no value to read");
+    assert!(
+        matches!(&error, CoreError::Template { expression, .. } if expression == "$fields.snoozed_until"),
+        "{error}"
+    );
+    assert_eq!(before, untouched);
+}
+
+#[test]
+fn invariants_judge_the_fields_after_the_clear_and_a_refusal_leaves_the_instance_untouched() {
+    let registry = register(reminder(json!({ "snoozed_until": { "cleared": true } }))).unwrap();
+    let runtime = Runtime::new(&registry);
+    let before = snoozed_reminder(&registry);
+    let untouched = before.clone();
+
+    // `forget` stays in `snoozed`, whose invariant needs the field the clear removed.
+    let error = runtime
+        .execute(&before, "forget", json!({}))
+        .expect_err("the invariant judges the cleared fields");
+    assert!(
+        matches!(&error, CoreError::InvariantViolation { rule: Some(rule), .. } if rule == "snoozed-has-a-wake-time"),
+        "{error}"
+    );
+    assert_eq!(before, untouched);
+
+    // `wake` leaves `snoozed`, so the same clear satisfies the same invariant.
+    let woken = runtime
+        .execute(&before, "wake", json!({}))
+        .expect("the invariant does not need the field outside snoozed")
+        .instance;
+    assert_eq!(woken.lifecycle_state, "active");
+    assert!(!woken.fields.contains_key("snoozed_until"));
+}
+
+#[test]
+fn registration_refuses_a_clear_on_a_required_or_undeclared_field_or_with_a_flag_other_than_true() {
+    let kinds = |document: Value| -> Vec<DefinitionError> {
+        register(document).expect_err("refused").as_slice().to_vec()
+    };
+
+    let errors = kinds(reminder(json!({ "title": { "cleared": true } })));
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::ClearTargetInvalid { path, field, .. }]
+            if path == "operations.wake.set.title" && field == "title"),
+        "{errors:?}"
+    );
+
+    for flag in [
+        json!(false),
+        json!("yes"),
+        json!(null),
+        json!(1),
+        json!("$args.flag"),
+    ] {
+        let errors = kinds(reminder(json!({ "snoozed_until": { "cleared": flag } })));
+        assert!(
+            matches!(errors.as_slice(), [DefinitionError::ClearFlagInvalid { path, field, .. }]
+                if path == "operations.wake.set.snoozed_until.cleared" && field == "snoozed_until"),
+            "{flag}: {errors:?}"
+        );
+    }
+
+    // A required field with a wrong flag is two faults, and both are reported.
+    let errors = kinds(reminder(json!({ "title": { "cleared": false } })));
+    let mut found: Vec<&str> = errors.iter().map(DefinitionError::kind).collect();
+    found.sort_unstable();
+    assert_eq!(
+        found,
+        ["clear_flag_invalid", "clear_target_invalid"],
+        "{errors:?}"
+    );
+
+    // An open schema admits undeclared fields, and a clear still names a declared one.
+    let open = with(
+        reminder(json!({ "unlisted": { "cleared": true } })),
+        "schema.additional_fields",
+        json!(true),
+    );
+    let errors = kinds(open);
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::ClearTargetInvalid { field, .. }] if field == "unlisted"),
+        "{errors:?}"
+    );
+
+    // A closed schema already refuses the field by name, and the clear adds no second report.
+    let errors = kinds(reminder(json!({ "unlisted": { "cleared": true } })));
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::UnknownSetField { field, .. }] if field == "unlisted"),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn a_set_value_naming_both_cleared_and_increment_is_refused_as_two_assignments_of_one_field() {
+    let errors = register(reminder(json!({
+        "priority": { "cleared": true, "increment": 1 }
+    })))
+    .expect_err("one field, one assignment")
+    .as_slice()
+    .to_vec();
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::SetAssignmentConflict { path, field, keywords }]
+            if path == "operations.wake.set.priority"
+                && field == "priority"
+                && keywords == &["cleared".to_owned(), "increment".to_owned()]),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn a_set_value_is_a_clear_only_when_it_is_a_mapping_of_the_cleared_key_alone() {
+    assert!(matches!(
+        SetAssignment::of(&json!({ "cleared": true })),
+        SetAssignment::Cleared(flag) if *flag == json!(true)
+    ));
+    // The keyword is reserved whatever follows it; registration judges the flag.
+    assert!(matches!(
+        SetAssignment::of(&json!({ "cleared": false })),
+        SetAssignment::Cleared(flag) if *flag == json!(false)
+    ));
+    let both = json!({ "increment": 1, "cleared": true });
+    assert!(matches!(
+        SetAssignment::of(&both),
+        SetAssignment::Conflicting(members) if Some(members) == both.as_object()
+    ));
+    for template in [
+        json!({ "cleared": true, "by": 1 }),
+        json!({ "cleard": true }),
+        json!({ "increment": 1, "cleared": true, "by": 1 }),
+        json!([{ "cleared": true }]),
+    ] {
+        assert!(
+            matches!(SetAssignment::of(&template), SetAssignment::Template(value) if *value == template),
+            "{template}"
+        );
+    }
+
+    // A mapping with any key that is not a keyword is an object template, written as the object
+    // it is.
+    let registry = register(reminder(
+        json!({ "extra": { "cleared": true, "by": "$fields.title" } }),
+    ))
+    .unwrap();
+    let before = snoozed_reminder(&registry);
+    let after = Runtime::new(&registry)
+        .execute(&before, "wake", json!({}))
+        .expect("an object template")
+        .instance;
+    assert_eq!(
+        text(&after.fields["extra"]),
+        r#"{"by":"call back","cleared":true}"#
+    );
 }
 
 // --- Rules ---------------------------------------------------------------------------------------

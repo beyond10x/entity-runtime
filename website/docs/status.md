@@ -9,7 +9,7 @@ custom_edit_url: null
 
 # Status
 
-39 capabilities are shipped and 7 are planned, as of 2026-10-06. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
+42 capabilities are shipped and 7 are planned, as of 2026-10-07. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
 
 ## Kernel
 
@@ -22,6 +22,8 @@ custom_edit_url: null
 | [Three-valued rules](./reference/definitions.md) | ● shipped | A comparison over a value nobody observed answers unknown, and the refusal names every missing path. |
 | [Accumulated validation](./reference/definitions.md) | ● shipped | An object with several broken values reports every error, each with its path. |
 | [Prefix and suffix conditions](./reference/definitions.md) | ● shipped | starts_with and ends_with compare bytes, case-sensitively, under every semantics (0.24.0). |
+| [Increment assignments](./reference/definitions.md) | ● shipped | A set value written as increment: n adds n to a required integer or number field inside the decision, exactly, and a sum the field's kind cannot hold is refused rather than wrapped. |
+| [Clear assignments](./reference/definitions.md) | ● shipped | A set value written as cleared: true leaves an optional field absent after the operation, names it in the decision's removed fields, and replays to the same bytes. |
 | [Typed references](./reference/definitions.md) | ● shipped | A ref field names another entity type; validate_all refuses a reference to a type nobody registered. |
 | [Named outcomes (service/1)](./concepts/service-semantics.md) | ● shipped | Operations and creations carry ordered branches with guards, effects, responses and declared refusals; the kernel selects the branch. |
 | [Optional values keep their absence (service/2)](./concepts/service-semantics.md) | ● shipped | A copied optional argument stays absent, present or null through replay and retry. |
@@ -56,6 +58,7 @@ custom_edit_url: null
 | [Batch import of legacy histories](./concepts/storage.md) | ● shipped | import_anchors establishes a batch of imported boundaries in one append group, and a retry of it settles. |
 | [Tree stores keep each text once](./concepts/storage.md) | ● shipped | A new tree store is eventlog-tree/2; an eventlog-tree/1 store reads the same after migration (0.25.0). |
 | [Provider-tracked reads on SQLite](./concepts/storage.md) | ● shipped | CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract. |
+| [Open from a persisted checkpoint on SQLite](./concepts/storage.md) | ● shipped | With durable open checkpoints enabled, a ProviderTracked open verifies the persisted checkpoint and the appends since it, not the whole history. |
 
 ## Surfaces
 

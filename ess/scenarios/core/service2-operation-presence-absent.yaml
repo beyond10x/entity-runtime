@@ -1,0 +1,44 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service2-operation-presence-absent",
+  "summary": "An absent argument leaves an operation set_if_present field as it was: present keeps its value, absent stays absent.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"note\":\"kept\",\"title\":\"T\"}}",
+        "operation": "annotate",
+        "arguments": "{\"bound\":{}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "annotated",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"kept\",\"title\":\"T\"}}",
+        "events": "[{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"revision\":2,\"type\":\"Annotated\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{},\"args\":{\"bound\":{}},\"payload\":{\"after\":{\"note\":\"kept\",\"title\":\"T\"},\"before\":{\"note\":\"kept\",\"title\":\"T\"}}}]",
+        "response": "{\"after\":{\"note\":\"kept\",\"title\":\"T\"}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"title\":\"T\"}}",
+        "operation": "annotate",
+        "arguments": "{\"bound\":{}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "annotated",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"title\":\"T\"}}",
+        "events": "[{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"revision\":2,\"type\":\"Annotated\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{},\"args\":{\"bound\":{}},\"payload\":{\"after\":{\"title\":\"T\"},\"before\":{\"title\":\"T\"}}}]",
+        "response": "{\"after\":{\"title\":\"T\"}}"
+      }
+    }
+  ]
+}

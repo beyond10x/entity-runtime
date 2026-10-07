@@ -1,0 +1,108 @@
+# Open cost with a persisted checkpoint: CapturePolicy::ProviderTracked opens after issue 55
+
+commit:     dac08bf39b3b00cf56a4d859223a88003df77bf5, with these uncommitted and committed next:
+            the higher-position write rule limited to records naming this store's binding event
+            (crates/entity-eventlog/src/adapter.rs), and test and document changes outside the probe
+probe:      crates/entity-eventlog/tests/shared_clock_cost.rs
+            sha256 b236e14e77411cebe5f3cab1953ef0e08456599a13e7a65418d9478ae60578ec
+test:       each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store
+toolchain:  rustc 1.91.0 (f8297e351 2025-10-28)
+machine:    Model name: Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz (20 threads)
+date:       2026-10-07
+command:    cargo +1.91.0 test --release -p entity-eventlog --features sqlite,sync-bridge --locked --test shared_clock_cost -- --ignored --nocapture --exact each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store
+host:       shared with other builds; /proc/loadavg before and after each run is recorded below
+baseline:   open-cost-baseline.txt, the same seeded stores and sizes, before the change
+
+Each seeded store (the baseline's: a shared clock touched in every two-member group) gets durable
+open checkpoints enabled and one tracked open whose drain persists a checkpoint at the head. Two
+treatments follow, each the median of 5 opens in microseconds:
+  checkpoint  the checkpoint at the head the previous process left; the provider answers Unchanged
+  suffix      one seeded-sized group (2 events) appended after the checkpoint by a FullVerification
+              writer; the open verifies that suffix
+  start       RecordedProviderFacade::start_with_read_policy(.., ProviderTracked) on the SQLite file,
+              the consumer's whole open, as in the baseline
+  verify      EventlogRecordedStore::open_with_policy(.., ProviderTracked) on a provider handle
+              opened for it, as in the baseline
+Every measured facade shuts down with CancelQueued, which persists nothing, so every open of a
+treatment starts from the same checkpoint. The probe asserts each open's OpenVerification, that the
+store open takes no capture and builds no model, that a FullVerification open of the same store
+still takes one capture and one whole-model build decoding every record, and the bound: the median
+start at 1,203 events is at most twice the median at 55, for both treatments.
+Output below is the test's stdout from "running 1 test"; compiler output with local paths is omitted.
+
+Summary, milliseconds: median of the three runs' medians (range of the three), against the baseline.
+  events  baseline start   checkpoint start     suffix start         baseline verify  checkpoint verify    suffix verify
+  55      138.6            1.333 (1.308-1.586)  5.949 (5.612-11.641) 129.2            0.624 (0.512-0.708)  5.150 (4.955-10.849)
+  601     1079.0           1.305 (1.106-1.626)  5.737 (5.176-5.802)  1004.5           0.518 (0.483-0.903)  4.689 (4.425-5.638)
+  1203    2167.0           1.286 (1.220-1.544)  6.664 (5.485-9.317)  1915.9           0.747 (0.529-0.942)  6.621 (5.618-7.703)
+
+Bound, start median at 1,203 events over start median at 55, per run:
+  checkpoint  0.92  0.81  1.18   (at most 2: holds in every run)
+  suffix      1.66  1.12  0.47   (at most 2: holds in every run)
+
+## run 1
+loadavg before: 24.55 20.76 18.40 5/6387 3833730
+running 1 test
+seed events=55 recorded_entries=54 groups=27 blob_bytes=2846892
+unchanged events=55 elapsed=2.7993ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 }
+open-cost policy=ProviderTracked treatment=checkpoint events=55 opens=5 start_median_us=1333 verify_median_us=708 start_us=[1432,1355,1287,1308,1333] verify_us=[572,502,762,785,708]
+open-cost policy=ProviderTracked treatment=suffix events=55 opens=5 start_median_us=5612 verify_median_us=5150 start_us=[5612,5707,5536,5584,5865] verify_us=[4978,5150,5326,5101,5190]
+seed events=601 recorded_entries=600 groups=300 blob_bytes=31641002
+unchanged events=601 elapsed=33.453767ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 }
+open-cost policy=ProviderTracked treatment=checkpoint events=601 opens=5 start_median_us=1106 verify_median_us=518 start_us=[1356,1177,1099,1106,1085] verify_us=[565,514,518,465,611]
+open-cost policy=ProviderTracked treatment=suffix events=601 opens=5 start_median_us=5176 verify_median_us=4425 start_us=[5200,5067,4929,5180,5176] verify_us=[4592,4476,4313,4345,4425]
+test each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store has been running for over 60 seconds
+seed events=1203 recorded_entries=1202 groups=601 blob_bytes=63391084
+unchanged events=1203 elapsed=57.695257ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 }
+open-cost policy=ProviderTracked treatment=checkpoint events=1203 opens=5 start_median_us=1220 verify_median_us=747 start_us=[1348,1191,1220,1244,1144] verify_us=[876,746,857,747,724]
+open-cost policy=ProviderTracked treatment=suffix events=1203 opens=5 start_median_us=9317 verify_median_us=7703 start_us=[9612,9917,9317,8403,6634] verify_us=[10723,12325,5448,5544,7703]
+test each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 88.65s
+
+loadavg after: 21.80 20.65 18.56 18/6483 3870733
+
+## run 2
+loadavg before: 21.80 20.65 18.56 16/6483 3870734
+running 1 test
+seed events=55 recorded_entries=54 groups=27 blob_bytes=2846892
+unchanged events=55 elapsed=2.940563ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 }
+open-cost policy=ProviderTracked treatment=checkpoint events=55 opens=5 start_median_us=1586 verify_median_us=624 start_us=[1586,1827,1475,1809,1304] verify_us=[829,624,689,574,610]
+open-cost policy=ProviderTracked treatment=suffix events=55 opens=5 start_median_us=5949 verify_median_us=4955 start_us=[5791,6201,5874,5949,6002] verify_us=[5316,4919,4867,4955,5042]
+seed events=601 recorded_entries=600 groups=300 blob_bytes=31641002
+unchanged events=601 elapsed=28.988365ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 }
+open-cost policy=ProviderTracked treatment=checkpoint events=601 opens=5 start_median_us=1305 verify_median_us=483 start_us=[1498,1203,1305,1305,1148] verify_us=[535,469,605,483,468]
+open-cost policy=ProviderTracked treatment=suffix events=601 opens=5 start_median_us=5802 verify_median_us=4689 start_us=[5718,5837,5802,5949,5656] verify_us=[4799,4881,4643,4689,4596]
+test each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store has been running for over 60 seconds
+seed events=1203 recorded_entries=1202 groups=601 blob_bytes=63391084
+unchanged events=1203 elapsed=90.497497ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 }
+open-cost policy=ProviderTracked treatment=checkpoint events=1203 opens=5 start_median_us=1286 verify_median_us=529 start_us=[1454,1286,1250,1536,1197] verify_us=[667,501,668,522,529]
+open-cost policy=ProviderTracked treatment=suffix events=1203 opens=5 start_median_us=6664 verify_median_us=5618 start_us=[11025,6664,9512,6257,6319] verify_us=[9846,8625,5585,5618,5203]
+test each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 90.62s
+
+loadavg after: 13.84 18.31 17.93 9/6457 3897854
+
+## run 3
+loadavg before: 13.84 18.31 17.93 12/6457 3897855
+running 1 test
+seed events=55 recorded_entries=54 groups=27 blob_bytes=2846892
+unchanged events=55 elapsed=2.957862ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 54, scoped_reads: 0 }
+open-cost policy=ProviderTracked treatment=checkpoint events=55 opens=5 start_median_us=1308 verify_median_us=512 start_us=[1538,1308,1357,1280,1282] verify_us=[552,575,501,504,512]
+open-cost policy=ProviderTracked treatment=suffix events=55 opens=5 start_median_us=11641 verify_median_us=10849 start_us=[16283,17674,11641,10477,7384] verify_us=[15210,13250,10849,8366,8129]
+seed events=601 recorded_entries=600 groups=300 blob_bytes=31641002
+unchanged events=601 elapsed=70.410823ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 600, scoped_reads: 0 }
+open-cost policy=ProviderTracked treatment=checkpoint events=601 opens=5 start_median_us=1626 verify_median_us=903 start_us=[2829,1443,1593,1626,2256] verify_us=[1005,1277,903,648,652]
+open-cost policy=ProviderTracked treatment=suffix events=601 opens=5 start_median_us=5737 verify_median_us=5638 start_us=[5739,5737,5680,5494,5905] verify_us=[5927,5663,5638,4950,4747]
+test each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store has been running for over 60 seconds
+seed events=1203 recorded_entries=1202 groups=601 blob_bytes=63391084
+unchanged events=1203 elapsed=71.524269ms calls_before=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 } calls_after=StoreCalls { captures: 1, model_builds: 1, model_advances: 0, records_decoded: 1202, scoped_reads: 0 }
+open-cost policy=ProviderTracked treatment=checkpoint events=1203 opens=5 start_median_us=1544 verify_median_us=942 start_us=[1641,1645,1388,1544,1467] verify_us=[942,1997,896,1010,881]
+open-cost policy=ProviderTracked treatment=suffix events=1203 opens=5 start_median_us=5485 verify_median_us=6621 start_us=[5485,7089,5368,5604,5271] verify_us=[13341,6532,6424,6838,6621]
+test each_open_from_a_checkpoint_at_the_previous_head_stays_within_twice_the_smallest_store ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 107.57s
+
+loadavg after: 22.11 20.32 18.73 9/6559 3937872
+

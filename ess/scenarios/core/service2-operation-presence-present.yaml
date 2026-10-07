@@ -1,0 +1,44 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service2-operation-presence-present",
+  "summary": "A present argument is written by an operation set_if_present, and the event and response after set read the result.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":1,\"fields\":{\"title\":\"T\"}}",
+        "operation": "annotate",
+        "arguments": "{\"bound\":{\"note\":\"memo\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "annotated",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"memo\",\"title\":\"T\"}}",
+        "events": "[{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"revision\":2,\"type\":\"Annotated\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"note\":\"memo\"},\"args\":{\"bound\":{\"note\":\"memo\"}},\"payload\":{\"after\":{\"note\":\"memo\",\"title\":\"T\"},\"before\":{\"title\":\"T\"}}}]",
+        "response": "{\"after\":{\"note\":\"memo\",\"title\":\"T\"}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"memo\",\"version\":1,\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"create\":{\"arguments\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true}}},\"outcomes\":[{\"name\":\"opened\",\"effect\":\"creates\",\"set\":{\"title\":\"$args.title\"}}]},\"operations\":{\"annotate\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"response\":{\"fields\":{\"after\":{\"type\":\"json\",\"required\":true}}},\"outcomes\":[{\"name\":\"annotated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}},\"emits\":[{\"type\":\"Annotated\",\"payload\":{\"after\":\"$fields\",\"before\":\"$old_fields\"}}],\"responds\":{\"after\":\"$fields\"}}]}}}",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":2,\"fields\":{\"note\":\"old\",\"title\":\"T\"}}",
+        "operation": "annotate",
+        "arguments": "{\"bound\":{\"note\":\"new\"}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "annotated",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"note\":\"new\",\"title\":\"T\"}}",
+        "events": "[{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"revision\":3,\"type\":\"Annotated\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{\"note\":\"new\"},\"args\":{\"bound\":{\"note\":\"new\"}},\"payload\":{\"after\":{\"note\":\"new\",\"title\":\"T\"},\"before\":{\"note\":\"old\",\"title\":\"T\"}}}]",
+        "response": "{\"after\":{\"note\":\"new\",\"title\":\"T\"}}"
+      }
+    }
+  ]
+}

@@ -34,6 +34,7 @@ command prints a refusal as JSON on standard output with exit `1`.
 | `invariant_violation` | the resulting entity would be invalid | do not bypass it; fix the model or the input |
 | `invariant_unobservable` | the result's validity depends on missing facts (`unresolved`) | gather or model the evidence |
 | `template` | a template path cannot resolve at run time (`expression`) | repair the definition or input; never substitute null |
+| `increment_overflow` | a `set` increment's exact sum is outside what the field's kind holds (`operation`, `field`, `value`, `amount`, `range`) | do not retry with the same amount; the field is not wrapped or rounded |
 | `definition` | the definition was refused; `defect` is the first defect's kind, `defects` all of them | fix the definition before exposing it |
 
 The service rules ([service semantics](../concepts/service-semantics.md)) add:
@@ -102,6 +103,9 @@ A refused definition reports every defect, each with one of these kinds.
   `unknown_set_field`, `empty_event_type`, `invalid_field`, `constraint_not_applicable`,
   `invalid_rule`, `unknown_relation_target`, `invalid_template`, `duplicate_definition`,
   `semantics_key_not_available`.
+- `set` increments and clears, under every semantics: `increment_target_invalid`,
+  `increment_amount_invalid`, `increment_on_create`, `clear_target_invalid`, `clear_flag_invalid`,
+  `clear_on_create`, `set_assignment_conflict`.
 - Service outcomes: `empty_outcome_name`, `duplicate_outcome`, `ambiguous_default_outcome`,
   `duplicate_wrong_state_outcome`, `wrong_state_on_create`, `wrong_state_with_selector`,
   `wrong_state_with_state_guard`, `wrong_state_unreachable`, `guard_state_outside_move`,
@@ -117,6 +121,6 @@ A refused definition reports every defect, each with one of these kinds.
   `quantifier_body_scope`, `condition_too_deep`, `compare_operand_not_addressable`,
   `scale_unnamed`, `scale_empty`.
 - Optional values and field actions (`service/2`, `service/3`): `conditional_argument_invalid`,
-  `conditional_target_invalid`, `conditional_target_conflict`, `conditional_set_on_operation`,
-  `fulfillment_on_create`, `fulfillment_field_unknown`, `fulfillment_identity_field`,
-  `fulfillment_set_conflict`, `fulfillment_presence_mismatch`.
+  `conditional_target_invalid`, `conditional_target_conflict`, `fulfillment_on_create`,
+  `fulfillment_field_unknown`, `fulfillment_identity_field`, `fulfillment_set_conflict`,
+  `fulfillment_conditional_set_conflict`, `fulfillment_presence_mismatch`.

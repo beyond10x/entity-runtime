@@ -30,7 +30,8 @@
 //!    nothing would have written is refused.** An operation event carries both the arguments it was
 //!    decided on and the fields it wrote, and the two have to agree: the fold resolves the emitting
 //!    operation's `set:` against the fields as they stood and the arguments the event records, and
-//!    refuses an event whose `changed` is anything else. Without this a `close` decided on
+//!    refuses an event whose `changed` is anything else, or whose `removed` is not exactly the
+//!    fields that `set:` clears (R-165). Without this a `close` decided on
 //!    `resolution: fixed` folds to a ticket resolved `not-fixed` — a value no `execute` on that
 //!    command could have produced, and one no precondition, schema or invariant has any reason to
 //!    object to. An event no operation emits on its transition has no such operation to answer for
@@ -90,12 +91,14 @@
 
 use serde_json::{Map, Value};
 
-use crate::definition::OperationDefinition;
+use std::collections::BTreeSet;
+
+use crate::definition::{OperationDefinition, SetAssignment};
 use crate::error::CoreError;
 use crate::runtime::{
-    canonical_object, canonicalize, changed_fields, check_invariants, check_preconditions, create,
-    decide_before_load, resolve_template, DecisionCommand, DecisionRecord, DomainEvent,
-    EntityInstance, LoadedDecision, PreloadDecision, TemplateContext,
+    assigned_value, canonical_object, canonicalize, changed_fields, check_invariants,
+    check_preconditions, create, decide_before_load, resolve_template, DecisionCommand,
+    DecisionRecord, DomainEvent, EntityInstance, LoadedDecision, PreloadDecision, TemplateContext,
 };
 use crate::validation::validate_object;
 use crate::ValidatedDefinition;
@@ -208,11 +211,12 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
 /// that is not a creation, a revision that does not follow, a `from_state` that is not where the
 /// fold had reached, a transition the definition does not declare, a type no operation emits on
 /// that transition, arguments the emitting operation's argument schema or preconditions would have
-/// refused, a `changed` that is not what that operation's `set:` would have written from those
-/// arguments — on a creation event, a type the definition does not emit on creation, any creation
-/// event at all when it emits none, or a `changed` that is not its own recorded fields — fields the
-/// schema refuses, any nonempty removal evidence that legacy kernel operations cannot produce, or
-/// a step the entity's invariants refuse.
+/// refused, a `changed` or `removed` that is not what that operation's `set:` would have written
+/// and cleared from those arguments — on a creation event, a type the definition does not emit on
+/// creation, any creation event at all when it emits none, or a `changed` that is not its own
+/// recorded fields — fields the schema refuses, removal evidence on a creation event or naming a
+/// field no operation emitting the event on its transition clears, or a step the entity's
+/// invariants refuse.
 ///
 /// [`CoreError::EntityMismatch`] when an event belongs to another definition, and
 /// [`CoreError::UnknownState`] when it names a state the definition does not have.
@@ -306,14 +310,28 @@ pub fn rehydrate(
                 });
             }
             // Service histories were refused before the first event was read. Every event that
-            // reaches this loop is therefore legacy kernel evidence, whose operations can write
-            // fields through `set:` but have no removal action to account for this new carrier.
-            if !event.removed.is_empty() {
-                return refuse(format!(
-                    "event {at} (`{}`) carries removal evidence, but legacy kernel operations \
-                     have no action that can produce it",
-                    event.event_type
-                ));
+            // reaches this loop is therefore legacy kernel evidence, whose only removal action is a
+            // `set:` clear (R-165): a creation clears nothing, and an operation event may name only
+            // fields some operation emitting it on its transition clears. Which operation, and
+            // exactly which fields, is held to the candidate that answers for the revision below.
+            if let Some(field) = event.removed.iter().find(|field| match &event.from_state {
+                None => true,
+                Some(from) => {
+                    !clears_on(definition, from, &event.to_state, &event.event_type, field)
+                }
+            }) {
+                return refuse(match &event.from_state {
+                    None => format!(
+                        "event {at} (`{}`) carries removal evidence for `{field}`, but a legacy \
+                         kernel creation removes nothing",
+                        event.event_type
+                    ),
+                    Some(from) => format!(
+                        "event {at} (`{}`) carries removal evidence for `{field}`, but no legacy \
+                         kernel operation that emits it on `{from}` -> `{}` clears that field",
+                        event.event_type, event.to_state
+                    ),
+                });
             }
         }
 
@@ -699,11 +717,19 @@ fn operations_that_would_have_produced<'a>(
         }
 
         let mut written = canonical_object(before.fields.clone());
+        let mut cleared = BTreeSet::new();
         let mut unresolved = None;
-        for (field, template) in &operation.set {
-            match resolve_template(template, &context) {
-                Ok(value) => {
+        for (field, assignment) in &operation.set {
+            // Through the function `execute` uses, so an increment is recomputed as the sum of
+            // the field before this revision and the amount, never read as an object template,
+            // and a clear removes the field and is named, as `execute` names it.
+            match assigned_value(name, field, assignment, &context) {
+                Ok(Some(value)) => {
                     written.insert(field.clone(), value);
+                }
+                Ok(None) => {
+                    written.remove(field);
+                    cleared.insert(field.clone());
                 }
                 // A `set:` this candidate cannot resolve from the event's arguments is this
                 // candidate's refusal, not the fold's: another emitter may still answer for the
@@ -735,13 +761,29 @@ fn operations_that_would_have_produced<'a>(
             to_state: &first.to_state,
         };
         let would_have_written = changed_fields(&after);
-        if would_have_written == first.changed {
-            candidates.push((name, operation));
-        } else {
+        if would_have_written != first.changed {
             refusals.push(format!(
                 "`{name}`: accepts those arguments but would have written {}",
                 disagreeing_fields(&would_have_written, &first.changed)
             ));
+        } else if cleared != first.removed {
+            refusals.push(format!(
+                "`{name}`: accepts those arguments but clears [{}], and the removal evidence \
+                 names [{}]",
+                cleared
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                first
+                    .removed
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        } else {
+            candidates.push((name, operation));
         }
     }
     if candidates.is_empty() {
@@ -815,6 +857,27 @@ fn emits_on(definition: &ValidatedDefinition, from: &str, to: &str, event_type: 
                 .emits
                 .iter()
                 .any(|emitted| emitted.event_type == event_type)
+    })
+}
+
+/// Whether some operation that emits `event_type` on `from` -> `to` clears `field` in its `set:`.
+fn clears_on(
+    definition: &ValidatedDefinition,
+    from: &str,
+    to: &str,
+    event_type: &str,
+    field: &str,
+) -> bool {
+    definition.operations.values().any(|operation| {
+        declares(operation, from, to)
+            && operation
+                .emits
+                .iter()
+                .any(|emitted| emitted.event_type == event_type)
+            && operation
+                .set
+                .get(field)
+                .is_some_and(|value| matches!(SetAssignment::of(value), SetAssignment::Cleared(_)))
     })
 }
 
