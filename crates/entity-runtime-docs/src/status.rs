@@ -151,6 +151,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Kernel",
+        "Responses checked against their schema",
+        "A service response is validated against its declared fields, alphabet and max_length included, before the decision is returned.",
+        "crates/entity-core/tests/service_semantics.rs::an_operation_response_outside_its_declared_schema_refuses_the_decision_with_the_response_path",
+        "/docs/concepts/service-semantics#text-length-and-alphabets",
+    ),
+    shipped(
+        "Kernel",
         "Optional values keep their absence (service/2)",
         "A copied optional argument stays absent, present or null through replay and retry.",
         "crates/entity-executor/tests/service_2_retry.rs::service_2_retry_distinguishes_absent_and_present_optional_arguments",
@@ -319,6 +326,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Surfaces",
+        "Moves outcomes in YAML",
+        "A service/1 outcome with a moves effect, written as the one-key mapping JSON uses, loads through entity-yaml and the entity command.",
+        "crates/entity-cli/tests/cli.rs::a_moves_outcome_in_a_yaml_or_json_definition_validates_and_executes",
+        "/docs/concepts/service-semantics#named-outcomes",
+    ),
+    shipped(
+        "Surfaces",
         "Eventlog File through the command",
         "A build with the eventlog-providers feature provisions and uses an Eventlog File store; no gate step builds that feature.",
         "crates/entity-cli/tests/cli.rs::explicit_eventlog_file_selection_provisions_creates_executes_retries_and_lists",
@@ -389,18 +403,6 @@ pub const CAPABILITIES: &[Capability] = &[
         "Named predicates and schema fragments",
         "Reusable named rules, reusable schema fragments and definition inheritance.",
         "/docs/reference/definitions",
-    ),
-    planned(
-        "Planned",
-        "Responses checked against their schema",
-        "A service response checked against its declared fields, including alphabet and max_length.",
-        "/docs/concepts/service-semantics#text-length-and-alphabets",
-    ),
-    planned(
-        "Planned",
-        "Moves outcomes in YAML",
-        "A service/1 outcome with a moves effect loads through entity-yaml and the entity command.",
-        "/docs/concepts/service-semantics",
     ),
     planned(
         "Planned",

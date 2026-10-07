@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T12:06:23Z",
+  "actor": "human:timo",
+  "artifact": "story:service-response-is-checked-against-its-schema",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p entity-core --test adversary_text_alphabet --test service_semantics; cargo test -p entity-store --test recorded_responses; cargo +1.91.0 test -p entity-eventlog --features file --test recorded_responses (U6 red runs vs dbddde2a)",
+    "reference": "U6 build/scratch: unchecked responses accepted before, refused at response.<field> after; base-recorded histories verify and replay"
+  }
+}

@@ -57,7 +57,7 @@ belongs to the scenario, and cleanup occurs after provider use.
 | R-109; `store-v0.1.md` §11 | `StateProvider::ids` | `memory-listed-identities-are-sorted`, `file-listed-identities-are-sorted` |
 | R-112; `store-v0.1.md` §13 | `AtomicBatchStore::commit_batch` on MemoryStore only | `memory-atomic-order`, `memory-atomic-rollback`, `memory-empty-batch` |
 | R-103; `store-v0.2.md` §2 | `FileStore::open`, complete subject document reads and replacement | `file-reopen`, `file-corrupt-marker-is-not-absence` |
-| R-98–R-100; `store-v0.1.md` §7 | `project`; definition/version/lifecycle filtering, ordered scalar grouping | `projection-groups-sorted-identities`, `projection-scalar-and-nested-keys`; reference validity remains the core registration contract |
+| R-98–R-100, R-167; `store-v0.1.md` §7 | `project`; definition/version/lifecycle filtering, ordered scalar grouping, service collection address keys read as the kernel reads them | `projection-groups-sorted-identities`, `projection-scalar-and-nested-keys`, `projection-collection-address-keys`; reference validity remains the core registration contract |
 | R-103 and library part of R-91; `store-v0.2.md` | `migrate_file_store_v1` | `migration-dry-run-and-out-of-place`, `migration-invalid-source-publishes-nothing` |
 | Library acquisition part of R-155; `eventlog-provider-facades-and-legacy-imports.md` | `LegacyStoreSource::acquire_legacy` on FileStore | `legacy-acquisition-of-absent-source-is-read-only`, `legacy-acquisition-preserves-only-known-order` |
 | R-123; `recorded-execution-v0.1.md` | `AsyncRecordedWriter::append`, real transaction-local validation and clone/commit | `recorded-memory-atomic-observation-order`, `recorded-memory-atomic-rollback` |

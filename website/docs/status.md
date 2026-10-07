@@ -9,7 +9,7 @@ custom_edit_url: null
 
 # Status
 
-42 capabilities are shipped and 7 are planned, as of 2026-10-07. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
+44 capabilities are shipped and 5 are planned, as of 2026-10-07. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
 
 ## Kernel
 
@@ -26,6 +26,7 @@ custom_edit_url: null
 | [Clear assignments](./reference/definitions.md) | ● shipped | A set value written as cleared: true leaves an optional field absent after the operation, names it in the decision's removed fields, and replays to the same bytes. |
 | [Typed references](./reference/definitions.md) | ● shipped | A ref field names another entity type; validate_all refuses a reference to a type nobody registered. |
 | [Named outcomes (service/1)](./concepts/service-semantics.md) | ● shipped | Operations and creations carry ordered branches with guards, effects, responses and declared refusals; the kernel selects the branch. |
+| [Responses checked against their schema](./concepts/service-semantics.md#text-length-and-alphabets) | ● shipped | A service response is validated against its declared fields, alphabet and max_length included, before the decision is returned. |
 | [Optional values keep their absence (service/2)](./concepts/service-semantics.md) | ● shipped | A copied optional argument stays absent, present or null through replay and retry. |
 | [Typed update actions (service/3)](./concepts/service-semantics.md) | ● shipped | Set, Preserve and Remove actions apply after the outcome is selected and are kept in the record. |
 | [Logical identity and derived addresses](./concepts/service-semantics.md) | ● shipped | A service definition may declare an identity field; derived creation computes the storage address from it. |
@@ -65,6 +66,7 @@ custom_edit_url: null
 | Capability | Status | What it means |
 |---|---|---|
 | [The entity command](./reference/cli.md) | ● shipped | Validate, inspect, graph, create, execute, list and store migrations from one Rust binary with typed exit codes. |
+| [Moves outcomes in YAML](./concepts/service-semantics.md#named-outcomes) | ● shipped | A service/1 outcome with a moves effect, written as the one-key mapping JSON uses, loads through entity-yaml and the entity command. |
 | [Eventlog File through the command](./reference/cli.md) | ● shipped | A build with the eventlog-providers feature provisions and uses an Eventlog File store; no gate step builds that feature. |
 | [Lifecycle and reference graphs](./guides/render-graphs.md) | ● shipped | Text, Mermaid, DOT, SVG and HTML, the same bytes on every run. |
 | [Entity pages, OpenAPI and AsyncAPI](./guides/generate-entity-docs.md) | ● shipped | entity generate docs writes a static bundle and replaces only a directory it generated. |
@@ -86,6 +88,4 @@ custom_edit_url: null
 | [Definition migrations](./concepts/guarantees.md) | ○ planned | Moving stored instances from one definition version to another. |
 | [entity explain](./reference/cli.md) | ○ planned | Why an operation is or is not permitted from the current state. |
 | [Named predicates and schema fragments](./reference/definitions.md) | ○ planned | Reusable named rules, reusable schema fragments and definition inheritance. |
-| [Responses checked against their schema](./concepts/service-semantics.md#text-length-and-alphabets) | ○ planned | A service response checked against its declared fields, including alphabet and max_length. |
-| [Moves outcomes in YAML](./concepts/service-semantics.md) | ○ planned | A service/1 outcome with a moves effect loads through entity-yaml and the entity command. |
 | [Definitions served over HTTP and NATS](./concepts/system-model.md) | ○ planned | Registered definitions served as an HTTP and a NATS interface; today OpenAPI and AsyncAPI are contracts only. |

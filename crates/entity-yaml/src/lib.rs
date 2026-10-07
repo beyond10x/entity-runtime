@@ -57,7 +57,14 @@ pub fn from_str(input: &str) -> Result<EntityDefinition, YamlError> {
     if let Some(document) = documents.next() {
         NoDuplicates.deserialize(document).map_err(YamlError)?;
     }
-    serde_yaml_ng::from_str(input).map_err(YamlError)
+    // A data-carrying variant, `effect: { moves: { from: open, to: paid } }`, is a mapping with one
+    // key, as JSON writes it. The YAML reader on its own takes such a variant only as a `!moves`
+    // tag. Read with this wrapper, every enum accepts the one-key mapping at any depth; a unit
+    // variant is still a plain scalar, and untagged enums and plain values read as before.
+    serde_yaml_ng::with::singleton_map_recursive::deserialize(
+        serde_yaml_ng::Deserializer::from_str(input),
+    )
+    .map_err(YamlError)
 }
 
 /// A first pass that consumes no values and exists only to reject mapping ambiguity. Serde's map

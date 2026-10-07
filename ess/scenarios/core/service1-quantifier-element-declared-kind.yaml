@@ -1,0 +1,123 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-quantifier-element-declared-kind",
+  "summary": "A quantifier element's count answers its declared kind for a text and an array under for_all and for_any; a map element still reads its count member; a union payload stays untyped.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"for_all\":{\"in\":\"$fields.tags\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"lte\",\"right\":3}}}},\"message\":\"every tag is at most three characters\"}]}",
+        "id": "p-1",
+        "fields": "{\"tags\":[\"Ann\",\"e\u0301\"]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"for_all\":{\"in\":\"$fields.tags\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"lte\",\"right\":3}}}},\"message\":\"every tag is at most three characters\"}]}",
+        "id": "p-1",
+        "fields": "{\"tags\":[\"Ann\",\"Annabel\"]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_violation"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"single\",\"assert\":{\"for_any\":{\"in\":\"$fields.tags\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"eq\",\"right\":1}}}},\"message\":\"one tag is a single character\"}]}",
+        "id": "p-1",
+        "fields": "{\"tags\":[\"Ann\",\"\u00e9\"]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:03Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"single\",\"assert\":{\"for_any\":{\"in\":\"$fields.tags\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"eq\",\"right\":1}}}},\"message\":\"one tag is a single character\"}]}",
+        "id": "p-1",
+        "fields": "{\"tags\":[\"Ann\",\"e\u0301\"]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_violation"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:04Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"groups\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"small\",\"assert\":{\"for_all\":{\"in\":\"$fields.groups\",\"as\":\"g\",\"that\":{\"compare\":{\"left\":\"$g.count\",\"op\":\"lte\",\"right\":1}}}},\"message\":\"every group holds at most one entry\"}]}",
+        "id": "p-1",
+        "fields": "{\"groups\":[{\"count\":5}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_violation"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:05Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"groups\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"small\",\"assert\":{\"for_all\":{\"in\":\"$fields.groups\",\"as\":\"g\",\"that\":{\"compare\":{\"left\":\"$g.count\",\"op\":\"lte\",\"right\":1}}}},\"message\":\"every group holds at most one entry\"}]}",
+        "id": "p-1",
+        "fields": "{\"groups\":[{\"a\":1,\"b\":2}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable",
+        "unresolved": [
+          "$g.count"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:06Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"rows\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"pair\",\"assert\":{\"for_any\":{\"in\":\"$fields.rows\",\"as\":\"a\",\"that\":{\"compare\":{\"left\":\"$a.count\",\"op\":\"eq\",\"right\":2}}}},\"message\":\"one row holds two values\"}]}",
+        "id": "p-1",
+        "fields": "{\"rows\":[[1],[1,2]]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:07Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"payee\":{\"type\":\"union\",\"tag\":\"kind\",\"required\":true,\"variants\":{\"names\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"three\",\"assert\":{\"for_all\":{\"in\":\"$fields.payee.value\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"eq\",\"right\":3}}}},\"message\":\"three\"}]}",
+        "id": "p-1",
+        "fields": "{\"payee\":{\"kind\":\"names\",\"value\":[\"Ann\"]}}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "invariant_unobservable",
+        "unresolved": [
+          "$t.count"
+        ]
+      }
+    }
+  ]
+}

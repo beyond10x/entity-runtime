@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T13:09:33Z",
+  "actor": "human:timo",
+  "artifact": "story:service-response-is-checked-against-its-schema",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check, each step alone under a disk watchdog, on 99530d34: fmt-check 0, clippy 0, test 0 (773 passed), doc-check 0, docs-check 0, example-check 0, req-check 0 (134 requirements, 0 findings), pin-check 0, postgres-check 0 (skipped: ENTITY_POSTGRES_URL unset), eventlog-runtime-check 0 (233 passed, 7 ignored), notes-check 0, ess-check 0 (456/456), provider-ess-check 0 (31/31); 0 watchdog stops",
+    "reference": "99530d34"
+  }
+}

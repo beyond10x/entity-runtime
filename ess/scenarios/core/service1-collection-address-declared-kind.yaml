@@ -1,0 +1,80 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-collection-address-declared-kind",
+  "summary": "A stored value whose kind disagrees with its declared map, array or object answers no collection address, so the precondition reading it is unobservable.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"meta\":[1,2,3,4,5,6,7]}}",
+        "operation": "CountMeta",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$fields.meta.count"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"tags\":{\"count\":7}}}",
+        "operation": "CountTags",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$fields.tags.count"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"tags\":{\"0\":7}}}",
+        "operation": "FirstTag",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$fields.tags.0"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:03Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}",
+        "instance": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"stats\":[1,2,3,4,5,6,7]}}",
+        "operation": "StatsCount",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "precondition_unobservable",
+        "unresolved": [
+          "$fields.stats.count"
+        ]
+      }
+    }
+  ]
+}

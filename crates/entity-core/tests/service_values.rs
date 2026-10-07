@@ -1278,6 +1278,35 @@ fn a_quantifier_body_reading_an_address_outside_its_scope_is_refused_at_registra
     let _ = schema;
 }
 
+/// A nested quantifier's `in` that is no reference — the empty text, or a text whose first
+/// character is longer than one byte — is refused as not a collection where it is written, rather
+/// than taking registration down: the element derivation used to cut the leading `$` off by byte
+/// whenever a binder enclosed it.
+#[test]
+fn a_nested_quantifier_over_a_text_that_is_no_reference_is_refused_rather_than_panicking() {
+    let schema = json!({ "fields": { "rows": { "type": "array", "required": true, "items": {
+        "type": "array", "required": true, "items": { "type": "integer" }
+    }}}});
+    for over in ["", "\u{e9}", "\u{1F600}rows"] {
+        let defects = refused(probe(
+            "service/1",
+            schema.clone(),
+            json!({}),
+            json!({ "for_all": { "in": "$fields.rows", "as": "r", "that": {
+                "for_all": { "in": over, "as": "v", "that": true }
+            }}}),
+        ));
+        assert!(
+            defects.iter().any(|defect| matches!(
+                defect,
+                DefinitionError::QuantifierOverNotCollection { path, over: named, .. }
+                    if path == "invariants[0].assert.for_all.that.for_all" && named == over
+            )),
+            "{over:?}: {defects}"
+        );
+    }
+}
+
 #[test]
 fn a_condition_nested_past_thirty_two_is_refused_with_its_limit() {
     let mut condition = json!(true);
@@ -1486,6 +1515,166 @@ fn an_array_ordinal_address_resolves_under_service_1_only() {
         )),
         "{defects}"
     );
+}
+
+/// Executes `touch`, whose one precondition is `<address> lte 5`, over an instance whose optional
+/// field `held` is declared as `declaration` and holds `stored`.
+///
+/// The instance is created without the field and the value is put in afterwards, because only a
+/// stored instance can disagree with its definition: arguments are validated before any rule reads
+/// them, and no store validates an instance on load.
+fn execute_over_stored(declaration: Value, address: &str, stored: Value) -> Result<(), CoreError> {
+    execute_over_stored_in(
+        json!({ "fields": { "held": declaration } }),
+        address,
+        stored,
+    )
+}
+
+/// The same over a whole `schema`, where `held` may be declared by nothing at all.
+fn execute_over_stored_in(schema: Value, address: &str, stored: Value) -> Result<(), CoreError> {
+    let validated = ValidatedDefinition::new(definition(json!({
+        "entity": "probe", "version": 1, "semantics": "service/1",
+        "schema": schema,
+        "lifecycle": { "initial": "held", "states": ["held"] },
+        "operations": { "touch": {
+            "transitions": [{ "from": "held", "to": "held" }],
+            "preconditions": [{
+                "name": "few",
+                "assert": compare(address, "lte", 5),
+                "message": "at most five"
+            }]
+        }}
+    })))
+    .expect("registers");
+    let mut instance = create(&validated, "p-1".to_owned(), json!({}))
+        .expect("creates")
+        .instance;
+    instance.fields.insert("held".to_owned(), stored);
+    entity_core::execute(&validated, &instance, "touch", json!({})).map(|_| ())
+}
+
+/// Whether `outcome` is the precondition refused as unobservable at exactly `address`.
+fn unobservable_at(outcome: &Result<(), CoreError>, address: &str) -> bool {
+    matches!(
+        outcome,
+        Err(CoreError::PreconditionUnobservable { unresolved, .. })
+            if unresolved == &[address.to_owned()]
+    )
+}
+
+/// A declared `map`'s only `count` is its size, so a stored value that is not an object has none —
+/// not the length of the array the store happens to hold.
+#[test]
+fn a_stored_map_holding_an_array_answers_no_count() {
+    let map = json!({ "type": "map", "key": "string", "items": { "type": "integer" } });
+    let outcome = execute_over_stored(
+        map.clone(),
+        "$fields.held.count",
+        json!([1, 2, 3, 4, 5, 6, 7]),
+    );
+    assert!(
+        unobservable_at(&outcome, "$fields.held.count"),
+        "a declared map holding an array answered the array's length: {outcome:?}"
+    );
+    // The same address over a conforming map reads its size, 7, which `lte 5` refuses.
+    let conforming = execute_over_stored(
+        map,
+        "$fields.held.count",
+        json!({ "a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7 }),
+    );
+    assert!(
+        matches!(conforming, Err(CoreError::PreconditionFailed { .. })),
+        "{conforming:?}"
+    );
+}
+
+/// A declared `array` addresses its length and its elements, and has no members by name, so a
+/// stored object's `count` member is not read as the array's length.
+#[test]
+fn a_stored_array_holding_an_object_answers_no_count() {
+    let array = json!({ "type": "array", "items": { "type": "integer" } });
+    let outcome = execute_over_stored(array.clone(), "$fields.held.count", json!({ "count": 7 }));
+    assert!(
+        unobservable_at(&outcome, "$fields.held.count"),
+        "a declared array holding an object answered its `count` member: {outcome:?}"
+    );
+    let conforming = execute_over_stored(array, "$fields.held.count", json!([1, 2, 3, 4, 5, 6, 7]));
+    assert!(
+        matches!(conforming, Err(CoreError::PreconditionFailed { .. })),
+        "{conforming:?}"
+    );
+}
+
+/// The ordinal form of the same defect: a stored object's member named `"0"` is not the declared
+/// array's first element.
+#[test]
+fn a_stored_array_holding_an_object_answers_no_element() {
+    let array = json!({ "type": "array", "items": { "type": "integer" } });
+    let outcome = execute_over_stored(array.clone(), "$fields.held.0", json!({ "0": 7 }));
+    assert!(
+        unobservable_at(&outcome, "$fields.held.0"),
+        "a declared array holding an object answered its `0` member: {outcome:?}"
+    );
+    let conforming = execute_over_stored(array, "$fields.held.0", json!([7]));
+    assert!(
+        matches!(conforming, Err(CoreError::PreconditionFailed { .. })),
+        "{conforming:?}"
+    );
+}
+
+/// The array forms belong to a value declared an `array`, so every other declaration registration
+/// admits `count` under — an object's `count` property, an open object's undeclared member, a union
+/// variant's payload — answers nothing from the size of an array the store holds instead.
+#[test]
+fn a_stored_array_under_another_declared_kind_answers_no_count_from_its_size() {
+    let seven = json!([1, 2, 3, 4, 5, 6, 7]);
+    for (declaration, address, stored) in [
+        (
+            json!({ "type": "object", "properties": { "count": { "type": "integer" } } }),
+            "$fields.held.count",
+            seven.clone(),
+        ),
+        (
+            json!({ "type": "object", "additional_properties": true }),
+            "$fields.held.count",
+            seven.clone(),
+        ),
+        (
+            json!({ "type": "union", "tag": "kind", "variants": {
+                "name": { "type": "string", "required": true }
+            }}),
+            "$fields.held.value.count",
+            json!({ "kind": "name", "value": seven.clone() }),
+        ),
+    ] {
+        let outcome = execute_over_stored(declaration, address, stored);
+        assert!(
+            unobservable_at(&outcome, address),
+            "{address} answered the size of an array its declaration does not allow: {outcome:?}"
+        );
+    }
+}
+
+/// The other half of keying on the declaration: a value nothing types — a `json` field, an open
+/// schema's undeclared field — keeps the collection addresses it had, read from the value.
+#[test]
+fn a_value_nothing_types_keeps_its_collection_addresses() {
+    for schema in [
+        json!({ "fields": { "held": { "type": "json" } } }),
+        json!({ "fields": {}, "additional_fields": true }),
+    ] {
+        for (address, stored) in [
+            ("$fields.held.count", json!([1, 2, 3, 4, 5, 6, 7])),
+            ("$fields.held.0", json!([7])),
+        ] {
+            let outcome = execute_over_stored_in(schema.clone(), address, stored);
+            assert!(
+                matches!(outcome, Err(CoreError::PreconditionFailed { .. })),
+                "{address} under {schema} no longer reads 7 from the value: {outcome:?}"
+            );
+        }
+    }
 }
 
 // --- § 10.6: the length of a text ----------------------------------------------------------------
@@ -1796,35 +1985,36 @@ fn a_text_count_on_a_reference_that_is_not_a_text_array_or_map_is_refused_at_reg
         "{defects}"
     );
 
-    // A quantifier's element is walked untyped at run time, so its length would resolve to nothing
-    // at every evaluation: refused where it is written rather than admitted as a rule that cannot
-    // be observed.
+    // A quantifier's element is checked against its declaration like any other address, so an
+    // element of another scalar kind has no `count` there either, refused where the body is written.
     let defects = refused(probe(
         "service/1",
-        json!({ "fields": { "tags": {
-            "type": "array", "required": true, "items": { "type": "string" }
+        json!({ "fields": { "ages": {
+            "type": "array", "required": true, "items": { "type": "integer" }
         }}}),
         json!({}),
-        json!({ "for_all": { "in": "$fields.tags", "as": "t", "that": compare("$t.count", "lte", 8) } }),
+        json!({ "for_all": { "in": "$fields.ages", "as": "t", "that": compare("$t.count", "lte", 8) } }),
     ));
     assert!(
         defects.iter().any(|defect| matches!(
             defect,
             DefinitionError::QuantifierBodyScope { detail, .. }
-                if detail.contains("a quantifier element")
+                if detail.contains("`count` reads a text, an array or a map")
         )),
         "{defects}"
     );
 }
 
-/// The store files an instance under a projection key by walking object members only
-/// (`entity-store` `key_of`). A text's length, which this unit made addressable and the base already
-/// refused as a key, is refused where it is written, naming the key. The array and map forms the base
-/// registered keep registering unchanged, because replay re-validates every recorded definition;
-/// they file no instance until story:projection-keys-read-collection-addresses. A declared object
-/// property that happens to be called `count` is a member, not an address form, and stays a key.
+/// The store files an instance under a projection key by reading its address as the kernel does,
+/// except a text's length (`entity-store` `key_of`). A text's length, which this unit made
+/// addressable and the base already refused as a key, is refused where it is written, naming the
+/// key. The array and map forms the base registered keep registering unchanged, because replay
+/// re-validates every recorded definition; since R-167 the kernel's reading of each address, asserted
+/// here, is the key the store files the instance under (`entity-store` `tests/projections.rs`). A
+/// declared object property that happens to be called `count` is a member, not an address form, and
+/// stays a key.
 #[test]
-fn a_projection_key_refuses_a_text_length_and_registers_the_base_collection_forms_unchanged() {
+fn a_projection_key_refuses_a_text_length_and_registers_the_collection_forms_the_kernel_reads() {
     let schema = json!({ "fields": {
         "name": { "type": "string", "required": true },
         "tags": { "type": "array", "required": true, "items": { "type": "string" } },
@@ -1854,17 +2044,35 @@ fn a_projection_key_refuses_a_text_length_and_registers_the_base_collection_form
         )),
         "{defects}"
     );
-    for key in ["$fields.tags.count", "$fields.tags.0", "$fields.meta.count"] {
+    let fields = json!({
+        "name": "probe", "tags": ["x", "y"], "meta": { "a": "b", "count": "7" },
+        "stats": { "count": 5 }
+    });
+    for (key, read) in [
+        ("$fields.tags.count", json!(2)),
+        ("$fields.tags.0", json!("x")),
+        ("$fields.meta.count", json!(2)),
+    ] {
         let document = keyed(key);
         let registered = ValidatedDefinition::new(document.clone()).unwrap_or_else(|defects| {
             panic!(
                 "a projection keyed on '{key}' registered on the base and must keep registering \
-                 so recorded histories replay; it projects nothing until \
-                 story:projection-keys-read-collection-addresses, which should change this row: \
-                 {defects}"
+                 so recorded histories replay: {defects}"
             )
         });
         assert_eq!(*registered, document, "{key} registers unchanged");
+        let mut reading = document.clone();
+        reading.create.emit = Some(
+            serde_json::from_value(json!({ "type": "Probed", "payload": { "read": key } }))
+                .expect("the fixture is an event"),
+        );
+        let reading = ValidatedDefinition::new(reading).expect("the reading registers");
+        let decision =
+            create(&reading, "p-1".to_owned(), fields.clone()).expect("the instance is created");
+        assert_eq!(
+            decision.events[0].payload["read"], read,
+            "the kernel reads '{key}' as the value the store files the instance under"
+        );
     }
     let document = keyed("$fields.stats.count");
     let registered = ValidatedDefinition::new(document.clone())
@@ -1872,12 +2080,14 @@ fn a_projection_key_refuses_a_text_length_and_registers_the_base_collection_form
     assert_eq!(*registered, document);
 }
 
-/// `$m.count` on a map reached one level inside a quantifier element — through an object element's
-/// property and through an array element's index — registers and reads as on the base: the run-time
-/// walk reads the element without its declaration, so `count` reads the member named `count`, not
-/// the size, until story:binder-elements-carry-their-declaration.
+/// `$m.count` on a map reached inside a quantifier element — through an object element's property,
+/// an array element's index and a union payload's selected variant — registers and reads as on the
+/// base: the element carries its declaration at run time, but a binder reads a declared map by its
+/// members, so `count` reads the member named `count`, not the size, until
+/// story:binder-map-elements-read-their-size. Replay reruns every recorded decision under the
+/// current kernel, and every release since 0.19.0 recorded decisions that read the member.
 #[test]
-fn a_map_count_anywhere_inside_a_quantifier_element_reads_the_member_until_binder_elements_carry_their_declaration(
+fn a_map_count_anywhere_inside_a_quantifier_element_reads_the_member_until_binder_map_elements_read_their_size(
 ) {
     let map =
         json!({ "type": "map", "required": true, "key": "string", "items": { "type": "integer" } });
@@ -1892,6 +2102,13 @@ fn a_map_count_anywhere_inside_a_quantifier_element_reads_the_member_until_binde
             "$e.0.count",
             json!([[{ "count": 5 }]]),
         ),
+        (
+            json!({ "type": "object", "required": true, "properties": { "payee": {
+                "type": "union", "required": true, "tag": "kind", "variants": { "group": map.clone() }
+            }}}),
+            "$e.payee.value.count",
+            json!([{ "payee": { "kind": "group", "value": { "count": 5 } } }]),
+        ),
     ] {
         // The one-member map's size is 1, which `lte 1` admits; its `count` member is 5, which it
         // does not.
@@ -1905,8 +2122,197 @@ fn a_map_count_anywhere_inside_a_quantifier_element_reads_the_member_until_binde
             ),
             Truth::False,
             "{address} reads the `count` member as on the base; when \
-             story:binder-elements-carry-their-declaration lands it reads the size and this row \
-             flips to True"
+             story:binder-map-elements-read-their-size lands it reads the size and this row flips \
+             to True"
+        );
+    }
+}
+
+/// A quantifier over a declared list of text reads each element's length in Unicode scalar values,
+/// under `for_all` and `for_any`, at the element and one level inside it: ESS's
+/// `forall t in tags: t.count <= 8`.
+#[test]
+fn a_text_element_under_for_all_and_for_any_answers_its_length() {
+    let tags = json!({ "fields": { "tags": { "type": "array", "required": true, "items": { "type": "string" } } } });
+    let at_most_three = json!({ "for_all": {
+        "in": "$fields.tags", "as": "t", "that": compare("$t.count", "lte", 3)
+    }});
+    let one_is_single = json!({ "for_any": {
+        "in": "$fields.tags", "as": "t", "that": compare("$t.count", "eq", 1)
+    }});
+    for (condition, tags_value, expected) in [
+        // `e` plus U+0301 is two scalar values; U+1F600 is one.
+        (&at_most_three, json!(["Ann", "e\u{301}"]), Truth::True),
+        (&at_most_three, json!(["Ann", "Annabel"]), Truth::False),
+        (&one_is_single, json!(["Ann", "\u{1F600}"]), Truth::True),
+        (&one_is_single, json!(["Ann", "e\u{301}"]), Truth::False),
+    ] {
+        assert_eq!(
+            answer(
+                "service/1",
+                tags.clone(),
+                json!({}),
+                condition.clone(),
+                json!({ "tags": tags_value })
+            ),
+            expected,
+            "{condition} over {tags_value}"
+        );
+    }
+
+    // The same length one level inside an element: an object's property and an array's member.
+    let name = json!({ "type": "object", "required": true, "properties": {
+        "name": { "type": "string", "required": true }
+    }});
+    let list = json!({ "type": "array", "required": true, "items": { "type": "string" } });
+    for (items, address, short, long) in [
+        (
+            name,
+            "$r.name.count",
+            json!([{ "name": "Ann" }]),
+            json!([{ "name": "Annabelle" }]),
+        ),
+        (list, "$r.0.count", json!([["Ann"]]), json!([["Annabelle"]])),
+    ] {
+        let schema =
+            json!({ "fields": { "rows": { "type": "array", "required": true, "items": items } } });
+        let rule = json!({ "for_any": {
+            "in": "$fields.rows", "as": "r", "that": compare(address, "lte", 8)
+        }});
+        assert_eq!(
+            (
+                answer(
+                    "service/1",
+                    schema.clone(),
+                    json!({}),
+                    rule.clone(),
+                    json!({ "rows": short })
+                ),
+                answer(
+                    "service/1",
+                    schema,
+                    json!({}),
+                    rule,
+                    json!({ "rows": long })
+                ),
+            ),
+            (Truth::True, Truth::False),
+            "{address}: three scalar values, then nine"
+        );
+    }
+}
+
+/// A quantifier element declared `map` answers `count` with the member named `count` under
+/// `for_all` and `for_any`, as every release since 0.19.0 did, whether the quantifier walks an array
+/// of maps or a map of maps: the element carries its declaration, and a binder reads a declared map
+/// by its members until story:binder-map-elements-read-their-size. Each row's answer is the
+/// opposite of the one the maps' sizes would give.
+#[test]
+fn a_map_element_under_for_all_and_for_any_reads_the_member_until_binder_map_elements_read_their_size(
+) {
+    let map = json!({ "type": "map", "key": "string", "items": { "type": "integer" } });
+    let schema = json!({ "fields": {
+        "groups": { "type": "array", "items": map.clone() },
+        "named": { "type": "map", "key": "string", "items": map }
+    }});
+    for (collection, value) in [
+        ("groups", json!([{ "count": 5 }, { "count": 1, "a": 1 }])),
+        (
+            "named",
+            json!({ "x": { "count": 5 }, "y": { "count": 1, "a": 1 } }),
+        ),
+    ] {
+        let over = format!("$fields.{collection}");
+        let fields = json!({ collection: value });
+        let all_at_most = |size: u64| json!({ "for_all": { "in": over, "as": "g", "that": compare("$g.count", "lte", size) } });
+        let any_equal = |size: u64| json!({ "for_any": { "in": over, "as": "g", "that": compare("$g.count", "eq", size) } });
+        // Members 5 and 1; sizes 1 and 2.
+        for (condition, expected) in [
+            (all_at_most(2), Truth::False),
+            (any_equal(5), Truth::True),
+            (any_equal(2), Truth::False),
+        ] {
+            assert_eq!(
+                answer(
+                    "service/1",
+                    schema.clone(),
+                    json!({}),
+                    condition.clone(),
+                    fields.clone()
+                ),
+                expected,
+                "{condition} over {fields} reads the `count` member as on the base; when \
+                 story:binder-map-elements-read-their-size lands it reads the size and this row \
+                 flips"
+            );
+        }
+    }
+}
+
+/// A quantifier element declared `array` answers `count` with its length under `for_all` and
+/// `for_any`, as it did before its declaration reached the run time.
+#[test]
+fn an_array_element_under_for_all_and_for_any_answers_its_length() {
+    let schema = json!({ "fields": { "rows": { "type": "array", "required": true, "items": {
+        "type": "array", "required": true, "items": { "type": "integer" }
+    }}}});
+    let all_at_least_one = json!({ "for_all": {
+        "in": "$fields.rows", "as": "a", "that": compare("$a.count", "gte", 1)
+    }});
+    let any_two = json!({ "for_any": {
+        "in": "$fields.rows", "as": "a", "that": compare("$a.count", "eq", 2)
+    }});
+    for (condition, rows, expected) in [
+        (&all_at_least_one, json!([[1], [1, 2]]), Truth::True),
+        (&all_at_least_one, json!([[1], []]), Truth::False),
+        (&any_two, json!([[1], [1, 2]]), Truth::True),
+        (&any_two, json!([[1], [1, 2, 3]]), Truth::False),
+    ] {
+        assert_eq!(
+            answer(
+                "service/1",
+                schema.clone(),
+                json!({}),
+                condition.clone(),
+                json!({ "rows": rows })
+            ),
+            expected,
+            "{condition} over {rows}"
+        );
+    }
+}
+
+/// R-97: a quantifier whose `in` passes through a union payload walks elements registration admitted
+/// untyped, so the element carries no declaration at run time either, and a text's length at the
+/// element or inside it keeps resolving to nothing. The run-time walk types the variant by its tag;
+/// taking the element's declaration from there would turn each from nothing into a number.
+#[test]
+fn a_quantifier_over_a_union_payload_keeps_its_elements_untyped() {
+    let variants = json!({
+        "names": { "type": "array", "required": true, "items": { "type": "string" } },
+        "people": { "type": "array", "required": true, "items": {
+            "type": "object", "required": true, "properties": {
+                "name": { "type": "string", "required": true }
+            }
+        }}
+    });
+    let over_payload = |condition: Value| json!({ "for_all": { "in": "$fields.payee.value", "as": "t", "that": condition } });
+    for (address, payee) in [
+        ("$t.count", json!({ "kind": "names", "value": ["Ann"] })),
+        (
+            "$t.name.count",
+            json!({ "kind": "people", "value": [{ "name": "Ann" }] }),
+        ),
+    ] {
+        assert_eq!(
+            variant_answer(
+                "kind",
+                variants.clone(),
+                over_payload(compare(address, "eq", 3)),
+                payee
+            ),
+            Truth::Unknown,
+            "{address}: a text reached through a union payload has no length"
         );
     }
 }

@@ -2,7 +2,7 @@
   "type": "ess-scenario/4",
   "domain": "entity.core",
   "scenario": "service1-text-count-registration",
-  "summary": "Registration admits a text length on a declared service/1 string and refuses it on other scalar kinds, past the count, under kernel/1 and on a quantifier element; a map count there still registers.",
+  "summary": "Registration admits a text length on a declared service/1 string, a quantifier element's included, and refuses it on other scalar kinds, past the count and under kernel/1.",
   "timeline": [
     {
       "at": "2026-10-06T00:00:00Z",
@@ -98,11 +98,7 @@
       },
       "outcome": "returned",
       "response": {
-        "status": "error",
-        "error_kind": "definition",
-        "defect_kinds": [
-          "quantifier_body_scope"
-        ]
+        "status": "ok"
       }
     },
     {

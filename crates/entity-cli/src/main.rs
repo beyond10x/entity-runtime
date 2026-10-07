@@ -206,7 +206,7 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             match format {
                 Format::Text => write_all(out, &inspect_text(&definition)),
                 Format::Json => write_all(out, &to_json(&definition)?),
-                Format::Yaml => write_all(out, &to_yaml(&definition)?),
+                Format::Yaml => write_all(out, &definition_to_yaml(&definition)?),
             }
         }
         Command::Graph {
@@ -2026,6 +2026,20 @@ fn to_json<T: serde::Serialize>(value: &T) -> Result<String, Failure> {
 fn to_yaml<T: serde::Serialize>(value: &T) -> Result<String, Failure> {
     serde_yaml_ng::to_string(value)
         .map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))
+}
+
+/// A definition as YAML in the spelling `entity_yaml::from_str` reads back. The YAML library writes
+/// a data-carrying variant as a `!moves` tag, which the reader refuses; written as a one-key
+/// mapping, as JSON writes it, `inspect --format yaml` output validates again. A unit variant is a
+/// plain word either way, so a definition without one prints the bytes it printed before.
+fn definition_to_yaml(definition: &EntityDefinition) -> Result<String, Failure> {
+    let mut bytes = Vec::new();
+    serde_yaml_ng::with::singleton_map_recursive::serialize(
+        definition,
+        &mut serde_yaml_ng::Serializer::new(&mut bytes),
+    )
+    .map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))?;
+    String::from_utf8(bytes).map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))
 }
 
 fn write_all(out: &mut impl Write, text: &str) -> Result<(), Failure> {

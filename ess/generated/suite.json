@@ -139,6 +139,7 @@
       "entity.core/authored/service1-bare-state-guard-is-a-selector",
       "entity.core/authored/service1-binary64-refuses-nonfinite-magnitude",
       "entity.core/authored/service1-binary64-retains-negative-zero",
+      "entity.core/authored/service1-collection-address-declared-kind",
       "entity.core/authored/service1-collection-count",
       "entity.core/authored/service1-compare-missing",
       "entity.core/authored/service1-compare-number",
@@ -154,7 +155,10 @@
       "entity.core/authored/service1-map-member-errors-retain-paths",
       "entity.core/authored/service1-map-quantified-values",
       "entity.core/authored/service1-map-values-are-typed",
+      "entity.core/authored/service1-nested-quantifier-literal-collection",
       "entity.core/authored/service1-no-matching-outcome-is-typed",
+      "entity.core/authored/service1-quantifier-element-declared-kind",
+      "entity.core/authored/service1-quantifier-map-count-recorded-replay",
       "entity.core/authored/service1-rank-disagreement",
       "entity.core/authored/service1-rank-without-scale",
       "entity.core/authored/service1-selection-fallback",
@@ -329,6 +333,7 @@
       "entity.store/authored/observation-revisions-are-positive-signed-range",
       "entity.store/authored/observations-are-tips-but-not-decision-heads",
       "entity.store/authored/older-framing-reader-refuses-before-payload",
+      "entity.store/authored/projection-collection-address-keys",
       "entity.store/authored/projection-groups-sorted-identities",
       "entity.store/authored/projection-scalar-and-nested-keys",
       "entity.store/authored/record-domain-kernel-1",
@@ -999,7 +1004,7 @@
         "scenario": "entity.core/authored/service-quantifiers-validate-binders-collections-operands-and-depth"
       },
       "scenarios/core/service-responses-must-be-declared-and-complete.yaml": {
-        "digest": "sha256:850088c51051b6467676d35fc1b151b06ff258a0d8b87b5e05136e7ebd0ebfa5",
+        "digest": "sha256:a699d85d38f2033e9a577c44d30410a082a71fa17000e34eb94be73db6845b49",
         "disposition": "accepted",
         "scenario": "entity.core/authored/service-responses-must-be-declared-and-complete"
       },
@@ -1032,6 +1037,11 @@
         "digest": "sha256:2d8d58bb9438f88765f6de4d7e702349e8e004d63a37374c667c27c30fbb5f5c",
         "disposition": "accepted",
         "scenario": "entity.core/authored/service1-binary64-retains-negative-zero"
+      },
+      "scenarios/core/service1-collection-address-declared-kind.yaml": {
+        "digest": "sha256:d0edbc20737c6ff709355939092de9b7fddf75087eda1de7b76b528ee688decd",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-collection-address-declared-kind"
       },
       "scenarios/core/service1-collection-count.yaml": {
         "digest": "sha256:c0d683edcc5a7f325a2efa9e673a1c7f6c831fe5fe992b47ce7ce387bbc4f118",
@@ -1108,10 +1118,25 @@
         "disposition": "accepted",
         "scenario": "entity.core/authored/service1-map-values-are-typed"
       },
+      "scenarios/core/service1-nested-quantifier-literal-collection.yaml": {
+        "digest": "sha256:3cee0d43c9a639a7d46237b9a82cbe7222a13cfd34dc01f5c61907747cbd9d74",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-nested-quantifier-literal-collection"
+      },
       "scenarios/core/service1-no-matching-outcome-is-typed.yaml": {
         "digest": "sha256:348f6341f5832ffc895914f3093d8fee322045831c60f9ef23c1e46e75e1d4c2",
         "disposition": "accepted",
         "scenario": "entity.core/authored/service1-no-matching-outcome-is-typed"
+      },
+      "scenarios/core/service1-quantifier-element-declared-kind.yaml": {
+        "digest": "sha256:6a772380289dd5bdee7d8c7b7999f4cffecb5f1572cd62499b71c6b8642c92e0",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-quantifier-element-declared-kind"
+      },
+      "scenarios/core/service1-quantifier-map-count-recorded-replay.yaml": {
+        "digest": "sha256:a2e032519738405c9663219e8ce28c6878527dc58b6bc12c6ee916d0639b2098",
+        "disposition": "accepted",
+        "scenario": "entity.core/authored/service1-quantifier-map-count-recorded-replay"
       },
       "scenarios/core/service1-rank-disagreement.yaml": {
         "digest": "sha256:f6952adf9465c927c8e6a3d647879dad6801e1443caccfe37700e4b61c5e19e7",
@@ -1199,12 +1224,12 @@
         "scenario": "entity.core/authored/service1-text-count-precondition"
       },
       "scenarios/core/service1-text-count-projection-key.yaml": {
-        "digest": "sha256:4880af486020e3a35f06b36c2fa3ba005f7eb6ef2412a6400d604e11d9765469",
+        "digest": "sha256:8d5d36cc67669e404de3a9cfb3ec288c7137d72a4961a4fa367481f11fd47ba4",
         "disposition": "accepted",
         "scenario": "entity.core/authored/service1-text-count-projection-key"
       },
       "scenarios/core/service1-text-count-registration.yaml": {
-        "digest": "sha256:bc395e8959ea95cb0a0a3a714e6994fed4d589bd43e9553c3c1b111d34732115",
+        "digest": "sha256:5d5e7b060cb61f8167034c0045b690143dd498c2304fa295db2d663adad01983",
         "disposition": "accepted",
         "scenario": "entity.core/authored/service1-text-count-registration"
       },
@@ -1983,6 +2008,11 @@
         "disposition": "accepted",
         "scenario": "entity.store/authored/older-framing-reader-refuses-before-payload"
       },
+      "scenarios/store/projection-collection-address-keys.yaml": {
+        "digest": "sha256:eaa66239c4fa2fbd102f1e461a0a6b8d5d91c406c53568b81e54dceeeed785e8",
+        "disposition": "accepted",
+        "scenario": "entity.store/authored/projection-collection-address-keys"
+      },
       "scenarios/store/projection-groups-sorted-identities.yaml": {
         "digest": "sha256:feff2b73a1d1f82725cb01f7594fabd42de0bc3ab4f625dc1d16a473e791036e",
         "disposition": "accepted",
@@ -2045,7 +2075,7 @@
       }
     },
     "counts": {
-      "authored": 340,
+      "authored": 345,
       "generated": 111,
       "outside": 0,
       "refused": 0
@@ -41958,7 +41988,7 @@
       ]
     },
     "entity.core/authored/service-responses-must-be-declared-and-complete": {
-      "purpose": "Required responses need a producing expression; unknown response fields and responses on refusing branches are rejected.",
+      "purpose": "Responses must be declared, complete and inside their schema; a decision recorded before that check still replays.",
       "source": [
         {
           "kind": "domain",
@@ -41970,11 +42000,48 @@
         },
         {
           "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
           "name": "entity.core.JsonDocument"
         },
         {
           "kind": "command",
+          "name": "entity.core.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Replay"
+        },
+        {
+          "kind": "command",
           "name": "entity.core.ValidateDefinition"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Replay",
+            "outcome": "returned"
+          }
         },
         {
           "kind": "outcome",
@@ -42283,6 +42350,546 @@
             ],
             "outcome": {
               "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"label\":\"front door\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "k-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "details": "Validation([ValidationError { path: \"response.label\", message: \"length 10 exceeds maximum 3\" }])",
+              "error_kind": "validation",
+              "paths": [
+                "response.label"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"label\":\"pin\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "k-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "outcome": "made",
+              "response": "{\"label\":\"pin\"}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"keys\":\"12x\"}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "Dial"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "details": "Validation([ValidationError { path: \"response.echo\", message: \"character 'x' (U+0078) at position 3 is not in the alphabet\" }])",
+              "error_kind": "validation",
+              "paths": [
+                "response.echo"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"keys\":\"12\"}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "Dial"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "outcome": "dialled",
+              "response": "{\"echo\":\"12\"}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Replay",
+          "input": {
+            "records": {
+              "kind": "literal",
+              "value": "[{\"definition\":{\"entity\":\"keypad\",\"version\":1,\"schema\":{\"fields\":{\"last\":{\"type\":\"string\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"invariants\":[],\"create\":{\"emit\":null,\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":3,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"transitions\":[],\"preconditions\":[],\"set\":{},\"emits\":[],\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"alphabet\":\"0123456789\",\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}},\"projections\":{},\"semantics\":\"service/1\"},\"command\":{\"command\":\"create\",\"fields\":{},\"arguments\":{\"label\":\"front door\"}},\"entity\":\"keypad\",\"id\":\"k-1\",\"revision\":1,\"from_state\":null,\"to_state\":\"held\",\"result\":{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{}},\"changed\":{},\"events\":[],\"outcome\":\"made\",\"effect\":\"created\",\"response\":{\"label\":\"front door\"}},{\"definition\":{\"entity\":\"keypad\",\"version\":1,\"schema\":{\"fields\":{\"last\":{\"type\":\"string\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"invariants\":[],\"create\":{\"emit\":null,\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":3,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"transitions\":[],\"preconditions\":[],\"set\":{},\"emits\":[],\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"alphabet\":\"0123456789\",\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}},\"projections\":{},\"semantics\":\"service/1\"},\"command\":{\"command\":\"execute\",\"operation\":\"Dial\",\"arguments\":{\"keys\":\"12x\"}},\"entity\":\"keypad\",\"id\":\"k-1\",\"revision\":2,\"from_state\":\"held\",\"to_state\":\"held\",\"result\":{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":2,\"fields\":{\"last\":\"12x\"}},\"changed\":{\"last\":\"12x\"},\"events\":[],\"outcome\":\"dialled\",\"effect\":\"updated\",\"response\":{\"echo\":\"12x\"}}]"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Replay",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Replay",
+            "declarations": {},
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":2,\"fields\":{\"last\":\"12x\"}}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Replay",
               "outcome": "returned"
             }
           },
@@ -43712,6 +44319,492 @@
             ],
             "outcome": {
               "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service1-collection-address-declared-kind": {
+      "purpose": "A stored value whose kind disagrees with its declared map, array or object answers no collection address, so the precondition reading it is unobservable.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"meta\":[1,2,3,4,5,6,7]}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "CountMeta"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "precondition_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$fields.meta.count"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"tags\":{\"count\":7}}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "CountTags"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "precondition_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$fields.tags.count"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"tags\":{\"0\":7}}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "FirstTag"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "precondition_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$fields.tags.0"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"meta\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}},\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"stats\":{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"operations\":{\"CountMeta\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.meta.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the map holds at most five values\"}]},\"CountTags\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the array holds at most five elements\"}]},\"FirstTag\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"small\",\"assert\":{\"compare\":{\"left\":\"$fields.tags.0\",\"op\":\"lte\",\"right\":5}},\"message\":\"the first element is at most five\"}]},\"StatsCount\":{\"transitions\":[{\"from\":\"Held\",\"to\":\"Held\"}],\"preconditions\":[{\"name\":\"few\",\"assert\":{\"compare\":{\"left\":\"$fields.stats.count\",\"op\":\"lte\",\"right\":5}},\"message\":\"the declared count property is at most five\"}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"stats\":[1,2,3,4,5,6,7]}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "StatsCount"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "error_kind": "precondition_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$fields.stats.count"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
               "outcome": "returned"
             }
           },
@@ -45855,6 +46948,238 @@
         }
       ]
     },
+    "entity.core/authored/service1-nested-quantifier-literal-collection": {
+      "purpose": "A nested quantifier whose in is a text that is no reference, empty or opening with a multi-byte character, is refused as not a collection where it is written.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.ValidateDefinition"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"rows\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"nested\",\"assert\":{\"for_all\":{\"in\":\"$fields.rows\",\"as\":\"r\",\"that\":{\"for_all\":{\"in\":\"\",\"as\":\"v\",\"that\":true}}}},\"message\":\"nested\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "quantifier_over_not_collection"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"rows\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"nested\",\"assert\":{\"for_all\":{\"in\":\"$fields.rows\",\"as\":\"r\",\"that\":{\"for_all\":{\"in\":\"é\",\"as\":\"v\",\"that\":true}}}},\"message\":\"nested\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "quantifier_over_not_collection"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
     "entity.core/authored/service1-no-matching-outcome-is-typed": {
       "purpose": "service1 no matching outcome is typed.",
       "source": [
@@ -45992,6 +47317,1007 @@
             ],
             "outcome": {
               "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service1-quantifier-element-declared-kind": {
+      "purpose": "A quantifier element's count answers its declared kind for a text and an array under for_all and for_any; a map element still reads its count member; a union payload stays untyped.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.DefinitionDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Create"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"for_all\":{\"in\":\"$fields.tags\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"lte\",\"right\":3}}}},\"message\":\"every tag is at most three characters\"}]}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"tags\":[\"Ann\",\"é\"]}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"short\",\"assert\":{\"for_all\":{\"in\":\"$fields.tags\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"lte\",\"right\":3}}}},\"message\":\"every tag is at most three characters\"}]}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"tags\":[\"Ann\",\"Annabel\"]}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "error_kind": "invariant_violation",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"single\",\"assert\":{\"for_any\":{\"in\":\"$fields.tags\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"eq\",\"right\":1}}}},\"message\":\"one tag is a single character\"}]}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"tags\":[\"Ann\",\"é\"]}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"single\",\"assert\":{\"for_any\":{\"in\":\"$fields.tags\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"eq\",\"right\":1}}}},\"message\":\"one tag is a single character\"}]}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"tags\":[\"Ann\",\"é\"]}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "error_kind": "invariant_violation",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"groups\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"small\",\"assert\":{\"for_all\":{\"in\":\"$fields.groups\",\"as\":\"g\",\"that\":{\"compare\":{\"left\":\"$g.count\",\"op\":\"lte\",\"right\":1}}}},\"message\":\"every group holds at most one entry\"}]}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"groups\":[{\"count\":5}]}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "error_kind": "invariant_violation",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"groups\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"map\",\"key\":\"string\",\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"small\",\"assert\":{\"for_all\":{\"in\":\"$fields.groups\",\"as\":\"g\",\"that\":{\"compare\":{\"left\":\"$g.count\",\"op\":\"lte\",\"right\":1}}}},\"message\":\"every group holds at most one entry\"}]}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"groups\":[{\"a\":1,\"b\":2}]}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "error_kind": "invariant_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$g.count"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"rows\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"pair\",\"assert\":{\"for_any\":{\"in\":\"$fields.rows\",\"as\":\"a\",\"that\":{\"compare\":{\"left\":\"$a.count\",\"op\":\"eq\",\"right\":2}}}},\"message\":\"one row holds two values\"}]}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"rows\":[[1],[1,2]]}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"payee\":{\"type\":\"union\",\"tag\":\"kind\",\"required\":true,\"variants\":{\"names\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"three\",\"assert\":{\"for_all\":{\"in\":\"$fields.payee.value\",\"as\":\"t\",\"that\":{\"compare\":{\"left\":\"$t.count\",\"op\":\"eq\",\"right\":3}}}},\"message\":\"three\"}]}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"payee\":{\"kind\":\"names\",\"value\":[\"Ann\"]}}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "p-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "error_kind": "invariant_unobservable",
+              "status": "error",
+              "unresolved": [
+                "$t.count"
+              ]
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.core/authored/service1-quantifier-map-count-recorded-replay": {
+      "purpose": "A creation every release since 0.19.0 recorded while it read a quantifier map element's count as the member named count (1, where the size is 6) replays to the instance it recorded.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.core"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Replay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Replay",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.core.Replay",
+          "input": {
+            "records": {
+              "kind": "literal",
+              "value": "[{\"definition\":{\"entity\":\"probe\",\"version\":1,\"schema\":{\"fields\":{\"groups\":{\"type\":\"array\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":{\"type\":\"map\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":{\"type\":\"integer\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null},\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null,\"key\":\"string\"},\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"small\",\"assert\":{\"for_all\":{\"in\":\"$fields.groups\",\"as\":\"g\",\"that\":{\"compare\":{\"left\":\"$g.count\",\"op\":\"lte\",\"right\":5}}}},\"message\":\"small\"}],\"create\":{\"emit\":null},\"operations\":{},\"projections\":{},\"semantics\":\"service/1\"},\"command\":{\"command\":\"create\",\"fields\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]},\"arguments\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]}},\"entity\":\"probe\",\"id\":\"p-1\",\"revision\":1,\"from_state\":null,\"to_state\":\"Held\",\"result\":{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]}},\"changed\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]},\"events\":[]}]"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Replay",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Replay",
+            "declarations": {},
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"probe\",\"version\":1,\"id\":\"p-1\",\"lifecycle_state\":\"Held\",\"revision\":1,\"fields\":{\"groups\":[{\"a\":1,\"b\":1,\"c\":1,\"count\":1,\"d\":1,\"e\":1}]}}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Replay",
               "outcome": "returned"
             }
           },
@@ -50401,7 +52727,7 @@
       ]
     },
     "entity.core/authored/service1-text-count-projection-key": {
-      "purpose": "A projection key reads object members only, so a text length is refused there; an array count or index and a map count register as before, and a property named count stays a key.",
+      "purpose": "A projection key never reads a text length, so that key is refused; an array count or index and a map count register as before, and a property named count stays a key.",
       "source": [
         {
           "kind": "domain",
@@ -50920,7 +53246,7 @@
       ]
     },
     "entity.core/authored/service1-text-count-registration": {
-      "purpose": "Registration admits a text length on a declared service/1 string and refuses it on other scalar kinds, past the count, under kernel/1 and on a quantifier element; a map count there still registers.",
+      "purpose": "Registration admits a text length on a declared service/1 string, a quantifier element's included, and refuses it on other scalar kinds, past the count and under kernel/1.",
       "source": [
         {
           "kind": "domain",
@@ -51571,11 +53897,7 @@
             "command": "entity.core.ValidateDefinition",
             "declarations": {},
             "expected": {
-              "defect_kinds": [
-                "quantifier_body_scope"
-              ],
-              "error_kind": "definition",
-              "status": "error"
+              "status": "ok"
             },
             "fields": [
               {
@@ -122557,6 +124879,88 @@
             ],
             "outcome": {
               "command": "entity.store.ReadRecordDomain",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        }
+      ]
+    },
+    "entity.store/authored/projection-collection-address-keys": {
+      "purpose": "Service projection keys read an array's count and element and a map's size; a property named count stays a member.",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "entity.store"
+        },
+        {
+          "kind": "type",
+          "name": "entity.core.JsonDocument"
+        },
+        {
+          "kind": "type",
+          "name": "entity.store.RequestDocument"
+        },
+        {
+          "kind": "command",
+          "name": "entity.store.Project"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.store.Project",
+            "outcome": "returned"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "entity.store.Project",
+          "input": {
+            "request": {
+              "kind": "literal",
+              "value": "{\"definition\":{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"tags\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"string\"}},\"rows\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"required\":true}}}},\"meta\":{\"type\":\"map\",\"required\":true,\"key\":\"string\",\"items\":{\"type\":\"string\"}},\"stats\":{\"type\":\"object\",\"required\":true,\"properties\":{\"count\":{\"type\":\"integer\",\"required\":true}}}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"projections\":{\"by_tag_count\":{\"key\":\"$fields.tags.count\"},\"by_first_tag\":{\"key\":\"$fields.tags.0\"},\"by_first_row\":{\"key\":\"$fields.rows.0.name\"},\"by_meta_size\":{\"key\":\"$fields.meta.count\"},\"by_stat\":{\"key\":\"$fields.stats.count\"}}},\"instances\":[{\"entity\":\"probe\",\"version\":1,\"id\":\"a\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{\"tags\":[\"x\",\"y\"],\"rows\":[{\"name\":\"r1\"}],\"meta\":{\"a\":\"b\"},\"stats\":{\"count\":5}}},{\"entity\":\"probe\",\"version\":1,\"id\":\"b\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{\"tags\":[],\"rows\":[{\"name\":\"r2\"},{\"name\":\"r3\"}],\"meta\":{\"a\":\"b\",\"c\":\"d\",\"count\":\"7\"},\"stats\":{\"count\":6}}}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.store.Project",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.store.Project",
+            "declarations": {
+              "entity.core.JsonDocument": {
+                "kind": "newtype",
+                "of": "String"
+              }
+            },
+            "expected": {
+              "error": "",
+              "status": "ok",
+              "value": "{\"by_first_row\":{\"r1\":[\"a\"],\"r2\":[\"b\"]},\"by_first_tag\":{\"x\":[\"a\"]},\"by_meta_size\":{\"1\":[\"a\"],\"3\":[\"b\"]},\"by_stat\":{\"5\":[\"a\"],\"6\":[\"b\"]},\"by_tag_count\":{\"0\":[\"b\"],\"2\":[\"a\"]}}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "error",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "entity.core.JsonDocument"
+              }
+            ],
+            "outcome": {
+              "command": "entity.store.Project",
               "outcome": "returned"
             }
           },

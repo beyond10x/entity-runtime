@@ -75,6 +75,110 @@ fn validate_accepts_the_example_and_exits_zero() {
 }
 
 #[test]
+fn a_moves_outcome_in_a_yaml_or_json_definition_validates_and_executes() {
+    let invoice = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../entity-yaml/tests/fixtures/invoice.yaml");
+    let yaml = fs::read_to_string(&invoice).expect("the fixture is readable");
+    let document: serde_json::Value = serde_yaml_ng::from_str(&yaml).expect("the fixture is YAML");
+    let json = scratch(
+        "invoice.json",
+        &serde_json::to_string_pretty(&document).expect("serializes"),
+    );
+    let invoice = invoice.to_str().unwrap();
+
+    // One run per spelling: one set may not register `invoice` v1 twice.
+    for definition in [invoice, json.to_str().unwrap()] {
+        let output = run(&["validate", definition], None);
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}{}",
+            stdout(&output),
+            stderr(&output)
+        );
+        assert!(
+            stdout(&output).contains("valid (invoice v1)"),
+            "{}",
+            stdout(&output)
+        );
+    }
+
+    let created = run(
+        &[
+            "create",
+            "--definition",
+            invoice,
+            "--id",
+            "s:INV-1",
+            "--fields",
+            r#"{"invoice_id": "INV-1", "amount": 120}"#,
+        ],
+        None,
+    );
+    assert_eq!(created.status.code(), Some(0), "{}", stderr(&created));
+    let paid = run(
+        &[
+            "execute",
+            "--definition",
+            invoice,
+            "--instance",
+            "-",
+            "--operation",
+            "pay",
+            "--arguments",
+            "{}",
+            "--format",
+            "text",
+        ],
+        Some(&stdout(&created)),
+    );
+    assert_eq!(paid.status.code(), Some(0), "{}", stderr(&paid));
+    assert_eq!(
+        stdout(&paid),
+        "invoice s:INV-1 is paid (revision 2); events: InvoicePaid\n"
+    );
+}
+
+#[test]
+fn inspect_as_yaml_prints_a_definition_that_validates_again() {
+    let invoice = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../entity-yaml/tests/fixtures/invoice.yaml");
+    let printed = run(
+        &["inspect", invoice.to_str().unwrap(), "--format", "yaml"],
+        None,
+    );
+    assert_eq!(printed.status.code(), Some(0), "{}", stderr(&printed));
+    let text = stdout(&printed);
+    assert!(
+        text.contains("moves:") && !text.contains("!moves"),
+        "{text}"
+    );
+    let reread = scratch("inspected-invoice.yaml", &text);
+    let output = run(&["validate", reread.to_str().unwrap()], None);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+
+    // A definition with no data-carrying variant prints the bytes the YAML library writes for it.
+    let order = order_yaml();
+    let printed = run(
+        &["inspect", order.to_str().unwrap(), "--format", "yaml"],
+        None,
+    );
+    assert_eq!(printed.status.code(), Some(0), "{}", stderr(&printed));
+    let definition =
+        entity_yaml::from_str(&fs::read_to_string(&order).expect("readable")).expect("loads");
+    assert_eq!(
+        stdout(&printed),
+        serde_yaml_ng::to_string(&definition).expect("serializes")
+    );
+}
+
+#[test]
 fn validate_names_the_defect_and_exits_one() {
     let broken = scratch(
         "broken.yaml",
@@ -1512,6 +1616,88 @@ fn generated_documentation_is_complete_and_replaces_only_generator_owned_output(
         fs::read_to_string(arbitrary.join("keep")).expect("untouched sentinel"),
         "operator data"
     );
+}
+
+/// Each YAML contract holds what its JSON twin holds, with every number a YAML number of the same
+/// digits. Both are read with their own format's value model: read into `serde_json::Value`, the
+/// YAML would pass even while it wrote `$serde_json::private::Number` maps, because that reader
+/// turns such a map back into a number.
+#[test]
+fn generated_yaml_contracts_write_every_number_the_json_contracts_write() {
+    let output_dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-docs-numbers");
+    let _ = fs::remove_dir_all(&output_dir);
+    let generated = entity()
+        .args(["generate", "docs", "--definition"])
+        .arg(refund_yaml())
+        .arg("--out")
+        .arg(&output_dir)
+        .output()
+        .expect("runs");
+    assert!(
+        generated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    for contract in ["openapi", "asyncapi"] {
+        let yaml_text =
+            fs::read_to_string(output_dir.join(format!("{contract}.yaml"))).expect("YAML contract");
+        let private_numbers = yaml_text.matches("$serde_json::private::Number").count();
+        assert_eq!(
+            private_numbers, 0,
+            "{contract}.yaml writes {private_numbers} number(s) as a private serde_json map"
+        );
+        let json: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(output_dir.join(format!("{contract}.json")))
+                .expect("JSON contract"),
+        )
+        .expect("the JSON contract parses");
+        let yaml: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str(&yaml_text).expect("the YAML contract parses");
+        let mut numbers = 0;
+        same_contract(&json, &yaml, contract, &mut numbers);
+        assert!(
+            numbers > 0,
+            "{contract}: the refund contract carries no number, so nothing was compared"
+        );
+    }
+}
+
+/// Walks a JSON contract and its YAML twin together and counts the numbers it compared.
+fn same_contract(
+    json: &serde_json::Value,
+    yaml: &serde_yaml_ng::Value,
+    path: &str,
+    numbers: &mut usize,
+) {
+    use serde_json::Value as Json;
+    use serde_yaml_ng::Value as Yaml;
+    match (json, yaml) {
+        (Json::Null, Yaml::Null) => {}
+        (Json::Bool(left), Yaml::Bool(right)) => assert_eq!(left, right, "{path}"),
+        (Json::String(left), Yaml::String(right)) => assert_eq!(left, right, "{path}"),
+        (Json::Number(left), Yaml::Number(right)) => {
+            *numbers += 1;
+            assert_eq!(left.to_string(), right.to_string(), "{path}");
+        }
+        (Json::Array(left), Yaml::Sequence(right)) => {
+            assert_eq!(left.len(), right.len(), "{path}: item count");
+            for (index, (left, right)) in left.iter().zip(right).enumerate() {
+                same_contract(left, right, &format!("{path}/{index}"), numbers);
+            }
+        }
+        (Json::Object(left), Yaml::Mapping(right)) => {
+            assert_eq!(left.len(), right.len(), "{path}: key count");
+            for (key, left) in left {
+                let right = right
+                    .get(key.as_str())
+                    .unwrap_or_else(|| panic!("{path}/{key} is missing from the YAML contract"));
+                same_contract(left, right, &format!("{path}/{key}"), numbers);
+            }
+        }
+        _ => {
+            panic!("{path}: the JSON contract holds {json} where the YAML contract holds {yaml:?}")
+        }
+    }
 }
 
 #[test]

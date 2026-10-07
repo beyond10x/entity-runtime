@@ -1,7 +1,7 @@
 //! Adversarial cases against a text's `alphabet` (R-162, R-163): every place a `string`
 //! declaration is read — union variants, defaults at depth, `set` results, conditional targets,
-//! `kernel/1` paths below the top level — a declared response the alphabet never reaches, and the
-//! cost of checking many values against one large alphabet.
+//! `kernel/1` paths below the top level, a declared response (R-169) — and the cost of checking
+//! many values against one large alphabet.
 
 use std::time::{Duration, Instant};
 
@@ -86,56 +86,54 @@ fn echoed(keys: &str) -> Option<serde_json::Map<String, Value>> {
     json!({ "echo": keys }).as_object().cloned()
 }
 
-/// Design `service-semantics-v0.1.md` § 2.2: the response is "a template map resolved at step 14
-/// and validated against `response`". Registration admits an alphabet on a response field, but the
-/// value the branch answers is not checked yet. This pins today's behaviour until
-/// `story:service-response-is-checked-against-its-schema` lands; then it asserts the refusal.
+/// Design `service-semantics-v0.1.md` § 5.3: the response is "a template map resolved at step 14
+/// and validated against `response`". An alphabet on a response field holds the value the branch
+/// answers, and a value outside it refuses the decision with the response path (R-169).
 #[test]
-fn a_response_outside_its_declared_alphabet_is_answered_unchecked_until_responses_are_checked() {
+fn a_response_outside_its_declared_alphabet_is_refused_with_its_response_path() {
     let definition =
         echoing(json!({ "type": "string", "required": true, "alphabet": "0123456789" }));
+    assert_eq!(
+        decide(
+            &definition,
+            &held("keypad"),
+            "Dial",
+            json!({ "keys": "12x" })
+        ),
+        Err(CoreError::Validation(vec![outside(
+            "response.echo",
+            'x',
+            3
+        )]))
+    );
     match decide(
         &definition,
         &held("keypad"),
         "Dial",
-        json!({ "keys": "12x" }),
+        json!({ "keys": "12" }),
     ) {
-        Ok(Evaluation::Accepted(decision)) => assert_eq!(
-            decision.record.response,
-            echoed("12x"),
-            "a response is answered unchecked until story:service-response-is-checked-against-its-\
-             schema lands; when it does, flip this case to assert the alphabet refusal"
-        ),
-        other => panic!(
-            "no longer answered unchecked: if story:service-response-is-checked-against-its-schema \
-             has landed, flip this case to assert the alphabet refusal ({other:?})"
-        ),
+        Ok(Evaluation::Accepted(decision)) => assert_eq!(decision.record.response, echoed("12")),
+        other => panic!("a response inside its alphabet is answered: {other:?}"),
     }
 }
 
-/// The same hole with a constraint the base already had: the alphabet inherits it rather than
-/// introducing it. Runs unchanged against the base commit.
+/// The same check with a constraint the base already had: the alphabet inherits the check rather
+/// than introducing it.
 #[test]
-fn a_response_longer_than_its_declared_max_length_is_answered_unchecked_until_responses_are_checked(
-) {
+fn a_response_longer_than_its_declared_max_length_is_refused_with_its_response_path() {
     let definition = echoing(json!({ "type": "string", "required": true, "max_length": 2 }));
-    match decide(
-        &definition,
-        &held("keypad"),
-        "Dial",
-        json!({ "keys": "12345" }),
-    ) {
-        Ok(Evaluation::Accepted(decision)) => assert_eq!(
-            decision.record.response,
-            echoed("12345"),
-            "a response is answered unchecked until story:service-response-is-checked-against-its-\
-             schema lands; when it does, flip this case to assert the max_length refusal"
+    assert_eq!(
+        decide(
+            &definition,
+            &held("keypad"),
+            "Dial",
+            json!({ "keys": "12345" })
         ),
-        other => panic!(
-            "no longer answered unchecked: if story:service-response-is-checked-against-its-schema \
-             has landed, flip this case to assert the max_length refusal ({other:?})"
-        ),
-    }
+        Err(CoreError::Validation(vec![ValidationError::new(
+            "response.echo",
+            "length 5 exceeds maximum 2"
+        )]))
+    );
 }
 
 // --- Cost ----------------------------------------------------------------------------------------

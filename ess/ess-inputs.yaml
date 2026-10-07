@@ -153,6 +153,7 @@ scenarios:
   - scenarios/core/service1-bare-state-guard-is-a-selector.yaml
   - scenarios/core/service1-binary64-refuses-nonfinite-magnitude.yaml
   - scenarios/core/service1-binary64-retains-negative-zero.yaml
+  - scenarios/core/service1-collection-address-declared-kind.yaml
   - scenarios/core/service1-collection-count.yaml
   - scenarios/core/service1-compare-missing.yaml
   - scenarios/core/service1-compare-number.yaml
@@ -168,7 +169,10 @@ scenarios:
   - scenarios/core/service1-map-member-errors-retain-paths.yaml
   - scenarios/core/service1-map-quantified-values.yaml
   - scenarios/core/service1-map-values-are-typed.yaml
+  - scenarios/core/service1-nested-quantifier-literal-collection.yaml
   - scenarios/core/service1-no-matching-outcome-is-typed.yaml
+  - scenarios/core/service1-quantifier-element-declared-kind.yaml
+  - scenarios/core/service1-quantifier-map-count-recorded-replay.yaml
   - scenarios/core/service1-rank-disagreement.yaml
   - scenarios/core/service1-rank-without-scale.yaml
   - scenarios/core/service1-selection-fallback.yaml
@@ -343,6 +347,7 @@ scenarios:
   - scenarios/store/observation-revisions-are-positive-signed-range.yaml
   - scenarios/store/observations-are-tips-but-not-decision-heads.yaml
   - scenarios/store/older-framing-reader-refuses-before-payload.yaml
+  - scenarios/store/projection-collection-address-keys.yaml
   - scenarios/store/projection-groups-sorted-identities.yaml
   - scenarios/store/projection-scalar-and-nested-keys.yaml
   - scenarios/store/record-domain-kernel-1.yaml

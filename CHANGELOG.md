@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-10-07
+
 ### Added
 
 - A `service/2` or `service/3` operation outcome may declare `set_if_present`, as a creation
@@ -44,6 +46,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   (`set_assignment_conflict`), each with its path. A cleared field also named in the outcome's
   `set_if_present` or `fulfills` is refused as `conditional_target_conflict` or
   `fulfillment_set_conflict`.
+- `entity_core::recompute_create` and `entity_core::recompute_before_load` recompute a recorded
+  decision the way `replay` does: like `create` and `decide_before_load`, except that a
+  `service/1` response is compared by the caller rather than checked against its declared schema.
+  A verifier of stored decisions uses them; a caller taking a new decision does not.
 
 ### Changed
 
@@ -79,6 +85,61 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   compiles. A build before this release refuses a definition with an operation `set_if_present`,
   and so a history recorded under one, as `conditional_set_on_operation` rather than ignoring the
   map; open a store holding such records with this release or later.
+- `entity_store::project` reads a projection key of a `service/1`, `service/2` or `service/3`
+  definition the way the kernel reads the same address. A key on `<array>.count`,
+  `<array>.<n>` or a declared map's `count`, which registration has admitted since 0.19.0, filed no
+  instance before; it now files each instance under the array's size, that element or the map's
+  size, an empty array under `0`, and leaves out an instance whose index is past the end. A map
+  holding a member named `count` is filed under its size, no longer under that member's value.
+  `kernel/1` read models are unchanged, and so is registration.
+- A `service/1` decision's response is checked against the command's declared `response` before
+  the decision is returned. A response member outside its declaration — a text longer than its
+  `max_length` or outside its `alphabet`, a number past its `max`, a wrong kind — refuses the
+  creation or operation as `validation`, naming every offending member at `response.<field>`;
+  before, it was answered and recorded unchecked. A decision recorded before this release whose
+  response breaks its schema still replays through `entity_core::replay` and still verifies in a
+  recorded store: `entity_store::asynchronous::validate_entry_against_state` recomputes a stored
+  decision without the check and still compares its response byte for byte. Because the stores
+  admit a new entry through that same function, an entry built by hand outside the kernel with
+  such a response is admitted as before; a decision the kernel takes is checked.
+
+### Fixed
+
+- Under `service/1`, `<path>.count` and `<path>.<n>` answer only for the kind the path's
+  declaration names. A stored value of another kind used to answer that kind's size or member: a
+  declared `map` holding a seven-element array counted 7, a declared `array` holding
+  `{"count": 7}` counted 7, and a declared `object` holding an array counted its length. Each now
+  answers nothing, so a rule reading it is unobservable. A value nothing types — an undeclared
+  member, a `json` field — keeps its answers. Only an instance a store kept without checking it
+  against its definition can hold such a value.
+
+- `entity-yaml`, and so the `entity` command, reads a `service/1` outcome whose effect is `moves`
+  written as a mapping with one key, `effect: { moves: { from: open, to: paid } }`, the spelling
+  JSON uses. Before, the document was refused with `expected a YAML tag starting with '!'`, and so
+  was its JSON spelling given to the command, which reads JSON definitions through the same
+  reader. A unit effect is still a plain word (`effect: creates`), every document the reader
+  accepted before reads to the same definition, and the YAML tag form `!moves { … }` is still
+  refused.
+- `entity inspect --format yaml` writes a `moves` effect in that mapping form instead of the tag
+  form `!moves`, so its output loads back through `entity validate`. `kernel/1` output is
+  unchanged.
+- `entity generate docs` writes every number in `openapi.yaml` and `asyncapi.yaml` as a YAML
+  number, spelled with the digits the matching JSON contract writes. Before, each number was a
+  mapping, `$serde_json::private::Number: '1'` — 24 of them in the refund example's
+  `openapi.yaml` and 14 in its `asyncapi.yaml` — so a YAML reader saw an object where the contract
+  has a number. A number no 64-bit integer or binary64 holds keeps its exact digits too. The JSON
+  contracts are unchanged.
+- Under `service/1`, a rule inside `for_all` or `for_any` may read a text element's length:
+  `for_all: { in: $fields.tags, as: t, that: { compare: { left: $t.count, op: lte, right: 8 } } }`
+  over a declared list of text now registers and answers each tag's length in Unicode scalar
+  values, as does `$t.name.count` on a declared object element. Registration used to refuse both
+  as `QuantifierBodyScope`. A quantifier element that nothing declares — its list reached through
+  a `json` field or a union's payload — still has no length. A declared `map` element is still
+  read by its members, so `$g.count` reads a member named `count` and not the map's size, and
+  every recorded decision replays unchanged.
+- A quantifier nested in another whose `in` is an empty text, or a text opening with a character
+  longer than one byte, is refused at registration as `QuantifierOverNotCollection`. Registering
+  such a definition used to panic.
 
 ## [0.29.0] — 2026-10-07
 

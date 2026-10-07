@@ -431,6 +431,7 @@ contract's insertion; the four insertions are 4, 6, 11 and 14 and nothing else m
  12  invariants, against the next state                       InvariantViolation      9
  13  the selected branch's events, in declaration order       Template                10
  14  the selected branch's response, in schema order          Template                new
+     then validated against the declared response            Validation
  15  Evaluation::Accepted(Decision)                           —                       11
 ```
 
@@ -713,10 +714,37 @@ one of them into an event payload or a `sets` entry (`:742-749`). Both halves ne
   argument no field stores — the same reason the creation event payload may, § 2.3. Every accepting
   branch determines every required response field, or `OutcomeResponseIncomplete` refuses the
   definition.
+* **The check (R-169).** Step 14 validates the whole answered map — the `responds` templates and
+  the members `responds_if_present` copies — against the command's declared `response` under the
+  definition's semantics, as step 9 validates the fields. Every offending member is one
+  `ValidationError` at `response.<field>`, accumulated, and the decision is refused as
+  `CoreError::Validation`: no record, no revision, no events, and the caller's instance untouched.
+  It runs after the events, so an invariant (step 12) or an event template (step 13) that also
+  fails answers first. A `responds_if_present` member cannot fail it today, because registration
+  holds each such member to its source argument leaf's complete declaration and step 3 has already
+  checked that leaf; the check reads the final map so that stays true if the rule ever widens.
 * **A refusing branch determines none.** `RefusalMutatesState` covers `responds`, for the same reason
   it covers `emits`.
 * **The record** carries it: `DecisionRecord.response: Option<Map<String, Value>>`, so replay
   recomputes and byte-compares it like every other product of the decision.
+* **Replay recomputes without the check, and only replay.** A record is a decision already
+  answered. Every release before the check answered responses unchecked, so a history can hold a
+  response its schema refuses, and holding its recomputation to the check would strand a history
+  that was honest when it was written. `replay` therefore recomputes each record with the check
+  off (`ResponseCheck::Recorded`, crate-private) and changes nothing else: it still byte-compares
+  the recomputed response with the recorded one, so a recorded response that is not what the
+  branch answers is refused as before. Every public entry point that takes a new decision —
+  `create`, `decide_create`, `execute`, `decide`, `decide_before_load` and the continuations it
+  returns — checks. Measured: with the check also on in replay, a base-recorded history is
+  refused at its first record as `response.label: length 10 exceeds maximum 3`.
+* **The recorded-store verifier recomputes as replay does.** `recompute_create` and
+  `recompute_before_load` are the two public entry points that recompute a recorded decision with
+  the check off; `entity_store::asynchronous::validate_entry_against_state`, which the memory and
+  Eventlog stores use to verify a stored history, calls them, so a stored decision answered before
+  the check still verifies and still byte-compares. The same function is the stores' admission
+  check for a new entry, so an entry a caller builds by hand, outside the kernel, whose response
+  breaks its schema is admitted exactly as before the check; that trade-off is accepted. A decision
+  the kernel takes is checked before any store sees it.
 * **`Decision` gains no key.** A caller reads `decision.record.response`.
 
 A response field the *implementation* determines rather than the model — `ResolvedPayloadValue::Generated`
@@ -1697,6 +1725,16 @@ answer. Under `service/1` they resolve as above, and a `map`'s keys stay unaddre
 size. `validate_reference_path` gains the same two forms so an address into a collection is checked at
 registration, which is invariant 5's requirement and not a new rule.
 
+**Keyed on the declared kind (R-148).** Where a path has a declaration, the declaration decides
+which form applies: a map's size only under a declared `map`, an array's length and elements only
+under a declared `array`, and nothing else past either. A stored value of another kind answers
+nothing, so the rule reading it is unobservable: a declared `map` holding an array has no size, a
+declared `array` holding `{count: 7}` has neither a count nor a member `0`, and a declared `object`
+holding an array has no length. Only an instance a store kept without checking it can hold such a
+value, because arguments are validated before any rule reads them and no store validates an
+instance on load. A value nothing types — no declaration, a `json` field, a quantifier element
+registration admits untyped — keeps the array forms, read from the value.
+
 **The length of a text (R-160).** A third address form, added after ESS decided what a text's `count`
 means (ESS `docs/design/string-alphabet-and-length.md` § 3) and lowers a guard or invariant over one
 to this address:
@@ -1717,8 +1755,8 @@ content key, because registration admits any path into a union payload without w
 variant is chosen by the tag at run time) while the run-time walk types the variant for the two
 collection forms. A length keyed on the value would turn every path registration admits untyped —
 an undeclared member under `additional_fields` or `additional_properties`, a `json` field, a union
-payload, a binder path — from nothing into a number, and a recorded decision whose rule read one
-would replay to a different answer (R-97). Each of those keeps resolving to nothing. Nothing is
+payload, a quantifier element registration admits untyped — from nothing into a number, and a
+recorded decision whose rule read one would replay to a different answer (R-97). Each of those keeps resolving to nothing. Nothing is
 past a checked text but its length: a stored value under the declaration that is not a text — an
 object with its own `count` member, an array whose size the value-keyed array form would answer —
 has no length, so the rule reading it is unobservable. An absent optional text has no value to walk,
@@ -1732,15 +1770,48 @@ path is one something resolves:
 | reader | what it is | text length | what the base already admitted |
 | --- | --- | --- | --- |
 | the kernel, from a schema root | `walk`, carrying each field's declaration | admitted | all collection forms, resolved |
-| the kernel, from a quantifier's binder | `walk(element, path, None, false, …)`: the element without its declaration | refused as `QuantifierBodyScope` (it would resolve to nothing) | an array's `count` and index, read from the value; a map's `count`, which reads the element's own `count` member rather than its size |
-| the store, for a projection key | `entity-store` `key_of`, object members only | refused as `InvalidTemplate` at `projections.<name>` (it would file no instance) | an array's `count` and index and a map's `count`, which file no instance |
+| the kernel, from a quantifier's binder | `walk(element, path, declared, …, Start::Binder)`: the element under the declaration registration derived for it (R-168), except that a declared `map` is read by its members | admitted where the element is declared; resolves to nothing where registration admits the element untyped | an array's `count` and index; a map's `count`, which reads the map's own `count` member rather than its size |
+| the store, for a projection key | `entity-store` `key_of`: under the service rules a copy of the kernel's walk from a schema root that does not read a text's length (R-167), under `kernel/1` object members only | refused as `InvalidTemplate` at `projections.<name>` (it would file no instance) | an array's `count` and index and a map's `count`, which file the instance under the value the kernel reads (R-167) |
 
-The last column is not refused, although two of its entries are wrong. `replay` re-validates the
+The last column is not refused, although two of its entries were wrong. `replay` re-validates the
 definition snapshot every record carries (`replay.rs`), so refusing a form the base registered would
 strand every history recorded under it. Those defects are left for later work that changes the
 reader instead: binder elements that carry their declaration, and a projection key walk that reads
 the collection forms. A declared object property that happens to be called `count` is a member, not
 an address form, and stays a valid key.
+
+**A quantifier's element carries its declaration (R-168).** The run time takes a binder's element
+declaration from the function registration derives it with (`validation.rs` `collection_element`),
+over the same schemas and enclosing binders, rather than from a second walk. The run-time walk
+types a union's variant by its tag, so a second walk would type an element registration admits
+untyped, and a text's length through it would turn from nothing into a number (R-97). Under that
+declaration a `string` element's `count`, at the element or inside it, is its length, and
+registration admits it under `for_all` and `for_any` alike, which is ESS's
+`forall t in tags: t.count <= 8`.
+
+The map entry of the binder row is the one exception, and it is kept on purpose. Every release since
+0.19.0 decided a binder's declared `map` by its members: `count` as a member named `count`, any other
+key as that member. `replay` reruns every recorded decision under the current kernel, and a record
+carries no rule version, so reading the size there would turn recorded decisions from held into
+violated or unobservable — a creation whose only group is `{count: 1, …}` with six entries held
+`$g.count <= 5` and was recorded. A binder therefore walks a declared `map` — the element, a
+property or member inside it, or a union's selected variant — as the untyped object it was always
+read as (`Start::Binder`). For a value that matches its declaration, every other binder path
+answers what the untyped walk answered before; only a checked text's length differs. The size
+reading needs a replay-safe mechanism, a definition-snapshot key like `number_observation`, which
+is consumer surface: `story:binder-map-elements-read-their-size`.
+
+**A projection key reads a collection address as the kernel does (R-167).** The second of those
+changes the store's reader and leaves registration alone. Under the service rules `key_of` walks the
+definition's schema the way the kernel's `lookup` and `walk` do: an array's `count` and an ordinal
+from the value, a declared map's `count` as its size and none of its keys, object properties and a
+union's selected variant carrying their declarations, and a declared text's length not at all. The
+walk is a copy, because the kernel's is private; `every_collection_address_key_files_an_instance_under_the_value_the_kernel_reads`
+holds it to the kernel's answer through each form, declared and untyped, so a change on either side
+the other does not make fails there. A `kernel/1` key still walks object members only and every
+read model a `kernel/1` definition produced is the same bytes. Nothing records or replays a read
+model, so the instances now filed — and a map holding a member named `count`, now filed under its
+size instead of that member — change no recorded byte.
 
 ## 11. Acceptance
 
@@ -1805,6 +1876,15 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `a_kernel_1_creation_that_emits_nothing_still_validates_and_still_creates` | § 5.2, no regression |
 | `an_update_branch_keeps_its_state_and_records_updated_without_a_transition` | § 6 |
 | `a_declared_response_is_materialised_from_the_selected_branch_and_replays_byte_for_byte` | § 5.3 |
+| `a_creation_response_outside_its_declared_schema_refuses_the_creation_naming_every_member` | § 5.3, the check on a creation, accumulated at `response.<field>` |
+| `an_operation_response_outside_its_declared_schema_refuses_the_decision_with_the_response_path` | § 5.3, the check on an operation, through `decide` and the prepared continuation |
+| `the_response_is_checked_after_the_invariants` | § 4.2 step 14, § 5.3; fails if the check moves ahead of step 12 |
+| `a_decision_recorded_before_responses_were_checked_still_replays` | § 5.3, the replay exemption over a base-recorded fixture, and the byte comparison it keeps |
+| `a_stored_decision_recorded_before_responses_were_checked_still_verifies` | § 5.3, the recorded-store verifier over the same fixture |
+| `a_stored_response_its_branch_does_not_answer_is_still_refused` | § 5.3, the verifier's byte comparison is kept |
+| `a_file_store_holding_decisions_recorded_before_responses_were_checked_reopens_and_verifies` | § 5.3, an Eventlog file store holding the fixture admits, reopens with complete verification and replays |
+| `a_response_outside_its_declared_alphabet_is_refused_with_its_response_path` | § 5.3, an `alphabet` on a response field |
+| `a_response_longer_than_its_declared_max_length_is_refused_with_its_response_path` | § 5.3, a `max_length` on a response field |
 | `a_branch_that_leaves_a_required_response_field_undetermined_is_refused_at_registration` | § 2.1 `OutcomeResponseIncomplete` |
 | `a_refusing_branch_that_declares_responds_is_refused_at_registration` | § 2.1 `RefusalMutatesState` |
 | `a_creation_branch_emits_zero_one_or_many_events_in_declaration_order` | § 2, event multiplicity |
@@ -1872,13 +1952,26 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `an_empty_any_of_is_unknown_when_unobserved_and_false_when_observed` | § 10.4 |
 | `a_collection_count_resolves_under_service_1_and_resolves_to_nothing_under_kernel_1` | § 10.6 |
 | `an_array_ordinal_address_resolves_under_service_1_only` | § 10.6 |
+| `a_stored_map_holding_an_array_answers_no_count` | § 10.6, R-148: a declared map's size is read only from an object |
+| `a_stored_array_holding_an_object_answers_no_count` | § 10.6, R-148: a declared array has no member named `count` |
+| `a_stored_array_holding_an_object_answers_no_element` | § 10.6, R-148: nor one named `0` |
+| `a_stored_array_under_another_declared_kind_answers_no_count_from_its_size` | § 10.6, R-148: an object's property, an open object's member and a union variant's payload |
+| `a_value_nothing_types_keeps_its_collection_addresses` | § 10.6, R-148: a `json` field and an undeclared field keep the array forms |
 | `a_text_count_is_its_number_of_unicode_scalar_values_under_service_1` | § 10.6, R-160: scalar values, not bytes, UTF-16 units or a normalized form |
 | `a_text_count_is_read_from_a_field_an_argument_and_a_nested_property_in_every_rule_position` | § 10.6, R-160: invariant, precondition and outcome guard, at and over the bound, and replay |
 | `a_text_count_through_a_path_registration_does_not_type_keeps_resolving_to_nothing` | § 10.6, R-160, R-97: union payload, open schema, `json` and additional properties |
-| `a_text_count_on_a_reference_that_is_not_a_text_array_or_map_is_refused_at_registration` | § 10.6, R-160: every other scalar kind, past the count, `kernel/1` and a quantifier element |
+| `a_text_count_on_a_reference_that_is_not_a_text_array_or_map_is_refused_at_registration` | § 10.6, R-160: every other scalar kind, past the count, `kernel/1` and a quantifier element of another scalar kind |
 | `a_stored_text_holding_an_array_answers_no_length` | § 10.6, R-160: a stored non-text under a declared `string` has no length |
-| `a_projection_key_refuses_a_text_length_and_registers_the_base_collection_forms_unchanged` | § 10.6, R-161: a text length is no projection key; the base's collection-form keys and a property named `count` register unchanged |
-| `a_map_count_anywhere_inside_a_quantifier_element_reads_the_member_until_binder_elements_carry_their_declaration` | § 10.6, R-161: a map's `count` inside a quantifier element registers and reads as on the base |
+| `a_projection_key_refuses_a_text_length_and_registers_the_collection_forms_the_kernel_reads` | § 10.6, R-161, R-167: a text length is no projection key; the base's collection-form keys and a property named `count` register unchanged, and the kernel reads each key's address as the value the store files the instance under |
+| `every_collection_address_key_files_an_instance_under_the_value_the_kernel_reads` | § 10.6, R-167: the store's key walk against the kernel's, through every collection form, declared and untyped, under `service/1` and `kernel/1` |
+| `a_kernel_1_projection_key_keeps_walking_object_members_only` | § 10.6, R-167: a `kernel/1` read model is the same bytes |
+| `a_map_count_anywhere_inside_a_quantifier_element_reads_the_member_until_binder_map_elements_read_their_size` | § 10.6, R-161: a map's `count` inside a quantifier element, through a property, an index and a union's selected variant, registers and reads as on the base |
+| `a_map_element_under_for_all_and_for_any_reads_the_member_until_binder_map_elements_read_their_size` | § 10.6, R-161: an array of maps and a map of maps, each row the opposite of the size's answer |
+| `a_text_element_under_for_all_and_for_any_answers_its_length` | § 10.6, R-168: at the element and one level inside it, under both quantifiers |
+| `an_array_element_under_for_all_and_for_any_answers_its_length` | § 10.6, R-168: unchanged from the untyped reading |
+| `a_quantifier_over_a_union_payload_keeps_its_elements_untyped` | § 10.6, R-168, R-97: a text element reached through a union payload has no length |
+| `a_binder_path_answers_as_the_untyped_walk_did_except_a_checked_text_length` | § 10.6, R-168: every path into seventeen declared values, typed against untyped, under a binder |
+| `a_nested_quantifier_over_a_text_that_is_no_reference_is_refused_rather_than_panicking` | § 10.4, R-168: the shared element derivation reads the binder name by character |
 | `every_complete_branch_decision_replays_byte_for_byte_from_its_record` | `crates/entity-core/src/replay.rs:113-170` over a create-plus-branch history |
 
 Fault sensitivity, applied and reverted (AGENTS.md § Conventions): swap the input guard and the state

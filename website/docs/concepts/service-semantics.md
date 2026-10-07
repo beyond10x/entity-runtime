@@ -28,6 +28,10 @@ caller asks for the operation and never names a branch.
 | `moves` | moves the instance from one declared state to another |
 | none | accepts and changes no state |
 
+`moves` is the one effect that carries data. It is a mapping with one key, written the same way in
+YAML and in JSON: `effect: { moves: { from: open, to: paid } }`, where `from` is one state or a
+list of states. The YAML tag form, `effect: !moves { … }`, is refused.
+
 This definition validates with `entity 0.27.0` and runs through the `entity` command:
 
 ```yaml
@@ -108,16 +112,6 @@ refused: outcome 'rejected' refuses with 'AmountNotPositive': an invoice total i
 The accepted decision's record names the outcome (`adjusted`), the effect (`updated`) and the
 response (`{"new_total": 150}`). In Rust, `create` and `execute` return a declared refusal as
 `CoreError::Refused`; `decide` and `decide_create` return it as the value `Evaluation::Refused`.
-
-:::caution[Known limitation]
-
-A `moves` effect carries its states as a map, `effect: { moves: { from: open, to: paid } }`.
-`entity-yaml`, and so the `entity` command, cannot read that form today: it refuses the document
-with `expected a YAML tag starting with '!'`, and the tagged form with `expected unambiguous YAML`.
-A definition with a `moves` outcome loads only through `serde_json` in Rust, as the kernel's own
-tests do. A fix is planned.
-
-:::
 
 ## Identity and relations
 
@@ -240,10 +234,14 @@ Registration refuses each misuse by path, with every other defect of the documen
 | `default: "12x"` beside that alphabet | `invalid field definition at 'create.arguments.number': invalid default: character 'x' (U+0078) at position 3 is not in the alphabet` |
 | `alphabet` in a `kernel/1` definition | ``'alphabet' at 'schema.code.alphabet' is available only under `semantics: service/1`; a definition with older semantics would declare a rule nothing evaluates`` |
 
-Registration also refuses a length read through a quantifier element or used as a projection key.
-A path into a `json` field, a union payload, an undeclared member or a quantifier element still
-resolves to nothing, so recorded decisions replay unchanged, and a stored value under a declared
-`string` that is not a text has no length. A definition without an alphabet keeps its bytes.
+Registration also refuses a length used as a projection key. Inside `for_all` and `for_any` a text
+element's length reads as any other: over a declared list of text, `$t.count` is each element's
+length, and `$t.name.count` reads a declared property of an object element. A path into a `json`
+field, a union payload or an undeclared member, and a quantifier over a list reached through one of
+them, still resolves to nothing, so recorded decisions replay unchanged, and a stored value under a
+declared `string` that is not a text has no length. A declared `map` inside a quantifier element is
+still read by its members: `$g.count` there reads a member named `count`, not the map's size. A
+definition without an alphabet keeps its bytes.
 
 `entity generate docs` carries an alphabet into the OpenAPI and AsyncAPI schemas as `x-alphabet`;
 in the `openapi.yaml` generated for `extension.yaml`:
@@ -257,14 +255,13 @@ in the `openapi.yaml` generated for `extension.yaml`:
           x-alphabet: '0123456789'
 ```
 
-:::caution[Known limitation]
-
-An alphabet on an operation's declared `response` field is admitted but not enforced: responses are
-not checked against their declared schema yet, for `max_length` either. An operation whose
-response field declares `alphabet: "0123456789"` and responds `"abc"` is accepted. Checking
-responses is planned.
-
-:::
+An alphabet on a declared `response` field holds the value the branch answers, as `max_length` and
+every other constraint there do: the response is checked against its declaration before the
+decision is returned, and a member outside it refuses the creation or operation as `validation`,
+naming each offending member at `response.<field>`. Nothing is recorded. A decision recorded before
+responses were checked, whose response breaks its declaration, still replays, and a recorded store
+holding one still opens and verifies it: both recompute a stored decision without the check and
+compare its response with the recorded one.
 
 ## What each version adds
 
