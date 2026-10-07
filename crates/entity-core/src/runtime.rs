@@ -730,6 +730,26 @@ pub fn decide_create(
     decide_create_as(definition, id, input, ResponseCheck::Checked)
 }
 
+/// Recomputes a recorded creation from its saved definition and input, as
+/// [`replay`](fn@crate::replay) does.
+///
+/// [`create`] for a decision already answered: the response is recomputed but not validated
+/// against the declared `response` (R-169), so a creation recorded before responses were checked
+/// recomputes to the record it wrote. A verifier compares the result with the record; a caller
+/// taking a new decision uses [`create`] or [`decide_create`].
+///
+/// # Errors
+///
+/// The errors documented by [`decide_create`], except a response outside its declared schema, with
+/// a selected refusal returned as [`CoreError::Refused`].
+pub fn recompute_create(
+    definition: &ValidatedDefinition,
+    id: String,
+    input: Value,
+) -> Result<Decision, CoreError> {
+    decide_create_as(definition, id, input, ResponseCheck::Recorded)?.into_decision()
+}
+
 /// [`decide_create`], with the response check `replay` selects.
 pub(crate) fn decide_create_as(
     definition: &ValidatedDefinition,
@@ -1085,6 +1105,31 @@ pub fn decide_before_load<'definition>(
         operation_name,
         arguments,
         ResponseCheck::Checked,
+    )
+}
+
+/// Prepares a recorded operation for recomputation, as [`replay`](fn@crate::replay) does.
+///
+/// [`decide_before_load`] for a decision already answered: the continuation it returns recomputes
+/// the response without validating it against the declared `response` (R-169), so an operation
+/// recorded before responses were checked recomputes to the record it wrote. A verifier compares
+/// the result with the record; a caller taking a new decision uses [`decide_before_load`].
+///
+/// # Errors
+///
+/// The errors documented by [`decide_before_load`].
+pub fn recompute_before_load<'definition>(
+    definition: &'definition ValidatedDefinition,
+    expected_id: impl Into<String>,
+    operation_name: &str,
+    arguments: Value,
+) -> Result<PreloadDecision<'definition>, CoreError> {
+    decide_before_load_as(
+        definition,
+        expected_id.into(),
+        operation_name,
+        arguments,
+        ResponseCheck::Recorded,
     )
 }
 

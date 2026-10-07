@@ -254,16 +254,10 @@ in the `openapi.yaml` generated for `extension.yaml`:
 An alphabet on a declared `response` field holds the value the branch answers, as `max_length` and
 every other constraint there do: the response is checked against its declaration before the
 decision is returned, and a member outside it refuses the creation or operation as `validation`,
-naming each offending member at `response.<field>`. Nothing is recorded. `replay` still replays a
-decision recorded before responses were checked.
-
-:::caution[Known limitation]
-
-A recorded store verifies each stored decision by deciding it again, and that path checks the
-response. A store holding a decision recorded before responses were checked, whose response breaks
-its declaration, refuses that subject's history.
-
-:::
+naming each offending member at `response.<field>`. Nothing is recorded. A decision recorded before
+responses were checked, whose response breaks its declaration, still replays, and a recorded store
+holding one still opens and verifies it: both recompute a stored decision without the check and
+compare its response with the recorded one.
 
 ## What each version adds
 

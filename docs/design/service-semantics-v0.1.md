@@ -733,16 +733,18 @@ one of them into an event payload or a `sets` entry (`:742-749`). Both halves ne
   that was honest when it was written. `replay` therefore recomputes each record with the check
   off (`ResponseCheck::Recorded`, crate-private) and changes nothing else: it still byte-compares
   the recomputed response with the recorded one, so a recorded response that is not what the
-  branch answers is refused as before. Every public entry point — `create`, `decide_create`,
-  `execute`, `decide`, `decide_before_load` and the continuations it returns — takes a new
-  decision and checks. Measured: with the check also on in replay, a base-recorded history is
+  branch answers is refused as before. Every public entry point that takes a new decision —
+  `create`, `decide_create`, `execute`, `decide`, `decide_before_load` and the continuations it
+  returns — checks. Measured: with the check also on in replay, a base-recorded history is
   refused at its first record as `response.label: length 10 exceeds maximum 3`.
-* **What the exemption does not reach.** The recorded-store verifier
-  (`entity_store::asynchronous::validate_entry_against_state`, which the memory and Eventlog stores
-  use to admit an entry and to verify a stored history) recomputes through the public, checked
-  entry points, so it refuses such a stored record as `CorruptHistory`. Extending the exemption to
-  it needs an entity-core entry point for recomputing a record, which is consumer surface; it is
-  not part of this change.
+* **The recorded-store verifier recomputes as replay does.** `recompute_create` and
+  `recompute_before_load` are the two public entry points that recompute a recorded decision with
+  the check off; `entity_store::asynchronous::validate_entry_against_state`, which the memory and
+  Eventlog stores use to verify a stored history, calls them, so a stored decision answered before
+  the check still verifies and still byte-compares. The same function is the stores' admission
+  check for a new entry, so an entry a caller builds by hand, outside the kernel, whose response
+  breaks its schema is admitted exactly as before the check; that trade-off is accepted. A decision
+  the kernel takes is checked before any store sees it.
 * **`Decision` gains no key.** A caller reads `decision.record.response`.
 
 A response field the *implementation* determines rather than the model — `ResolvedPayloadValue::Generated`
@@ -1857,6 +1859,9 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `an_operation_response_outside_its_declared_schema_refuses_the_decision_with_the_response_path` | § 5.3, the check on an operation, through `decide` and the prepared continuation |
 | `the_response_is_checked_after_the_invariants` | § 4.2 step 14, § 5.3; fails if the check moves ahead of step 12 |
 | `a_decision_recorded_before_responses_were_checked_still_replays` | § 5.3, the replay exemption over a base-recorded fixture, and the byte comparison it keeps |
+| `a_stored_decision_recorded_before_responses_were_checked_still_verifies` | § 5.3, the recorded-store verifier over the same fixture |
+| `a_stored_response_its_branch_does_not_answer_is_still_refused` | § 5.3, the verifier's byte comparison is kept |
+| `a_file_store_holding_decisions_recorded_before_responses_were_checked_reopens_and_verifies` | § 5.3, an Eventlog file store holding the fixture admits, reopens with complete verification and replays |
 | `a_response_outside_its_declared_alphabet_is_refused_with_its_response_path` | § 5.3, an `alphabet` on a response field |
 | `a_response_longer_than_its_declared_max_length_is_refused_with_its_response_path` | § 5.3, a `max_length` on a response field |
 | `a_branch_that_leaves_a_required_response_field_undetermined_is_refused_at_registration` | § 2.1 `OutcomeResponseIncomplete` |
