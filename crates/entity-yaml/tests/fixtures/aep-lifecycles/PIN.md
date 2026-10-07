@@ -8,25 +8,26 @@ on a machine that has only this repository.
 | | |
 |---|---|
 | source | `github.com/beyond10x/aep`, `artifacts/lifecycles/*.yaml` |
-| pinned commit | `35b5c9949d7b9e1caa3a5e5de7502af42c2dbc5e` — current main source, no tag |
+| pinned commit | `5a2a0e5f3f498e70d7e86f59e2b4693292c32248` — current main source, no tag |
 | scope | All lifecycle documents at the recorded source commit, including executable system specifications |
-| copied | 2026-09-07 |
+| not copied | `artifacts/lifecycles/.gitkeep`, which is not a lifecycle document |
+| copied | 2026-10-07 |
 | licence | Apache-2.0, the same as this repository |
 
 ```
 8982ee715013ddec5b9e8fa81a0283c300d662684c05d65a42c3fd0567329e52  architecture-decision-record.yaml
 973ec77a5870ab2c1c74e3108370b4b34d20c84c19b38298f3df804c18563a7e  blocker.yaml
 33f43d5af14dc0415114edd6a29027bc1ea0c9932b18fb00fa71367ac471c12d  design.yaml
-fe8e08bd3c57f988ed6228ae7060bb7393893ce51d680a171c99f4bb8bfbe858  epic.yaml
-073d2f423dee34120c1cf7aad8437a15071ed03bdae63a9d778ddb58bd53b442  executable-system-specification.yaml
-602c4fb794f846ed1c280b22d01842e28a1e692dfd752eb7a5fc220819dfeae2  initiative.yaml
+4e85b28e6b81951f1bfc8f2d7e49b8a7da8789a7245d1eac89379d4e9ae701f2  epic.yaml
+b96355a54a706cd16c414407c20049a634522412515a113aa1f39c740a14a136  executable-system-specification.yaml
+18007b203c8bcbbf131dd5841807600fdc60a20f3eb62dc0a2b8b511831dca3c  initiative.yaml
 7224f7515ead95da321fe1c4dc98ee7c1369303ae7409686aa9211459642efc4  obligation.yaml
-006abbc630d78fbc994bf25a93bef97afee252bb14504e2d15499c6d1d72e1a3  outbound-claim.yaml
+1c5864142de72db2f3694eaf0e0aef728651bfe8c28d3b7bc3f1abe53f18f8bb  outbound-claim.yaml
 a282c5a1fe9abde13354faaa2c05e8bc2308dc7569a56b6b900d82ff870e9bbd  review-result.yaml
 357de517350ef2ee6421bc95dfba81cc2b276db193b878c666a9935d6ee7c142  specification.yaml
-265f3020e51de7d9a0c27b62629ce90cad29c2c74908a9cbe49f92589b91cb72  story.yaml
-f918abee7724f4e7eec94640bea19dbf2d6bf3eaab9285ca38649c7c9b91cc89  task.yaml
-db65a35124f2aff6c3c9e14a792cc6316b5a1626df51d9ea3dda54bdda9e994d  vision.yaml
+d3e735684d24595016e181d53f603c6939d8b2f1dc4e3205bcc4cf02feacc22b  story.yaml
+699a162bd39c27af9359a071fdd2af6030b5ae06a8de4c9af7d14f9a047a8068  task.yaml
+82af20ed7ad0984ef70ac02a4cb8084826a220a3fcc80faa61db75716bebf77d  vision.yaml
 ```
 
 ## Refreshing the pin

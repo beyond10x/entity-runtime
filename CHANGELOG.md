@@ -17,6 +17,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   semantics and Eventlog-backed storage through 0.27.0), task guides, and a CLI reference, crate
   list and status page generated from the code. The older copies under `docs/guide/` are removed;
   the site's pages replace them.
+- `examples/aep/executable-system-specification.yaml`'s `conform` operation accepts any one of
+  `ess_conformance`, `ess_conformance_v2` or `ess_conformance_coverage_v1` at 1, as AEP's ladder
+  now does; it is refused only when none of the three reaches 1. The AEP lifecycle fixture is
+  refreshed to AEP `5a2a0e5`.
 
 ## [0.27.0] — 2026-10-06
 

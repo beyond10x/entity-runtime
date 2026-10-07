@@ -25,7 +25,7 @@
 #
 # The row names the state precisely: *sent, known wrong, audience not yet told*. It is the most
 # expensive state an organisation can be in and the easiest one to leave undocumented, because
-# nobody wants to write it down. A rung makes it a position on a ladder that `protocol artifact
+# nobody wants to write it down. A rung makes it a position on a ladder that `aep plan artifact
 # board` prints in a column, rather than a sentence in a thread.
 #
 # It is deliberately **not** terminal and deliberately **not** `is_approved`: a claim in
