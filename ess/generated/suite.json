@@ -1004,7 +1004,7 @@
         "scenario": "entity.core/authored/service-quantifiers-validate-binders-collections-operands-and-depth"
       },
       "scenarios/core/service-responses-must-be-declared-and-complete.yaml": {
-        "digest": "sha256:850088c51051b6467676d35fc1b151b06ff258a0d8b87b5e05136e7ebd0ebfa5",
+        "digest": "sha256:a699d85d38f2033e9a577c44d30410a082a71fa17000e34eb94be73db6845b49",
         "disposition": "accepted",
         "scenario": "entity.core/authored/service-responses-must-be-declared-and-complete"
       },
@@ -41988,7 +41988,7 @@
       ]
     },
     "entity.core/authored/service-responses-must-be-declared-and-complete": {
-      "purpose": "Required responses need a producing expression; unknown response fields and responses on refusing branches are rejected.",
+      "purpose": "Responses must be declared, complete and inside their schema; a decision recorded before that check still replays.",
       "source": [
         {
           "kind": "domain",
@@ -42000,11 +42000,48 @@
         },
         {
           "kind": "type",
+          "name": "entity.core.InstanceDocument"
+        },
+        {
+          "kind": "type",
           "name": "entity.core.JsonDocument"
         },
         {
           "kind": "command",
+          "name": "entity.core.Create"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Execute"
+        },
+        {
+          "kind": "command",
+          "name": "entity.core.Replay"
+        },
+        {
+          "kind": "command",
           "name": "entity.core.ValidateDefinition"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "entity.core.Replay",
+            "outcome": "returned"
+          }
         },
         {
           "kind": "outcome",
@@ -42313,6 +42350,546 @@
             ],
             "outcome": {
               "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"label\":\"front door\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "k-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "details": "Validation([ValidationError { path: \"response.label\", message: \"length 10 exceeds maximum 3\" }])",
+              "error_kind": "validation",
+              "paths": [
+                "response.label"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Create",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}"
+            },
+            "fields": {
+              "kind": "literal",
+              "value": "{\"label\":\"pin\"}"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "k-1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Create",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Create",
+            "declarations": {},
+            "expected": {
+              "outcome": "made",
+              "response": "{\"label\":\"pin\"}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Create",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"keys\":\"12x\"}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "Dial"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "details": "Validation([ValidationError { path: \"response.echo\", message: \"character 'x' (U+0078) at position 3 is not in the alphabet\" }])",
+              "error_kind": "validation",
+              "paths": [
+                "response.echo"
+              ],
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Execute",
+          "input": {
+            "arguments": {
+              "kind": "literal",
+              "value": "{\"keys\":\"12\"}"
+            },
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"last\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"create\":{\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"max_length\":3}}},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true}}},\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"alphabet\":\"0123456789\"}}},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}}}"
+            },
+            "instance": {
+              "kind": "literal",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{}}"
+            },
+            "operation": {
+              "kind": "literal",
+              "value": "Dial"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Execute",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Execute",
+            "declarations": {},
+            "expected": {
+              "outcome": "dialled",
+              "response": "{\"echo\":\"12\"}",
+              "status": "ok"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Execute",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.Replay",
+          "input": {
+            "records": {
+              "kind": "literal",
+              "value": "[{\"definition\":{\"entity\":\"keypad\",\"version\":1,\"schema\":{\"fields\":{\"last\":{\"type\":\"string\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"invariants\":[],\"create\":{\"emit\":null,\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":3,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"transitions\":[],\"preconditions\":[],\"set\":{},\"emits\":[],\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"alphabet\":\"0123456789\",\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}},\"projections\":{},\"semantics\":\"service/1\"},\"command\":{\"command\":\"create\",\"fields\":{},\"arguments\":{\"label\":\"front door\"}},\"entity\":\"keypad\",\"id\":\"k-1\",\"revision\":1,\"from_state\":null,\"to_state\":\"held\",\"result\":{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":1,\"fields\":{}},\"changed\":{},\"events\":[],\"outcome\":\"made\",\"effect\":\"created\",\"response\":{\"label\":\"front door\"}},{\"definition\":{\"entity\":\"keypad\",\"version\":1,\"schema\":{\"fields\":{\"last\":{\"type\":\"string\",\"required\":false,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"lifecycle\":{\"initial\":\"held\",\"states\":[\"held\"]},\"invariants\":[],\"create\":{\"emit\":null,\"arguments\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"response\":{\"fields\":{\"label\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":3,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"made\",\"effect\":\"creates\",\"responds\":{\"label\":\"$args.label\"}}]},\"operations\":{\"Dial\":{\"arguments\":{\"fields\":{\"keys\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"transitions\":[],\"preconditions\":[],\"set\":{},\"emits\":[],\"response\":{\"fields\":{\"echo\":{\"type\":\"string\",\"required\":true,\"min_length\":null,\"max_length\":null,\"alphabet\":\"0123456789\",\"min\":null,\"max\":null,\"values\":[],\"items\":null,\"properties\":{},\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"acyclic\":null}},\"additional_fields\":false},\"outcomes\":[{\"name\":\"dialled\",\"effect\":\"updates\",\"set\":{\"last\":\"$args.keys\"},\"responds\":{\"echo\":\"$args.keys\"}}]}},\"projections\":{},\"semantics\":\"service/1\"},\"command\":{\"command\":\"execute\",\"operation\":\"Dial\",\"arguments\":{\"keys\":\"12x\"}},\"entity\":\"keypad\",\"id\":\"k-1\",\"revision\":2,\"from_state\":\"held\",\"to_state\":\"held\",\"result\":{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":2,\"fields\":{\"last\":\"12x\"}},\"changed\":{\"last\":\"12x\"},\"events\":[],\"outcome\":\"dialled\",\"effect\":\"updated\",\"response\":{\"echo\":\"12x\"}}]"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.Replay",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.Replay",
+            "declarations": {},
+            "expected": {
+              "status": "ok",
+              "value": "{\"entity\":\"keypad\",\"version\":1,\"id\":\"k-1\",\"lifecycle_state\":\"held\",\"revision\":2,\"fields\":{\"last\":\"12x\"}}"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.Replay",
               "outcome": "returned"
             }
           },

@@ -431,6 +431,7 @@ contract's insertion; the four insertions are 4, 6, 11 and 14 and nothing else m
  12  invariants, against the next state                       InvariantViolation      9
  13  the selected branch's events, in declaration order       Template                10
  14  the selected branch's response, in schema order          Template                new
+     then validated against the declared response            Validation
  15  Evaluation::Accepted(Decision)                           —                       11
 ```
 
@@ -713,10 +714,37 @@ one of them into an event payload or a `sets` entry (`:742-749`). Both halves ne
   argument no field stores — the same reason the creation event payload may, § 2.3. Every accepting
   branch determines every required response field, or `OutcomeResponseIncomplete` refuses the
   definition.
+* **The check (R-169).** Step 14 validates the whole answered map — the `responds` templates and
+  the members `responds_if_present` copies — against the command's declared `response` under the
+  definition's semantics, as step 9 validates the fields. Every offending member is one
+  `ValidationError` at `response.<field>`, accumulated, and the decision is refused as
+  `CoreError::Validation`: no record, no revision, no events, and the caller's instance untouched.
+  It runs after the events, so an invariant (step 12) or an event template (step 13) that also
+  fails answers first. A `responds_if_present` member cannot fail it today, because registration
+  holds each such member to its source argument leaf's complete declaration and step 3 has already
+  checked that leaf; the check reads the final map so that stays true if the rule ever widens.
 * **A refusing branch determines none.** `RefusalMutatesState` covers `responds`, for the same reason
   it covers `emits`.
 * **The record** carries it: `DecisionRecord.response: Option<Map<String, Value>>`, so replay
   recomputes and byte-compares it like every other product of the decision.
+* **Replay recomputes without the check, and only replay.** A record is a decision already
+  answered. Every release before the check answered responses unchecked, so a history can hold a
+  response its schema refuses, and holding its recomputation to the check would strand a history
+  that was honest when it was written. `replay` therefore recomputes each record with the check
+  off (`ResponseCheck::Recorded`, crate-private) and changes nothing else: it still byte-compares
+  the recomputed response with the recorded one, so a recorded response that is not what the
+  branch answers is refused as before. Every public entry point that takes a new decision —
+  `create`, `decide_create`, `execute`, `decide`, `decide_before_load` and the continuations it
+  returns — checks. Measured: with the check also on in replay, a base-recorded history is
+  refused at its first record as `response.label: length 10 exceeds maximum 3`.
+* **The recorded-store verifier recomputes as replay does.** `recompute_create` and
+  `recompute_before_load` are the two public entry points that recompute a recorded decision with
+  the check off; `entity_store::asynchronous::validate_entry_against_state`, which the memory and
+  Eventlog stores use to verify a stored history, calls them, so a stored decision answered before
+  the check still verifies and still byte-compares. The same function is the stores' admission
+  check for a new entry, so an entry a caller builds by hand, outside the kernel, whose response
+  breaks its schema is admitted exactly as before the check; that trade-off is accepted. A decision
+  the kernel takes is checked before any store sees it.
 * **`Decision` gains no key.** A caller reads `decision.record.response`.
 
 A response field the *implementation* determines rather than the model — `ResolvedPayloadValue::Generated`
@@ -1848,6 +1876,15 @@ variant rather than `is_err`. Every row of § 14's coverage table has at least o
 | `a_kernel_1_creation_that_emits_nothing_still_validates_and_still_creates` | § 5.2, no regression |
 | `an_update_branch_keeps_its_state_and_records_updated_without_a_transition` | § 6 |
 | `a_declared_response_is_materialised_from_the_selected_branch_and_replays_byte_for_byte` | § 5.3 |
+| `a_creation_response_outside_its_declared_schema_refuses_the_creation_naming_every_member` | § 5.3, the check on a creation, accumulated at `response.<field>` |
+| `an_operation_response_outside_its_declared_schema_refuses_the_decision_with_the_response_path` | § 5.3, the check on an operation, through `decide` and the prepared continuation |
+| `the_response_is_checked_after_the_invariants` | § 4.2 step 14, § 5.3; fails if the check moves ahead of step 12 |
+| `a_decision_recorded_before_responses_were_checked_still_replays` | § 5.3, the replay exemption over a base-recorded fixture, and the byte comparison it keeps |
+| `a_stored_decision_recorded_before_responses_were_checked_still_verifies` | § 5.3, the recorded-store verifier over the same fixture |
+| `a_stored_response_its_branch_does_not_answer_is_still_refused` | § 5.3, the verifier's byte comparison is kept |
+| `a_file_store_holding_decisions_recorded_before_responses_were_checked_reopens_and_verifies` | § 5.3, an Eventlog file store holding the fixture admits, reopens with complete verification and replays |
+| `a_response_outside_its_declared_alphabet_is_refused_with_its_response_path` | § 5.3, an `alphabet` on a response field |
+| `a_response_longer_than_its_declared_max_length_is_refused_with_its_response_path` | § 5.3, a `max_length` on a response field |
 | `a_branch_that_leaves_a_required_response_field_undetermined_is_refused_at_registration` | § 2.1 `OutcomeResponseIncomplete` |
 | `a_refusing_branch_that_declares_responds_is_refused_at_registration` | § 2.1 `RefusalMutatesState` |
 | `a_creation_branch_emits_zero_one_or_many_events_in_declaration_order` | § 2, event multiplicity |

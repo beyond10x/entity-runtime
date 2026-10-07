@@ -4,8 +4,8 @@ use std::{
 };
 
 use entity_core::{
-    create, decide_before_load, CoreError, DecisionCommand, EntityInstance, LoadedDecision,
-    PreloadDecision, ValidatedDefinition,
+    recompute_before_load, recompute_create, CoreError, DecisionCommand, EntityInstance,
+    LoadedDecision, PreloadDecision, ValidatedDefinition,
 };
 use serde_json::Value;
 
@@ -150,6 +150,9 @@ pub fn validate_entry_against_state(
             let definition = ValidatedDefinition::new(definition).map_err(|error| {
                 corrupt(&subject, format!("saved definition is invalid: {error}"))
             })?;
+            // A stored decision is recomputed as `replay` recomputes one: its response is compared
+            // with the record, not validated against its declared schema, so a decision answered
+            // before responses were checked (R-169) still verifies.
             let recomputed = match (&record.command, current) {
                 // A `service/1` creation is rerun from the **arguments** it was decided on, which
                 // is what re-selects its branch; a `kernel/1` creation's input is its fields and it
@@ -163,7 +166,7 @@ pub fn validate_entry_against_state(
                     } else {
                         fields.clone()
                     };
-                    create(&definition, record.id.clone(), Value::Object(input))
+                    recompute_create(&definition, record.id.clone(), Value::Object(input))
                 }
                 (
                     DecisionCommand::Execute {
@@ -173,7 +176,7 @@ pub fn validate_entry_against_state(
                     },
                     Some(current),
                 ) => (|| {
-                    let prepared = match decide_before_load(
+                    let prepared = match recompute_before_load(
                         &definition,
                         record.id.clone(),
                         operation,

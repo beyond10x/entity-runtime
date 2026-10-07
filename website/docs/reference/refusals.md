@@ -28,7 +28,7 @@ command prints a refusal as JSON on standard output with exit `1`.
 | `revision_exhausted` | another revision cannot be represented | stop; do not wrap or reset the history |
 | `operation_not_found` | the definition declares no such operation | inspect the operations and replan |
 | `invalid_transition` | the operation is not legal from the current state (`state`) | reload and choose a legal operation |
-| `validation` | fields or arguments break their schema (`errors`, each with a `path`) | repair every path |
+| `validation` | fields, arguments or a service response break their schema (`errors`, each with a `path`) | repair every path |
 | `precondition_failed` | the observed facts contradict an operation rule (`rule`, `reason`) | choose another operation or escalate |
 | `precondition_unobservable` | the rule needs facts nobody observed (`unresolved`) | gather every path in `unresolved` |
 | `invariant_violation` | the resulting entity would be invalid | do not bypass it; fix the model or the input |

@@ -1,6 +1,6 @@
 {
   "format": "er-ess-coverage/2",
-  "review": "binder elements carry their declaration: service1-text-count-registration step 6 now registers a text length on a quantifier element; new service1-quantifier-element-declared-kind (text and array elements answer their length, a map element its count member, a union payload stays untyped), service1-quantifier-map-count-recorded-replay (a base record replays) and service1-nested-quantifier-literal-collection (a nested literal in is refused, not a panic)",
+  "review": "merge of the response-check unit after the binder unit: service-responses-must-be-declared-and-complete gains Create, Execute and Replay steps",
   "scenarios": [
     "entity.core.Address/outcome/returned",
     "entity.core.CompareNumbers/outcome/returned",
@@ -612,7 +612,7 @@
     "entity.core/authored/service-map-and-union-declarations-and-outer-values-are-closed": "sha256:e183432674ab7f662a12be8ffb8aa2ef67b464951acf88823ec022bfd6c86b13",
     "entity.core/authored/service-outcome-names-defaults-and-observability": "sha256:69402008f60899a7c56f5cbba670a4e314ccc9fcae90d76d80220c11f51d2b53",
     "entity.core/authored/service-quantifiers-validate-binders-collections-operands-and-depth": "sha256:5443f257b17b75a54e8644f5226b191bd157e5d2b65921af29b5535f5491ee5e",
-    "entity.core/authored/service-responses-must-be-declared-and-complete": "sha256:32238fb7b6f5e6e454e3e547ef6e3fe188c14801b55bffd5ebde26e16baf1181",
+    "entity.core/authored/service-responses-must-be-declared-and-complete": "sha256:b91d01ffd7cef18a71737200b8bd5790088ac7c66b754657bd611b3362f0ce09",
     "entity.core/authored/service-wrong-state-and-effect-declarations-are-closed": "sha256:0ae5e819197c18a407c5d420c6b98bcc8b32281bb6a8b4419252f6ca0510f149",
     "entity.core/authored/service1-adjacent-union-preserves-tag-and-value": "sha256:4ccb32b28f9bfc42c00d008063277ac5f8974ab5049534078387c34b7e8463a3",
     "entity.core/authored/service1-array-ordinal": "sha256:fb29644ef0288a4030f1e48f9ed8c64eab57709b2a62e58fed7d0e92370416f5",

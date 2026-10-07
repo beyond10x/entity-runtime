@@ -5,9 +5,10 @@
 //! `is_err`, which is what makes a renamed message a documentation change rather than a silent one.
 
 use entity_core::{
-    create, decide, execute, rehydrate, replay, CoreError, DecisionCommand, DecisionEffect,
-    DefinitionError, DefinitionErrors, EntityDefinition, EntityInstance, Evaluation, Refusal,
-    Registry, ValidatedDefinition,
+    create, decide, decide_before_load, decide_create, execute, rehydrate, replay, CoreError,
+    DecisionCommand, DecisionEffect, DecisionRecord, DefinitionError, DefinitionErrors,
+    EntityDefinition, EntityInstance, Evaluation, PreloadDecision, Refusal, Registry,
+    ValidatedDefinition, ValidationError,
 };
 use serde_json::{json, Value};
 
@@ -1274,6 +1275,181 @@ fn every_complete_branch_decision_replays_byte_for_byte_from_its_record() {
         .expect("responds")
         .insert("paid_total".to_owned(), json!(99));
     assert!(matches!(replay(&tampered), Err(CoreError::Validation(_))));
+}
+
+// --- § 5.3: the response is checked against its declared schema (R-169) ---------------------------
+
+/// The invoice, with every declared response bounded more tightly than the values it is filled
+/// from can be: `opening_total` and `paid_total` at most five, `notified` at most three characters.
+fn tightly_answered_invoice() -> Value {
+    let mut document = service_invoice();
+    document["create"]["response"]["fields"]["opening_total"]["max"] = json!(5);
+    document["create"]["response"]["fields"]["notified"]["max_length"] = json!(3);
+    document["operations"]["pay"]["response"]["fields"]["paid_total"]["max"] = json!(5);
+    document
+}
+
+/// Step 14 holds a creation's response to `create.response`. Every offending member is named with
+/// its `response.` path in one refusal, so nothing is created; the same creation inside every bound
+/// is answered.
+#[test]
+fn a_creation_response_outside_its_declared_schema_refuses_the_creation_naming_every_member() {
+    let registry = registry_of(tightly_answered_invoice());
+    let definition = registry.get("invoice", 1).expect("registered");
+    assert_eq!(
+        decide_create(
+            definition,
+            "s:INV-1".to_owned(),
+            json!({ "input": { "invoice_id": "INV-1", "amount": 10, "customer_email": "a@b.c" } }),
+        ),
+        Err(CoreError::Validation(vec![
+            ValidationError::new("response.notified", "length 5 exceeds maximum 3"),
+            ValidationError::new("response.opening_total", "value 10 exceeds maximum 5"),
+        ]))
+    );
+    let Ok(Evaluation::Accepted(created)) = decide_create(
+        definition,
+        "s:INV-1".to_owned(),
+        json!({ "input": { "invoice_id": "INV-1", "amount": 4, "customer_email": "a@b" } }),
+    ) else {
+        panic!("a creation answering inside its declared response is accepted");
+    };
+    assert_eq!(
+        created.record.response,
+        json!({ "opening_total": 4, "notified": "a@b" })
+            .as_object()
+            .cloned()
+    );
+}
+
+/// Step 14 holds an operation branch's response to the operation's `response`, through `decide`
+/// and through the prepared continuation a host takes a live decision with alike.
+#[test]
+fn an_operation_response_outside_its_declared_schema_refuses_the_decision_with_the_response_path() {
+    let registry = registry_of(tightly_answered_invoice());
+    let definition = registry.get("invoice", 1).expect("registered");
+    let held = at(
+        "invoice",
+        "s:INV-1",
+        "pending",
+        json!({ "invoice_id": "INV-1", "total": 10 }),
+    );
+    let refusal = Err(CoreError::Validation(vec![ValidationError::new(
+        "response.paid_total",
+        "value 10 exceeds maximum 5",
+    )]));
+    assert_eq!(
+        decide(
+            definition,
+            &held,
+            "pay",
+            json!({ "input": { "amount": 10 } })
+        ),
+        refusal
+    );
+    let PreloadDecision::Load(prepared) = decide_before_load(
+        definition,
+        "s:INV-1",
+        "pay",
+        json!({ "input": { "amount": 10 } }),
+    )
+    .expect("prepares") else {
+        panic!("a positive amount needs the subject");
+    };
+    assert_eq!(prepared.continue_with(&held), refusal);
+
+    let Ok(Evaluation::Accepted(paid)) = decide(
+        definition,
+        &held,
+        "pay",
+        json!({ "input": { "amount": 5 } }),
+    ) else {
+        panic!("a payment answering inside its declared response is accepted");
+    };
+    assert_eq!(
+        paid.record.response,
+        json!({ "paid_total": 5 }).as_object().cloned()
+    );
+}
+
+/// The response check is step 14: after the invariants of step 12, so a decision both would refuse
+/// is answered by the invariant.
+#[test]
+fn the_response_is_checked_after_the_invariants() {
+    let registry = registry_of(tightly_answered_invoice());
+    let definition = registry.get("invoice", 1).expect("registered");
+    let held = at(
+        "invoice",
+        "s:INV-1",
+        "pending",
+        json!({ "invoice_id": "INV-1", "total": 10 }),
+    );
+    assert!(matches!(
+        decide(
+            definition,
+            &held,
+            "pay",
+            json!({ "input": { "amount": 99999 } })
+        ),
+        Err(CoreError::InvariantViolation { ref rule, .. })
+            if rule.as_deref() == Some("total_is_sane")
+    ));
+}
+
+/// The history the base kernel (`eaf50179`) recorded for a creation and an operation whose
+/// responses break their declared `max_length` and `alphabet`: every response was answered
+/// unchecked then. The fixture is that kernel's own output, not a reconstruction.
+fn recorded_before_responses_were_checked() -> Vec<DecisionRecord> {
+    serde_json::from_str(include_str!(
+        "fixtures/responses-recorded-before-they-were-checked.json"
+    ))
+    .expect("the fixture is a list of decision records")
+}
+
+/// A recorded decision is evidence of a decision already answered, so replay recomputes it without
+/// the response check and still byte-compares every product, the response included. A new
+/// decision on the same definition and command is refused.
+#[test]
+fn a_decision_recorded_before_responses_were_checked_still_replays() {
+    let records = recorded_before_responses_were_checked();
+    let rebuilt = replay(&records).expect("a history recorded before the check replays");
+    assert_eq!(rebuilt, records[1].result);
+
+    let definition = ValidatedDefinition::new(records[0].definition.clone().expect("snapshot"))
+        .expect("the snapshot registers");
+    assert_eq!(
+        decide_create(
+            &definition,
+            "k-1".to_owned(),
+            json!({ "label": "front door" })
+        ),
+        Err(CoreError::Validation(vec![ValidationError::new(
+            "response.label",
+            "length 10 exceeds maximum 3"
+        )]))
+    );
+    assert!(matches!(
+        decide(
+            &definition,
+            &records[0].result,
+            "Dial",
+            json!({ "keys": "12x" })
+        ),
+        Err(CoreError::Validation(ref errors)) if errors.len() == 1 && errors[0].path == "response.echo"
+    ));
+
+    // The exemption is the check only: a recorded response that is not what the branch answers
+    // is still refused.
+    let mut tampered = records;
+    tampered[1]
+        .response
+        .as_mut()
+        .expect("responds")
+        .insert("echo".to_owned(), json!("12"));
+    assert!(matches!(
+        replay(&tampered),
+        Err(CoreError::Validation(ref errors)) if errors[0].path == "records[1]"
+    ));
 }
 
 // --- fixtures used above --------------------------------------------------------------------------

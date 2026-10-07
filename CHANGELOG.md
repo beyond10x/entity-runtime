@@ -44,6 +44,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   (`set_assignment_conflict`), each with its path. A cleared field also named in the outcome's
   `set_if_present` or `fulfills` is refused as `conditional_target_conflict` or
   `fulfillment_set_conflict`.
+- `entity_core::recompute_create` and `entity_core::recompute_before_load` recompute a recorded
+  decision the way `replay` does: like `create` and `decide_before_load`, except that a
+  `service/1` response is compared by the caller rather than checked against its declared schema.
+  A verifier of stored decisions uses them; a caller taking a new decision does not.
 
 ### Changed
 
@@ -86,6 +90,16 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   size, an empty array under `0`, and leaves out an instance whose index is past the end. A map
   holding a member named `count` is filed under its size, no longer under that member's value.
   `kernel/1` read models are unchanged, and so is registration.
+- A `service/1` decision's response is checked against the command's declared `response` before
+  the decision is returned. A response member outside its declaration — a text longer than its
+  `max_length` or outside its `alphabet`, a number past its `max`, a wrong kind — refuses the
+  creation or operation as `validation`, naming every offending member at `response.<field>`;
+  before, it was answered and recorded unchecked. A decision recorded before this release whose
+  response breaks its schema still replays through `entity_core::replay` and still verifies in a
+  recorded store: `entity_store::asynchronous::validate_entry_against_state` recomputes a stored
+  decision without the check and still compares its response byte for byte. Because the stores
+  admit a new entry through that same function, an entry built by hand outside the kernel with
+  such a response is admitted as before; a decision the kernel takes is checked.
 
 ### Fixed
 

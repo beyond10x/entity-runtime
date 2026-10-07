@@ -255,14 +255,13 @@ in the `openapi.yaml` generated for `extension.yaml`:
           x-alphabet: '0123456789'
 ```
 
-:::caution[Known limitation]
-
-An alphabet on an operation's declared `response` field is admitted but not enforced: responses are
-not checked against their declared schema yet, for `max_length` either. An operation whose
-response field declares `alphabet: "0123456789"` and responds `"abc"` is accepted. Checking
-responses is planned.
-
-:::
+An alphabet on a declared `response` field holds the value the branch answers, as `max_length` and
+every other constraint there do: the response is checked against its declaration before the
+decision is returned, and a member outside it refuses the creation or operation as `validation`,
+naming each offending member at `response.<field>`. Nothing is recorded. A decision recorded before
+responses were checked, whose response breaks its declaration, still replays, and a recorded store
+holding one still opens and verifies it: both recompute a stored decision without the check and
+compare its response with the recorded one.
 
 ## What each version adds
 
