@@ -1,0 +1,58 @@
+entity: invoice
+version: 1
+semantics: service/1
+identity: { field: invoice_id }
+
+schema:
+  fields:
+    invoice_id: { type: string, required: true }
+    total: { type: integer, required: true }
+
+lifecycle:
+  initial: open
+  states: [open, paid, void]
+
+create:
+  arguments:
+    fields:
+      invoice_id: { type: string, required: true }
+      amount: { type: integer, required: true }
+  outcomes:
+    - name: accepted
+      effect: creates
+      set:
+        invoice_id: $args.invoice_id
+        total: $args.amount
+      emits:
+        - type: InvoiceCreated
+          payload: { invoice_id: $fields.invoice_id }
+
+operations:
+  adjust:
+    arguments:
+      fields:
+        amount: { type: integer, required: true }
+    outcomes:
+      - name: adjusted
+        effect: updates
+        set: { total: $args.amount }
+  pay:
+    outcomes:
+      - name: paid
+        effect:
+          moves:
+            from: open
+            to: paid
+        emits:
+          - type: InvoicePaid
+            payload: { invoice_id: $fields.invoice_id, total: $fields.total }
+      - name: not-open
+        wrong_state: true
+        refuses: { error: InvoiceNotOpen }
+  void:
+    outcomes:
+      - name: voided
+        effect: { moves: { from: [open, paid], to: void } }
+        emits:
+          - type: InvoiceVoided
+            payload: { invoice_id: $fields.invoice_id }

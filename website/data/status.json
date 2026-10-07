@@ -249,6 +249,13 @@
     },
     {
       "area": "Surfaces",
+      "detail": "A service/1 outcome with a moves effect, written as the one-key mapping JSON uses, loads through entity-yaml and the entity command.",
+      "href": "/docs/concepts/service-semantics#named-outcomes",
+      "label": "Moves outcomes in YAML",
+      "status": "shipped"
+    },
+    {
+      "area": "Surfaces",
       "detail": "A build with the eventlog-providers feature provisions and uses an Eventlog File store; no gate step builds that feature.",
       "href": "/docs/reference/cli",
       "label": "Eventlog File through the command",
@@ -329,13 +336,6 @@
       "detail": "A service response checked against its declared fields, including alphabet and max_length.",
       "href": "/docs/concepts/service-semantics#text-length-and-alphabets",
       "label": "Responses checked against their schema",
-      "status": "planned"
-    },
-    {
-      "area": "Planned",
-      "detail": "A service/1 outcome with a moves effect loads through entity-yaml and the entity command.",
-      "href": "/docs/concepts/service-semantics",
-      "label": "Moves outcomes in YAML",
       "status": "planned"
     },
     {
