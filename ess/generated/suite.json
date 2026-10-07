@@ -782,7 +782,7 @@
         "scenario": "entity.core/authored/operation-cannot-change-identity-mirror"
       },
       "scenarios/core/operation-conditional-set-keeps-the-creation-target-rules.yaml": {
-        "digest": "sha256:81b03afe1b21c9ff24a12aa17ac010183ddc14441edcc7dfb92af3b5615e9308",
+        "digest": "sha256:2614c123aa1569033412748dada0f37b35de156597afc3d5ae6d733d06612136",
         "disposition": "accepted",
         "scenario": "entity.core/authored/operation-conditional-set-keeps-the-creation-target-rules"
       },
@@ -24551,7 +24551,7 @@
       ]
     },
     "entity.core/authored/operation-conditional-set-keeps-the-creation-target-rules": {
-      "purpose": "Operation set_if_present keeps the creation target rules: a required target is refused, and so is one also in set or fulfills.",
+      "purpose": "Operation set_if_present keeps the creation target rules, refusing a required target, an overlap with set or fulfills and a defaulted parent.",
       "source": [
         {
           "kind": "domain",
@@ -25404,6 +25404,107 @@
             "expected": {
               "defect_kinds": [
                 "fulfillment_conditional_set_conflict"
+              ],
+              "error_kind": "definition",
+              "status": "error"
+            },
+            "fields": [
+              {
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "name": "value",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "instance",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "events",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "record",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "response",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_kind",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "details",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "outcome",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "error_name",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "requirements",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "subject",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "arguments",
+                "type": "Optional<String>"
+              },
+              {
+                "name": "paths",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "defect_kinds",
+                "type": "Optional<List<String>>"
+              },
+              {
+                "name": "unresolved",
+                "type": "Optional<List<String>>"
+              }
+            ],
+            "outcome": {
+              "command": "entity.core.ValidateDefinition",
+              "outcome": "returned"
+            }
+          },
+          "step": "expect_direct_response"
+        },
+        {
+          "command": "entity.core.ValidateDefinition",
+          "input": {
+            "definition": {
+              "kind": "literal",
+              "value": "{\"entity\":\"probe\",\"semantics\":\"service/2\",\"schema\":{\"fields\":{\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"act\":{\"arguments\":{\"fields\":{\"bound\":{\"type\":\"object\",\"required\":true,\"default\":{\"note\":\"from-default\"},\"properties\":{\"note\":{\"type\":\"string\"}}}}},\"outcomes\":[{\"name\":\"updated\",\"effect\":\"updates\",\"set_if_present\":{\"note\":{\"argument\":\"bound.note\"}}}]}}}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "entity.core.ValidateDefinition",
+            "outcome": "returned"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "response": {
+            "command": "entity.core.ValidateDefinition",
+            "declarations": {},
+            "expected": {
+              "defect_kinds": [
+                "conditional_argument_invalid"
               ],
               "error_kind": "definition",
               "status": "error"

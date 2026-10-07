@@ -1138,6 +1138,7 @@ pub fn decide_before_load<'definition>(
 ///   6  a refusing branch returns here                           Evaluation::Refused
 ///   7  preconditions, against current state + arguments         PreconditionFailed
 ///   8  the selected branch's set, against pre-operation fields  Template
+///      then its set_if_present (service/2 on), from the normalized arguments
 ///   9  resulting fields validated against the schema            Validation
 ///  10  next instance: state from the branch's effect, +1 rev    —
 ///  11  identity mirror, when declared                           IdentityMismatch

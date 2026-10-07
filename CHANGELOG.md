@@ -12,7 +12,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   value or absent. The schema check, invariants, events, response and `changed` read the result,
   and replay reproduces it. The destination keeps the creation rule — a declared optional field
   with no default and the argument leaf's exact definition — so a required field is refused as the
-  destination on an operation too. `kernel/1` and `service/1` still refuse the key.
+  destination on an operation too. No parent on the operation map's argument path may declare a
+  default, since normalization would then make the leaf present for a caller who sent none; such a
+  definition is refused as `conditional_argument_invalid`. `kernel/1` and `service/1` still refuse
+  the key.
 - A `service/3` outcome naming one field in both `fulfills` and `set_if_present` is refused at
   registration as `DefinitionError::FulfillmentConditionalSetConflict`
   (`fulfillment_conditional_set_conflict`).

@@ -40,7 +40,8 @@ pub enum OperationFieldAction {
 ```
 
 Registration permits `fulfills` only on accepting operation outcomes, rejects a key also present in
-`set`, rejects unknown fields and the identity field, and requires `Required` versus `Optional` to
+`set` or in `set_if_present` (the second since issue 54, as `FulfillmentConditionalSetConflict`),
+rejects unknown fields and the identity field, and requires `Required` versus `Optional` to
 equal the target field's outer presence. `Required` admits `Set` and `Preserve`; `Optional` admits
 all three actions. `Set` validates against the exact target `FieldDefinition`; `Remove` on a required
 field is a typed refusal. There is no user-supplied field name or schema in the invocation.

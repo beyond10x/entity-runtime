@@ -1,6 +1,6 @@
 {
   "format": "er-ess-coverage/2",
-  "review": "Issue 54: an operation outcome writes an optional field from an optional argument. The last step of conditional-presence-registration-requires-one-typed-optional-leaf now admits the operation map instead of asserting conditional_set_on_operation; new scenarios service2-operation-presence-present, service2-operation-presence-absent, returned-service2-operation-decisions-replay-and-reject-tampering and operation-conditional-set-keeps-the-creation-target-rules",
+  "review": "Issue 54 correction: operation-conditional-set-keeps-the-creation-target-rules adds a step refusing an operation set_if_present whose required argument parent declares a default, since the default would make the leaf present for a caller who sent none",
   "scenarios": [
     "entity.core.Address/outcome/returned",
     "entity.core.CompareNumbers/outcome/returned",
@@ -554,7 +554,7 @@
     "entity.core/authored/numeric-underflow-remains-stored": "sha256:795b01dcb230ac23f24c3134e417ba9f444001f9989b617bcbad567dd24b8c3d",
     "entity.core/authored/numeric-wire-and-literal-doors": "sha256:f5a884cb4ad873d1bb6962449151f071b5cc83ed0061f4ae10b08b22c6630ce2",
     "entity.core/authored/operation-cannot-change-identity-mirror": "sha256:898411b9a65991b7d26c580e36c4ca46a4809e9732c952b9e1c3c57c2cc6bd45",
-    "entity.core/authored/operation-conditional-set-keeps-the-creation-target-rules": "sha256:db754ddbc273d08ef0c427644c1d63667d273fe5e64236daf8b010a42b8b97db",
+    "entity.core/authored/operation-conditional-set-keeps-the-creation-target-rules": "sha256:249d28c697656fc9c45565c375ae5d295293b20bccd654bf556f1cfb5cb5a4bd",
     "entity.core/authored/owns-carriers-are-required-on-the-target": "sha256:ca1c8b524b8dad6fe7e672a419b5e71b6805cc5dfdad37f73c117cb5ae294cae",
     "entity.core/authored/post-set-fields-are-revalidated": "sha256:a084e06c0ba4805b949a463536d66dde6827f6b5e183f43934fd573c5a3d8a9d",
     "entity.core/authored/precondition-cannot-read-next-state": "sha256:af2c83a3c6d4fdcfa6ad5199716ab54206db08a8dad9303f5ca34962d8dd9b98",

@@ -324,6 +324,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 &path,
                 &definition.create.arguments,
                 &definition.create.response,
+                ParentDefaults::Unchecked,
             ));
         }
     }
@@ -469,6 +470,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 &path,
                 &operation.arguments,
                 &operation.response,
+                ParentDefaults::Refused,
             ));
             defects.extend(validate_fulfillment_outcome(
                 definition,
@@ -628,6 +630,7 @@ fn validate_conditional_outcome(
     path: &str,
     arguments: &ObjectSchema,
     response: &ObjectSchema,
+    set_parents: ParentDefaults,
 ) -> Vec<DefinitionError> {
     let mut defects = Vec::new();
     if !definition.semantics.has_conditional_presence() {
@@ -658,7 +661,8 @@ fn validate_conditional_outcome(
 
     for (field, source) in &outcome.set_if_present {
         let member_path = format!("{path}.set_if_present.{field}");
-        let leaf = validate_present_argument(arguments, &member_path, source, &mut defects);
+        let leaf =
+            validate_present_argument(arguments, &member_path, source, set_parents, &mut defects);
         if outcome.set.contains_key(field) {
             defects.push(DefinitionError::ConditionalTargetConflict {
                 path: format!("{path}.set_if_present"),
@@ -681,7 +685,13 @@ fn validate_conditional_outcome(
 
     for (field, source) in &outcome.responds_if_present {
         let member_path = format!("{path}.responds_if_present.{field}");
-        let leaf = validate_present_argument(arguments, &member_path, source, &mut defects);
+        let leaf = validate_present_argument(
+            arguments,
+            &member_path,
+            source,
+            ParentDefaults::Unchecked,
+            &mut defects,
+        );
         if outcome.responds.contains_key(field) {
             defects.push(DefinitionError::ConditionalTargetConflict {
                 path: format!("{path}.responds_if_present"),
@@ -734,6 +744,7 @@ fn validate_conditional_event(
             arguments,
             &format!("{event_path}.{field}"),
             source,
+            ParentDefaults::Unchecked,
             &mut defects,
         );
         if field.trim().is_empty() {
@@ -761,13 +772,28 @@ fn validate_conditional_event(
     defects
 }
 
+/// Whether a conditional source path may cross a parent that declares a default.
+///
+/// A defaulted parent is materialized for a caller who omits it, and with it any leaf its default
+/// carries, so the caller no longer decides the leaf's presence.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ParentDefaults {
+    /// Not checked. Every map an earlier release admitted keeps this, so a definition it registered
+    /// still registers; tightening those maps is a change of its own.
+    Unchecked,
+    /// Refused, for an operation's `set_if_present`: there an absent leaf leaves the field as it
+    /// was, which a parent default would turn into an overwrite nobody asked for.
+    Refused,
+}
+
 fn validate_present_argument<'a>(
     schema: &'a ObjectSchema,
     path: &str,
     source: &PresentArgument,
+    parents: ParentDefaults,
     defects: &mut Vec<DefinitionError>,
 ) -> Option<&'a FieldDefinition> {
-    match present_argument_leaf(schema, &source.argument) {
+    match present_argument_leaf(schema, &source.argument, parents) {
         Ok(leaf) => Some(leaf),
         Err(message) => {
             defects.push(DefinitionError::ConditionalArgumentInvalid {
@@ -783,6 +809,7 @@ fn validate_present_argument<'a>(
 fn present_argument_leaf<'a>(
     schema: &'a ObjectSchema,
     argument: &str,
+    parents: ParentDefaults,
 ) -> Result<&'a FieldDefinition, String> {
     if argument.is_empty() || argument.contains('$') {
         return Err("the path is nonempty and is written below `$args`, without `$`".to_owned());
@@ -824,6 +851,13 @@ fn present_argument_leaf<'a>(
         if field.kind != FieldKind::Object || field.additional_properties {
             return Err(format!(
                 "parent '{segment}' is not a declared closed object"
+            ));
+        }
+        if parents == ParentDefaults::Refused && !matches!(field.default, DeclaredDefault::Absent) {
+            return Err(format!(
+                "parent '{segment}' declares a default, which normalization materializes for a \
+                 caller who omits it; on an operation the leaf would then be present although \
+                 the caller sent none, and the field would not be left as it was"
             ));
         }
         fields = &field.properties;

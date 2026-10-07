@@ -1086,6 +1086,47 @@ fn an_operation_set_if_present_keeps_the_creation_target_rules_and_admits_no_req
 }
 
 #[test]
+fn an_operation_set_if_present_refuses_an_argument_parent_that_declares_a_default() {
+    // At any depth: a defaulted parent is materialized for a caller who omits it, and with it any
+    // leaf its default carries, so the caller would no longer decide whether the field is written.
+    let deep = |document: &mut Value| {
+        document["operations"]["act"]["arguments"]["fields"]["bound"]["properties"] = json!({
+            "inner": { "type": "object", "required": true, "default": {"note": "from-default"},
+                "properties": { "note": { "type": "string" } } }
+        });
+        document["operations"]["act"]["outcomes"][0]["set_if_present"]["note"]["argument"] =
+            json!("bound.inner.note");
+    };
+    let top = |document: &mut Value| {
+        document["operations"]["act"]["arguments"]["fields"]["bound"]["default"] =
+            json!({"note": "from-default"});
+    };
+    for (case, mutate, argument, parent) in [
+        ("top", &top as &dyn Fn(&mut Value), "bound.note", "bound"),
+        ("deep", &deep, "bound.inner.note", "inner"),
+    ] {
+        let mut document = operation_target_definition();
+        mutate(&mut document);
+        let defects = ValidatedDefinition::new(definition(document)).unwrap_err();
+        match defects.as_slice() {
+            [DefinitionError::ConditionalArgumentInvalid {
+                path,
+                argument: refused,
+                message,
+            }] => {
+                assert_eq!(path, "operations.act.outcomes.updated.set_if_present.note");
+                assert_eq!(refused, argument);
+                assert!(
+                    message.contains(&format!("parent '{parent}' declares a default")),
+                    "{case}: {message}"
+                );
+            }
+            other => panic!("{case}: expected one ConditionalArgumentInvalid, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn a_field_named_in_both_fulfills_and_set_if_present_of_one_outcome_is_refused_at_registration() {
     let mut document = operation_target_definition();
     document["semantics"] = json!("service/3");

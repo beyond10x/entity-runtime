@@ -422,6 +422,7 @@ contract's insertion; the four insertions are 4, 6, 11 and 14 and nothing else m
   6  a refusing branch returns here                           Evaluation::Refused     new
   7  preconditions, against current state + arguments         PreconditionFailed      5
   8  the selected branch's set, against pre-operation fields  Template                6
+     then its set_if_present (service/2 on), from the normalized arguments
   9  resulting fields validated against the schema            Validation              7
  10  next instance: state from the branch's effect, +1 rev    —                       8
  11  identity mirror, when declared                           IdentityMismatch        new
