@@ -258,9 +258,13 @@ carry a non-empty `removed`. `DecisionRecord` is one type under every record fra
 reader of this release decodes it; a reader built before `removed` existed (0.19.0) refuses such a
 record by its closed key set, but `DomainEvent` has no closed key set and such a reader drops an
 event's `removed` unread, so its event fold (0.17.x) returns the cleared field still present. From
-0.19.0 to 0.29.0 the fold refuses removal evidence on every `kernel/1` event. Whether the
-`er.record/1` to `/3` framings should take a new version for the key is the store's question
-(`record_domain`), and is open.
+0.19.0 to 0.29.0 the fold refuses removal evidence on every `kernel/1` event. **The `er.record/1`
+to `/3` framings take no new version for the key.** `removed` is written only when it is not empty,
+so every record without a clear keeps its bytes; a record with one adds a key every reader since
+0.19.0 decodes, and 0.29.0's verifying paths (replay, `rehydrate`, recorded verification) refuse
+it, which is the refusal a new framing would give one step earlier. A new framing would also have
+to be chosen per record from its content, where `record_domain` chooses by the definition's
+semantics. 0.29.0's unverified `FileStore` reads return such a record with the state it records.
 
 **An older build decides a clear differently.** A build without this keyword (0.29.0 and earlier)
 reads `{cleared: true}` as an object template. On a field whose schema does not admit the literal
