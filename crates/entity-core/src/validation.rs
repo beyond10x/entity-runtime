@@ -165,9 +165,9 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
     // A projection naming a field the schema does not have, or a state the lifecycle does not
     // declare, is refused where it is written rather than producing an empty read model at run time
     // — an index that is silently always empty is the hardest kind of wrong to notice. The store
-    // resolves a key by walking object members only, so a text's length is refused as a key. The
-    // array and map forms are not: earlier releases registered them, and replay re-validates every
-    // recorded definition, so they still register and project nothing.
+    // resolves a key as the kernel reads the same address, except a text's length (R-167), so a
+    // text's length is refused as a key. The array and map forms register as they always have, and
+    // the store files each instance under the value the kernel reads for them.
     for (name, projection) in &definition.projections {
         let path = format!("projections.{name}");
         defects.check(
@@ -1374,8 +1374,8 @@ enum Reader {
     /// The kernel's walk from a quantifier's binder, which reads the element without its
     /// declaration, so a text's length resolves to nothing.
     Binder,
-    /// The store's projection key walk (`entity-store` `key_of`), which reads object members only,
-    /// so a text's length resolves to nothing.
+    /// The store's projection key walk (`entity-store` `key_of`), which reads every address the
+    /// kernel's walk from a schema root reads except a text's length, so that resolves to nothing.
     Projection,
 }
 
