@@ -11,3 +11,13 @@ scenarios:
   - scenarios/unchanged-head-event-tamper.yaml
   - scenarios/unchanged-head-identity-tamper.yaml
   - scenarios/unchanged-head-projection-tamper.yaml
+  - scenarios/bounded-answers-equal-complete-answers.yaml
+  - scenarios/checkpoint-ahead-of-head-refuses-until-discarded.yaml
+  - scenarios/checkpoint-current-blob-tamper.yaml
+  - scenarios/checkpoint-current-delete-blob-tamper.yaml
+  - scenarios/checkpoint-current-event-tamper.yaml
+  - scenarios/checkpoint-current-identity-tamper.yaml
+  - scenarios/checkpoint-current-projection-tamper.yaml
+  - scenarios/foreign-write-before-checkpoint-yields-complete-open.yaml
+  - scenarios/open-after-appends-verifies-only-the-suffix.yaml
+  - scenarios/tampered-checkpoint-falls-back-to-complete.yaml
