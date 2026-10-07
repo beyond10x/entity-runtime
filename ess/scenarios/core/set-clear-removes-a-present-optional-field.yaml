@@ -1,0 +1,41 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "set-clear-removes-a-present-optional-field",
+  "summary": "{cleared: true} removes a present optional field under kernel/1 and a service/1 outcome, defaulted fields included.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"reminder\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"snoozed_until\":{\"type\":\"string\"},\"priority\":{\"type\":\"integer\",\"default\":3}}},\"lifecycle\":{\"initial\":\"Active\",\"states\":[\"Active\"]},\"operations\":{\"wake\":{\"transitions\":[{\"from\":\"Active\",\"to\":\"Active\"}],\"set\":{\"snoozed_until\":{\"cleared\":true},\"priority\":{\"cleared\":true}},\"emits\":[{\"type\":\"Woken\",\"payload\":{\"was\":\"$old_fields.snoozed_until\",\"now\":\"$fields\"}}]}}}",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":1,\"fields\":{\"priority\":3,\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"}}",
+        "operation": "wake",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":2,\"fields\":{\"title\":\"call back\"}}",
+        "events": "[{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":2,\"type\":\"Woken\",\"from_state\":\"Active\",\"to_state\":\"Active\",\"changed\":{},\"removed\":[\"priority\",\"snoozed_until\"],\"args\":{},\"payload\":{\"now\":{\"title\":\"call back\"},\"was\":\"2026-10-08T09:00:00Z\"}}]"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"reminder\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"snoozed_until\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Active\",\"states\":[\"Active\"]},\"operations\":{\"wake\":{\"outcomes\":[{\"name\":\"woken\",\"effect\":\"updates\",\"set\":{\"snoozed_until\":{\"cleared\":true}},\"emits\":[{\"type\":\"Woken\",\"payload\":{\"was\":\"$old_fields.snoozed_until\"}}]}]}}}",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":4,\"fields\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"}}",
+        "operation": "wake",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "outcome": "woken",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":5,\"fields\":{\"title\":\"call back\"}}",
+        "events": "[{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":5,\"type\":\"Woken\",\"from_state\":\"Active\",\"to_state\":\"Active\",\"changed\":{},\"removed\":[\"snoozed_until\"],\"args\":{},\"payload\":{\"was\":\"2026-10-08T09:00:00Z\"}}]"
+      }
+    }
+  ]
+}

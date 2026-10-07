@@ -1,0 +1,106 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "set-clear-replays-to-the-execute-bytes",
+  "summary": "A cleared field replays and rehydrates to the instance execute returned; other removal evidence is refused.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Create",
+      "input": {
+        "definition": "{\"entity\":\"reminder\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"snoozed_until\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Active\",\"states\":[\"Active\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"title\":\"$fields.title\"}}},\"operations\":{\"wake\":{\"transitions\":[{\"from\":\"Active\",\"to\":\"Active\"}],\"set\":{\"snoozed_until\":{\"cleared\":true}},\"emits\":[{\"type\":\"Woken\",\"payload\":{\"was\":\"$old_fields.snoozed_until\"}}]}}}",
+        "id": "r-1",
+        "fields": "{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":1,\"fields\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"}}",
+        "events": "[{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Active\",\"changed\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"},\"args\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"},\"payload\":{\"title\":\"call back\"}}]"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"reminder\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"snoozed_until\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Active\",\"states\":[\"Active\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"title\":\"$fields.title\"}}},\"operations\":{\"wake\":{\"transitions\":[{\"from\":\"Active\",\"to\":\"Active\"}],\"set\":{\"snoozed_until\":{\"cleared\":true}},\"emits\":[{\"type\":\"Woken\",\"payload\":{\"was\":\"$old_fields.snoozed_until\"}}]}}}",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":1,\"fields\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"}}",
+        "operation": "wake",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":2,\"fields\":{\"title\":\"call back\"}}",
+        "events": "[{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":2,\"type\":\"Woken\",\"from_state\":\"Active\",\"to_state\":\"Active\",\"changed\":{},\"removed\":[\"snoozed_until\"],\"args\":{},\"payload\":{\"was\":\"2026-10-08T09:00:00Z\"}}]"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:02Z",
+      "command": "entity.core.ReplayReturned",
+      "input": {},
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":2,\"fields\":{\"title\":\"call back\"}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:03Z",
+      "command": "entity.core.ReplayTampered",
+      "input": {
+        "patch": "{\"removed\":[]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:04Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"reminder\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"snoozed_until\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Active\",\"states\":[\"Active\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"title\":\"$fields.title\"}}},\"operations\":{\"wake\":{\"transitions\":[{\"from\":\"Active\",\"to\":\"Active\"}],\"set\":{\"snoozed_until\":{\"cleared\":true}},\"emits\":[{\"type\":\"Woken\",\"payload\":{\"was\":\"$old_fields.snoozed_until\"}}]}}}",
+        "events": "[{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Active\",\"changed\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"},\"args\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"},\"payload\":{\"title\":\"call back\"}},{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":2,\"type\":\"Woken\",\"from_state\":\"Active\",\"to_state\":\"Active\",\"changed\":{},\"removed\":[\"snoozed_until\"],\"args\":{},\"payload\":{\"was\":\"2026-10-08T09:00:00Z\"}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "value": "{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"lifecycle_state\":\"Active\",\"revision\":2,\"fields\":{\"title\":\"call back\"}}"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:05Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"reminder\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"snoozed_until\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Active\",\"states\":[\"Active\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"title\":\"$fields.title\"}}},\"operations\":{\"wake\":{\"transitions\":[{\"from\":\"Active\",\"to\":\"Active\"}],\"set\":{\"snoozed_until\":{\"cleared\":true}},\"emits\":[{\"type\":\"Woken\",\"payload\":{\"was\":\"$old_fields.snoozed_until\"}}]}}}",
+        "events": "[{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Active\",\"changed\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"},\"args\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"},\"payload\":{\"title\":\"call back\"}},{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":2,\"type\":\"Woken\",\"from_state\":\"Active\",\"to_state\":\"Active\",\"changed\":{},\"args\":{},\"payload\":{\"was\":\"2026-10-08T09:00:00Z\"}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "events"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:06Z",
+      "command": "entity.core.Rehydrate",
+      "input": {
+        "definition": "{\"entity\":\"reminder\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"snoozed_until\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Active\",\"states\":[\"Active\"]},\"create\":{\"emit\":{\"type\":\"Opened\",\"payload\":{\"title\":\"$fields.title\"}}},\"operations\":{\"wake\":{\"transitions\":[{\"from\":\"Active\",\"to\":\"Active\"}],\"set\":{\"snoozed_until\":{\"cleared\":true}},\"emits\":[{\"type\":\"Woken\",\"payload\":{\"was\":\"$old_fields.snoozed_until\"}}]}}}",
+        "events": "[{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":1,\"type\":\"Opened\",\"from_state\":null,\"to_state\":\"Active\",\"changed\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"},\"args\":{\"snoozed_until\":\"2026-10-08T09:00:00Z\",\"title\":\"call back\"},\"payload\":{\"title\":\"call back\"}},{\"entity\":\"reminder\",\"version\":1,\"id\":\"r-1\",\"revision\":2,\"type\":\"Woken\",\"from_state\":\"Active\",\"to_state\":\"Active\",\"changed\":{},\"removed\":[\"snoozed_until\",\"title\"],\"args\":{},\"payload\":{\"was\":\"2026-10-08T09:00:00Z\"}}]"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "validation",
+        "paths": [
+          "events"
+        ]
+      }
+    }
+  ]
+}

@@ -209,6 +209,12 @@ scenarios:
   - scenarios/core/service3-fulfillment-remove-required.yaml
   - scenarios/core/service3-fulfillment-set-remove.yaml
   - scenarios/core/service3-refusal-needs-no-loaded-instance.yaml
+  - scenarios/core/set-clear-event-templates-see-the-field-absent.yaml
+  - scenarios/core/set-clear-invariants-judge-the-cleared-fields.yaml
+  - scenarios/core/set-clear-of-an-absent-field-is-recorded-removed.yaml
+  - scenarios/core/set-clear-registration-refusals.yaml
+  - scenarios/core/set-clear-removes-a-present-optional-field.yaml
+  - scenarios/core/set-clear-replays-to-the-execute-bytes.yaml
   - scenarios/core/set-increment-adds-a-literal.yaml
   - scenarios/core/set-increment-adds-an-argument.yaml
   - scenarios/core/set-increment-overflow-is-refused.yaml

@@ -1,0 +1,39 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "set-clear-event-templates-see-the-field-absent",
+  "summary": "Event templates after set see a cleared field as absent: $fields omits it, $old_fields holds it, and reading it refuses as template.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"memo\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"strip\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"note\":{\"cleared\":true}},\"emits\":[{\"type\":\"Stripped\",\"payload\":{\"before\":\"$old_fields\",\"after\":\"$fields\",\"note_was\":\"$old_fields.note\"}}]}}}",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"note\":\"draft\",\"title\":\"T\"}}",
+        "operation": "strip",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "ok",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":4,\"fields\":{\"title\":\"T\"}}",
+        "events": "[{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"revision\":4,\"type\":\"Stripped\",\"from_state\":\"Open\",\"to_state\":\"Open\",\"changed\":{},\"removed\":[\"note\"],\"args\":{},\"payload\":{\"after\":{\"title\":\"T\"},\"before\":{\"note\":\"draft\",\"title\":\"T\"},\"note_was\":\"draft\"}}]"
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.Execute",
+      "input": {
+        "definition": "{\"entity\":\"memo\",\"version\":1,\"schema\":{\"fields\":{\"title\":{\"type\":\"string\",\"required\":true},\"note\":{\"type\":\"string\"}}},\"lifecycle\":{\"initial\":\"Open\",\"states\":[\"Open\"]},\"operations\":{\"strip\":{\"transitions\":[{\"from\":\"Open\",\"to\":\"Open\"}],\"set\":{\"note\":{\"cleared\":true}},\"emits\":[{\"type\":\"Stripped\",\"payload\":{\"note\":\"$fields.note\"}}]}}}",
+        "instance": "{\"entity\":\"memo\",\"version\":1,\"id\":\"m-1\",\"lifecycle_state\":\"Open\",\"revision\":3,\"fields\":{\"note\":\"draft\",\"title\":\"T\"}}",
+        "operation": "strip",
+        "arguments": "{}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "template"
+      }
+    }
+  ]
+}
