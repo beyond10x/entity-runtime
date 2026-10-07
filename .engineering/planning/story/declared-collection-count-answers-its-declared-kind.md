@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:declared-collection-count-answers-its-declared-kind
 kind: story
-status: active
+status: implemented
 title: A declared collection answers count only for its declared kind
 owner: entity-runtime
 relations:
@@ -29,10 +29,11 @@ scope:
   path: ess/generated/suite.json
 - confidence: inferred
   path: ess/scenarios/core/service1-collection-count-declared-kind.yaml
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-07T09:15:41Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-07T09:15:41Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-10-07T13:09:32Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"verification":1}}}
 ---
 # A declared collection answers count only for its declared kind
 

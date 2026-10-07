@@ -13,7 +13,7 @@ relations:
 - designs: story:projection-keys-read-collection-addresses
 - designs: story:service-1-moves-outcome-loads-from-yaml
 - designs: story:service-response-is-checked-against-its-schema
-revision: 3
+revision: 4
 ---
 # Wave: six filed defects
 
@@ -113,3 +113,13 @@ and the opening commit were redone through the bot (`bc12d5a2`, `431ff369`).
 Agent cost (tokens, tool uses, minutes): U1 158,592 / 81 / 15; U2 200,332 / 23 / 3 (plus a run cut
 by a rate limit); U3 210,033 / 21 / 3 (plus a cut run); U4 158,122 / 78 / 14; U5 251,924 / 123 / 18
 and 346,536 / 207 / 30; U6 299,003 / 184 / 20 and 333,244 / 215 / 24.
+
+## Gate
+
+Full `task check` on `99530d34` (the release commit) in this tree's own `target/`, each step alone,
+private `TMPDIR`, under the 10 s disk watchdog (process group 4074180, read from the process table
+because the runner did not yet print it; 0 stops); `/` had 74,643 MiB free at the start and 60,468
+MiB after. fmt-check 0, clippy 0, test 0 (773 passed), doc-check 0, docs-check 0, example-check 0,
+req-check 0 (134 requirements, 0 findings), pin-check 0, postgres-check 0 (**skipped**:
+`ENTITY_POSTGRES_URL` unset; CI runs it), eventlog-runtime-check 0 (233 passed, 7 ignored;
+`recorded_responses` ran), notes-check 0, ess-check 0 (456/456), provider-ess-check 0 (31/31).

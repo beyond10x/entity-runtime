@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:service-response-is-checked-against-its-schema
 kind: story
-status: active
+status: implemented
 title: A service response is checked against its declared schema
 owner: entity-runtime
 relations:
@@ -45,10 +45,11 @@ scope:
   path: website/docs/concepts/service-semantics.md
 - confidence: inferred
   path: website/docs/status.md
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-07T09:15:44Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-07T09:15:45Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-10-07T13:09:33Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"verification":1}}}
 ---
 # A service response is checked against its declared schema
 

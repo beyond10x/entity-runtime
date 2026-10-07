@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:generated-yaml-contracts-write-numbers
 kind: story
-status: active
+status: implemented
 title: Generated YAML contracts write numbers as numbers
 owner: entity-runtime
 relations:
@@ -16,10 +16,11 @@ scope:
   path: crates/entity-surface/src/lib.rs
 - confidence: inferred
   path: docs/requirements.md
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-07T09:15:42Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-07T09:15:42Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-10-07T13:09:33Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"verification":1}}}
 ---
 # Generated YAML contracts write numbers as numbers
 
