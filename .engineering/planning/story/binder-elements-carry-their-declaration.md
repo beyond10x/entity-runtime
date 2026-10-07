@@ -40,7 +40,7 @@ scope:
   path: ess/scenarios/core/service1-text-count-registration.yaml
 - confidence: cited
   path: website/docs/concepts/service-semantics.md
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-07T09:15:40Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-07T09:15:40Z", actor: "human:timo", revision: 6}
@@ -112,3 +112,11 @@ from the story or the tree) or **inferred** (a reading that could be wrong).
 - Whether changing the map-element answer is acceptable for replay of decisions already recorded; the acceptance does not say.
 - Whether the run time shares `validation.rs`'s `field_at`/`collection_element` or gets its own walk.
 - R-160/R-161 amended or a new row; new scenario file names.
+
+## Split, 2026-10-07
+
+The unit found that reading a declared map element by its size under a binder changes the answer
+of decisions the 0.29.0 kernel recorded (a member named `count` and members reached through a union
+payload), so they stop replaying. Decided: this story ships the declaration-carrying binder and the
+lifted text-length refusal, and keeps a declared map under a binder read by its members;
+`story:binder-map-elements-read-their-size` owns the size reading and its replay-safe mechanism.
