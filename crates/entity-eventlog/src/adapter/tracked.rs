@@ -188,6 +188,12 @@ impl EventlogRecordedStore {
                     return Ok(Tracked::Rows(cache.serial));
                 }
                 (TenantCaptureUpdate::AppendDelta { checkpoint, delta }, Some(Ok(suffix))) => {
+                    // A verified delta that carries nothing of this tenant is the provider saying
+                    // another tenant of the same file wrote: the rows a read took stay the
+                    // verified ones, so the confirmation serial does not move.
+                    let moved = !delta.events.is_empty()
+                        || !delta.blobs.is_empty()
+                        || delta.projections.iter().any(|p| !p.rows.is_empty());
                     self.install_suffix(&delta, &suffix)?;
                     cache.floor = cache.floor.max(suffix.last_position);
                     cache.bounded = Some(Bounded {
@@ -197,7 +203,9 @@ impl EventlogRecordedStore {
                         usage: suffix.usage,
                     });
                     cache.generation = next_generation;
-                    cache.serial = cache.serial.wrapping_add(1);
+                    if moved {
+                        cache.serial = cache.serial.wrapping_add(1);
+                    }
                     return Ok(Tracked::Rows(cache.serial));
                 }
                 (TenantCaptureUpdate::AppendDelta { .. }, _) => {

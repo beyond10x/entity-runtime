@@ -291,7 +291,17 @@ struct Interposing<B> {
     /// Runs once just before the snapshot generation is read: another process's write to the
     /// open checkpoint landing inside a drain's check-then-write.
     snapshot_hook: Mutex<Option<SnapshotHook>>,
+    /// Runs before every read of a row of the named index, up to a count: a concurrent writer
+    /// that commits during each attempt of a read.
+    rival: Mutex<Option<RivalHook>>,
 }
+
+/// The index a rival waits for, how many more times it runs, and what it does.
+type RivalHook = (
+    &'static str,
+    usize,
+    Arc<dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>,
+);
 
 /// The index a row hook waits for, and the hook.
 type RowHook = (&'static str, Box<dyn FnOnce() + Send>);
@@ -305,7 +315,22 @@ impl<B> Interposing<B> {
             inner,
             hook: Mutex::new(None),
             snapshot_hook: Mutex::new(None),
+            rival: Mutex::new(None),
         }
+    }
+
+    /// Runs `rival` before each of the next `times` reads of a row of the index `projection`.
+    fn arm_rival(
+        &self,
+        projection: &'static str,
+        times: usize,
+        rival: Arc<
+            dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+                + Send
+                + Sync,
+        >,
+    ) {
+        *self.rival.lock().expect("rival") = Some((projection, times, rival));
     }
 
     fn arm(&self, hook: impl FnOnce() + Send + 'static) {
@@ -496,6 +521,19 @@ impl<B: EventlogBackend> EventStore for Interposing<B> {
             };
             if let Some((_, hook)) = hook {
                 hook();
+            }
+            let rival = {
+                let mut armed = self.rival.lock().expect("rival");
+                match armed.as_mut() {
+                    Some((name, times, rival)) if *name == projection.name && *times > 0 => {
+                        *times -= 1;
+                        Some(Arc::clone(rival))
+                    }
+                    _ => None,
+                }
+            };
+            if let Some(rival) = rival {
+                rival().await;
             }
             self.inner.projection_get(projection, tenant, key).await
         })
@@ -1074,6 +1112,225 @@ fn a_discard_landing_inside_a_live_handles_drain_is_overwritten_as_documented() 
              compare-and-set, so a discard run while a handle is live and landing inside its \
              drain is overwritten by that drain (wrote: {wrote}, next open {:?})",
             next.open_verification()
+        );
+    });
+}
+
+/// A second authority, in another tenant of the same SQLite file and prefix.
+fn provisioned_tenant(path: &Path, tenant: &str) -> Authority {
+    let mut facade = RecordedProviderFacade::provision(
+        registry(),
+        EventlogRecordedStoreProvisioner::Sqlite {
+            path: path.to_string_lossy().into_owned(),
+            prefix: PREFIX.to_owned(),
+            authority: ProvisionAuthority {
+                logical_scope: format!("{tenant}-scope"),
+                tenant: tenant.to_owned(),
+                expected_stream_identity: None,
+            },
+            limits: LIMITS,
+        },
+        context(&format!("provision-{tenant}")),
+        bridge(),
+    )
+    .expect("a second tenant is provisioned in the same file");
+    let authority = facade.authority().clone();
+    assert_eq!(
+        facade.shutdown(ShutdownMode::Drain, CallWait::Forever),
+        ShutdownOutcome::Joined { provider: Ok(()) }
+    );
+    authority
+}
+
+/// An honest writer, on its own provider handle, that touches `subject` of `authority` once per
+/// call, each at the next revision.
+fn honest_rival(
+    store: Arc<EventlogRecordedStore>,
+    subject: &'static str,
+    first_revision: u64,
+    commits: Arc<std::sync::atomic::AtomicU64>,
+) -> Arc<dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>
+{
+    Arc::new(move || {
+        let store = Arc::clone(&store);
+        let commits = Arc::clone(&commits);
+        Box::pin(async move {
+            let made = commits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let revision = first_revision + made;
+            let record = format!("rival-{subject}-{revision}");
+            run(
+                &store,
+                &record,
+                vec![execute(subject, revision, "touch", &record)],
+            )
+            .await;
+        })
+    })
+}
+
+/// The correction's loop under writes that never stop: "after `CONFIRMATIONS` attempts that each
+/// overlapped a write, one complete verification answers it". An honest writer of the same tenant
+/// commits during every row read. The read must end, cost exactly one complete verification, and
+/// answer what that verification holds: what a `FullVerification` handle reads afterwards.
+#[test]
+fn a_bounded_read_overlapped_by_a_write_on_every_attempt_ends_in_one_complete_verification() {
+    let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("directory");
+    let path: PathBuf = directory.path().join("store.sqlite3");
+    block_on(async {
+        let (authority, _) = two_revisions(&path).await;
+        checkpoint(&path, &authority).await;
+        let backend = Arc::new(Interposing::new(attached(&path).await));
+        let store = EventlogRecordedStore::open_with_policy(
+            backend.clone(),
+            authority.clone(),
+            LIMITS,
+            CapturePolicy::ProviderTracked,
+        )
+        .await
+        .expect("bounded open");
+        assert_eq!(store.open_verification(), OpenVerification::Checkpoint);
+        let rival = Arc::new(
+            open(&path, &authority, CapturePolicy::FullVerification)
+                .await
+                .expect("rival open"),
+        );
+        let commits = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        backend.arm_rival(
+            "er_subjects_v1",
+            16,
+            honest_rival(rival, "a", 2, Arc::clone(&commits)),
+        );
+        let served = store
+            .load(&ticket("a"))
+            .await
+            .expect("the read ends with an answer")
+            .expect("a");
+        let made = commits.load(std::sync::atomic::Ordering::SeqCst);
+        let calls = store.calls();
+        let full = open(&path, &authority, CapturePolicy::FullVerification)
+            .await
+            .expect("full open")
+            .load(&ticket("a"))
+            .await
+            .expect("load")
+            .expect("a");
+        assert!(made >= 1, "the rival wrote during the read");
+        assert_eq!(
+            (served.revision, calls.captures, calls.model_builds),
+            (full.revision, 1, 1),
+            "after {made} overlapped attempts the read answered revision {} with {calls:?}",
+            served.revision
+        );
+    });
+}
+
+/// The same loop on the per-entity path behind histories and a write's preflight and read-back
+/// (`tracked_scoped`): an honest writer of the same tenant commits during every attempt, before
+/// the binding row each attempt reads first. The history must end in one complete verification
+/// and equal what a `FullVerification` handle reads afterwards.
+#[test]
+fn a_bounded_history_overlapped_by_a_write_on_every_attempt_ends_in_one_complete_verification() {
+    let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("directory");
+    let path: PathBuf = directory.path().join("store.sqlite3");
+    block_on(async {
+        let (authority, _) = two_revisions(&path).await;
+        checkpoint(&path, &authority).await;
+        let backend = Arc::new(Interposing::new(attached(&path).await));
+        let store = EventlogRecordedStore::open_with_policy(
+            backend.clone(),
+            authority.clone(),
+            LIMITS,
+            CapturePolicy::ProviderTracked,
+        )
+        .await
+        .expect("bounded open");
+        assert_eq!(store.open_verification(), OpenVerification::Checkpoint);
+        let rival = Arc::new(
+            open(&path, &authority, CapturePolicy::FullVerification)
+                .await
+                .expect("rival open"),
+        );
+        let commits = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        backend.arm_rival(
+            "er_binding_v1",
+            16,
+            honest_rival(rival, "a", 2, Arc::clone(&commits)),
+        );
+        let served = store
+            .history(&ticket("a"))
+            .await
+            .expect("the history read ends with an answer");
+        let made = commits.load(std::sync::atomic::Ordering::SeqCst);
+        let calls = store.calls();
+        let full = open(&path, &authority, CapturePolicy::FullVerification)
+            .await
+            .expect("full open")
+            .history(&ticket("a"))
+            .await
+            .expect("history");
+        assert!(made >= 1, "the rival wrote during the read");
+        assert_eq!(
+            (served.records.len(), calls.captures, calls.model_builds),
+            (full.records.len(), 1, 1),
+            "after {made} overlapped attempts the history held {} records with {calls:?}",
+            served.records.len()
+        );
+    });
+}
+
+/// Design § *Cost*: "A state read is one row and one blob, whatever the store's size." Eventlog's
+/// continuity mark is one per store prefix, so another tenant's acknowledged write in the same
+/// file reaches this handle as an `AppendDelta` carrying nothing of its tenant. The correction
+/// moves its serial on every verified delta, empty ones included, so a co-tenant writing during
+/// each attempt sends a read whose rows nothing changed into the complete verification of this
+/// tenant.
+#[test]
+fn a_co_tenants_writes_during_a_bounded_read_cost_no_complete_verification() {
+    let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("directory");
+    let path: PathBuf = directory.path().join("store.sqlite3");
+    block_on(async {
+        let (authority, _) = two_revisions(&path).await;
+        let neighbour = provisioned_tenant(&path, "neighbour-tenant");
+        let other = open(&path, &neighbour, CapturePolicy::FullVerification)
+            .await
+            .expect("neighbour open");
+        run(&other, "neighbour-first", vec![create("n", "neighbour")]).await;
+        drop(other);
+        checkpoint(&path, &authority).await;
+        let backend = Arc::new(Interposing::new(attached(&path).await));
+        let store = EventlogRecordedStore::open_with_policy(
+            backend.clone(),
+            authority.clone(),
+            LIMITS,
+            CapturePolicy::ProviderTracked,
+        )
+        .await
+        .expect("bounded open");
+        assert_eq!(store.open_verification(), OpenVerification::Checkpoint);
+        let rival = Arc::new(
+            open(&path, &neighbour, CapturePolicy::FullVerification)
+                .await
+                .expect("neighbour rival open"),
+        );
+        let commits = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        backend.arm_rival(
+            "er_subjects_v1",
+            16,
+            honest_rival(rival, "n", 1, Arc::clone(&commits)),
+        );
+        let served = store.load(&ticket("a")).await;
+        let made = commits.load(std::sync::atomic::Ordering::SeqCst);
+        let calls = store.calls();
+        assert!(
+            matches!(&served, Ok(Some(state)) if state.revision == 2),
+            "{:?}",
+            served.map(|state| state.map(|s| s.revision))
+        );
+        assert_eq!(
+            (calls.captures, calls.model_builds),
+            (0, 0),
+            "{made} writes to another tenant overlapped the read, which changed nothing it read, \
+             and it paid a complete verification of its own tenant: {calls:?}"
         );
     });
 }
