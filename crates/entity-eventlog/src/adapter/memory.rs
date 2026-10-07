@@ -117,8 +117,8 @@ pub(super) trait RememberedHistory {
     fn origin(&self) -> &HistoryOrigin;
     fn records(&self) -> impl Iterator<Item = &StoredRecord>;
     fn len(&self) -> usize;
-    /// The records from position `from` on, as the memory holds them.
-    fn shared_from(&self, from: usize) -> Vec<SharedRecord>;
+    /// Every record, as the memory holds it.
+    fn shared(&self) -> Vec<SharedRecord>;
 }
 
 impl RememberedHistory for ModelHistory {
@@ -134,8 +134,8 @@ impl RememberedHistory for ModelHistory {
     fn len(&self) -> usize {
         self.records.len()
     }
-    fn shared_from(&self, from: usize) -> Vec<SharedRecord> {
-        self.records[from..].to_vec()
+    fn shared(&self) -> Vec<SharedRecord> {
+        self.records.clone()
     }
 }
 
@@ -153,8 +153,8 @@ impl RememberedHistory for SubjectHistory {
     fn len(&self) -> usize {
         self.records.len()
     }
-    fn shared_from(&self, from: usize) -> Vec<SharedRecord> {
-        self.records[from..]
+    fn shared(&self) -> Vec<SharedRecord> {
+        self.records
             .iter()
             .cloned()
             .map(std::sync::Arc::new)
@@ -318,7 +318,10 @@ impl VerifiedMemory {
     /// Remembers a history this handle just verified to reach `terminal`.
     ///
     /// `verified` is the prefix [`Self::verified_prefix`] answered for this history, if any: those
-    /// records are already remembered exactly, so only the records after them are added.
+    /// records are already remembered, equal by value, so the history grows without being charged
+    /// for them again. It still takes the given history's allocation of every record, the prefix
+    /// included: after a whole rebuild the prefix it remembered belongs to the previous model, and
+    /// keeping it would hold that model's copy of each record alive beside the current one.
     pub(super) fn remember_history(
         &mut self,
         history: &impl RememberedHistory,
@@ -336,7 +339,7 @@ impl VerifiedMemory {
             if self.held.saturating_add(growth) <= self.cap
                 && let Some(remembered) = self.histories.get_mut(history.subject())
             {
-                remembered.records.extend(history.shared_from(length));
+                remembered.records = history.shared();
                 remembered.terminal = terminal.clone();
                 remembered.charged = charged;
                 self.held = self.held.saturating_add(growth);
@@ -352,7 +355,7 @@ impl VerifiedMemory {
             history.subject().clone(),
             VerifiedHistory {
                 origin: history.origin().clone(),
-                records: history.shared_from(0),
+                records: history.shared(),
                 terminal: terminal.clone(),
                 charged,
             },
