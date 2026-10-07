@@ -549,7 +549,8 @@ The requirements that order and the rest of the `service/1` rules add:
 | R-147 | The scale context text comparison is answered inside. |
 | R-148 | `compare`, `truthy`, `for_all`/`for_any` and the two collection address forms. |
 | R-160 | The third collection address form: a declared text's length in Unicode scalar values. |
-| R-161 | Where a text's length is admitted: not as a projection key, not inside a quantifier element; nothing the base registered is refused. |
+| R-161 | Where a text's length is admitted: not as a projection key; nothing the base registered is refused, and a declared map inside a quantifier element is still read by its members. |
+| R-168 | A quantifier's element carries the declaration registration derived for it, so a text element's length answers, and every recorded decision replays unchanged. |
 
 ## 7. Outputs and refusals
 

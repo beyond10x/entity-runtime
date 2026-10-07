@@ -12,10 +12,6 @@ fn definition(value: Value) -> EntityDefinition {
     serde_json::from_value(value).expect("the fixture is a definition document")
 }
 
-fn refused(value: Value) -> DefinitionErrors {
-    ValidatedDefinition::new(definition(value)).expect_err("the fixture is refused")
-}
-
 /// A `service/1` definition whose only rule is the invariant `condition`, over `schema`.
 fn probe(schema: Value, condition: Value) -> Value {
     json!({
@@ -123,21 +119,21 @@ fn a_projection_keyed_on_an_array_count_registers_as_on_the_base_and_reads_the_s
 }
 
 /// § 10.6: "the only `count` a `map` has is its size". Registration admits `$g.count` on a
-/// quantifier element declared `map` (`walk_field_path`'s map arm), but the run-time walk reads a
-/// binder's element without its declaration (`runtime.rs:2803`), so `count` reads the member named
-/// `count`, or nothing. The base registered and answered it that way, and replay re-validates every
-/// recorded definition, so it keeps doing so until story:binder-elements-carry-their-declaration.
+/// quantifier element declared `map` (`walk_field_path`'s map arm), and the element now carries its
+/// declaration at run time, but a binder still reads a declared map by its members, so `count`
+/// reads the member named `count`, or nothing. Every release since 0.19.0 decided it that way and
+/// replay reruns each recorded decision under the current kernel, so it keeps doing so until
+/// story:binder-map-elements-read-their-size gives the size reading a replay-safe mechanism.
 #[test]
-fn a_map_count_inside_a_quantifier_reads_the_member_until_binder_elements_carry_their_declaration()
-{
+fn a_map_count_inside_a_quantifier_reads_the_member_until_binder_map_elements_read_their_size() {
     let map = json!({ "type": "map", "key": "string", "items": { "type": "integer" } });
     let schema =
         json!({ "fields": { "groups": { "type": "array", "required": true, "items": map } } });
     let at_most_one = json!({ "for_all": { "in": "$fields.groups", "as": "g", "that": {
         "compare": { "left": "$g.count", "op": "lte", "right": 1 }
     }}});
-    let until = "as on the base; when story:binder-elements-carry-their-declaration lands this \
-                 reads the size instead, and this case flips to the size's answer";
+    let until = "as on the base; when story:binder-map-elements-read-their-size lands this reads \
+                 the size instead, and this case flips to the size's answer";
 
     // One entry whose key is `count`: the member (5) is read, not the size (1), so the rule fails.
     assert_eq!(
@@ -174,38 +170,46 @@ fn a_map_count_inside_a_quantifier_reads_the_member_until_binder_elements_carry_
     );
 }
 
-/// The unit's binder guard is pinned only for `$t.count` directly on a `List<String>` element.
-/// The `typed` flag also has to survive the object-property and array-index arms of
-/// `walk_field_path`, or a length one level inside the element is admitted and resolves to nothing
-/// at every evaluation.
+/// A length one level inside a quantifier element — an object element's property, an array
+/// element's member — is read from the declaration registration checked on the way there, through
+/// the object-property and array-index arms of both walks, and so answers rather than resolving to
+/// nothing at every evaluation.
 #[test]
-fn a_text_length_one_level_inside_a_quantifier_element_is_refused_at_registration() {
-    for (items, address) in [
+fn a_text_length_one_level_inside_a_quantifier_element_answers_its_length() {
+    for (items, address, row) in [
         (
             json!({ "type": "object", "required": true, "properties": {
                 "name": { "type": "string", "required": true }
             }}),
             "$t.name.count",
+            (|text: &str| json!({ "name": text })) as fn(&str) -> Value,
         ),
         (
             json!({ "type": "array", "required": true, "items": { "type": "string" } }),
             "$t.0.count",
+            |text: &str| json!([text]),
         ),
     ] {
-        let defects = refused(probe(
-            json!({ "fields": { "rows": { "type": "array", "required": true, "items": items } } }),
-            json!({ "for_all": { "in": "$fields.rows", "as": "t", "that": {
-                "compare": { "left": address, "op": "lte", "right": 8 }
-            }}}),
-        ));
-        let expected =
-            format!("'{address}' reads the length of a text inside a quantifier element");
-        assert!(
-            defects.iter().any(|defect| matches!(
-                defect,
-                DefinitionError::QuantifierBodyScope { detail, .. } if detail.contains(&expected)
-            )),
-            "{address}: {defects}"
+        let schema =
+            json!({ "fields": { "rows": { "type": "array", "required": true, "items": items } } });
+        let rule = json!({ "for_all": { "in": "$fields.rows", "as": "t", "that": {
+            "compare": { "left": address, "op": "lte", "right": 8 }
+        }}});
+        assert_eq!(
+            (
+                answer(
+                    schema.clone(),
+                    rule.clone(),
+                    json!({ "rows": [row("Ann"), row("e\u{301}")] })
+                ),
+                answer(
+                    schema,
+                    rule,
+                    json!({ "rows": [row("Ann"), row("Annabelle")] })
+                ),
+            ),
+            (Truth::True, Truth::False),
+            "{address}: lengths 3 and 2, then 3 and 9"
         );
     }
 }
@@ -331,6 +335,73 @@ fn a_decision_recorded_under_a_quantifier_reading_a_map_count_still_replays() {
     let registrable = probe(schema, json!(true));
     let (record, instance) =
         recorded_under(snapshot, registrable, json!({ "groups": [{ "count": 1 }] }));
+    match replay(&[record]) {
+        Ok(rebuilt) => assert_eq!(rebuilt, instance),
+        Err(error) => panic!("a recorded decision no longer replays: {error:?}"),
+    }
+}
+
+/// The same history where the answers differ. Every release since 0.19.0 decided `$g.count` on a
+/// quantifier element declared `map` as the element's member named `count`, so a creation whose
+/// only group is `{count: 1, a: 1, b: 1, c: 1, d: 1, e: 1}` held `$g.count <= 5` (the member is 1)
+/// and was recorded. Its size is 6. `replay` reruns the invariant under the snapshot the record
+/// carries, so the record keeps replaying only if the kernel still answers it as it was decided,
+/// which is why a binder reads a declared map by its members until
+/// story:binder-map-elements-read-their-size gives the size a replay-safe mechanism.
+#[test]
+fn a_decision_recorded_where_a_map_elements_count_member_is_not_its_size_still_replays() {
+    let schema = json!({ "fields": { "groups": {
+        "type": "array",
+        "required": true,
+        "items": { "type": "map", "key": "string", "items": { "type": "integer" } }
+    }}});
+    let snapshot = probe(
+        schema.clone(),
+        json!({ "for_all": { "in": "$fields.groups", "as": "g", "that": {
+            "compare": { "left": "$g.count", "op": "lte", "right": 5 }
+        }}}),
+    );
+    let registrable = probe(schema, json!(true));
+    let (record, instance) = recorded_under(
+        snapshot,
+        registrable,
+        json!({ "groups": [{ "count": 1, "a": 1, "b": 1, "c": 1, "d": 1, "e": 1 }] }),
+    );
+    match replay(&[record]) {
+        Ok(rebuilt) => assert_eq!(rebuilt, instance),
+        Err(error) => panic!("a recorded decision no longer replays: {error:?}"),
+    }
+}
+
+/// The rest of the same class: a map key read through a union payload inside a quantifier element.
+/// Registration admits any path past a union's content key untyped, and every release since 0.19.0
+/// read `$e.payee.value.limit` on an element as the payload's member named `limit`. With the
+/// element's declaration the walk types the payload as the variant the tag selects, a `map`; read
+/// from a schema root its keys are not addressable, so the same address would read nothing and the
+/// invariant it held would be unobservable on replay. A binder reads that map by its members.
+#[test]
+fn a_decision_recorded_reading_a_map_key_through_a_union_payload_in_a_quantifier_still_replays() {
+    let schema = json!({ "fields": { "rows": {
+        "type": "array",
+        "required": true,
+        "items": { "type": "object", "required": true, "properties": { "payee": {
+            "type": "union", "required": true, "tag": "kind", "variants": { "limits": {
+                "type": "map", "key": "string", "items": { "type": "integer" }
+            }}
+        }}}
+    }}});
+    let snapshot = probe(
+        schema.clone(),
+        json!({ "for_all": { "in": "$fields.rows", "as": "e", "that": {
+            "compare": { "left": "$e.payee.value.limit", "op": "lte", "right": 5 }
+        }}}),
+    );
+    let registrable = probe(schema, json!(true));
+    let (record, instance) = recorded_under(
+        snapshot,
+        registrable,
+        json!({ "rows": [{ "payee": { "kind": "limits", "value": { "limit": 3 } } }] }),
+    );
     match replay(&[record]) {
         Ok(rebuilt) => assert_eq!(rebuilt, instance),
         Err(error) => panic!("a recorded decision no longer replays: {error:?}"),

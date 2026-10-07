@@ -1,0 +1,38 @@
+{
+  "type": "ess-scenario/4",
+  "domain": "entity.core",
+  "scenario": "service1-nested-quantifier-literal-collection",
+  "summary": "A nested quantifier whose in is a text that is no reference, empty or opening with a multi-byte character, is refused as not a collection where it is written.",
+  "timeline": [
+    {
+      "at": "2026-10-07T00:00:00Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"rows\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"nested\",\"assert\":{\"for_all\":{\"in\":\"$fields.rows\",\"as\":\"r\",\"that\":{\"for_all\":{\"in\":\"\",\"as\":\"v\",\"that\":true}}}},\"message\":\"nested\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "quantifier_over_not_collection"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-07T00:00:01Z",
+      "command": "entity.core.ValidateDefinition",
+      "input": {
+        "definition": "{\"entity\":\"probe\",\"version\":1,\"semantics\":\"service/1\",\"schema\":{\"fields\":{\"rows\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"array\",\"required\":true,\"items\":{\"type\":\"integer\"}}}}},\"lifecycle\":{\"initial\":\"Held\",\"states\":[\"Held\"]},\"invariants\":[{\"name\":\"nested\",\"assert\":{\"for_all\":{\"in\":\"$fields.rows\",\"as\":\"r\",\"that\":{\"for_all\":{\"in\":\"\u00e9\",\"as\":\"v\",\"that\":true}}}},\"message\":\"nested\"}]}"
+      },
+      "outcome": "returned",
+      "response": {
+        "status": "error",
+        "error_kind": "definition",
+        "defect_kinds": [
+          "quantifier_over_not_collection"
+        ]
+      }
+    }
+  ]
+}

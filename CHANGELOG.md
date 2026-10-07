@@ -107,6 +107,17 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `entity inspect --format yaml` writes a `moves` effect in that mapping form instead of the tag
   form `!moves`, so its output loads back through `entity validate`. `kernel/1` output is
   unchanged.
+- Under `service/1`, a rule inside `for_all` or `for_any` may read a text element's length:
+  `for_all: { in: $fields.tags, as: t, that: { compare: { left: $t.count, op: lte, right: 8 } } }`
+  over a declared list of text now registers and answers each tag's length in Unicode scalar
+  values, as does `$t.name.count` on a declared object element. Registration used to refuse both
+  as `QuantifierBodyScope`. A quantifier element that nothing declares — its list reached through
+  a `json` field or a union's payload — still has no length. A declared `map` element is still
+  read by its members, so `$g.count` reads a member named `count` and not the map's size, and
+  every recorded decision replays unchanged.
+- A quantifier nested in another whose `in` is an empty text, or a text opening with a character
+  longer than one byte, is refused at registration as `QuantifierOverNotCollection`. Registering
+  such a definition used to panic.
 
 ## [0.29.0] — 2026-10-07
 

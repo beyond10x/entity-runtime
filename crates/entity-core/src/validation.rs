@@ -1287,8 +1287,10 @@ impl ScopeKind {
 /// One quantifier binder, and every binder enclosing it, as registration sees them.
 ///
 /// The element definition is `None` where the collection's element kind is not declared — inside a
-/// `json` field, or under a schema that admits additional members — which is the same position a
-/// path into one of those is already in.
+/// `json` field, past a union's payload, or under a schema that admits additional members — which
+/// is the same position a path into one of those is already in. It is [`collection_element`]'s
+/// answer, which the run time's binders take too, so both walks read an element under one
+/// declaration.
 #[derive(Clone, Copy)]
 struct BinderScope<'a> {
     name: &'a str,
@@ -1368,12 +1370,10 @@ impl Scope<'_> {
 /// of those now would strand histories recorded under them.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Reader {
-    /// The kernel's walk from a schema root, which carries each field's declaration and reads a
+    /// The kernel's walk, from a schema root or from a quantifier's binder, which carries each
+    /// field's declaration — a binder's the one [`collection_element`] derives — and reads a
     /// declared text's length.
     Kernel,
-    /// The kernel's walk from a quantifier's binder, which reads the element without its
-    /// declaration, so a text's length resolves to nothing.
-    Binder,
     /// The store's projection key walk (`entity-store` `key_of`), which reads every address the
     /// kernel's walk from a schema root reads except a text's length, so that resolves to nothing.
     Projection,
@@ -1391,7 +1391,7 @@ fn validate_reference(expression: &str, scope: Scope<'_>, reader: Reader) -> Res
     };
 
     // A binder extends the enclosing scope for the duration of the body, and its element is checked
-    // against the collection's own element schema.
+    // against the collection's own element schema, which the kernel's walk reads it under too.
     if let Some(binders) = scope.binders {
         let (name, path) = match expression[1..].split_once('.') {
             Some((name, path)) => (name, Some(path)),
@@ -1405,7 +1405,7 @@ fn validate_reference(expression: &str, scope: Scope<'_>, reader: Reader) -> Res
                 element,
                 &format!("${name}"),
                 path,
-                Reader::Binder,
+                Reader::Kernel,
                 scope.service(),
             )
             .map_err(|detail| format!("'{expression}' cannot resolve: {detail}"));
@@ -1547,24 +1547,15 @@ fn walk_field_path(
                     )),
                 };
             }
-            // A text's length in Unicode scalar values. Only the kernel's walk from a schema root
-            // reads it; anywhere else it would resolve to nothing at every reading, so it is
-            // refused where it is written instead.
+            // A text's length in Unicode scalar values. Only the kernel's walk reads it, from a
+            // schema root or a quantifier's binder; a projection key would resolve it to nothing
+            // at every reading, so it is refused where it is written instead.
             FieldKind::String if segment == "count" => {
-                match reader {
-                    Reader::Kernel => {}
-                    Reader::Binder => {
-                        return Err(format!(
-                            "'{here}' reads the length of a text inside a quantifier element, \
-                             which the run-time walk does not type, so it resolves to nothing"
-                        ))
-                    }
-                    Reader::Projection => {
-                        return Err(format!(
-                            "'{here}' reads the length of a text, and a projection key reads \
-                             object members only, so the read model would file no instance under it"
-                        ))
-                    }
+                if reader == Reader::Projection {
+                    return Err(format!(
+                        "'{here}' reads the length of a text, and a projection key reads object \
+                         members only, so the read model would file no instance under it"
+                    ));
                 }
                 return match rest {
                     None => Ok(()),
@@ -1913,7 +1904,9 @@ fn validate_quantifier(
     }
     // `in` is a reference, and it has to name a collection this schema declares.
     validate_operand(&quantifier.over, &format!("{path}.in"), scope)?;
-    let element = match collection_element(&quantifier.over, scope) {
+    let element = match collection_element(&quantifier.over, scope.fields, scope.args, |name| {
+        scope.binders?.get(name).map(|(_, element)| element)
+    }) {
         Ok(element) => element,
         Err(detail) => {
             return Err(DefinitionError::QuantifierOverNotCollection {
@@ -1953,30 +1946,39 @@ fn validate_quantifier(
 /// The element definition of the collection a quantifier walks, or why it is not one.
 ///
 /// `Ok(None)` where the collection is admitted but its element kind is not declared — inside a
-/// `json` field, or under a schema that admits additional members.
-fn collection_element<'a>(
+/// `json` field, past a union's payload, or under a schema that admits additional members.
+/// `binder` answers the element definition of an enclosing binder by name, and `None` where no
+/// binder has that name.
+///
+/// **Shared with the run time** rather than walked twice: registration checks a body against this
+/// element definition, and the kernel's walk reads the element under the same one
+/// (`runtime.rs` `quantify`). The run-time walk types a union's variant by its tag, so deriving the
+/// element there instead would type a path registration admitted untyped, and a text's length
+/// through it would turn from nothing into a number (R-97).
+pub(crate) fn collection_element<'a>(
     over: &Value,
-    scope: Scope<'a>,
+    fields: &'a ObjectSchema,
+    args: Option<&'a ObjectSchema>,
+    binder: impl Fn(&str) -> Option<Option<&'a FieldDefinition>>,
 ) -> Result<Option<&'a FieldDefinition>, String> {
     let Value::String(expression) = over else {
         return Err("`in` is a reference to an array or map field".to_owned());
     };
-    if let Some(binders) = scope.binders {
-        let (name, path) = match expression[1..].split_once('.') {
-            Some((name, path)) => (name, Some(path)),
-            None => (&expression[1..], None),
+    let rest = expression.get(1..).unwrap_or_default();
+    let (name, path) = match rest.split_once('.') {
+        Some((name, path)) => (name, Some(path)),
+        None => (rest, None),
+    };
+    if let Some(element) = binder(name) {
+        let (Some(element), Some(path)) = (element, path) else {
+            return Ok(None);
         };
-        if let Some((_, element)) = binders.get(name) {
-            let (Some(element), Some(path)) = (element, path) else {
-                return Ok(None);
-            };
-            return field_at(element, path).and_then(element_of);
-        }
+        return field_at(element, path).and_then(element_of);
     }
     for (prefix, schema) in [
-        ("$fields.", Some(scope.fields)),
-        ("$old_fields.", Some(scope.fields)),
-        ("$args.", scope.args),
+        ("$fields.", Some(fields)),
+        ("$old_fields.", Some(fields)),
+        ("$args.", args),
     ] {
         let Some(path) = expression.strip_prefix(prefix) else {
             continue;

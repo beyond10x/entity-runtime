@@ -1976,6 +1976,7 @@ fn quantify_before_load(
         Value::Object(members) => members.values().collect(),
         _ => return Ok(PartialTruth::Known(Truth::Unknown)),
     };
+    let declared = element_declaration(quantifier, context, bindings);
     let mut result = PartialTruth::Known(match mode {
         Quantification::All => Truth::True,
         Quantification::Any => Truth::False,
@@ -1984,6 +1985,7 @@ fn quantify_before_load(
         let inner = Bindings {
             name: &quantifier.bind,
             value: element,
+            declared,
             outer: bindings,
         };
         let answer =
@@ -2297,6 +2299,7 @@ fn quantify(
         Value::Object(members) => members.values().collect(),
         _ => return Ok(Truth::Unknown),
     };
+    let declared = element_declaration(quantifier, context, bindings);
     let mut result = match mode {
         Quantification::All => Truth::True,
         Quantification::Any => Truth::False,
@@ -2305,6 +2308,7 @@ fn quantify(
         let inner = Bindings {
             name: &quantifier.bind,
             value: element,
+            declared,
             outer: bindings,
         };
         let answer = evaluate_condition(&quantifier.body, context, Some(&inner), unobserved)?;
@@ -2332,17 +2336,42 @@ fn quantify(
 pub(crate) struct Bindings<'a> {
     name: &'a str,
     value: &'a Value,
+    /// The element's declaration as registration derived it, so a path into the element answers
+    /// the kind its declaration names, as a path from a schema root does — except a declared `map`,
+    /// which a binder reads by its members ([`Start::Binder`]). `None` where registration admitted
+    /// the element untyped, and a path into it then resolves as one into a `json` value.
+    declared: Option<&'a crate::FieldDefinition>,
     outer: Option<&'a Bindings<'a>>,
 }
 
 impl<'a> Bindings<'a> {
-    /// The element bound to `name`, innermost first.
-    fn get(&self, name: &str) -> Option<&'a Value> {
+    /// The element bound to `name` and its declaration, innermost first.
+    fn get(&self, name: &str) -> Option<(&'a Value, Option<&'a crate::FieldDefinition>)> {
         if self.name == name {
-            return Some(self.value);
+            return Some((self.value, self.declared));
         }
         self.outer?.get(name)
     }
+}
+
+/// The declaration of the elements `quantifier` walks: the one registration checked its body
+/// against (`validation::collection_element`), over the same schemas and enclosing binders.
+///
+/// A definition that reached the run time was validated, so the derivation does not fail here; were
+/// it to, the element is read untyped, which is the reading R-97 keeps for every undeclared path.
+fn element_declaration<'a>(
+    quantifier: &Quantifier,
+    context: &TemplateContext<'a>,
+    bindings: Option<&Bindings<'a>>,
+) -> Option<&'a crate::FieldDefinition> {
+    crate::validation::collection_element(
+        &quantifier.over,
+        &context.definition.schema,
+        context.arguments_schema,
+        |name| bindings?.get(name).map(|(_, declared)| declared),
+    )
+    .ok()
+    .flatten()
 }
 
 /// `compare`: the exact three-valued scalar comparison, row for row.
@@ -2946,10 +2975,19 @@ fn resolve_expression_optional(
             Some((name, path)) => (name, Some(path)),
             None => (&expression[1..], None),
         };
-        if let Some(element) = bindings.get(name) {
+        if let Some((element, declared)) = bindings.get(name) {
+            // Registration reached the element's declaration through declared fields only, so it
+            // is as checked as a schema root's field.
             return Ok(match path {
                 None => Some(element.clone()),
-                Some(path) => walk(element, path, None, false, context.service()),
+                Some(path) => walk(
+                    element,
+                    path,
+                    declared,
+                    declared.is_some(),
+                    context.service(),
+                    Start::Binder,
+                ),
             });
         }
     }
@@ -3024,8 +3062,25 @@ fn lookup(
     let field = schema.and_then(|schema| schema.fields.get(first));
     match segments.next() {
         None => Some(value.clone()),
-        Some(rest) => walk(value, rest, field, field.is_some(), service),
+        Some(rest) => walk(value, rest, field, field.is_some(), service, Start::Root),
     }
+}
+
+/// Where a [`walk`] started, which decides how it reads a declared `map`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Start {
+    /// A schema root — `$fields`, `$old_fields`, `$args`: a declared map's `count` is its size and
+    /// its keys are not addressable.
+    Root,
+    /// A quantifier's binder. A declared map anywhere under the element — the element itself, a
+    /// property or member inside it, or the variant a union's tag selects — is read by its members,
+    /// as every release since 0.19.0 decided it: `count` is the member named `count`, any other key
+    /// the member of that name. Replay reruns each recorded decision under the current kernel, and a
+    /// record carries no rule version, so answering the size here would turn decisions already
+    /// recorded from held into violated or unobservable. Every other declaration under the element
+    /// is read as from a schema root, which differs from reading the element untyped only in a
+    /// checked text's length.
+    Binder,
 }
 
 /// Walks the rest of a path from one value, with the declared field it came from where there is one.
@@ -3033,9 +3088,10 @@ fn lookup(
 /// Recursive rather than iterative because a `service/1` collection address produces a **new**
 /// value — a count is a number nothing held — and only the leaf is cloned either way.
 ///
-/// `checked` says whether registration walked the same declarations to reach `field`. It turns
-/// false past a union's content key, whose variant the tag selects here but registration admits
-/// untyped, and a text's length is read only from a checked `string` field. Keyed on the value
+/// `checked` says whether registration walked the same declarations to reach `field`. A quantifier's
+/// element starts checked where registration derived its declaration, from the same derivation. It
+/// turns false past a union's content key, whose variant the tag selects here but registration
+/// admits untyped, and a text's length is read only from a checked `string` field. Keyed on the value
 /// instead, every path registration admits untyped would turn from nothing into a number, and a
 /// recorded decision over one would replay differently (R-97).
 fn walk(
@@ -3044,10 +3100,14 @@ fn walk(
     field: Option<&crate::FieldDefinition>,
     checked: bool,
     service: bool,
+    start: Start,
 ) -> Option<Value> {
     let mut segments = path.splitn(2, '.');
     let segment = segments.next()?;
     let rest = segments.next();
+    // Under a binder a declared map is walked as the untyped object it was always read as, and so is
+    // everything past it.
+    let field = field.filter(|field| start == Start::Root || field.kind != FieldKind::Map);
 
     if service {
         // A checked text's length in Unicode scalar values, with no normalization: what
@@ -3065,7 +3125,7 @@ fn walk(
         if let Some((next, next_field)) = collection_address(value, field, segment) {
             return match rest {
                 None => Some(next),
-                Some(rest) => walk(&next, rest, next_field, checked, service),
+                Some(rest) => walk(&next, rest, next_field, checked, service, start),
             };
         }
         // A declared map's keys and a declared array's members are not addressable, so nothing
@@ -3086,7 +3146,7 @@ fn walk(
     let checked = checked && !field.is_some_and(|field| field.kind == FieldKind::Union);
     match rest {
         None => Some(next.clone()),
-        Some(rest) => walk(next, rest, next_field, checked, service),
+        Some(rest) => walk(next, rest, next_field, checked, service, start),
     }
 }
 
@@ -3187,5 +3247,205 @@ pub(crate) fn canonicalize(value: Value) -> Value {
         Value::Object(object) => Value::Object(canonical_object(object)),
         Value::Array(values) => Value::Array(values.into_iter().map(canonicalize).collect()),
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{json, Value};
+
+    use super::{walk, Start};
+    use crate::{EntityDefinition, Semantics, ValidatedDefinition};
+
+    /// Every path the property reads from `value`: each member and index it holds, `count`, a
+    /// segment past `count`, an ordinal, a leading-zero ordinal and an absent key, at every depth.
+    fn paths(value: &Value, prefix: &str, into: &mut Vec<String>) {
+        let join = |segment: &str| {
+            if prefix.is_empty() {
+                segment.to_owned()
+            } else {
+                format!("{prefix}.{segment}")
+            }
+        };
+        for probe in ["count", "count.more", "0", "01", "absent"] {
+            into.push(join(probe));
+        }
+        match value {
+            Value::Object(members) => {
+                for (key, member) in members {
+                    into.push(join(key));
+                    paths(member, &join(key), into);
+                }
+            }
+            Value::Array(values) => {
+                for (index, member) in values.iter().enumerate() {
+                    into.push(join(&index.to_string()));
+                    paths(member, &join(&index.to_string()), into);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The value `path` names by members and indexes alone, which is where a text sits.
+    fn held<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
+        path.split('.')
+            .try_fold(value, |value, segment| match value {
+                Value::Object(members) => members.get(segment),
+                Value::Array(values) => values.get(segment.parse::<usize>().ok()?),
+                _ => None,
+            })
+    }
+
+    /// Under a quantifier's binder, a path into an element that matches its declaration answers what
+    /// the untyped walk every earlier release used answers, with one exception: a checked text's
+    /// `count`, which the untyped walk resolves to nothing and the declared walk to its length. A
+    /// declared `map` — the element itself, a property or member inside it, or a union's selected
+    /// variant — is part of the rule, not an exception: its `count` is the member named `count`.
+    #[test]
+    fn a_binder_path_answers_as_the_untyped_walk_did_except_a_checked_text_length() {
+        let map = json!({ "type": "map", "key": "string", "items": { "type": "integer" } });
+        let union = json!({ "type": "union", "tag": "kind", "variants": {
+            "names": { "type": "array", "items": { "type": "string" } },
+            "limits": map.clone(),
+            "person": { "type": "object", "properties": { "name": { "type": "string" } } },
+            "label": { "type": "string" }
+        }});
+        let object = json!({ "type": "object", "properties": {
+            "name": { "type": "string" },
+            "count": { "type": "string" },
+            "size": { "type": "integer" },
+            "tags": { "type": "array", "items": { "type": "string" } },
+            "meta": map.clone(),
+            "rows": { "type": "array", "items": map.clone() },
+            "inner": { "type": "object", "properties": { "label": { "type": "string" } } },
+            "payee": union.clone()
+        }});
+        let cases = [
+            (json!({ "type": "string" }), json!("e\u{301}\u{1F600}")),
+            (json!({ "type": "integer" }), json!(7)),
+            (json!({ "type": "boolean" }), json!(true)),
+            (
+                json!({ "type": "enum", "values": ["open", "shut"] }),
+                json!("open"),
+            ),
+            (
+                json!({ "type": "json" }),
+                json!({ "count": 2, "list": ["a", "b"], "m": { "count": 1, "x": "Ann" } }),
+            ),
+            (
+                object,
+                json!({
+                    "name": "Ann", "count": "Bo", "size": 3, "tags": ["Ann", ""],
+                    "meta": { "count": 5, "a": 1 }, "rows": [{ "count": 7 }, {}],
+                    "inner": { "label": "Ann" },
+                    "payee": { "kind": "limits", "value": { "count": 4, "limit": 3 } }
+                }),
+            ),
+            (
+                json!({ "type": "object", "additional_properties": true, "properties": {
+                    "name": { "type": "string" }
+                }}),
+                json!({ "name": "Ann", "extra": "Bo", "more": { "count": 3, "list": [1] } }),
+            ),
+            (
+                json!({ "type": "array", "items": { "type": "string" } }),
+                json!(["Ann", "Bo"]),
+            ),
+            (
+                json!({ "type": "array", "items": map.clone() }),
+                json!([{ "count": 5 }, { "a": 1, "b": 2 }]),
+            ),
+            (
+                json!({ "type": "array", "items": { "type": "array", "items": { "type": "string" } } }),
+                json!([["Ann"], []]),
+            ),
+            (map.clone(), json!({ "count": 5, "a": 1 })),
+            (
+                json!({ "type": "map", "key": "string", "items": map }),
+                json!({ "x": { "count": 5 }, "y": { "a": 1 } }),
+            ),
+            (
+                json!({ "type": "map", "key": "string", "items": { "type": "string" } }),
+                json!({ "count": "Ann", "k": "Bo" }),
+            ),
+            (
+                union.clone(),
+                json!({ "kind": "names", "value": ["Ann", "Bo"] }),
+            ),
+            (
+                union.clone(),
+                json!({ "kind": "limits", "value": { "count": 9, "a": 1 } }),
+            ),
+            (
+                union.clone(),
+                json!({ "kind": "person", "value": { "name": "Ann" } }),
+            ),
+            (union, json!({ "kind": "label", "value": "Ann" })),
+        ];
+
+        let (mut compared, mut lengths, mut map_members) = (0, 0, 0);
+        for (declaration, value) in cases {
+            let document: EntityDefinition = serde_json::from_value(json!({
+                "entity": "probe", "version": 1, "semantics": "service/1",
+                "schema": { "fields": { "element": declaration } },
+                "lifecycle": { "initial": "held", "states": ["held"] }
+            }))
+            .expect("the fixture is a definition document");
+            let validated = ValidatedDefinition::new(document).expect("the declaration registers");
+            let declared = &validated.schema.fields["element"];
+            assert_eq!(
+                crate::validation::validate_field_value(
+                    declared,
+                    &value,
+                    "element",
+                    Semantics::Service1
+                ),
+                Vec::new(),
+                "{value} matches its declaration"
+            );
+
+            let mut every = Vec::new();
+            paths(&value, "", &mut every);
+            for path in every {
+                let untyped = walk(&value, &path, None, false, true, Start::Binder);
+                let typed = walk(&value, &path, Some(declared), true, true, Start::Binder);
+                compared += 1;
+                if typed == untyped {
+                    let rooted = walk(&value, &path, Some(declared), true, true, Start::Root);
+                    if rooted != typed && (path == "count" || path.ends_with(".count")) {
+                        map_members += 1;
+                    }
+                    continue;
+                }
+                let prefix = if path == "count" {
+                    Some("")
+                } else {
+                    path.strip_suffix(".count")
+                };
+                let text = prefix
+                    .and_then(|prefix| {
+                        if prefix.is_empty() {
+                            Some(&value)
+                        } else {
+                            held(&value, prefix)
+                        }
+                    })
+                    .and_then(Value::as_str);
+                assert!(
+                    untyped.is_none()
+                        && text.is_some_and(|text| typed == Some(json!(text.chars().count()))),
+                    "under a binder '{path}' of {value} answered {typed:?} where the untyped walk \
+                     answered {untyped:?}, and it is not a checked text's length"
+                );
+                lengths += 1;
+            }
+        }
+        // The property held over every path, and both of its halves were exercised: lengths the
+        // declaration reads, and map `count`s a schema root would read as the size.
+        assert!(
+            compared > 300 && lengths >= 8 && map_members >= 6,
+            "compared {compared} paths, {lengths} text lengths, {map_members} map counts"
+        );
     }
 }
