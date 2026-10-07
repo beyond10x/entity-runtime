@@ -21,6 +21,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `ess_conformance`, `ess_conformance_v2` or `ess_conformance_coverage_v1` at 1, as AEP's ladder
   now does; it is refused only when none of the three reaches 1. The AEP lifecycle fixture is
   refreshed to AEP `5a2a0e5`.
+- `entity-eventlog`, and the Eventlog features of `entity-cli`, `entity-sqlite` and
+  `entity-postgres`, depend on Eventlog's released `0.7.0` tag instead of the unreleased revision
+  `6983cc25`. The Eventlog code is the same; its crates now report version 0.7.0.
 
 ## [0.27.0] — 2026-10-06
 

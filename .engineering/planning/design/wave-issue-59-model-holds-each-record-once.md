@@ -15,6 +15,7 @@ relations:
 - designs: story:aep-lifecycle-fixture-matches-aep-main
 - designs: story:website-dependencies-pass-npm-audit
 - designs: story:unified-site-source-carries-no-project-pages-caller
+- designs: story:entity-runtime-builds-against-a-released-eventlog
 revision: 3
 ---
 # Wave: a verified model holds each committed record once (#59)

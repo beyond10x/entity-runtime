@@ -81,8 +81,8 @@ promise directory entries survive power loss. A store written before 0.15 must b
 the result, the response and the events — on an
 [Eventlog](https://beyond10x.github.io/ecosystem/eventlog/)
 ([GitHub](https://github.com/beyond10x/eventlog)) provider. It needs Rust 1.91; the rest of the
-workspace builds on 1.85. The workspace pins Eventlog at revision `6983cc25`, three commits after
-its 0.6.0 tag. Every provider is an explicit Cargo feature:
+workspace builds on 1.85. The workspace pins Eventlog at its 0.7.0 tag. Every provider is an
+explicit Cargo feature:
 
 | Feature | Provider | Boundary |
 |---|---|---|

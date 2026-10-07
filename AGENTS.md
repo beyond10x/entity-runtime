@@ -393,10 +393,10 @@ state: propose them and wait for the operator unless the operator asked for the 
   design decision is embedded in it, why.
 * **Dependencies.** The direct third-party set is `serde`, `serde_json`, `serde_yaml_ng`, `clap`,
   `fs2` in `entity-store`, `rusqlite` in `entity-sqlite`, and `postgres` in `entity-postgres`.
-  `entity-eventlog` adds the Eventlog crates at one git `rev` (`eventlog-core`, and optional
+  `entity-eventlog` adds the Eventlog crates at one git `tag` (`eventlog-core`, and optional
   `eventlog-file`, `eventlog-sqlite`, `eventlog-postgres`, `eventlog-tree`), `sha2`, `time` and
   an optional `tokio`. `entity-cli` (`eventlog-providers`), `entity-sqlite` and `entity-postgres`
-  (`eventlog-facade`) name the same `rev` and `time` behind those optional features, and
+  (`eventlog-facade`) name the same `tag` and `time` behind those optional features, and
   `entity-postgres`'s adds `tokio`, `tokio-postgres`, `rustls` and `tokio-postgres-rustls`.
   Provider manifests explain
   their feature choices. The kernel may use only `serde` and `serde_json` —
