@@ -4,6 +4,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- `entity-eventlog`, and the Eventlog features of `entity-cli`, `entity-sqlite` and
+  `entity-postgres`, depend on Eventlog's `0.8.0` tag instead of `0.7.0`. Eventlog 0.8.0 adds
+  durable capture continuity on SQLite, which a store gets only through an explicit enable call;
+  a store nobody enabled opens and reads as before.
+
 ## [0.28.0] — 2026-10-07
 
 ### Added

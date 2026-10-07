@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:recorded-open-verifies-a-checkpoint-and-its-suffix
 kind: story
-status: draft
+status: active
 title: A recorded-store open verifies a persisted checkpoint and the suffix after it
 summary: 'open cost proportional to the suffix since the last complete verification (GitHub #55)'
 owner: entity-runtime
@@ -39,7 +39,10 @@ scope:
   path: docs/design/eventlog-recorded-sync-bridge-v0.1.md
 - confidence: cited
   path: ess/provider-tracking
-revision: 18
+revision: 20
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-07T02:37:50Z", actor: "human:timo", revision: 19, decided_on: {"recorded":{"review_outcome":5}}}
+- {from: "proposed", to: "active", at: "2026-10-07T02:37:50Z", actor: "human:timo", revision: 20, decided_on: {"recorded":{"review_outcome":5}}}
 ---
 # A recorded-store open verifies a persisted checkpoint and the suffix after it
 
