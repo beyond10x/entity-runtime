@@ -48,9 +48,7 @@ jobs:
         working-directory: website
         run: npm run typecheck
 
-      # The vendored image-size must still refuse the inputs that hang the published 2.0.2; the
-      # build runs the same check, but a failure here names itself instead of failing the build.
-      - name: Check the vendored image-size guards
+      - name: Check the vendored image-size and braces guards
         working-directory: website
         run: npm run vendor-check
 

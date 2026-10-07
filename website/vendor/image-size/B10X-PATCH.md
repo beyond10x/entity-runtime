@@ -20,11 +20,14 @@ This directory is the readable source; `vendor/image-size-2.0.3-b10x.1.tgz` besi
 so `@docusaurus/mdx-loader`'s `^2.0.2` resolves to it). A `file:` *directory* dependency trips npm
 12's override dedupe (`Invalid Version` in `Link.canDedupe`), which is why it is a tarball. The
 manifest inside drops `scripts`, `devDependencies` and `packageManager` — `npm pack` would otherwise
-run upstream's `yarn build` — and is otherwise the published one. After any change here, repack:
+run upstream's `yarn build` — and is otherwise the published one. After any change here, repack and
+name the tarball, so that npm records its new integrity. A bare `npm install --package-lock-only`
+keeps the old integrity at an unchanged version; `npm ci` then installs the old tarball from npm's
+cache, or fails with `EINTEGRITY` where the cache is empty:
 
 ```bash
 npm pack ./vendor/image-size --pack-destination ./vendor --ignore-scripts
-npm install --package-lock-only
+npm install --package-lock-only ./vendor/image-size-2.0.3-b10x.1.tgz
 ```
 
 `b10x-check.mjs` feeds the three inputs that hang 2.0.2 (`b10x-hostile-inputs.mjs`) and two honest

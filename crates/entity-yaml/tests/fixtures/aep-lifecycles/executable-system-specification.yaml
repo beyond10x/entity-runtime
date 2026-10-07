@@ -23,13 +23,19 @@ transitions:
   superseded: [archived]
   archived: []
 
-# What the rung costs. `conforming` is a claim that a run happened, and this is the line that
-# checks a record was presented — `aep artifact evidence <id> --from <report.json>` is how one
-# arrives, read out of the runner's own `ess-conformance-report/1` rather than typed. Whether the
-# record passed, and whether its digest is this specification's `model_digest`, is the
-# `ess-conformance` principle's judgement; it fails closed on a specification that records no
+# What the rung costs. `conforming` is a claim that a run happened and passed, and this is the line
+# that checks a record says so — `aep plan artifact evidence <id> --from <report.json>` is how one
+# arrives, read out of the runner's own report rather than typed. One report arrives as one of
+# three kinds: an `ess-conformance-report/1` as `ess_conformance`, a report/2 with a count-stage
+# suite (`--suite`, `ess-conformance/1`–`4`) as `ess_conformance_v2`, and a report/2 with a
+# coverage suite (`--suite` or `--suite-input`) as `ess_conformance_coverage_v1`. Any one pays.
+#
+# A record of these kinds counts only when it passed and its `spec_digest` is this
+# specification's `model_digest`; a failed or inconclusive run, or one against another digest, is
+# named in the refusal and does not count. It fails closed on a specification that records no
 # digest.
 requires:
   conforming:
     - evidence: ess_conformance
+      or: [ess_conformance_v2, ess_conformance_coverage_v1]
       at_least: 1

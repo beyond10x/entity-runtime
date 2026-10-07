@@ -29,8 +29,8 @@ npm run build      # onBrokenLinks: throw — a dangling link fails the build
 generated pages and the hand-written ones (front matter, admonition titles, Markdown the unified
 documentation site accepts). The site is not a step of `task check`, which reaches no network;
 `.github/workflows/pages.yml` (`Documentation validation`) builds it on every push and pull
-request, and `.github/workflows/b10x-docs-site.yml` (`Documentation site`) publishes a successful
-build of `main`.
+request. The unified documentation site collects `docs/` through `b10x.docs.yaml`; nothing in
+this repository publishes the build itself.
 
 ## Dependency overrides
 
@@ -39,10 +39,14 @@ reason that would otherwise be lost:
 
 | override | why |
 |---|---|
-| `serialize-javascript` 7.1.1, `uuid` 11.1.1 | added with 0.15.0 (`70c4167`); that commit records no reason |
+| `uuid` 11.1.1 | added with 0.15.0 (`70c4167`); that commit records no reason |
+| `serialize-javascript` 7.1.2 | added at 7.1.1 with 0.15.0 (`70c4167`), moved to 7.1.2 for GHSA-gfhx-hw2g-v5hg (2026-10-07) |
 | `qs` 6.16.0 | GHSA-4mjr-xmp4-gh2g and GHSA-x5fp-wj9c-mxmx; `express` 4 pins `qs` 6.15.3 and the fixed version arrives only with `express` 5, which webpack-dev-server 5 does not take yet (2026-09-09) |
+| `tinypool` 2.1.2 | GHSA-5gmw-xhrv-c9v3 and GHSA-85c8-ppgw-ccpr (critical); `@docusaurus/core` 3.10.2 asks for 1.x, and the fix is 2.1.2 (2026-10-07) |
+| `postcss-selector-parser` 7.1.6 | GHSA-rj75-hqrm-r3gf; `postcss-calc` and the `cssnano` presets ask for older ranges, and the built site is byte-identical with the override (2026-10-07) |
 | `image-size` → `file:vendor/image-size-2.0.3-b10x.1.tgz` | GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq have no upstream fix; the vendored copy carries three loop guards, see `vendor/image-size/B10X-PATCH.md` |
+| `braces` → `file:vendor/braces-3.0.4-b10x.1.tgz` | GHSA-vfj7-8cjw-p6xm has no upstream release; the vendored copy carries the depth guards of micromatch/braces#78, see `vendor/braces/B10X-PATCH.md` |
 
 Drop an override when the requesting package moves past it: `npm ls <name>` says who still asks for
-the old range. `npm run vendor-check` proves the vendored image-size still refuses the inputs that
-hang the published 2.0.2; the build runs it too.
+the old range. `npm run vendor-check` proves the vendored image-size and braces still refuse the
+inputs that hang or overflow the published 2.0.2 and 3.0.3; the build runs it too.

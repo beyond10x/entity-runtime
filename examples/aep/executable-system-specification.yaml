@@ -98,9 +98,12 @@ operations:
           type: json
     preconditions:
       - name: 'evidence: ess_conformance'
-        message: conformance requires an ESS conformance record
+        message: conformance requires an ESS conformance record of one of the three accepted kinds
         assert:
-          gte: [$args.evidence.ess_conformance, 1]
+          any:
+            - gte: [$args.evidence.ess_conformance, 1]
+            - gte: [$args.evidence.ess_conformance_v2, 1]
+            - gte: [$args.evidence.ess_conformance_coverage_v1, 1]
     transitions:
       - from: validated
         to: conforming

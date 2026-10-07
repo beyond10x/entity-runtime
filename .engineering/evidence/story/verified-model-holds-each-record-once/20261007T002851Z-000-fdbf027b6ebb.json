@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T00:28:51Z",
+  "actor": "human:timo",
+  "artifact": "story:verified-model-holds-each-record-once",
+  "kind": "story",
+  "revision": 14,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check steps on wave/er-59 at 5dd64a6b, each its own exit: fmt-check 0, clippy 0, test 0 (678 passed, 113 binaries), doc-check 0, docs-check 0, example-check 0, req-check 0 (129 requirements, 0 findings), pin-check 0 (13 pinned files), postgres-check 0 (skipped: ENTITY_POSTGRES_URL unset; CI runs it), eventlog-runtime-check 0 (194 passed, 6 ignored), notes-check 0, ess-check 0 (435/435), provider-ess-check 0 (17/17)",
+    "reference": "5dd64a6b"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T00:09:22Z",
+  "actor": "human:timo",
+  "artifact": "story:aep-lifecycle-fixture-matches-aep-main",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p entity-yaml --locked --test aep_lifecycles on er-59-u3: refreshed fixture with the old test 14 passed (blind to or:); new test against the unchanged example 13 passed 2 failed naming ess_conformance_v2; after the example change 15 passed; four mutations of the example each red. VERIFIED",
+    "reference": "~/.cache/er-59/u3/scratch/red.log vs ~/.cache/er-59/u3/coord-test.log"
+  }
+}

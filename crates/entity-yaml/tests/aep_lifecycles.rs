@@ -7,9 +7,10 @@
 //! exactly the edges the upstream transitions map declares — no more, no fewer.** No rules, no
 //! preconditions, no evidence; those arrive with phase 3, once a rule can say `unknown`.
 //!
-//! The upstream documents are read from a committed fixture
-//! (`tests/fixtures/aep-lifecycles/`, pinned at `4e6279b` — see its `PIN.md`) rather than from a
-//! sibling checkout, so this says the same thing on a machine that has only this repository.
+//! The upstream documents are read from a committed fixture (`tests/fixtures/aep-lifecycles/`)
+//! rather than from a sibling checkout, so this says the same thing on a machine that has only this
+//! repository. The commit they were copied from, and their sums, live in that directory's
+//! `PIN.md` and nowhere else.
 
 use entity_core::{CoreError, EntityInstance, Registry, Runtime};
 use serde_json::json;
@@ -211,50 +212,182 @@ fn each_definition_yields_exactly_the_edges_the_pinned_transitions_map_yields() 
 /// Phase 3's half of the equivalence: a rung upstream says costs evidence must cost it here too.
 ///
 /// The edge test above compares which moves exist. This compares what one of them *asks for* —
-/// paired by `(target status, evidence kind)`, which is what both sides genuinely say. It does not
-/// compare counts or wording: upstream declares `at_least` on a status, these definitions declare a
-/// `gte` on a verb-named operation, and pinning the sentence would be pinning a translation rather
-/// than the claim.
+/// paired by `(target status, evidence kind)`, which is what both sides genuinely say, for the
+/// `evidence:` kind and for each of its `or:` alternatives. It does not compare counts or wording:
+/// upstream declares `at_least` on a status, these definitions declare a `gte` on a verb-named
+/// operation, and pinning the sentence would be pinning a translation rather than the claim. The
+/// next test runs the count.
 #[test]
 fn a_rung_the_pinned_ladder_charges_for_is_charged_for_here_too() {
     let mut compared = 0;
     for kind in pinned_kinds() {
-        let upstream = upstream_requires(&kind);
         let definition = definition(&kind);
-        for (state, evidence) in &upstream {
-            compared += 1;
-            let reaching: Vec<&entity_core::OperationDefinition> = definition
-                .operations
-                .values()
-                .filter(|operation| {
-                    operation
-                        .transitions
-                        .iter()
-                        .any(|transition| &transition.to == state)
-                })
-                .collect();
+        for requirement in upstream_requires(&kind) {
+            let state = &requirement.state;
+            let reaching = operations_reaching(&definition, state);
             assert!(
                 !reaching.is_empty(),
                 "{kind}: nothing reaches `{state}`, which the ladder charges for"
             );
-            let charged = reaching.iter().any(|operation| {
-                operation.preconditions.iter().any(|rule| {
-                    serde_json::to_string(&rule.condition)
-                        .unwrap_or_default()
-                        .contains(evidence.as_str())
-                })
-            });
-            assert!(
-                charged,
-                "{kind}: the pinned ladder charges `{evidence}` to reach `{state}`, and no \
-                 operation reaching it declares a precondition that reads one"
-            );
+            for evidence in &requirement.kinds {
+                compared += 1;
+                let charged = reaching.iter().any(|(_, operation)| {
+                    operation
+                        .preconditions
+                        .iter()
+                        .any(|rule| reads_evidence(rule, evidence))
+                });
+                assert!(
+                    charged,
+                    "{kind}: the pinned ladder accepts `{evidence}` to reach `{state}`, and no \
+                     operation reaching it declares a precondition that reads one"
+                );
+            }
         }
     }
     assert!(
         compared >= 1,
         "no pinned ladder charges for anything, so this test compared nothing"
     );
+}
+
+/// The same rungs, run rather than read: any one kind a rung accepts pays for it at the ladder's
+/// count, and every kind one short together is refused by the evidence rule.
+///
+/// The test above holds that a definition *reads* each accepted kind; that is also true of one that
+/// demands all of them (`all:` where the ladder says `or:`), or that reads one under a condition
+/// that can never hold. This executes every operation reaching a charged rung, from every state it
+/// leaves, the way the ladder is paid: AEP's `StatusRequirement` binds `at_least` to each kind on
+/// its own, so the rung is paid when any one kind holds that many — never by a sum.
+#[test]
+fn a_rung_the_pinned_ladder_charges_for_is_paid_by_any_one_kind_it_accepts_and_refused_short_of_it()
+{
+    let mut paid = 0;
+    for kind in pinned_kinds() {
+        let (registry, definition) = registry_for(&kind);
+        let runtime = Runtime::new(&registry);
+        let created = runtime
+            .create(
+                &kind,
+                definition.version,
+                format!("{kind}:x"),
+                json!({ "title": "x" }),
+            )
+            .unwrap_or_else(|error| panic!("{kind}: create: {error}"))
+            .instance;
+
+        for requirement in upstream_requires(&kind) {
+            let state = &requirement.state;
+            let at_least = requirement.at_least;
+            for (name, operation) in operations_reaching(&definition, state) {
+                let evidence_rules: Vec<Option<String>> = operation
+                    .preconditions
+                    .iter()
+                    .filter(|rule| {
+                        requirement
+                            .kinds
+                            .iter()
+                            .any(|evidence| reads_evidence(rule, evidence))
+                    })
+                    .map(|rule| rule.name.clone())
+                    .collect();
+                let sources = operation
+                    .transitions
+                    .iter()
+                    .filter(|transition| &transition.to == state)
+                    .flat_map(|transition| transition.from.as_slice());
+                for from in sources {
+                    let instance = EntityInstance {
+                        lifecycle_state: from.clone(),
+                        ..created.clone()
+                    };
+
+                    for evidence in &requirement.kinds {
+                        let decision = runtime
+                            .execute(
+                                &instance,
+                                name,
+                                json!({ "actor": "timo", "evidence": { evidence: at_least } }),
+                            )
+                            .unwrap_or_else(|error| {
+                                panic!(
+                                    "{kind}: the pinned ladder accepts {at_least} `{evidence}` \
+                                     for `{state}`, and `{name}` from `{from}` refuses it: {error}"
+                                )
+                            });
+                        assert_eq!(
+                            &decision.instance.lifecycle_state, state,
+                            "{kind}: `{name}` from `{from}` paid with `{evidence}`"
+                        );
+                        paid += 1;
+                    }
+
+                    let short: serde_json::Map<String, serde_json::Value> = requirement
+                        .kinds
+                        .iter()
+                        .map(|evidence| (evidence.clone(), json!(at_least - 1)))
+                        .collect();
+                    let refused = match runtime.execute(
+                        &instance,
+                        name,
+                        json!({ "actor": "timo", "evidence": short }),
+                    ) {
+                        Ok(decision) => panic!(
+                            "{kind}: `{name}` from `{from}` reached `{}` with every one of {:?} \
+                             at {}, one short of the {at_least} the pinned ladder charges",
+                            decision.instance.lifecycle_state,
+                            requirement.kinds,
+                            at_least - 1,
+                        ),
+                        Err(refused) => refused,
+                    };
+                    assert!(
+                        matches!(
+                            refused,
+                            CoreError::PreconditionFailed { ref operation, ref rule, .. }
+                                if operation == name && evidence_rules.contains(rule)
+                        ),
+                        "{kind}: `{name}` from `{from}` with every one of {:?} at {} must be \
+                         refused by a rule reading them, {evidence_rules:?}: {refused}",
+                        requirement.kinds,
+                        at_least - 1,
+                    );
+                }
+            }
+        }
+    }
+    assert!(
+        paid >= 1,
+        "no pinned ladder charges for anything, so this test paid for nothing"
+    );
+}
+
+/// Every operation that can reach `state`, by name.
+fn operations_reaching<'a>(
+    definition: &'a entity_core::EntityDefinition,
+    state: &str,
+) -> Vec<(&'a String, &'a entity_core::OperationDefinition)> {
+    definition
+        .operations
+        .iter()
+        .filter(|(_, operation)| {
+            operation
+                .transitions
+                .iter()
+                .any(|transition| transition.to == state)
+        })
+        .collect()
+}
+
+/// Whether a rule reads the presented count of `evidence`.
+///
+/// Matched as the whole quoted address, not as a substring of the rule: `ess_conformance` is a
+/// prefix of `ess_conformance_v2` and `ess_conformance_coverage_v1`, so a bare `contains` would
+/// let a rule reading either alternative stand in for one reading `ess_conformance` itself.
+fn reads_evidence(rule: &entity_core::RuleDefinition, evidence: &str) -> bool {
+    serde_json::to_string(&rule.condition)
+        .unwrap_or_default()
+        .contains(&format!("\"$args.evidence.{evidence}\""))
 }
 
 /// The other half of the same claim: a rung the pinned ladder **dates** must be dated here too.
@@ -320,8 +453,21 @@ fn upstream_when(kind: &str) -> Vec<(String, String)> {
     found
 }
 
-/// `(status, evidence kind)` for every requirement the pinned ladder declares.
-fn upstream_requires(kind: &str) -> Vec<(String, String)> {
+/// One requirement line of a pinned ladder's `requires:`.
+struct Requirement {
+    /// The status the line charges for.
+    state: String,
+    /// Every kind that pays: the line's `evidence:` first, then each of its `or:` alternatives.
+    kinds: Vec<String>,
+    /// How many records of any one of those kinds the rung costs.
+    at_least: u64,
+}
+
+/// Every requirement the pinned ladder declares.
+///
+/// `at_least` defaults to 1 when a line leaves it out, which is AEP's own default
+/// (`StatusRequirement::at_least`, `#[serde(default = "one")]`).
+fn upstream_requires(kind: &str) -> Vec<Requirement> {
     let path = fixtures_dir().join(format!("{kind}.yaml"));
     let text = fs::read_to_string(&path).expect("readable");
     let value: Value = serde_yaml_ng::from_str(&text).expect("parses");
@@ -330,14 +476,45 @@ fn upstream_requires(kind: &str) -> Vec<(String, String)> {
     };
     let mut found = Vec::new();
     for (status, requirements) in requires {
-        let status = status.as_str().expect("a status is a string").to_owned();
+        let state = status.as_str().expect("a status is a string").to_owned();
         for requirement in requirements.as_sequence().expect("a list") {
             let evidence = requirement
                 .get("evidence")
                 .and_then(Value::as_str)
-                .expect("a requirement names an evidence kind")
+                .unwrap_or_else(|| panic!("{kind}: a `{state}` requirement names an evidence kind"))
                 .to_owned();
-            found.push((status.clone(), evidence));
+            let alternatives = requirement
+                .get("or")
+                .map(|or| {
+                    or.as_sequence()
+                        .unwrap_or_else(|| panic!("{kind}: `{state}`'s `or:` is a list"))
+                        .iter()
+                        .map(|alternative| {
+                            alternative
+                                .as_str()
+                                .unwrap_or_else(|| {
+                                    panic!("{kind}: `{state}`'s `or:` lists evidence kinds")
+                                })
+                                .to_owned()
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let at_least = requirement
+                .get("at_least")
+                .map_or(Some(1), Value::as_u64)
+                .unwrap_or_else(|| panic!("{kind}: `{state}`'s `at_least` is a count"));
+            assert!(
+                at_least >= 1,
+                "{kind}: `{state}` charges `at_least: 0`, which no presentation can fail"
+            );
+            let mut kinds = vec![evidence];
+            kinds.extend(alternatives);
+            found.push(Requirement {
+                state: state.clone(),
+                kinds,
+                at_least,
+            });
         }
     }
     found

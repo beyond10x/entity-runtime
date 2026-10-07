@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T00:28:52Z",
+  "actor": "human:timo",
+  "artifact": "story:unified-site-source-carries-no-project-pages-caller",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "grep over the tree at 5dd64a6b: b10x-docs-site.yml exists nowhere and is named only by the AGENTS.md sentence recording its removal; Atlas docs reconcile not run here (organization side)",
+    "reference": "79738ffe"
+  }
+}

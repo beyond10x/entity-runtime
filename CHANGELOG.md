@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-10-07
+
 ### Added
 
 - `entity-cli` gains a library target: `entity_cli::cli::Cli` is the clap definition the `entity`
@@ -17,6 +19,21 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   semantics and Eventlog-backed storage through 0.27.0), task guides, and a CLI reference, crate
   list and status page generated from the code. The older copies under `docs/guide/` are removed;
   the site's pages replace them.
+- An `EventlogRecordedStore`'s verified model holds each committed record once rather than three
+  times: its record, history and batch indexes share one copy, and so does the handle's memory of
+  the histories it verified. A `ProviderTracked` handle also moves each record's and each batch's
+  stored bytes from its capture into the model instead of copying them, and no longer keeps a
+  second copy of those bytes beside the model. The default policy's bounded decode cache still
+  keeps its own decoded entry of each record it remembers. Every answer is unchanged. On the
+  96-field probe store, the resident memory a `ProviderTracked` open adds is 0.47 times what it
+  was at 601 events and 0.43 times at 1,203 events.
+- `examples/aep/executable-system-specification.yaml`'s `conform` operation accepts any one of
+  `ess_conformance`, `ess_conformance_v2` or `ess_conformance_coverage_v1` at 1, as AEP's ladder
+  now does; it is refused only when none of the three reaches 1. The AEP lifecycle fixture is
+  refreshed to AEP `5a2a0e5`.
+- `entity-eventlog`, and the Eventlog features of `entity-cli`, `entity-sqlite` and
+  `entity-postgres`, depend on Eventlog's released `0.7.0` tag instead of the unreleased revision
+  `6983cc25`. The Eventlog code is the same; its crates now report version 0.7.0.
 
 ## [0.27.0] — 2026-10-06
 
