@@ -568,3 +568,188 @@ async fn adversary_every_bound_blob_is_sorted_key_json_under_either_map_backend(
         );
     }
 }
+
+/// What a build answers to every index a read is served from, or the refusal as it is worded.
+fn owning_parity_answer(result: Result<CapturedModel, AsyncStoreError>) -> String {
+    match result {
+        Ok(model) => format!(
+            "Ok {:?} {:?} {:?} {:?} {:?} {:?} {:?} {}",
+            model.histories,
+            model.terminals,
+            model.forked,
+            model.records,
+            model.batches,
+            model.record_physical,
+            model.held.digests,
+            model.decoded
+        ),
+        Err(error) => format!("Err {error:?}"),
+    }
+}
+
+/// Adversary, issue 59: the owning build a tracked handle opens with moves record and batch blobs
+/// out of its capture instead of copying them, and must answer every capture as the borrowing
+/// build answers it — the same model to every index, or the same refusal in the same words. Beside
+/// the consistent rewrites above: every capture in which one event names another's wrapper, so one
+/// record blob is named twice and the second reference is given the bytes the first took, and
+/// every capture with one blob's bytes damaged or one blob missing.
+#[tokio::test]
+async fn adversary_an_owning_build_answers_every_rewritten_capture_as_a_borrowing_build() {
+    let registry = registry(2);
+    let directory = tempfile::tempdir().expect("store directory");
+    let (path, authority, _) = seeded(directory.path(), &registry, 6).await;
+    let store = reopen(&path, &authority).await;
+    let capture = store.capture().await.expect("capture");
+    let mut rewrites = adversary_rewrites(&capture);
+    let events = capture.events.len();
+    for index in 1..events {
+        for other in (1..events).filter(|other| *other != index) {
+            let mut named_twice = capture.clone();
+            named_twice.events[other].data = capture.events[index].data.clone();
+            rewrites.push((
+                format!("event {other} names event {index}'s wrapper"),
+                named_twice,
+            ));
+        }
+    }
+    for index in 0..capture.blobs.len() {
+        let mut damaged = capture.clone();
+        damaged.blobs[index].bytes.push(b' ');
+        rewrites.push((format!("blob {index} damaged"), damaged));
+        let mut missing = capture.clone();
+        missing.blobs.remove(index);
+        rewrites.push((format!("blob {index} missing"), missing));
+    }
+    super::REUSED_RECORD_BYTES.with(|reused| reused.set(0));
+    let (mut differed, mut refused, mut built) = (Vec::new(), 0usize, 0usize);
+    for (what, rewritten) in
+        std::iter::once(("the honest capture".to_owned(), capture.clone())).chain(rewrites)
+    {
+        let borrowing = owning_parity_answer(build_model(&authority, &rewritten));
+        let mut owned = rewritten;
+        let owning = owning_parity_answer(build_model_owning(&authority, &mut owned));
+        if borrowing.starts_with("Err") {
+            refused += 1;
+        } else {
+            built += 1;
+        }
+        if borrowing != owning {
+            differed.push(format!(
+                "{what}:\n  borrowing {borrowing:.300}\n  owning    {owning:.300}"
+            ));
+        }
+    }
+    let reused = super::REUSED_RECORD_BYTES.with(std::cell::Cell::get);
+    // A parity probe proves nothing unless both outcomes and the twice-named path were reached.
+    assert!(
+        refused > 0 && built > 0 && reused > 0,
+        "the probe did not reach every path: refused {refused}, built {built}, reused {reused}"
+    );
+    assert!(
+        differed.is_empty(),
+        "{} captures answered differently by the owning build:\n{}",
+        differed.len(),
+        differed.join("\n")
+    );
+}
+
+/// Adversary, er-59 U1. The unit's changelog line says the verified model's indexes "and the
+/// handle's memory of the histories it verified, share one copy". A default-policy handle takes a
+/// whole rebuild over its remembered prefix on every read after another handle has written. After
+/// that rebuild every record the memory remembers must still be the very allocation the model it
+/// now answers from holds, not the previous model's copy kept alive beside it.
+#[tokio::test]
+async fn adversary_er59_a_rebuild_after_a_foreign_write_leaves_the_memory_sharing_the_current_model()
+ {
+    let registry = registry(2);
+    let directory = tempfile::tempdir().expect("store directory");
+    let (path, authority, mut revisions) = seeded(directory.path(), &registry, 6).await;
+    let handle = reopen(&path, &authority).await;
+    let rival = reopen(&path, &authority).await;
+    run_batch(&rival, &registry, &mut revisions, "rival-0", 0).await;
+    let before = handle.calls();
+    let model = handle
+        .capture_model()
+        .await
+        .expect("a read after the rival's write");
+    assert_eq!(
+        handle.calls().model_builds,
+        before.model_builds + 1,
+        "the read after a foreign write must be the whole rebuild this case is about"
+    );
+    let memory = handle.memory.lock().expect("memory");
+    let (mut remembered_total, mut held_twice) = (0usize, Vec::new());
+    for (subject, history) in &model.histories {
+        let Some(remembered) = memory.remembered_records(subject) else {
+            continue;
+        };
+        assert_eq!(
+            remembered.len(),
+            history.records.len(),
+            "{subject:?}: the memory remembers another history than the model holds"
+        );
+        for (held, current) in remembered.iter().zip(&history.records) {
+            assert_eq!(
+                **held, **current,
+                "{subject:?}: the memory remembers another record"
+            );
+            remembered_total += 1;
+            if !Arc::ptr_eq(held, current) {
+                held_twice.push(current.entry.record_id().to_owned());
+            }
+        }
+    }
+    assert!(
+        remembered_total > 0,
+        "the memory remembered no record, so this case measured nothing"
+    );
+    assert!(
+        held_twice.is_empty(),
+        "after a rebuild over a remembered prefix the handle's memory keeps the previous model's \
+         copy of {} of {remembered_total} remembered records beside the current model's: \
+         {held_twice:?}",
+        held_twice.len()
+    );
+}
+
+/// Adversary, er-59 U1, kept as a pin of what this unit leaves in place. A default-policy handle's
+/// verified memory (`adapter/memory.rs`) keeps its own decode of every record blob it verified, so
+/// that a later read of the same bytes is not decoded again. That decode is a second copy of the
+/// committed record's entry, definition included, beside the model's one record. It was there at
+/// base, it is bounded by the memory's cap, and it is kept by design here. This pins how many such
+/// decodes the handle that just opened holds: when the decode cache shares the model's records
+/// instead of decoding its own, the count changes, and this test changes with it.
+#[tokio::test]
+async fn adversary_er59_a_default_policy_handle_keeps_its_bounded_decode_of_each_committed_record()
+{
+    let registry = registry(2);
+    let directory = tempfile::tempdir().expect("store directory");
+    let (path, authority, _) = seeded(directory.path(), &registry, 6).await;
+    let handle = reopen(&path, &authority).await;
+    let model = handle.capture_model().await.expect("the verified model");
+    let memory = handle.memory.lock().expect("memory");
+    let (mut committed, mut decoded) = (0usize, 0usize);
+    for (record_id, lookup) in &model.records {
+        let ModelLookup::Committed(record) = lookup else {
+            continue;
+        };
+        committed += 1;
+        let digest = &model.record_blob_digests[record_id].record;
+        if let Some(Decoded::Record(entry)) = memory.decoded(digest, &record.record_bytes) {
+            assert_eq!(
+                **entry, record.entry,
+                "{record_id}: the memory decoded another entry"
+            );
+            decoded += 1;
+        }
+    }
+    assert_eq!(
+        (committed, decoded),
+        (12, 12),
+        "a default-policy handle is pinned to hold its own decoded entry of each of the store's 12 \
+         committed records: the bounded decode cache of `adapter/memory.rs`, kept by design beside \
+         the model's one record. It holds {decoded} of {committed}. A different count means the \
+         decode cache, or the seeded store, changed: if the cache now shares the model's records, \
+         update this pin with the claim it backs"
+    );
+}

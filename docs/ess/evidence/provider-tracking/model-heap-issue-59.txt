@@ -1,0 +1,121 @@
+# Verified-model resident bytes per event: each committed record and batch blob held once (issue 59)
+
+commit:     3763b08d (wave opening; source identical to main a5e40968), with the change below uncommitted
+probe:      crates/entity-eventlog/tests/verified_model_heap.rs
+            sha256 771cbdc4f603596a6d141e11c9ec4aae9c956c1199d16d3e50d187dbf7b3e61e  (every run below)
+test:       one_verified_handle_reports_the_resident_bytes_it_keeps_per_event
+toolchain:  rustc 1.91.0 (f8297e351 2025-10-28)
+machine:    Model name: Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz (20 threads)
+date:       2026-10-07
+command:    cargo +1.91.0 test --release -p entity-eventlog --features sqlite,sync-bridge --locked --test verified_model_heap -- --ignored --nocapture
+where:      "base" ran in a `git archive` export of 3763b08d with this probe file copied in;
+            the other runs ran in the working tree of the change
+host:       shared with other builds; /proc/loadavg before and after each run is recorded below
+
+The probe seeds the shared-clock stores shared_clock_cost.rs seeds (55, 601 and 1,203 events,
+96-field metadata definition), then re-runs its own test binary once per shape and run, so each
+measurement is a process of its own that seeds nothing. Each measuring process opens the SQLite
+provider and attaches the projector, writes 5 to /proc/self/clear_refs, reads VmRSS (baseline),
+opens one EventlogRecordedStore with CapturePolicy::ProviderTracked, and reads VmRSS and VmHWM.
+It asserts the open was one capture, one whole-model build and every recorded entry decoded.
+  live      VmRSS with the handle alive minus baseline
+  peak      VmHWM minus baseline
+  dropped   VmRSS after the handle is dropped minus baseline
+peak and dropped equal live within 0.3 MB in every run: the allocator returned nothing during or
+after the open, so live here is the open's resident peak, not its live heap.
+Output below is the test's stdout from "running 1 test"; compiler output with local paths is omitted.
+
+The change, in two steps:
+  one record      the verified model's record, history and batch indexes, and the handle's
+                  memory of verified histories, share one allocation per committed record
+  final           in addition, the ProviderTracked open builds its model from the capture it
+                  owns, moving each record blob into its record and each batch blob into the
+                  allocation its batch holds instead of copying them, and the handle stops
+                  retaining those blobs beside the model
+
+Summary, medians of 3 runs per shape, bytes per event (range of the 3):
+  events  base                      one record                final                     final/base
+  55      511,255 (510,361-513,787)  316,881 (316,732-317,328)  266,314 (264,899-267,654)  0.521
+  601     472,525 (472,512-472,600)  272,905 (272,898-272,932)  221,252 (221,238-221,470)  0.468
+  1203    441,336 (441,322-441,366)  241,272 (241,241-241,316)  189,662 (189,662-189,668)  0.430
+Acceptance asks final/base <= 0.5 at 601 and at 1,203: met, 0.468 and 0.430.
+
+What the final 1,203-event figure (228,163,584 bytes) still holds:
+  measured   the one stored record per committed record, its record bytes now the bound blob
+             itself: 1,202 x 99.2 KB = 119.2 MB (52%), the per-record cost the base and one-record
+             runs differ by; ~87.7 MB of it is the decoded entry, mostly its 96-field definition
+  inferred   each batch's comparison bytes, now the bound batch blob itself: ~31 MB (14%)
+  inferred   the eventlog-sqlite handle's verified-blob memory, budget 32 MiB: <= 33.5 MB (15%)
+  inferred   the blobs the handle still retains (wrappers, requests, binding): ~1.2 MB
+  unassigned ~43 MB (19%): projection rows, events, transients and allocator retention
+
+## run "base" (3763b08d export)
+loadavg before: 8.11 13.15 15.07 4/6373 2205286
+running 1 test
+model-heap-seed events=55 blob_bytes=2846892
+model-heap-run events=55 live_bytes=28119040 live_per_event=511255 peak_bytes=28119040 dropped_bytes=28069888 baseline_bytes=8134656
+model-heap-run events=55 live_bytes=28258304 live_per_event=513787 peak_bytes=28258304 dropped_bytes=28209152 baseline_bytes=8019968
+model-heap-run events=55 live_bytes=28069888 live_per_event=510361 peak_bytes=28069888 dropped_bytes=28020736 baseline_bytes=8028160
+model-heap events=55 runs=3 live_median_bytes=28119040 live_median_per_event=511255 peak_median_bytes=28119040 dropped_median_bytes=28069888 live_bytes=[28069888, 28119040, 28258304]
+model-heap-seed events=601 blob_bytes=31641002
+model-heap-run events=601 live_bytes=283979776 live_per_event=472512 peak_bytes=283979776 dropped_bytes=283947008 baseline_bytes=8036352
+model-heap-run events=601 live_bytes=284033024 live_per_event=472600 peak_bytes=284033024 dropped_bytes=284000256 baseline_bytes=8101888
+model-heap-run events=601 live_bytes=283987968 live_per_event=472525 peak_bytes=283987968 dropped_bytes=283955200 baseline_bytes=8101888
+model-heap events=601 runs=3 live_median_bytes=283987968 live_median_per_event=472525 peak_median_bytes=283987968 dropped_median_bytes=283955200 live_bytes=[283979776, 283987968, 284033024]
+test one_verified_handle_reports_the_resident_bytes_it_keeps_per_event has been running for over 60 seconds
+model-heap-seed events=1203 blob_bytes=63391084
+model-heap-run events=1203 live_bytes=530911232 live_per_event=441322 peak_bytes=530911232 dropped_bytes=530878464 baseline_bytes=7991296
+model-heap-run events=1203 live_bytes=530964480 live_per_event=441366 peak_bytes=530964480 dropped_bytes=530931712 baseline_bytes=8040448
+model-heap-run events=1203 live_bytes=530927616 live_per_event=441336 peak_bytes=530944000 dropped_bytes=530894848 baseline_bytes=8007680
+model-heap events=1203 runs=3 live_median_bytes=530927616 live_median_per_event=441336 peak_median_bytes=530944000 dropped_median_bytes=530894848 live_bytes=[530911232, 530927616, 530964480]
+test one_verified_handle_reports_the_resident_bytes_it_keeps_per_event ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 96.25s
+loadavg after: 36.84 21.81 17.96 4/6361 2236180
+
+## run "one record" (shared record allocation only)
+loadavg before: 23.89 16.75 11.52 32/6353 1840095
+running 1 test
+model-heap-seed events=55 blob_bytes=2846892
+model-heap-run events=55 live_bytes=17453056 live_per_event=317328 peak_bytes=17453056 dropped_bytes=17403904 baseline_bytes=7979008
+model-heap-run events=55 live_bytes=17428480 live_per_event=316881 peak_bytes=17428480 dropped_bytes=17379328 baseline_bytes=7856128
+model-heap-run events=55 live_bytes=17420288 live_per_event=316732 peak_bytes=17420288 dropped_bytes=17371136 baseline_bytes=8019968
+model-heap events=55 runs=3 live_median_bytes=17428480 live_median_per_event=316881 peak_median_bytes=17428480 dropped_median_bytes=17379328 live_bytes=[17420288, 17428480, 17453056]
+model-heap-seed events=601 blob_bytes=31641002
+model-heap-run events=601 live_bytes=164032512 live_per_event=272932 peak_bytes=164032512 dropped_bytes=163999744 baseline_bytes=8069120
+model-heap-run events=601 live_bytes=164016128 live_per_event=272905 peak_bytes=164163584 dropped_bytes=163983360 baseline_bytes=7917568
+model-heap-run events=601 live_bytes=164012032 live_per_event=272898 peak_bytes=164012032 dropped_bytes=163987456 baseline_bytes=7892992
+model-heap events=601 runs=3 live_median_bytes=164016128 live_median_per_event=272905 peak_median_bytes=164032512 dropped_median_bytes=163987456 live_bytes=[164012032, 164016128, 164032512]
+model-heap-seed events=1203 blob_bytes=63391084
+model-heap-run events=1203 live_bytes=290250752 live_per_event=241272 peak_bytes=290250752 dropped_bytes=290217984 baseline_bytes=8032256
+model-heap-run events=1203 live_bytes=290304000 live_per_event=241316 peak_bytes=290463744 dropped_bytes=290271232 baseline_bytes=7761920
+model-heap-run events=1203 live_bytes=290213888 live_per_event=241241 peak_bytes=290213888 dropped_bytes=290181120 baseline_bytes=7876608
+model-heap events=1203 runs=3 live_median_bytes=290250752 live_median_per_event=241272 peak_median_bytes=290250752 dropped_median_bytes=290217984 live_bytes=[290213888, 290250752, 290304000]
+test one_verified_handle_reports_the_resident_bytes_it_keeps_per_event ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 58.73s
+loadavg after: 25.72 19.64 13.08 12/6448 1863120
+
+## run "final"
+loadavg before: 32.43 27.20 20.65 3/6337 2263884
+running 1 test
+model-heap-seed events=55 blob_bytes=2846892
+model-heap-run events=55 live_bytes=14647296 live_per_event=266314 peak_bytes=14647296 dropped_bytes=14598144 baseline_bytes=7995392
+model-heap-run events=55 live_bytes=14721024 live_per_event=267654 peak_bytes=14721024 dropped_bytes=14671872 baseline_bytes=7888896
+model-heap-run events=55 live_bytes=14569472 live_per_event=264899 peak_bytes=14569472 dropped_bytes=14520320 baseline_bytes=7880704
+model-heap events=55 runs=3 live_median_bytes=14647296 live_median_per_event=266314 peak_median_bytes=14647296 dropped_median_bytes=14598144 live_bytes=[14569472, 14647296, 14721024]
+model-heap-seed events=601 blob_bytes=31641002
+model-heap-run events=601 live_bytes=132972544 live_per_event=221252 peak_bytes=132972544 dropped_bytes=132939776 baseline_bytes=7876608
+model-heap-run events=601 live_bytes=132964352 live_per_event=221238 peak_bytes=132964352 dropped_bytes=132931584 baseline_bytes=8019968
+model-heap-run events=601 live_bytes=133103616 live_per_event=221470 peak_bytes=133103616 dropped_bytes=133070848 baseline_bytes=7946240
+model-heap events=601 runs=3 live_median_bytes=132972544 live_median_per_event=221252 peak_median_bytes=132972544 dropped_median_bytes=132939776 live_bytes=[132964352, 132972544, 133103616]
+model-heap-seed events=1203 blob_bytes=63391084
+model-heap-run events=1203 live_bytes=228163584 live_per_event=189662 peak_bytes=228442112 dropped_bytes=228130816 baseline_bytes=8015872
+model-heap-run events=1203 live_bytes=228163584 live_per_event=189662 peak_bytes=228163584 dropped_bytes=228130816 baseline_bytes=7917568
+test one_verified_handle_reports_the_resident_bytes_it_keeps_per_event has been running for over 60 seconds
+model-heap-run events=1203 live_bytes=228171776 live_per_event=189668 peak_bytes=228171776 dropped_bytes=228139008 baseline_bytes=8024064
+model-heap events=1203 runs=3 live_median_bytes=228163584 live_median_per_event=189662 peak_median_bytes=228171776 dropped_median_bytes=228130816 live_bytes=[228163584, 228163584, 228171776]
+test one_verified_handle_reports_the_resident_bytes_it_keeps_per_event ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.56s
+loadavg after: 21.45 24.87 20.43 7/6224 2316151

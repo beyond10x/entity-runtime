@@ -190,7 +190,7 @@ async fn incremental_receipts_refuse_a_single_record_key_that_names_another_reco
         .unwrap();
     let mut after = capture(&backend, &store).await;
     let original = build_model(&store.authority, &after).unwrap();
-    let RecordLookup::Committed(record) = original.records["touched"].clone() else {
+    let ModelLookup::Committed(record) = original.records["touched"].clone() else {
         panic!("commit")
     };
     let key = BatchKey::SingleRecord("another-record".into());
