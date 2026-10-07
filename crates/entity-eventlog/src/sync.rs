@@ -1426,7 +1426,9 @@ impl RecordedEventlogBridge {
         )
     }
 
-    /// Starts with an explicit read-integrity policy; opening always verifies the whole authority.
+    /// Starts with an explicit read-integrity policy. Opening verifies the whole authority, unless
+    /// the policy is `ProviderTracked` and durable open checkpoints are enabled on the store: then
+    /// it verifies the persisted checkpoint and the suffix after it ([`Self::open_verification`]).
     pub fn start_with_read_policy(
         registry: Registry,
         owner: EventlogRecordedStoreOwner,

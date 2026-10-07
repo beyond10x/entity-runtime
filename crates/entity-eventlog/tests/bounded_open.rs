@@ -562,6 +562,11 @@ fn a_raw_file_edit_is_refused_by_the_read_of_the_edited_blob_and_by_full_verific
             ),
             "a state the edit did not touch is answered"
         );
+        // A write the edit does not touch moves this handle past the persisted checkpoint, so only
+        // the refusal below keeps it from persisting a new one.
+        run(&bounded, "after-edit", vec![create("e", "epsilon")])
+            .await
+            .expect("a write beside the edit commits");
         let refused = bounded.load(&ticket("b")).await;
         assert!(
             matches!(
@@ -571,11 +576,68 @@ fn a_raw_file_edit_is_refused_by_the_read_of_the_edited_blob_and_by_full_verific
             ),
             "the edited state blob is refused by the read that reads it: {refused:?}"
         );
+        assert!(
+            !bounded.write_open_checkpoint().await.expect("write call"),
+            "a handle that refused since its last complete verification persists nothing"
+        );
+        drop(bounded);
+        let reopened = open(&path, &authority, LIMITS, CapturePolicy::ProviderTracked)
+            .await
+            .expect("tracked open");
+        assert_eq!(
+            reopened.open_verification(),
+            OpenVerification::Suffix { events: 1 },
+            "the persisted checkpoint is still the one before the refusal"
+        );
+        drop(reopened);
         let refused = open(&path, &authority, LIMITS, CapturePolicy::FullVerification).await;
         assert!(
             matches!(refused, Err(AsyncStoreError::ProviderIntegrity { .. })),
             "a FullVerification open refuses the edited store: {refused:?}"
         );
+    });
+}
+
+/// "A write's preflight and read-back: the rows its scope names; its own append as a delta": a
+/// bounded handle's own write is verified as a suffix, not by a complete verification.
+#[test]
+fn a_bounded_handle_verifies_its_own_write_as_a_suffix() {
+    let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("directory");
+    let path = directory.path().join("store.sqlite3");
+    block_on(async {
+        let authority = populated(&path).await;
+        checkpoint(&path, &authority).await;
+        let bounded = open(&path, &authority, LIMITS, CapturePolicy::ProviderTracked)
+            .await
+            .expect("bounded open");
+        run(
+            &bounded,
+            "own",
+            vec![create("e", "epsilon"), execute("b", 1, "touch", "touch-b")],
+        )
+        .await
+        .expect("the write commits");
+        assert_eq!(
+            bounded
+                .load(&ticket("b"))
+                .await
+                .expect("load")
+                .expect("b")
+                .revision,
+            2
+        );
+        let calls = bounded.calls();
+        assert_eq!(
+            (calls.captures, calls.model_builds, calls.model_advances),
+            (0, 0, 1),
+            "the handle's own append was verified as one suffix: {calls:?}"
+        );
+        assert!(bounded.write_open_checkpoint().await.expect("write"));
+        drop(bounded);
+        let next = open(&path, &authority, LIMITS, CapturePolicy::ProviderTracked)
+            .await
+            .expect("next open");
+        assert_eq!(next.open_verification(), OpenVerification::Checkpoint);
     });
 }
 

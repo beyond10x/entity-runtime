@@ -1,14 +1,19 @@
 # Recorded open checkpoint v0.1
 
-Status: proposed design, awaiting independent review. It decides how an open of a recorded
-Eventlog store under `CapturePolicy::ProviderTracked` stops costing a complete verification of the
-whole history (beyond10x/entity-runtime#55), and which provider proof that needs. Acceptance of
-this design does not claim implementation.
+Status: option (a) chosen by `story:recorded-open-checkpoint-design` and implemented in
+`entity-eventlog` against Eventlog 0.8.0 (beyond10x/entity-runtime#55). It decides how an open of
+a recorded Eventlog store under `CapturePolicy::ProviderTracked` stops costing a complete
+verification of the whole history, and which provider proof that needs. Where the released
+provider differs from § *The Eventlog capability*, the text below follows the provider; the items
+this design left open are decided in § *Decided in the implementation*.
 
 Source references: Entity Runtime at `b7362882` (paths relative to this repository); Eventlog at
 the pinned rev `6983cc25` (written `eventlog@6983cc25:<path>:<line>`); Eventlog `origin/main` at
-`1d089714` (`0.6.0-4-g1d089714`, read 2026-10-06). The measured baseline is
-[`open-cost-baseline.txt`](../ess/evidence/provider-tracking/open-cost-baseline.txt).
+`1d089714` (`0.6.0-4-g1d089714`, read 2026-10-06). The implementation builds against the released
+Eventlog `0.8.0` (`de30462b`). The measured baseline is
+[`open-cost-baseline.txt`](../ess/evidence/provider-tracking/open-cost-baseline.txt); the
+measurement with a checkpoint is
+[`open-cost-checkpoint.txt`](../ess/evidence/provider-tracking/open-cost-checkpoint.txt).
 
 ## Decision
 
@@ -159,9 +164,11 @@ four providers implement.
 
 - Snapshot tables are not captured material, so a checkpoint never enters a capture, a model, a
   read bound or a projection. Run, not only read:
-  `a_checkpoint_snapshot_is_not_captured_and_writing_it_ends_in_process_continuity`
+  `a_checkpoint_snapshot_is_not_captured_and_writing_it_keeps_in_process_continuity`
   (`crates/entity-eventlog/tests/review_open_checkpoint.rs`) captures the tenant before and after
   such a snapshot write and gets equal captures, and a store holding the snapshot still opens.
+  Against Eventlog 0.8.0 the write also keeps the handle's in-process continuity; against the
+  pinned `6983cc25` it ended it, which the test asserted under its earlier name.
 - One authority, one backup: the checkpoint is restored, copied and forgotten with the store;
   `forget_tenant` removes it (`eventlog@6983cc25:crates/eventlog-sqlite/src/lib.rs:2132-2148`).
 - No new IO edge: no path beside the provider, which `AGENTS.md:245-254` would have to name and
@@ -216,13 +223,14 @@ differ from the provider's without anything noticing. One copy is kept, the prov
     that is not a tombstone, counts as one; a damaged record never blocks a write;
   - if the record persisted now is a tombstone, it is the one this handle loaded at its open. A
     handle that opened before a discard never writes over it.
-- **Never mid-life by itself.** A snapshot write runs on the provider's own connection outside the
-  append hooks (`eventlog@6983cc25:crates/eventlog-sqlite/src/lib.rs:2051-2093`), changes that
-  connection's `total_changes`, which is part of the in-process stamp (`tracked_capture.rs:20-41`),
-  and the next observation then discards the in-process journal (`tracked_capture.rs:108-113`).
-  The review test above runs this: after the write, the next complete read takes a second capture.
-  The Eventlog capability asks that the provider's own non-captured writes stop doing that; until
-  then a mid-life write buys the next read a complete capture.
+- **Never mid-life by itself.** Against the pinned `6983cc25` a snapshot write changed the
+  connection's `total_changes`, part of the in-process stamp (`tracked_capture.rs:20-41`), so the
+  next observation discarded the in-process journal (`tracked_capture.rs:108-113`) and a mid-life
+  write bought the next read a complete capture. Eventlog 0.8.0 re-synchronizes the stamp inside the
+  snapshot write's own transaction, as the Eventlog capability asked, and the review test above now
+  shows the next read takes no capture. The implementation still writes only at a drain and on the
+  explicit call: a record per read would cost a snapshot write per read and name nothing a drain
+  does not.
 
 The third condition replaces a discarded checkpoint even when the head has not moved: after an
 upgrade (new `verifier`), a change of limits or a failed digest, the first process to drain writes
@@ -274,9 +282,12 @@ recovery is explicit, and there are two:
   is. The snapshot port has no delete: eventlog-core offers `save_snapshot`, `snapshot_generation`,
   `save_snapshot_checked` and `load_snapshot` (`eventlog@6983cc25:crates/eventlog-core/src/lib.rs:901-942`),
   and only `forget_tenant` removes a snapshot. So discard overwrites the record with a tombstone:
-  the same `format`, a `discarded` marker, a random nonce so no two tombstones are equal, and the
-  `digest`. An open treats a tombstone as no checkpoint, verifies completely and, at its drain,
-  writes a new checkpoint over it.
+  the same `format`, a `discarded` marker, the authority, and `replaces`, the framed digest of
+  the state it overwrote, so no two tombstones are equal unless they replaced byte-identical
+  records, and the `digest`. The design asked for a random nonce; no library here reads a random
+  source on the caller's behalf, and naming the replaced state gives the same answer for every
+  sequence of discards a store can reach. An open treats a tombstone as no checkpoint, verifies
+  completely and, at its drain, writes a new checkpoint over it.
 - **`FullVerification` opens never read the checkpoint**, so the store stays readable and writable
   under that policy meanwhile.
 
@@ -310,7 +321,8 @@ the bounds directly".
 ### How a bounded open runs
 
 1. Load the snapshot. Check `format`, `verifier`, `digest`, `authority`, `projections` and
-   `limits`. Any failure: step 4.
+   `limits`, and that the tenant's binding row names this authority and the record's binding
+   event. Any failure: step 4.
 2. Restore the provider's checkpoint from its durable bytes and call
    `capture_tenant_since(tenant, projection_specs(), limits, Some(&restored))`.
 3. `Unchanged`: the handle starts at the checkpoint's position, with the totals the provider bound
@@ -320,6 +332,12 @@ the bounds directly".
 4. `Complete`, or any fallback above: `build_model` over the complete capture, as today; then
    compare the capture's last position with the checkpoint's. The handle holds the whole model, as
    every `ProviderTracked` handle does today.
+
+The usage step 3 starts from is kept with the bounded observation, not taken from the handle's
+read-bound totals: a handle's own write advances those before the provider reports it, and a
+suffix measured against them would never add up. Every tracked handle also keeps the highest
+position it has verified, and refuses a later complete capture whose head is behind it: history is
+append-only, so that is a store that lost its tail under a live handle.
 
 **Verifying a delta without a whole model** is `advance` (`tracked.rs:210-470`) with its prior
 state taken from the delta's before-values instead of a held model: for each subject the delta
@@ -348,11 +366,35 @@ whole-model handle through a complete verification. Then:
 | a batch lookup | its batch row and member blobs | one row, the members' blobs | the same |
 | a subject's history | its stream, read per entity as `FullVerification` reads it (`scoped.rs`) | that subject's history | the per-entity verifier, as today |
 | a complete snapshot, the recorded refusals | a complete capture | the whole store | `build_model`, as today |
-| a write's preflight and read-back | the rows its scope names; its own append as a delta | the scope | as the reads above |
+| a write's preflight and read-back | the streams, blobs and index rows its scope names, read per entity as a `FullVerification` handle's write reads them; its own append as a delta | the histories of the subjects it writes | the per-entity verifier, and the suffix verifier for the append |
+
+The implementation answers a write's preflight per entity rather than from rows alone. The append
+path, the executor's reads and recovery take a model of the scope, histories included; the
+per-entity reader builds one, verified, from the subjects' streams, which no row holds. Its cost is
+the written subjects' histories, as on a `FullVerification` handle, never the whole store.
 
 No read is answered from content nobody verified: each row-backed answer names the complete
 verification and the deltas that held its row, and the implementation shows that in a test per
 read (the implementation story's "no silent unverified read").
+
+### No silent unverified read
+
+Every verification a bounded open no longer does, where it happens instead, and the test that
+shows it (tests in `crates/entity-eventlog/tests/bounded_open.rs` unless named otherwise; the
+unit tests are in `crates/entity-eventlog/src/adapter/bounded/tests.rs` and
+`crates/entity-eventlog/src/adapter/checkpoint.rs`):
+
+| verification a complete open does | where it happens after a bounded open | test |
+|---|---|---|
+| every event, blob and row before the checkpoint, held to the events | in the complete verification that wrote the checkpoint, then the provider's continuity proof: any SQL write since gives `Complete`, and the open verifies completely | the five `checkpoint-current-*-tamper` ESS scenarios; `a_foreign_write_under_a_live_bounded_handle_makes_its_next_read_complete` |
+| the same, on demand | a `FullVerification` open, which never reads the checkpoint, and every complete read | `full_verification_verifies_the_whole_history_beside_a_valid_checkpoint`; `a_complete_read_of_a_bounded_handle_verifies_the_whole_store_once` |
+| the events after the checkpoint | the suffix verifier, from the rows they change and the blobs they bind | `an_open_after_appends_verifies_only_the_suffix`; `a_suffix_verified_from_rows_is_accepted_whole_and_refused_for_every_forged_coordinate`; `a_suffix_continuing_another_state_than_its_subject_row_names_is_refused` |
+| the binding and the stream identity | the binding row read on every bounded open; the checkpoint's own `authority`; the provider's check of a restored checkpoint against the stored identity | `a_checkpoint_naming_another_binding_event_is_not_applied`; `checkpoint-current-identity-tamper` |
+| the checkpoint itself | its digest, format, verifier, projections and limits on every open; a damaged one costs a complete open | `a_record_changed_without_its_digest_is_damaged_and_another_verifier_is_foreign`; `tampered-checkpoint-falls-back-to-complete` |
+| a tail the store lost | the position the checkpoint names, after the complete verification it falls back to | `a_checkpoint_beyond_the_head_refuses_tracked_opens_until_discarded`; `checkpoint-ahead-of-head-refuses-until-discarded` |
+| each state, record and batch read | the row the verifications above held, and every blob it reads held to its digest; a raw edit the provider cannot see is refused by the read that reads it | `every_answer_of_a_bounded_handle_equals_a_complete_handles`; `a_raw_file_edit_is_refused_by_the_read_of_the_edited_blob_and_by_full_verification` |
+| each history and a write's preflight | the per-entity verifier, as on a `FullVerification` handle; the write's own append as a suffix | `every_answer_of_a_bounded_handle_equals_a_complete_handles`; `a_bounded_handle_verifies_its_own_write_as_a_suffix` |
+| the read-bound totals | the usage the provider bound to the checkpoint, advanced by each verified suffix; a digest the handle has not seen bound is asked of the provider | `a_bounded_handle_refuses_a_write_past_its_read_bound_as_a_whole_handle_does` |
 
 ### Tenant totals for `admit_growth`
 
@@ -557,6 +599,8 @@ the Eventlog capability.
 
 **Prerequisite.** Land `6983cc25` (in-process SQLite capture continuity, branch
 `fix/er-51-capture-checkpoints`) on `main` and release it; Entity Runtime 0.26.0 pins that commit.
+(Done: Eventlog 0.8.0 carries both, beyond10x/eventlog#39. The API below is the released one; the
+behaviour bullets are corrected where the release answered them.)
 
 **API (additive: default trait methods keep every provider compiling unchanged; the migration calls are SQLite-only).**
 
@@ -649,11 +693,16 @@ is reported, not absorbed. A false `Complete` is always allowed; a false `Unchan
   continuity check admit exactly its own triggers, by name and SQL text, and give their present
   answer for any other trigger.
 - The provider's own writes to tables outside the captured material (snapshots, snapshot
-  generations, the continuity tables) end neither durable nor in-process continuity. Today a
-  snapshot write changes `total_changes`, which is part of the in-process stamp
-  (`crates/eventlog-sqlite/src/tracked_capture.rs:20-41`).
-- A standalone `put_blob` or `append` outside an atomic group should be journaled like a group,
-  or it ends continuity as it does today; say which.
+  generations, the continuity tables) end neither durable nor in-process continuity. Eventlog
+  0.8.0 does this: its snapshot write re-synchronizes the in-process stamp inside its own
+  transaction.
+- A standalone `put_blob`, `delete_blob` or `append` outside an atomic group is not journaled in
+  Eventlog 0.8.0: it moves the mark without an entry, so the next restored checkpoint gives
+  `Complete`. So does projection administration.
+- A tenant with redacted history gives `Complete` from a restored checkpoint, never a delta, and a
+  cap that the restored checkpoint's usage plus the delta would cross gives `Complete`, never a
+  limit refusal: the usage came from caller-held bytes, and the complete path applies the limits to
+  the real observation (Eventlog 0.8.0, `docs/design/durable-capture-continuity.md` there).
 
 **Known limit of counters, and why the token.** With epoch and position alone, a copy of the file
 restored from an older backup and then written to as many times as the groups it lost carries the
@@ -699,8 +748,10 @@ and tree providers keep the default (`None`, hence `Complete`).
   `ess/provider-tracking/domains/operations.yaml`, with their harness in
   `checks/ess-conformance/src/provider.rs`, before any code, and changes R-151's read-bound sentence
   as *What invalidates it* states.
-- The implementation reaches `crates/entity-eventlog/src/adapter/scoped.rs` (row-backed reads)
-  and `projection.rs` (decoding rows), which its scope does not list.
+- The implementation reaches `crates/entity-eventlog/src/adapter/scoped.rs` (a bounded handle's
+  per-entity reads), which its scope does not list; the row-backed reads and the suffix verifier
+  are `adapter/bounded.rs` and the record `adapter/checkpoint.rs`. `projection.rs` is unchanged:
+  rows are decoded with its `tagged_body`.
 - To change in the same work: R-151's "fully verifies on open" (`docs/requirements.md:224`), the
   policy doc comment (`tracked.rs:13-14`), the bridge and facade doc comments (`sync.rs:1300`,
   `crates/entity-eventlog/src/facade.rs:170-173`), the adapter design
@@ -709,13 +760,58 @@ and tree providers keep the default (`None`, hence `Complete`).
   `AGENTS.md:245`, `CHANGELOG.md`, and the Eventlog re-pin, which `entity-sqlite`,
   `entity-postgres` and `entity-cli` name at the same rev (`AGENTS.md:340-344`).
 
-## Left open for the implementation
+## Decided in the implementation
 
-- The wire form of the checkpoint record and its reference vectors.
-- The final names and shapes of the administrative calls on the facade and the bridge: the
-  explicit checkpoint write, `discard_open_checkpoint`, and the enable and disable pair
-  (`enable_durable_open_checkpoints` is the working name). This design fixes what each does, not
-  its spelling.
-- Whether a handle that opened completely drops its whole model for row-backed reads once it has a
-  durable checkpoint. That would also bound the owner process's memory (beyond10x/connectors#103);
-  this design does not require it.
+This design left three items open. The implementation decided them as follows.
+
+### The wire form
+
+The checkpoint is the snapshot of stream type `er.open-checkpoint`, stream id
+`key_for_value("er.eventlog.open-checkpoint-stream-key/1", {"authority": authority})`, in the bound
+tenant, written with `version` 0 (the stream has no events), `state_schema_version` 1 and
+`recorded_at` the Unix epoch: no library here reads a clock, and a checkpoint's meaning is its
+position. Its state is one JSON object read by exact key; a state with an unknown or missing key is
+damaged:
+
+| key | value |
+|---|---|
+| `format` | `er.eventlog.open-checkpoint/1` |
+| `kind` | `checkpoint`, or `discarded` for a tombstone |
+| `verifier` | the `entity-eventlog` crate version that wrote it |
+| `authority` | the `Authority` object |
+| `binding` | the binding event's `PhysicalRef` |
+| `projections` | the four projection names, in request order |
+| `limits` | `max_events`, `max_blobs`, `max_projection_rows`, `max_payload_bytes` |
+| `provider` | the provider's durable checkpoint bytes, lower-case hexadecimal |
+| `position` | the last verified tenant position |
+| `digest` | `framed_key("er.eventlog.open-checkpoint-digest/1", canonical bytes of every other key)` |
+
+A tombstone carries `format`, `kind`, `authority`, `replaces` (`framed_key` in
+`er.eventlog.open-checkpoint-replaced/1` of the canonical bytes of the state it overwrote) and
+`digest` over the other four. The digest is recomputed from the typed record, never from the
+stored text, so a reordered or reformatted state still verifies and an edited one does not.
+
+The reference vector, held by
+`crates/entity-eventlog/src/adapter/checkpoint.rs::a_checkpoint_record_has_one_wire_form_and_digest`
+and recomputed independently with `sha256sum` when it was pinned: authority
+`{"logical_scope":"scope","stream_identity":"identity","tenant":"tenant"}`, binding
+`{"event_id":"binding-event","global_seq":1,"stream_id":"singleton","stream_version":1}`, limits
+10/20/30/40, provider bytes `007fff10`, position 42 and verifier `reference` give the digest
+`sha256:1a1fd81af5a7e6932efad0d0a69d5fdeccd0b4def6c739ea0d28c2140cfe90c0`.
+
+### The calls
+
+| call | what it does |
+|---|---|
+| `RecordedProviderFacade::enable_durable_open_checkpoints(wait)` (and the bridge's) | runs `SqliteEventStore::enable_durable_continuity` on the worker's store, then verifies the authority again so the handle holds an observation with a durable form; `InvalidInput` for any other provider |
+| `RecordedProviderFacade::disable_durable_open_checkpoints(wait)` (and the bridge's) | runs `disable_durable_continuity`; every persisted checkpoint then restores to nothing |
+| `RecordedProviderFacade::write_open_checkpoint(wait)`, `EventlogRecordedStore::write_open_checkpoint()` | the explicit checkpoint write, by the rules of *When it is written*; a drain shutdown calls it |
+| `EventlogRecordedStoreOwner::discard_open_checkpoint()`, `EventlogRecordedStore::discard_open_checkpoint(backend, authority)` | the discard; on the owner it opens the SQLite store itself and must run before a facade is started from it; owners of other providers return `false` without opening their store |
+| `RecordedProviderFacade::open_verification()`, `EventlogRecordedStore::open_verification()` | how the open verified: `Complete`, `Checkpoint`, or `Suffix { events }` |
+
+### A complete-opened handle keeps its model
+
+A handle that opened completely keeps its whole model for its life, as every `ProviderTracked`
+handle does today; only a handle opened from a checkpoint answers from rows. Dropping the model
+once a durable checkpoint exists would also bound the owner process's memory
+(beyond10x/connectors#103); it is not part of this work.

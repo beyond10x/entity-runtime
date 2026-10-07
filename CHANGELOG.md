@@ -4,12 +4,48 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- `entity-eventlog`: a `CapturePolicy::ProviderTracked` open of a SQLite store can start from a
+  persisted open checkpoint instead of verifying the whole history (GitHub #55). Once
+  `RecordedProviderFacade::enable_durable_open_checkpoints` has run on a store, a `Drain` shutdown
+  (or `write_open_checkpoint`) persists the handle's last verified observation, and the next
+  tracked open verifies that checkpoint, the provider's proof that only its acknowledged appends
+  followed it, and those appends; its cost follows the appends since the last checkpoint, not the
+  store's size. `open_verification()` on the facade, the bridge and `EventlogRecordedStore` says
+  whether an open was `Complete`, from a `Checkpoint`, or a checkpoint and a `Suffix`. A handle
+  opened this way answers states, records and batches from the verified index rows and histories
+  per entity; a complete read is still a complete verification. `FullVerification` never reads or
+  writes the checkpoint, and a store nobody enabled opens completely, as before.
+- **Enabling is one-way for older binaries.** It installs Eventlog's triggers and continuity
+  tables; Entity Runtime 0.28.0 and earlier, and anything built against Eventlog before 0.8.0,
+  refuse to open a store carrying them. Upgrade every process that opens a store, older installed
+  binaries and second tools included, before enabling it; `disable_durable_open_checkpoints` makes
+  the store theirs again. Enabling is refused with `InvalidInput` on any provider but SQLite.
+- `EventlogRecordedStoreOwner::discard_open_checkpoint` (and
+  `EventlogRecordedStore::discard_open_checkpoint`) replaces a persisted checkpoint with a
+  tombstone. A tracked open refuses with `ProviderIntegrity` a checkpoint whose position is beyond
+  the provider's head, because the store lost its tail; shut down every owner of the store and run
+  the discard before starting a facade once the store is to be used as it is. `FullVerification`
+  opens are unaffected meanwhile.
+
 ### Changed
 
 - `entity-eventlog`, and the Eventlog features of `entity-cli`, `entity-sqlite` and
   `entity-postgres`, depend on Eventlog's `0.8.0` tag instead of `0.7.0`. Eventlog 0.8.0 adds
   durable capture continuity on SQLite, which a store gets only through an explicit enable call;
   a store nobody enabled opens and reads as before.
+- A `ProviderTracked` open from a checkpoint no longer detects raw edits of the SQLite file that
+  bypass SQLite while no handle is open: only a `FullVerification` open or a complete read does,
+  and a read of an edited blob refuses it. A write through any SQLite connection between opens
+  still makes the next open verify completely.
+- A handle opened from a checkpoint counts its read bounds from the usage the provider bound to
+  that checkpoint, and asks the provider whether each blob a write binds is already bound; a
+  refusal is the `BatchExceedsReadBounds` a whole-model handle gives.
+- `BridgeOperationIdentity` gains `Administration`, the identity of an enable, disable or
+  checkpoint-write call a shutdown that timed out reports as dispatched.
+- A `ProviderTracked` handle refuses with `ProviderIntegrity` a complete capture whose head is
+  behind a position it already verified: the store lost its tail under the live handle.
 
 ## [0.28.0] — 2026-10-07
 

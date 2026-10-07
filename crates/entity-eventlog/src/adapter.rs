@@ -1162,6 +1162,7 @@ impl EventlogRecordedStore {
     ///
     /// Used after durable continuity is enabled under a live handle: the checkpoint it held was
     /// issued before, so it has no durable form.
+    #[cfg(feature = "sync-bridge")]
     pub(crate) async fn reverify(&self) -> Result<(), AsyncStoreError> {
         if self.policy == CapturePolicy::ProviderTracked {
             self.forget_observation()?;

@@ -77,20 +77,6 @@ fn text<'a>(
 }
 
 impl EventlogRecordedStore {
-    /// The read-bound totals this handle holds, as provider usage.
-    pub(super) fn usage(&self) -> Result<CaptureUsage, AsyncStoreError> {
-        let held = self
-            .held
-            .lock()
-            .map_err(|_| integrity("read bound lock poisoned"))?;
-        Ok(CaptureUsage {
-            events: held.events,
-            blobs: held.blobs,
-            projection_rows: held.rows,
-            payload_bytes: 0,
-        })
-    }
-
     /// Holds the provider's usage as this handle's totals, knowing none of its bound digests.
     fn hold_usage(&self, usage: CaptureUsage) -> Result<(), AsyncStoreError> {
         *self
@@ -153,11 +139,13 @@ impl EventlogRecordedStore {
             .map_err(map_capture)?;
         match update {
             TenantCaptureUpdate::Unchanged { checkpoint } => {
-                self.hold_usage(self.backend.checkpoint_usage(&checkpoint).unwrap_or(base))?;
+                let usage = self.backend.checkpoint_usage(&checkpoint).unwrap_or(base);
+                self.hold_usage(usage)?;
                 self.install_bounded(Bounded {
                     checkpoint,
                     last_position: record.position,
                     binding: record.binding.clone(),
+                    usage,
                 })?;
                 Ok(Opened::Bounded(OpenVerification::Checkpoint))
             }
@@ -172,6 +160,7 @@ impl EventlogRecordedStore {
                     checkpoint,
                     last_position: suffix.last_position,
                     binding: record.binding.clone(),
+                    usage: suffix.usage,
                 })?;
                 Ok(Opened::Bounded(OpenVerification::Suffix {
                     events: suffix.events,
@@ -791,3 +780,6 @@ impl EventlogRecordedStore {
         Ok(())
     }
 }
+
+#[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
+mod tests;

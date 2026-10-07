@@ -1,6 +1,6 @@
 //! Provider-attested reuse of a completely verified observation.
 use super::*;
-use eventlog_core::{CaptureCheckpoint, TenantCaptureDelta, TenantCaptureUpdate};
+use eventlog_core::{CaptureCheckpoint, CaptureUsage, TenantCaptureDelta, TenantCaptureUpdate};
 
 /// Integrity boundary for reads through one live provider handle.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -60,6 +60,10 @@ pub(super) struct Bounded {
     pub(super) checkpoint: CaptureCheckpoint,
     pub(super) last_position: u64,
     pub(super) binding: PhysicalRef,
+    /// The usage the provider bound to the observation, which a suffix after it must add to
+    /// exactly. Not the handle's read-bound totals, which its own writes advance before the
+    /// provider reports them.
+    pub(super) usage: CaptureUsage,
 }
 
 /// What a `ProviderTracked` handle answers a read from once it has continued its observation.
@@ -137,7 +141,7 @@ impl EventlogRecordedStore {
                 .map_err(map_capture)?;
             let suffix = match &update {
                 TenantCaptureUpdate::AppendDelta { delta, .. } => Some(
-                    self.verify_suffix(self.usage()?, bounded.last_position, delta)
+                    self.verify_suffix(bounded.usage, bounded.last_position, delta)
                         .await,
                 ),
                 _ => None,
@@ -183,6 +187,7 @@ impl EventlogRecordedStore {
                         checkpoint,
                         last_position: suffix.last_position,
                         binding: bounded.binding,
+                        usage: suffix.usage,
                     });
                     cache.generation = next_generation;
                     return Ok(Tracked::Rows);
@@ -284,6 +289,7 @@ impl EventlogRecordedStore {
 
     /// Forgets the held observation, so the next read verifies completely; what this handle has
     /// verified it keeps as its floor.
+    #[cfg(feature = "sync-bridge")]
     pub(super) fn forget_observation(&self) -> Result<(), AsyncStoreError> {
         let mut cache = self
             .tracked
@@ -336,15 +342,6 @@ impl EventlogRecordedStore {
             .lock()
             .map_err(|_| integrity("tracked cache poisoned"))?
             .floor)
-    }
-
-    /// Whether this handle currently has no model and answers from the provider's rows.
-    #[cfg(test)]
-    pub(super) fn is_bounded(&self) -> bool {
-        self.tracked
-            .lock()
-            .map(|cache| cache.bounded.is_some())
-            .unwrap_or(false)
     }
 
     async fn tracked_model_once(&self) -> Result<Arc<CapturedModel>, AsyncStoreError> {
