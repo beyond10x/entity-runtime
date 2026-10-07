@@ -427,7 +427,7 @@ An operation runs in exactly this order (R-70), and a refusal at any step return
  3. arguments: defaults, then validation                    Validation
  4. transition selected from the current state              InvalidTransition
  5. preconditions, against current state + arguments        PreconditionFailed
- 6. set, every assignment against pre-operation fields      Template
+ 6. set, every assignment against pre-operation fields      Template, IncrementOverflow
  7. resulting fields validated against the schema           Validation
  8. next instance constructed: new state, revision + 1
  9. invariants, against the next state                      InvariantViolation

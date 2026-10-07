@@ -37,7 +37,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 - A `set` value that is a mapping whose only key is `increment` is now an increment, not an object
   template, so an `object` or `json` field can no longer be written with that one literal mapping;
-  registration refuses it as `increment_target_invalid`. A mapping with any second key is still an
+  registration refuses it as `increment_target_invalid`, and on a creation outcome as
+  `increment_on_create`. A mapping with any second key is still an
   object template. `CoreError` and `DefinitionError` gain variants, so an exhaustive `match` on
   either needs new arms.
 
