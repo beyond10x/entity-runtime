@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T11:06:10Z",
+  "actor": "human:timo",
+  "artifact": "story:declared-collection-count-answers-its-declared-kind",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "task ess-check and cargo test -p entity-core --test service_values (U1 red run vs a1d50eec)",
+    "reference": "U1 build/scratch: ess-check 451/452 before the fix, 452/452 at a1d50eec; service_values 54 passed 4 failed before, 58 passed after"
+  }
+}
