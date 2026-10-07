@@ -13,7 +13,7 @@ relations:
 - designs: story:projection-keys-read-collection-addresses
 - designs: story:service-1-moves-outcome-loads-from-yaml
 - designs: story:service-response-is-checked-against-its-schema
-revision: 1
+revision: 3
 ---
 # Wave: six filed defects
 
@@ -90,3 +90,26 @@ unit trees at once (`/` near 30G free).
   change to `entity-core`'s public API (`ValidatedDefinition::new` is consumer surface).
 - Declared collection count: the guard keys on the declared field, as the map arm at
   `runtime.rs:2976` does.
+
+## Rounds and merges
+
+| unit | commits | merged | tests (lane, before → after) | notes |
+|---|---|---|---|---|
+| U1 declared count | `a1d50eec` | `29156688` | entity-core 414 → 419; ESS 452/452 | guard keys on the declared field; ordinal addresses fixed with it; R-148 amended |
+| U2 projection keys | `1a2287c6` | `1ef37508` | entity-store 75 → 80 | option A with a kernel-parity test; three validation comments corrected by the coordinator; R-167 |
+| U3 moves YAML | `db7c3201` | `161122a9` | entity-yaml 31 → 37, entity-cli 31 → 32 | 257 documents load as before; the tagged `!moves` form never loaded and stays refused; coordinator fix: `entity inspect --format yaml` writes the mapping form |
+| U4 YAML numbers | `7d30cc10` | `fd42630e` | entity-surface 10 → 12, entity-cli 33 → 34 | exact digits for numbers outside i64/u64/f64; `story:entity-command-yaml-output-writes-numbers` filed for `--format yaml` |
+| U5 binder | `9a9e9288` | `7f4f2d39` | entity-core 419 → 427; ESS 456 | split: the full change broke replay of two recorded decisions; shipped the text-length lift, kept a declared map's member reading; `story:binder-map-elements-read-their-size` filed; R-168 |
+| U6 response check | `ad5ad4f8`, `dbddde2a` | `652fb8df` | entity-core 419 → 423, entity-store 80 → 82, entity-eventlog +1 | replay and the store verifier recompute recorded decisions unchecked (`recompute_create`, `recompute_before_load`, additive); R-169 |
+
+No adversary passes: these are defect fixes, held by their red tests and the full gate; the
+coordinator read the implementors' reports, not every diff. Two replay hazards were found by the implementors and handled before
+merge (U5 split, U6 recompute).
+
+A process slip, corrected before any push: the coordinator first merged `main` into this branch with
+plain `git merge`, which carried the operator's own identity; the push hook refused it, and the merge
+and the opening commit were redone through the bot (`bc12d5a2`, `431ff369`).
+
+Agent cost (tokens, tool uses, minutes): U1 158,592 / 81 / 15; U2 200,332 / 23 / 3 (plus a run cut
+by a rate limit); U3 210,033 / 21 / 3 (plus a cut run); U4 158,122 / 78 / 14; U5 251,924 / 123 / 18
+and 346,536 / 207 / 30; U6 299,003 / 184 / 20 and 333,244 / 215 / 24.
