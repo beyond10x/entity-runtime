@@ -2143,14 +2143,15 @@ fn validate_template(value: &Value, path: &str, scope: Scope<'_>) -> Result<(), 
     validate_operand(value, path, scope)
 }
 
-/// One `set:` entry, read through [`SetAssignment::of`]: a template in its scope, or an increment
-/// and the rules that give its sum a value (R-164).
+/// One `set:` entry, read through [`SetAssignment::of`]: a template in its scope, an increment and
+/// the rules that give its sum a value (R-164), or a clear (R-165).
 ///
 /// An increment needs a value before it and a number to add, so it is refused on a creation, on a
 /// field that is not a declared required `integer` or `number`, and with an amount that is not an
 /// always-present number of the field's kind. A field the schema neither declares nor admits is
 /// already the caller's `UnknownSetField`, and once the target is refused its amount is not judged
-/// against a kind it does not have.
+/// against a kind it does not have. A value naming two assignments is refused before either is
+/// judged.
 fn validate_set_entry(
     definition: &EntityDefinition,
     field: &str,
@@ -2166,6 +2167,16 @@ fn validate_set_entry(
                 .collect()
         }
         SetAssignment::Increment(amount) => amount,
+        SetAssignment::Cleared(flag) => {
+            return validate_clear(definition, field, flag, path, scope)
+        }
+        SetAssignment::Conflicting(members) => {
+            return vec![DefinitionError::SetAssignmentConflict {
+                path: path.to_owned(),
+                field: field.to_owned(),
+                keywords: members.keys().cloned().collect(),
+            }]
+        }
     };
     if scope.kind == ScopeKind::CreateSet {
         return vec![DefinitionError::IncrementOnCreate {
@@ -2208,6 +2219,54 @@ fn validate_set_entry(
     .err()
     .into_iter()
     .collect()
+}
+
+/// A `{cleared: …}` entry (R-165): the literal `true`, on an operation, for a field the schema
+/// declares and does not require.
+///
+/// A creation is refused before the target is looked at, as an increment is: a creation writes
+/// only what its branch sets and the schema defaults, so a field it leaves out is already absent,
+/// and the shape stays free to mean something else there later. A field with a declared `default`
+/// may be cleared: the default fills it at creation and nowhere else, and a fulfillment `Remove`
+/// already admits it. The target and the flag are independent faults and both are reported.
+fn validate_clear(
+    definition: &EntityDefinition,
+    field: &str,
+    flag: &Value,
+    path: &str,
+    scope: Scope<'_>,
+) -> Vec<DefinitionError> {
+    if scope.kind == ScopeKind::CreateSet {
+        return vec![DefinitionError::ClearOnCreate {
+            path: path.to_owned(),
+            field: field.to_owned(),
+        }];
+    }
+    let mut defects = Vec::new();
+    let target = |message: &str| DefinitionError::ClearTargetInvalid {
+        path: path.to_owned(),
+        field: field.to_owned(),
+        message: message.to_owned(),
+    };
+    match definition.schema.fields.get(field) {
+        // Already `UnknownSetField`; a second report of one fault would read as two.
+        None if !definition.schema.additional_fields => {}
+        None => defects.push(target(
+            "the schema does not declare it, so it is no declared optional field to clear",
+        )),
+        Some(declared) if declared.required => defects.push(target(
+            "it is required, so it is always present and a clear would leave an invalid instance",
+        )),
+        Some(_) => {}
+    }
+    if *flag != Value::Bool(true) {
+        defects.push(DefinitionError::ClearFlagInvalid {
+            path: format!("{path}.{}", SetAssignment::CLEARED),
+            field: field.to_owned(),
+            flag: flag.to_string(),
+        });
+    }
+    defects
 }
 
 /// An increment's amount: a number literal of the field's kind under the definition's semantics,

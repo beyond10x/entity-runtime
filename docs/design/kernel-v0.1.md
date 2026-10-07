@@ -146,10 +146,14 @@ set:
 **How a typed assignment is told apart from a template.** A `set:` value is a typed assignment
 when it is a mapping with **exactly one key** and that key is an assignment keyword; every other
 value — a scalar, a list, a mapping with two or more keys, a one-key mapping whose key is not a
-keyword — is a template, read exactly as before. `increment` is the only keyword so far;
-`{cleared: true}` is meant to be the next, under the same rule, and adding one is a new arm of
-`SetAssignment::of` and nothing else. The rule applies under every semantics and to an operation's
-`set` and a branch's `set` alike.
+keyword — is a template, read exactly as before. The keywords are `increment` and `cleared`
+(R-165, below), and adding one is a new arm of `SetAssignment::of` and nothing else. One
+refinement came with the second keyword: a mapping of two or more keys **every one of which is a
+keyword**, `{cleared: true, increment: 1}`, is neither a template nor an assignment but two
+assignments of one field, and registration refuses it (`SetAssignmentConflict`); a mapping with any
+key that is not a keyword is still a template. That refusal changes meaning too: before it, such a
+mapping was an object template that wrote itself into a `json` or `object` field. The rule
+applies under every semantics and to an operation's `set` and a branch's `set` alike.
 
 The value stays a `serde_json::Value` in `set`, read through the public `SetAssignment::of`, rather
 than becoming a typed enum field. Four reasons, all about not moving bytes or types nobody asked to
@@ -194,6 +198,82 @@ the kind holds but a `min` or `max` refuses is step 9's `Validation`, as for any
 Open: a source whose arithmetic over non-integers is binary64 would answer `0.1 + 0.2` differently
 from this exact sum. The scenarios state the exact sum; the ESS lowering should confirm that is what
 its `increment` means for decimals before it emits one into a service definition.
+
+#### Typed assignments: `{cleared: true}` (R-165)
+
+```yaml
+set:
+  snoozed_until: { cleared: true }
+```
+
+After the operation the field is absent. Step 8 removes it from the fields it builds from the
+pre-operation fields, so step 9 validates, step 12's invariants judge and step 13's event templates
+read an instance without it: `$fields` omits it, `$fields.<it>` resolves to nothing — a template
+refusal, not a null — and `$old_fields.<it>` still reads what it was. Nothing is resolved and
+nothing can be refused at step 8, so a clear adds no refusal to the evaluation order. The rule
+holds under every semantics, for an operation's `set` and a branch's `set` alike.
+
+**The record names it.** The decision's `removed` set and every event's carry the cleared field,
+the carrier `service/3` added for a fulfillment `Remove`, and `changed` does not (the two are
+disjoint, as before). **Clearing a field that is already absent is accepted and still names it in
+`removed`.** The instance changes nothing about that field, but the record states what the
+definition did, exactly as a `Remove` of an absent field already does: `removed` then means one
+thing — the fields this decision left absent by an action — whichever action it was, and a reader
+that applies events without the previous instance learns the field is absent either way. The
+other reading, `removed` as the difference between the two field maps the way `changed` is, would
+have given one carrier two meanings depending on which action wrote it. The event both API
+projections publish (OpenAPI `DomainEvent`, each AsyncAPI message) declares `removed` as an
+optional array of unique names; before this, both closed the event without it and refused every
+event that carried it, a `service/3` `Remove`'s included.
+
+**Where it may stand.** Registration refuses, each with its path:
+
+| what | refusal |
+|---|---|
+| a field the schema requires, so always present; or one it does not declare, under `additional_fields: true` (a closed schema already says `UnknownSetField`) | `ClearTargetInvalid` |
+| a flag that is not the literal `true` — `false`, a reference, anything else: a clear is stated, not computed | `ClearFlagInvalid` (path `….cleared`) |
+| a clear in a creation branch's `set` | `ClearOnCreate` |
+| `{cleared: true, increment: 1}`, two assignments of one field | `SetAssignmentConflict` |
+| a cleared field also named in the outcome's `set_if_present` | `ConditionalTargetConflict` (existing) |
+| a cleared field also named in the outcome's `fulfills` | `FulfillmentSetConflict` (existing) |
+
+A target and a flag that are both wrong are two faults, and both are reported. **A creation is
+refused** rather than defined: a creation writes only what its branch sets and what the schema
+defaults, so a field it does not mention is already absent, and the only new meaning a creation
+clear could carry — suppressing a declared default — is one no scenario states; admitting it later
+is additive, refusing it later would not be. **A field with a declared `default` may be cleared**:
+a default fills a field at creation and at no other step, a fulfillment `Remove` already admits
+such a field, and an increment's amount already treats a defaulted optional field as one that may
+be absent (`IncrementAmountInvalid`), so nothing that reads one assumes otherwise. Once cleared it
+stays absent until an operation writes it again.
+
+**Replay and the event fold.** `replay` reruns the decision and byte-compares the record, so it
+reproduces `removed` with no change of its own. The legacy event fold (`rehydrate`, § 10.1) used to
+refuse any `removed` on a `kernel/1` event, because no `kernel/1` operation could produce one; now
+one can, so the fold refuses removal evidence on a creation event, and on an operation event naming
+a field no operation that emits it on its transition clears, and holds the candidate operation's
+cleared set to the event's `removed` exactly, as it holds its written fields to `changed`. A
+`kernel/1`, `service/1` or `service/2` decision that clears a field is the first such decision to
+carry a non-empty `removed`. `DecisionRecord` is one type under every record framing, so every
+reader of this release decodes it; a reader built before `removed` existed (0.19.0) refuses such a
+record by its closed key set, but `DomainEvent` has no closed key set and such a reader drops an
+event's `removed` unread, so its event fold (0.17.x) returns the cleared field still present. From
+0.19.0 to 0.29.0 the fold refuses removal evidence on every `kernel/1` event. **The `er.record/1`
+to `/3` framings take no new version for the key.** `removed` is written only when it is not empty,
+so every record without a clear keeps its bytes; a record with one adds a key every reader since
+0.19.0 decodes, and 0.29.0's verifying paths (replay, `rehydrate`, recorded verification) refuse
+it, which is the refusal a new framing would give one step earlier. A new framing would also have
+to be chosen per record from its content, where `record_domain` chooses by the definition's
+semantics. 0.29.0's unverified `FileStore` reads return such a record with the state it records.
+
+**An older build decides a clear differently.** A build without this keyword (0.29.0 and earlier)
+reads `{cleared: true}` as an object template. On a field whose schema does not admit the literal
+object that fails closed at step 9, but on one that does — a `json` field, an `object` field that
+does — it writes `{"cleared": true}` where this release removes the field, and appends that
+decision; this release's replay of the store then refuses it. Every process that writes a store
+must therefore run a release with this change before any definition uses `{cleared: true}` on a
+`json` or `object` field, or any field whose schema admits that object.
+`service-binding-boundary-v0.1.md` § 3 lists each older reader's behaviour.
 
 `revision` is `1` after creation and `+1` per successful operation; a refusal consumes none, and
 each event carries the revision it produced (R-44). That is the number a store compares for

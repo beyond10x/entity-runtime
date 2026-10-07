@@ -542,6 +542,44 @@ pub enum DefinitionError {
         /// The field.
         field: String,
     },
+    /// A `set` entry `{cleared: …}` names a field a clear cannot remove: one the schema does not
+    /// declare, or one that is `required` and so always present.
+    ClearTargetInvalid {
+        /// Where, such as `operations.wake.set.title`.
+        path: String,
+        /// The field.
+        field: String,
+        /// What is wrong.
+        message: String,
+    },
+    /// A `set` entry `{cleared: …}` carries anything but the literal `true`. A clear is stated,
+    /// not computed, so `false`, a reference or any other value is a defect rather than a no-op.
+    ClearFlagInvalid {
+        /// Where, such as `operations.wake.set.note.cleared`.
+        path: String,
+        /// The field.
+        field: String,
+        /// The flag as written.
+        flag: String,
+    },
+    /// A creation branch's `set` clears a field. A creation writes only what its branch sets and
+    /// its schema defaults, so a field it does not mention is already absent.
+    ClearOnCreate {
+        /// Where, such as `create.outcomes.opened.set.note`.
+        path: String,
+        /// The field.
+        field: String,
+    },
+    /// A `set` value is a mapping of two or more assignment keywords and nothing else, such as
+    /// `{cleared: true, increment: 1}`: two assignments of one field.
+    SetAssignmentConflict {
+        /// Where, such as `operations.wake.set.hits`.
+        path: String,
+        /// The field.
+        field: String,
+        /// The keywords the value names, in order.
+        keywords: Vec<String>,
+    },
 }
 
 impl DefinitionError {
@@ -619,6 +657,10 @@ impl DefinitionError {
             Self::IncrementTargetInvalid { .. } => "increment_target_invalid",
             Self::IncrementAmountInvalid { .. } => "increment_amount_invalid",
             Self::IncrementOnCreate { .. } => "increment_on_create",
+            Self::ClearTargetInvalid { .. } => "clear_target_invalid",
+            Self::ClearFlagInvalid { .. } => "clear_flag_invalid",
+            Self::ClearOnCreate { .. } => "clear_on_create",
+            Self::SetAssignmentConflict { .. } => "set_assignment_conflict",
         }
     }
 }
@@ -1001,6 +1043,31 @@ impl fmt::Display for DefinitionError {
                 f,
                 "creation increments '{field}' at '{path}'; a field has no value to add to before \
                  the creation, so an increment is an operation's assignment only"
+            ),
+            Self::ClearTargetInvalid {
+                path,
+                field,
+                message,
+            } => write!(f, "clear of '{field}' at '{path}' is invalid: {message}"),
+            Self::ClearFlagInvalid { path, field, flag } => write!(
+                f,
+                "clear of '{field}' at '{path}' carries {flag}; a clear is written \
+                 {{cleared: true}} and nothing else"
+            ),
+            Self::ClearOnCreate { path, field } => write!(
+                f,
+                "creation clears '{field}' at '{path}'; a creation writes only what it sets and \
+                 its defaults, so a field it leaves out is already absent and a clear is an \
+                 operation's assignment only"
+            ),
+            Self::SetAssignmentConflict {
+                path,
+                field,
+                keywords,
+            } => write!(
+                f,
+                "'{field}' at '{path}' names the assignments {}; a field takes one assignment",
+                keywords.join(" and ")
             ),
         }
     }

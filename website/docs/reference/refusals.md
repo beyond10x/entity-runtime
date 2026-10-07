@@ -103,8 +103,9 @@ A refused definition reports every defect, each with one of these kinds.
   `unknown_set_field`, `empty_event_type`, `invalid_field`, `constraint_not_applicable`,
   `invalid_rule`, `unknown_relation_target`, `invalid_template`, `duplicate_definition`,
   `semantics_key_not_available`.
-- `set` increments, under every semantics: `increment_target_invalid`, `increment_amount_invalid`,
-  `increment_on_create`.
+- `set` increments and clears, under every semantics: `increment_target_invalid`,
+  `increment_amount_invalid`, `increment_on_create`, `clear_target_invalid`, `clear_flag_invalid`,
+  `clear_on_create`, `set_assignment_conflict`.
 - Service outcomes: `empty_outcome_name`, `duplicate_outcome`, `ambiguous_default_outcome`,
   `duplicate_wrong_state_outcome`, `wrong_state_on_create`, `wrong_state_with_selector`,
   `wrong_state_with_state_guard`, `wrong_state_unreachable`, `guard_state_outside_move`,

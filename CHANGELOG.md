@@ -32,15 +32,46 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   is not a declared required `integer` or `number` (`increment_target_invalid`), and with an amount
   that is not an always-present number of the field's kind (`increment_amount_invalid`), each with
   its path.
+- An operation's `set`, and an operation outcome's `set`, may write `{cleared: true}` under every
+  semantics: the field is absent after the operation, and the decision and every event it emits
+  name it in `removed` — also when it was already absent, which is accepted. The schema check,
+  invariants, events and response read the instance without it, so an invariant that needs the
+  field refuses the operation, and replay reproduces the decision. A field with a declared
+  `default` may be cleared; the default fills it at creation only.
+- Registration refuses a clear on a field the schema requires or does not declare
+  (`clear_target_invalid`), with a flag other than `true` (`clear_flag_invalid`), on a creation
+  outcome (`clear_on_create`), and a `set` value naming both `cleared` and `increment`
+  (`set_assignment_conflict`), each with its path. A cleared field also named in the outcome's
+  `set_if_present` or `fulfills` is refused as `conditional_target_conflict` or
+  `fulfillment_set_conflict`.
 
 ### Changed
 
 - A `set` value that is a mapping whose only key is `increment` is now an increment, not an object
   template, so an `object` or `json` field can no longer be written with that one literal mapping;
   registration refuses it as `increment_target_invalid`, and on a creation outcome as
-  `increment_on_create`. A mapping with any second key is still an
-  object template. `CoreError` and `DefinitionError` gain variants, so an exhaustive `match` on
-  either needs new arms.
+  `increment_on_create`. A mapping with any second key that is not an assignment keyword is
+  still an object template. `CoreError` and `DefinitionError` gain variants, so an exhaustive
+  `match` on either needs new arms.
+- A `set` value that is a mapping whose only key is `cleared` is now a clear, not an object
+  template, so an `object` or `json` field can no longer be written with that one literal mapping.
+  A mapping of `cleared` and `increment` and nothing else, which wrote that object into a `json`
+  or `object` field before, is now refused at registration as `set_assignment_conflict`.
+  `SetAssignment` gains `Cleared` and `Conflicting`, and `DefinitionError` four variants.
+- Upgrade every process that writes a store to this release before any definition uses
+  `{cleared: true}` on a `json` or `object` field, or any field whose schema admits the object
+  `{"cleared": true}`. A build before this release reads the value as an object template and
+  writes that literal object into the field where this release removes it; once it appends that
+  decision, replay refuses the store. On a field the object does not fit, an older build refuses
+  the operation instead.
+- `rehydrate` no longer refuses every `kernel/1` event that carries `removed`: an operation event
+  may name exactly the fields its operation's `set` clears. Removal evidence on a creation event,
+  or naming a field no operation emitting the event on its transition clears, is still refused.
+  An entity-core before 0.19.0 drops `removed` from an event unread, and its fold returns a
+  cleared field still present; from 0.19.0 an older fold refuses the event.
+- The OpenAPI `DomainEvent` schema and every AsyncAPI event message `entity generate docs` writes
+  declare the optional `removed` array. Before, both closed the event without it, so they refused
+  every event that carried it: a clear's, and already a `service/3` fulfillment `Remove`'s.
 
 - `DefinitionError::ConditionalSetOnOperation` (`conditional_set_on_operation`) is removed: every
   definition it refused is now admitted, and `kernel/1` and `service/1` refuse the key earlier as

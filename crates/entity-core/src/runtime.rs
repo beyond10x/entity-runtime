@@ -1139,6 +1139,7 @@ pub fn decide_before_load<'definition>(
 ///   7  preconditions, against current state + arguments         PreconditionFailed
 ///   8  the selected branch's set, against pre-operation fields  Template
 ///      an increment adds to the pre-operation value exactly     IncrementOverflow
+///      a clear removes the field and names it in removed        —
 ///      then its set_if_present (service/2 on), from the normalized arguments
 ///   9  resulting fields validated against the schema            Validation
 ///  10  next instance: state from the branch's effect, +1 rev    —
@@ -1265,14 +1266,23 @@ fn decide_with_fulfillments(
     // Step 8. `set_if_present` reads the normalized arguments rather than the fields, and
     // registration keeps its destinations out of `set` and `fulfills`, so the order of the three
     // writes cannot change the result. An absent leaf writes nothing: the field keeps whatever the
-    // instance held, including its absence.
+    // instance held, including its absence. A clear removes the field and names it in `removed`
+    // whether or not it was present, as a fulfillment `Remove` does: the record states what the
+    // definition did, and the field is absent afterwards either way.
     let mut new_fields = canonical_object(old_fields.clone());
+    let mut removed = BTreeSet::new();
     for (field, value) in selected.set {
-        let value = assigned_value(operation_name, field, value, &context)?;
-        new_fields.insert(field.clone(), value);
+        match assigned_value(operation_name, field, value, &context)? {
+            Some(value) => {
+                new_fields.insert(field.clone(), value);
+            }
+            None => {
+                new_fields.remove(field);
+                removed.insert(field.clone());
+            }
+        }
     }
     insert_present_arguments(&mut new_fields, selected.set_if_present, &args);
-    let mut removed = BTreeSet::new();
     let requirements = selected.fulfills.unwrap_or(&EMPTY_FULFILLMENTS);
     if !requirements.is_empty() {
         let Some(actions) = fulfillments else {
@@ -2760,28 +2770,50 @@ pub(crate) struct TemplateContext<'a> {
     pub(crate) to_state: &'a str,
 }
 
-/// Step 8, for one `set:` entry of an operation: what the field becomes.
+/// Step 8, for one `set:` entry of an operation: what the field becomes, or `None` where it
+/// becomes absent.
 ///
-/// A template resolves against the pre-operation fields. An increment adds its amount to the value
-/// the field held before the operation, exactly, so the sum belongs to the decision: the record
-/// carries it, and replay and the legacy event fold recompute it through this same function. A sum
-/// the field's kind cannot hold under the definition's semantics is
-/// [`CoreError::IncrementOverflow`], never a wrapped, saturated or rounded value; a sum it can hold
-/// but the schema bounds refuse is step 9's `Validation`, like any other written value.
-///
-/// Registration admits an increment only on a required `integer` or `number` field with an
-/// always-present amount of the field's kind, so the `Validation` and `Template` refusals below are
-/// reached only through an instance that does not satisfy its own schema.
+/// A template resolves against the pre-operation fields. An increment is [`incremented_value`]. A
+/// clear is `None` whatever the field held, so the caller removes it and names it in the decision's
+/// `removed`; nothing is resolved and nothing can be refused. Replay and the legacy event fold read
+/// every entry through this same function, so they recompute what `execute` decided.
 pub(crate) fn assigned_value(
     operation: &str,
     field: &str,
     value: &Value,
     context: &TemplateContext<'_>,
+) -> Result<Option<Value>, CoreError> {
+    match SetAssignment::of(value) {
+        SetAssignment::Template(template) => resolve_template(template, context).map(Some),
+        SetAssignment::Increment(amount) => {
+            incremented_value(operation, field, amount, context).map(Some)
+        }
+        SetAssignment::Cleared(Value::Bool(true)) => Ok(None),
+        // Registration refuses both, so no validated definition reaches either.
+        SetAssignment::Cleared(_) | SetAssignment::Conflicting(_) => Err(CoreError::Template {
+            expression: value.to_string(),
+            message: format!(
+                "the set value of '{field}' is no single assignment registration admits"
+            ),
+        }),
+    }
+}
+
+/// An increment: the value the field held before the operation plus `amount`, exactly, so the sum
+/// belongs to the decision and the record carries it. A sum the field's kind cannot hold under the
+/// definition's semantics is [`CoreError::IncrementOverflow`], never a wrapped, saturated or
+/// rounded value; a sum it can hold but the schema bounds refuse is step 9's `Validation`, like any
+/// other written value.
+///
+/// Registration admits an increment only on a required `integer` or `number` field with an
+/// always-present amount of the field's kind, so the `Validation` and `Template` refusals below are
+/// reached only through an instance that does not satisfy its own schema.
+fn incremented_value(
+    operation: &str,
+    field: &str,
+    amount: &Value,
+    context: &TemplateContext<'_>,
 ) -> Result<Value, CoreError> {
-    let amount = match SetAssignment::of(value) {
-        SetAssignment::Template(template) => return resolve_template(template, context),
-        SetAssignment::Increment(amount) => amount,
-    };
     let not_held = |detail: String| {
         CoreError::Validation(vec![crate::ValidationError::new(
             format!("fields.{field}"),

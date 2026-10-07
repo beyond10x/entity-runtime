@@ -1749,3 +1749,106 @@ fn an_increment_on_a_creation_outcome_or_a_binary64_field_is_refused_at_registra
         "{defects}"
     );
 }
+
+// --- Clear assignments on a branch (R-165) --------------------------------------------------------
+
+/// A `service/1` memo whose `strip` branch clears an optional note and answers with the fields.
+fn service_memo() -> Value {
+    json!({
+        "entity": "memo",
+        "version": 1,
+        "semantics": "service/1",
+        "schema": { "fields": {
+            "title": { "type": "string", "required": true },
+            "note": { "type": "string" }
+        }},
+        "lifecycle": { "initial": "Open", "states": ["Open"] },
+        "operations": { "strip": {
+            "response": { "fields": { "after": { "type": "json", "required": true } } },
+            "outcomes": [{
+                "name": "stripped",
+                "effect": "updates",
+                "set": { "note": { "cleared": true } },
+                "emits": [{ "type": "Stripped", "payload": { "after": "$fields", "was": "$old_fields.note" } }],
+                "responds": { "after": "$fields" }
+            }]
+        }}
+    })
+}
+
+#[test]
+fn a_service_outcome_clear_removes_the_field_and_every_step_after_set_reads_its_absence() {
+    let definition = validated(service_memo());
+    let before = instance("memo", "Open", json!({ "title": "T", "note": "draft" }));
+    let Evaluation::Accepted(decision) =
+        decide(&definition, &before, "strip", json!({})).expect("a clear is no fault")
+    else {
+        panic!("the branch accepts");
+    };
+    assert_eq!(decision.record.outcome.as_deref(), Some("stripped"));
+    assert_eq!(
+        spelled(&Value::Object(decision.instance.fields.clone())),
+        r#"{"title":"T"}"#
+    );
+    assert_eq!(
+        decision.record.removed,
+        std::collections::BTreeSet::from(["note".to_owned()])
+    );
+    assert!(decision.record.changed.is_empty());
+    assert_eq!(decision.events[0].removed, decision.record.removed);
+    assert_eq!(
+        spelled(&decision.events[0].payload),
+        r#"{"after":{"title":"T"},"was":"draft"}"#
+    );
+    assert_eq!(
+        spelled(&Value::Object(
+            decision.record.response.expect("a response")
+        )),
+        r#"{"after":{"title":"T"}}"#
+    );
+}
+
+#[test]
+fn a_clear_on_a_creation_outcome_is_refused_at_registration() {
+    let mut document = service_memo();
+    document["create"] = json!({ "outcomes": [{
+        "name": "opened",
+        "effect": "creates",
+        "set": { "note": { "cleared": true } }
+    }]});
+    let defects = refused(document);
+    assert_eq!(
+        defects,
+        DefinitionError::ClearOnCreate {
+            path: "create.outcomes.opened.set.note".to_owned(),
+            field: "note".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn a_cleared_field_cannot_also_be_a_set_if_present_target_or_a_fulfillment_of_its_outcome() {
+    let mut document = service_memo();
+    document["semantics"] = json!("service/2");
+    document["operations"]["strip"]["arguments"] =
+        json!({ "fields": { "note": { "type": "string" } } });
+    document["operations"]["strip"]["outcomes"][0]["set_if_present"] =
+        json!({ "note": { "argument": "note" } });
+    let defects = refused(document);
+    assert!(
+        matches!(defects.as_slice(), [DefinitionError::ConditionalTargetConflict { path, field }]
+            if path == "operations.strip.outcomes.stripped.set_if_present" && field == "note"),
+        "{defects}"
+    );
+
+    let mut document = service_memo();
+    document["semantics"] = json!("service/3");
+    document["operations"]["strip"]["outcomes"][0]["fulfills"] =
+        json!({ "note": { "actions": "optional" } });
+    let defects = refused(document);
+    assert!(
+        matches!(defects.as_slice(), [DefinitionError::FulfillmentSetConflict { operation, outcome, field }]
+            if operation == "strip" && outcome == "stripped" && field == "note"),
+        "{defects}"
+    );
+}

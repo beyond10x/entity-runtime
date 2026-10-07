@@ -1596,6 +1596,315 @@ fn assert_verdict(registry: &Registry, condition: &Value, expected: Truth) {
     assert_eq!(verdict, expected, "{condition}");
 }
 
+// --- Clear assignments (R-165) -------------------------------------------------------------------
+
+/// A reminder whose `wake` writes `set`: a required title, an optional `snoozed_until` that the
+/// `snoozed` state needs, an optional `priority` with a default, and kinds a clear may not touch.
+fn reminder(set: Value) -> Value {
+    json!({
+        "entity": "reminder",
+        "version": 1,
+        "schema": { "fields": {
+            "title":         { "type": "string", "required": true },
+            "snoozed_until": { "type": "string" },
+            "priority":      { "type": "integer", "default": 3 },
+            "extra":         { "type": "json" }
+        }},
+        "lifecycle": { "initial": "active", "states": ["active", "snoozed"] },
+        "invariants": [{
+            "name": "snoozed-has-a-wake-time",
+            "assert": { "any": [
+                { "ne": ["$state", "snoozed"] },
+                { "exists": "$fields.snoozed_until" }
+            ]}
+        }],
+        "operations": {
+            "snooze": {
+                "arguments": { "fields": { "until": { "type": "string", "required": true } } },
+                "transitions": [ { "from": "active", "to": "snoozed" } ],
+                "set": { "snoozed_until": "$args.until" }
+            },
+            "wake": {
+                "transitions": [
+                    { "from": "active", "to": "active" },
+                    { "from": "snoozed", "to": "active" }
+                ],
+                "set": set,
+                "emits": [ { "type": "Woken", "payload": {
+                    "was": "$old_fields", "now": "$fields"
+                }}]
+            },
+            "forget": {
+                "transitions": [ { "from": "snoozed", "to": "snoozed" } ],
+                "set": { "snoozed_until": { "cleared": true } }
+            }
+        }
+    })
+}
+
+fn snoozed_reminder(registry: &Registry) -> EntityInstance {
+    let runtime = Runtime::new(registry);
+    let created = runtime
+        .create("reminder", 1, "r-1", json!({ "title": "call back" }))
+        .expect("a valid reminder")
+        .instance;
+    runtime
+        .execute(
+            &created,
+            "snooze",
+            json!({ "until": "2026-10-08T09:00:00Z" }),
+        )
+        .expect("snoozed")
+        .instance
+}
+
+#[test]
+fn a_cleared_field_leaves_the_instance_and_the_decision_names_it_removed() {
+    let registry = register(reminder(json!({
+        "snoozed_until": { "cleared": true },
+        "priority": { "cleared": true }
+    })))
+    .unwrap();
+    let runtime = Runtime::new(&registry);
+    let before = snoozed_reminder(&registry);
+    let untouched = before.clone();
+    assert_eq!(
+        text(&Value::Object(before.fields.clone())),
+        r#"{"priority":3,"snoozed_until":"2026-10-08T09:00:00Z","title":"call back"}"#
+    );
+
+    let decision = runtime
+        .execute(&before, "wake", json!({}))
+        .expect("an optional field may be cleared, a defaulted one too");
+    assert_eq!(
+        text(&Value::Object(decision.instance.fields.clone())),
+        r#"{"title":"call back"}"#
+    );
+    let removed =
+        std::collections::BTreeSet::from(["priority".to_owned(), "snoozed_until".to_owned()]);
+    assert_eq!(decision.record.removed, removed);
+    assert!(
+        decision.record.changed.is_empty(),
+        "{:?}",
+        decision.record.changed
+    );
+    assert_eq!(decision.events[0].removed, removed);
+    assert!(decision.events[0].changed.is_empty());
+    assert_eq!(decision.record.result, decision.instance);
+    assert_eq!(before, untouched);
+
+    // A default fills a field at creation and nowhere else, so a cleared defaulted field stays
+    // absent through the operations after it.
+    let snoozed_again = runtime
+        .execute(
+            &decision.instance,
+            "snooze",
+            json!({ "until": "2026-10-09T09:00:00Z" }),
+        )
+        .expect("snoozed again")
+        .instance;
+    assert!(!snoozed_again.fields.contains_key("priority"));
+}
+
+#[test]
+fn clearing_an_already_absent_field_is_accepted_and_still_names_it_removed() {
+    let registry = register(reminder(json!({ "snoozed_until": { "cleared": true } }))).unwrap();
+    let before = Runtime::new(&registry)
+        .create("reminder", 1, "r-1", json!({ "title": "call back" }))
+        .expect("a valid reminder")
+        .instance;
+    assert!(!before.fields.contains_key("snoozed_until"));
+
+    let decision = Runtime::new(&registry)
+        .execute(&before, "wake", json!({}))
+        .expect("clearing an absent field is no fault");
+    assert_eq!(decision.instance.fields, before.fields);
+    assert_eq!(decision.instance.revision, before.revision + 1);
+    assert!(decision.record.changed.is_empty());
+    // The record states what the definition did, as a fulfillment `Remove` of an absent field
+    // does: the field is absent after this decision.
+    assert_eq!(
+        decision.record.removed,
+        std::collections::BTreeSet::from(["snoozed_until".to_owned()])
+    );
+    assert_eq!(decision.events[0].removed, decision.record.removed);
+}
+
+#[test]
+fn event_templates_after_a_clear_see_the_field_absent() {
+    let registry = register(reminder(json!({ "snoozed_until": { "cleared": true } }))).unwrap();
+    let before = snoozed_reminder(&registry);
+    let decision = Runtime::new(&registry)
+        .execute(&before, "wake", json!({}))
+        .expect("cleared");
+    assert_eq!(
+        text(&decision.events[0].payload),
+        r#"{"now":{"priority":3,"title":"call back"},"was":{"priority":3,"snoozed_until":"2026-10-08T09:00:00Z","title":"call back"}}"#
+    );
+
+    // A template that reads the cleared field finds nothing, and nothing is not a null.
+    let mut document = reminder(json!({ "snoozed_until": { "cleared": true } }));
+    document["operations"]["wake"]["emits"][0]["payload"] =
+        json!({ "until": "$fields.snoozed_until" });
+    let registry = register(document).unwrap();
+    let before = snoozed_reminder(&registry);
+    let untouched = before.clone();
+    let error = Runtime::new(&registry)
+        .execute(&before, "wake", json!({}))
+        .expect_err("the cleared field has no value to read");
+    assert!(
+        matches!(&error, CoreError::Template { expression, .. } if expression == "$fields.snoozed_until"),
+        "{error}"
+    );
+    assert_eq!(before, untouched);
+}
+
+#[test]
+fn invariants_judge_the_fields_after_the_clear_and_a_refusal_leaves_the_instance_untouched() {
+    let registry = register(reminder(json!({ "snoozed_until": { "cleared": true } }))).unwrap();
+    let runtime = Runtime::new(&registry);
+    let before = snoozed_reminder(&registry);
+    let untouched = before.clone();
+
+    // `forget` stays in `snoozed`, whose invariant needs the field the clear removed.
+    let error = runtime
+        .execute(&before, "forget", json!({}))
+        .expect_err("the invariant judges the cleared fields");
+    assert!(
+        matches!(&error, CoreError::InvariantViolation { rule: Some(rule), .. } if rule == "snoozed-has-a-wake-time"),
+        "{error}"
+    );
+    assert_eq!(before, untouched);
+
+    // `wake` leaves `snoozed`, so the same clear satisfies the same invariant.
+    let woken = runtime
+        .execute(&before, "wake", json!({}))
+        .expect("the invariant does not need the field outside snoozed")
+        .instance;
+    assert_eq!(woken.lifecycle_state, "active");
+    assert!(!woken.fields.contains_key("snoozed_until"));
+}
+
+#[test]
+fn registration_refuses_a_clear_on_a_required_or_undeclared_field_or_with_a_flag_other_than_true() {
+    let kinds = |document: Value| -> Vec<DefinitionError> {
+        register(document).expect_err("refused").as_slice().to_vec()
+    };
+
+    let errors = kinds(reminder(json!({ "title": { "cleared": true } })));
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::ClearTargetInvalid { path, field, .. }]
+            if path == "operations.wake.set.title" && field == "title"),
+        "{errors:?}"
+    );
+
+    for flag in [
+        json!(false),
+        json!("yes"),
+        json!(null),
+        json!(1),
+        json!("$args.flag"),
+    ] {
+        let errors = kinds(reminder(json!({ "snoozed_until": { "cleared": flag } })));
+        assert!(
+            matches!(errors.as_slice(), [DefinitionError::ClearFlagInvalid { path, field, .. }]
+                if path == "operations.wake.set.snoozed_until.cleared" && field == "snoozed_until"),
+            "{flag}: {errors:?}"
+        );
+    }
+
+    // A required field with a wrong flag is two faults, and both are reported.
+    let errors = kinds(reminder(json!({ "title": { "cleared": false } })));
+    let mut found: Vec<&str> = errors.iter().map(DefinitionError::kind).collect();
+    found.sort_unstable();
+    assert_eq!(
+        found,
+        ["clear_flag_invalid", "clear_target_invalid"],
+        "{errors:?}"
+    );
+
+    // An open schema admits undeclared fields, and a clear still names a declared one.
+    let open = with(
+        reminder(json!({ "unlisted": { "cleared": true } })),
+        "schema.additional_fields",
+        json!(true),
+    );
+    let errors = kinds(open);
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::ClearTargetInvalid { field, .. }] if field == "unlisted"),
+        "{errors:?}"
+    );
+
+    // A closed schema already refuses the field by name, and the clear adds no second report.
+    let errors = kinds(reminder(json!({ "unlisted": { "cleared": true } })));
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::UnknownSetField { field, .. }] if field == "unlisted"),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn a_set_value_naming_both_cleared_and_increment_is_refused_as_two_assignments_of_one_field() {
+    let errors = register(reminder(json!({
+        "priority": { "cleared": true, "increment": 1 }
+    })))
+    .expect_err("one field, one assignment")
+    .as_slice()
+    .to_vec();
+    assert!(
+        matches!(errors.as_slice(), [DefinitionError::SetAssignmentConflict { path, field, keywords }]
+            if path == "operations.wake.set.priority"
+                && field == "priority"
+                && keywords == &["cleared".to_owned(), "increment".to_owned()]),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn a_set_value_is_a_clear_only_when_it_is_a_mapping_of_the_cleared_key_alone() {
+    assert!(matches!(
+        SetAssignment::of(&json!({ "cleared": true })),
+        SetAssignment::Cleared(flag) if *flag == json!(true)
+    ));
+    // The keyword is reserved whatever follows it; registration judges the flag.
+    assert!(matches!(
+        SetAssignment::of(&json!({ "cleared": false })),
+        SetAssignment::Cleared(flag) if *flag == json!(false)
+    ));
+    let both = json!({ "increment": 1, "cleared": true });
+    assert!(matches!(
+        SetAssignment::of(&both),
+        SetAssignment::Conflicting(members) if Some(members) == both.as_object()
+    ));
+    for template in [
+        json!({ "cleared": true, "by": 1 }),
+        json!({ "cleard": true }),
+        json!({ "increment": 1, "cleared": true, "by": 1 }),
+        json!([{ "cleared": true }]),
+    ] {
+        assert!(
+            matches!(SetAssignment::of(&template), SetAssignment::Template(value) if *value == template),
+            "{template}"
+        );
+    }
+
+    // A mapping with any key that is not a keyword is an object template, written as the object
+    // it is.
+    let registry = register(reminder(
+        json!({ "extra": { "cleared": true, "by": "$fields.title" } }),
+    ))
+    .unwrap();
+    let before = snoozed_reminder(&registry);
+    let after = Runtime::new(&registry)
+        .execute(&before, "wake", json!({}))
+        .expect("an object template")
+        .instance;
+    assert_eq!(
+        text(&after.fields["extra"]),
+        r#"{"by":"call back","cleared":true}"#
+    );
+}
+
 // --- Rules ---------------------------------------------------------------------------------------
 
 #[test]
