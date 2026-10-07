@@ -7,7 +7,7 @@ title: A declared map element under a quantifier binder reads its size
 relations:
 - serves: vision:O2
 - informed_by: story:binder-elements-carry-their-declaration
-revision: 1
+revision: 2
 ---
 # A declared map element under a quantifier binder reads its size
 
@@ -34,3 +34,10 @@ migration.
 - The four cases named after this story assert the size reading, and the two recorded-replay cases
   and `service1-quantifier-map-count-recorded-replay` still pass.
 - Consumers that pin `entity-core` are named in the migration if a definition type changes.
+
+## Prior work
+
+The first round of `story:binder-elements-carry-their-declaration` built the size reading and was
+withdrawn for the replay break; its patch, `build/scratch/u5-full-declaration.patch`, is kept in
+the worktree archive of that unit (`er-def-u5`), with the recorded-replay cases that showed the
+break.
