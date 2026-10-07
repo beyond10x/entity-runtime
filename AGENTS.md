@@ -305,14 +305,15 @@ pull request until the ruleset is edited (`gh api repos/beyond10x/entity-runtime
 (`withProductSite`; the landing page is `website/product.json`). The organization procedure for it
 is the `docs` skill (`.agents/skills/docs/SKILL.md` in the organization workspace).
 
-* **Two publications, one source.** `.github/workflows/pages.yml` (`Documentation validation`,
-  required job `Build Docusaurus`) builds the site, runs the docs crate's tests and
+* **One source, published by the unified site.** `.github/workflows/pages.yml` (`Documentation
+  validation`, required job `Build Docusaurus`) builds the site, runs the docs crate's tests and
   `generate --check`, writes `.well-known/b10x-site.json` and `.well-known/b10x-routes.json` with
-  `entity-runtime-docs provenance`, and on a push to `main` uploads `b10x-project-site`;
-  `.github/workflows/b10x-docs-site.yml` (`Documentation site`) hands that artifact to the
-  Website's `project-site.yml`, which serves it at <https://beyond10x.github.io/entity-runtime/>.
-  Until the organization side moves this repository off the unified site, the unified Website
-  still collects `website/docs/**/*.md` through `b10x.docs.yaml` and serves it under
+  `entity-runtime-docs provenance`, and on a push to `main` uploads `b10x-project-site`. Nothing
+  in this repository publishes that artifact: Atlas admits one Pages caller per unified-site
+  source, and this repository is still one, so the project-site caller `b10x-docs-site.yml` was
+  removed. The pages last deployed at <https://beyond10x.github.io/entity-runtime/> stay up and
+  are not updated. Until the organization side moves this repository off the unified site, the
+  unified Website collects `website/docs/**/*.md` through `b10x.docs.yaml` and serves it under
   `/docs/entity-runtime/`. Keep `b10x.docs.yaml`, `b10x-docs-bundle.yml`, `b10x-docs-pages.yml` and
   `b10x-docs-check.yml` until that move lands; deleting them first breaks the organization's portal
   check. `pages.yml` must keep its first-line Atlas classification, `contents: read` permissions,
