@@ -12,7 +12,8 @@ refs:
   reference: beyond10x/entity-runtime#59
 relations:
 - designs: story:verified-model-holds-each-record-once
-revision: 1
+- designs: story:aep-lifecycle-fixture-matches-aep-main
+revision: 2
 ---
 # Wave: a verified model holds each committed record once (#59)
 
@@ -53,7 +54,7 @@ wave 1
 | unit | story | stage | branch | worktree id | build dir | scratch |
 |---|---|---|---|---|---|---|
 | integration | — | opened | `wave/er-59` | `er-59-int` | in-tree `target/` | `~/.cache/er-59/int` |
-| U1 | `story:verified-model-holds-each-record-once` | dispatched | `impl/verified-model-holds-each-record-once` | `er-59-u1` | in-tree `target/` | `~/.cache/er-59/u1/scratch` |
+| U1 | `story:verified-model-holds-each-record-once` | correction round 1 (threshold missed in round 1) | `impl/verified-model-holds-each-record-once` | `er-59-u1` | in-tree `target/` | `~/.cache/er-59/u1/scratch` |
 
 Brief: `~/.cache/er-59/u1/brief.md`. Dispatch types: `aep:implementor`, then `aep:adversary`.
 
@@ -66,3 +67,26 @@ Brief: `~/.cache/er-59/u1/brief.md`. Dispatch types: `aep:implementor`, then `ae
   `entity-core` change five consumer repositories would have to absorb. The unit measures what one
   copy per record achieves first; definition sharing becomes its own story if the threshold holds
   without it.
+
+## Round 1 (implementor)
+
+`Arc<StoredRecord>` shared by `records`, `histories`, batches, the handle's memory and the tracked
+sub-model; a private history view in the `entity-store` verifier plus two additive
+`#[doc(hidden)]` functions. Gate green per command. Probe medians (bytes per event, one process
+per shape, resident bytes from `/proc/self/status`):
+
+| events | base | round 1 | ratio |
+|---|---|---|---|
+| 55 | 513,712 | 316,881 | 0.617 |
+| 601 | 472,825 | 272,905 | 0.577 |
+| 1,203 | 441,384 | 241,272 | 0.547 |
+
+Threshold (≤ 0.5 at 601 and 1,203) missed. Decision: round 2 stops the provider-tracked handle
+keeping a second copy of every record and batch blob (estimated 31 MB at 601 and 62 MB at 1,203
+by the implementor, not measured). Definition sharing moved to
+`story:recorded-decisions-share-one-decoded-definition`, because it changes a public `entity-core`
+field. Accepted deviations: three private-type renames in tests (`adapter.rs:6126`, `:6133`,
+`tracked/review_tests.rs:193`), and a `#[doc(hidden)]` re-export in
+`crates/entity-store/src/asynchronous.rs`.
+
+Agent cost, round 1: 408,740 tokens, 162 tool uses, 35 min.

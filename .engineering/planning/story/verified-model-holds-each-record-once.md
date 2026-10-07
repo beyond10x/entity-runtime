@@ -3,7 +3,7 @@ format: aep.planning-md/3
 id: story:verified-model-holds-each-record-once
 kind: story
 status: active
-title: A verified model holds each committed record once, and each distinct definition once
+title: A verified model holds each committed record once
 owner: entity-runtime
 refs:
 - provider: github
@@ -16,27 +16,32 @@ scope:
   path: crates/entity-eventlog/src/adapter.rs
 - confidence: inferred
   path: crates/entity-eventlog/src/adapter/memory.rs
+- confidence: cited
+  path: crates/entity-eventlog/src/adapter/shared.rs
 - confidence: inferred
   path: crates/entity-eventlog/src/adapter/tracked.rs
 - confidence: inferred
   path: crates/entity-eventlog/src/sync.rs
 - confidence: cited
   path: crates/entity-eventlog/tests
+- confidence: cited
+  path: crates/entity-store/src/asynchronous.rs
 - confidence: inferred
   path: crates/entity-store/src/asynchronous/verify.rs
-revision: 10
+revision: 14
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-06T22:56:53Z", actor: "human:timo", revision: 9}
 - {from: "proposed", to: "active", at: "2026-10-06T22:56:56Z", actor: "human:timo", revision: 10}
 ---
-# A verified model holds each committed record once, and each distinct definition once
+# A verified model holds each committed record once
 
 ## Outcome
 
 The verified model an `EventlogRecordedStore` builds keeps one stored copy per committed record:
 `records`, `histories` and the record's batch refer to that one copy (an `Arc<StoredRecord>` or an
-index into one vector). Records that name the same definition share one decoded
-`EntityDefinition`. Every answer the model gives is unchanged.
+index into one vector). Every answer the model gives is unchanged. Sharing one decoded
+`EntityDefinition` between records moved to `story:recorded-decisions-share-one-decoded-definition`
+(see Constraints).
 
 ## Why
 
@@ -77,8 +82,9 @@ How often the model is built (#55); the consumer's own event growth.
   model; an additive `#[doc(hidden)]` verifier entry in `entity-store` is allowed, following
   `verify_subject_history_with_checked_bytes`.
 - A shared decoded definition needs `DecisionRecord.definition` to hold a shared pointer, which is
-  a change to the kernel's public type. If the acceptance threshold holds without it, definition
-  sharing becomes its own story; if it does not, the unit stops and reports the measured numbers.
+  a change to the kernel's public type, so it is its own story. The first implementation round
+  measured 0.577x (601 events) and 0.547x (1,203) with one copy per record; the second round also
+  stops the provider-tracked handle from keeping a second copy of each record and batch blob.
 
 ## Scope
 

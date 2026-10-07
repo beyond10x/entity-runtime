@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T00:00:38Z",
+  "actor": "human:timo",
+  "artifact": "story:verified-model-holds-each-record-once",
+  "kind": "story",
+  "revision": 14,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "verified_model_heap probe (sha256 771cbdc4), one process per shape, resident bytes per event of one ProviderTracked open; coordinator re-run: base 3763b08d export 601 events 472,675; treatment d9fcaf1f 601 events 221,238 (0.468), 1,203 events 189,791 (0.430 against the implementor's base median 441,336). Threshold <= 0.5 at 601 and 1,203. VERIFIED",
+    "reference": "~/.cache/er-59/int/verify-base-601.txt vs ~/.cache/er-59/int/verify-final.txt"
+  }
+}
