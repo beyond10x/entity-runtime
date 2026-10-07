@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-07T09:00:12Z",
+  "actor": "human:timo",
+  "artifact": "story:set-clears-an-optional-field",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "task ess-check (U3 red run before code vs final)",
+    "reference": "U3 build/scratch: ess-check 445/451 before code, 451/451 at 33016024"
+  }
+}

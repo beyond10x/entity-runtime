@@ -7,7 +7,7 @@ title: A creation set_if_present leaf ignores argument-parent defaults
 relations:
 - serves: vision:O2
 - informed_by: review-result:er-54-u1-adversary-pass-1
-revision: 1
+revision: 2
 ---
 # A creation set_if_present leaf ignores argument-parent defaults
 
@@ -41,3 +41,10 @@ the path; the creation side is older than it and is left to this story.
 ## Out of scope
 
 Operation outcomes (closed by the story named above).
+
+## Same class, found by the implementor of the operation unit
+
+A parent default also makes a leaf present without the caller sending it for `responds_if_present`
+and `payload_if_present`, on creations and on operations. Both predate the operation unit, and
+refusing them refuses definitions admitted before. This story covers them too: the acceptance above
+applies to every `*_if_present` map, each refused or stated in the design.
