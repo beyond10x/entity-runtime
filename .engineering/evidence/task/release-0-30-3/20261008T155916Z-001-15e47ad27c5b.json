@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-08T15:59:16Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-30-3",
+  "kind": "task",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "release.yml run 37804242157 at tag 0.30.3 (5fff7eb5): all 10 jobs success; 5 archives verified against SHA256SUMS locally and against the release asset digests (6/6 match); published by b10x-bot[bot] 2026-10-08T15:59:05Z with 6 assets, latest; annotated tag reachable from origin/main. VERIFIED"
+  }
+}

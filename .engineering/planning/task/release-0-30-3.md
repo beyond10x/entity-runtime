@@ -2,14 +2,15 @@
 format: aep.planning-md/3
 id: task:release-0-30-3
 kind: task
-status: active
+status: implemented
 title: Prepare and publish the 0.30.3 release
 relations:
 - serves: vision:O2
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T15:38:11Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-08T15:38:12Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-10-08T15:59:16Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1,"verification":1}}}
 ---
 # Prepare and publish the 0.30.3 release
 
