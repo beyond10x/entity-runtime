@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:batch-cost-grows-linearly-with-members
 kind: story
-status: draft
+status: active
 title: A recorded batch costs time linear in its members
 relations:
 - serves: vision:O2
@@ -17,7 +17,10 @@ scope:
   path: crates/entity-eventlog/tests
 - confidence: inferred
   path: crates/entity-executor
-revision: 4
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T04:36:00Z", actor: "human:timo", revision: 5}
+- {from: "proposed", to: "active", at: "2026-10-08T04:36:00Z", actor: "human:timo", revision: 6}
 ---
 # A recorded batch costs time linear in its members
 

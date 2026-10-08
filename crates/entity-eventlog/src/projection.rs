@@ -171,10 +171,10 @@ async fn apply_recorded_entry(
     {
         return Err(invalid("request blob differs from its complete record"));
     }
-    let batch_bytes = required_blob(store, &wrapper.batch_blob, BATCH_BLOB_DOMAIN).await?;
-    let (decoded_key, members) = decode_batch(&batch_bytes).map_err(store_error)?;
+    let batch = verified_batch(store, &wrapper.batch_blob).await?;
+    let (decoded_key, members) = (&batch.key, &batch.members);
     let wrapper_key: BatchKey = wrapper.batch_key.clone().into();
-    if decoded_key != wrapper_key {
+    if *decoded_key != wrapper_key {
         return Err(invalid("record wrapper names another batch"));
     }
     let member_index = usize::try_from(wrapper.member_index)
@@ -246,8 +246,8 @@ async fn apply_recorded_entry(
                 "request_blob":body["request_blob"],"physical":body["physical"],
             }));
         }
-        let key = batch_key(&wrapper.authority, &decoded_key).map_err(store_error)?;
-        let row = json!(["er.eventlog.batch-index/1", {"authority":wrapper.authority,"batch_key":crate::encoding::BatchKeyWire::from(&decoded_key),"batch_blob":wrapper.batch_blob,"members":saved}]);
+        let key = batch_key(&wrapper.authority, decoded_key).map_err(store_error)?;
+        let row = json!(["er.eventlog.batch-index/1", {"authority":wrapper.authority,"batch_key":crate::encoding::BatchKeyWire::from(decoded_key),"batch_blob":wrapper.batch_blob,"members":saved}]);
         upsert_once(store, batch_spec(), &event.tenant, &key, &row).await?;
     }
     let _ = entry_digest;
@@ -339,6 +339,79 @@ async fn required_blob(
         return Err(invalid("referenced blob digest uses wrong bytes or domain"));
     }
     Ok(bytes)
+}
+
+/// A batch blob whose bytes were held to their digest and decoded.
+struct VerifiedBatch {
+    digest: String,
+    bytes: Vec<u8>,
+    key: BatchKey,
+    members: Vec<entity_store::asynchronous::AppendMember>,
+}
+
+/// The largest batch blob [`LAST_BATCH`] keeps, in bytes: 32 MiB, the budget eventlog-sqlite's
+/// verified-blob memory keeps too. A larger blob is still verified and decoded, for every member,
+/// and is not kept.
+const LAST_BATCH_LIMIT: usize = 32 << 20;
+
+thread_local! {
+    /// The last batch blob this thread verified and decoded, if it was at most
+    /// [`LAST_BATCH_LIMIT`] bytes.
+    ///
+    /// Every member event of a group references the same batch blob, which holds every member, so
+    /// hashing and decoding it once per member made a group cost the square of its members. Both
+    /// are functions of the bytes alone, so a blob read again with exactly the bytes and digest
+    /// verified last time reuses that answer. The blob is still read from the provider for every
+    /// member, so a blob the store does not hold is refused exactly as before. A blob over the
+    /// limit and a blob that does not verify both empty the slot, so it never holds more than the
+    /// limit and never outlives a refusal.
+    static LAST_BATCH: std::cell::RefCell<Option<std::sync::Arc<VerifiedBatch>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The batch blob `digest` names, read from `store`, held to its digest and decoded.
+async fn verified_batch(
+    store: &mut dyn ProjectionStore,
+    digest: &str,
+) -> Result<std::sync::Arc<VerifiedBatch>, EventLogError> {
+    let bytes = store
+        .get_blob(digest)
+        .await?
+        .ok_or(EventLogError::NotFound)?;
+    verify_batch(digest, bytes, LAST_BATCH_LIMIT)
+}
+
+/// Holds `bytes` to `digest` and decodes them, reusing this thread's last answer for exactly
+/// these bytes, and keeping this answer only when the bytes are at most `limit` long.
+fn verify_batch(
+    digest: &str,
+    bytes: Vec<u8>,
+    limit: usize,
+) -> Result<std::sync::Arc<VerifiedBatch>, EventLogError> {
+    let last = LAST_BATCH.with(|last| last.borrow().clone());
+    if let Some(last) = last
+        && last.digest == digest
+        && last.bytes == bytes
+    {
+        return Ok(last);
+    }
+    // Emptied first, so a refusal or a blob over the limit leaves nothing kept.
+    LAST_BATCH.with(|last| last.borrow_mut().take());
+    if framed_key(BATCH_BLOB_DOMAIN, &bytes).map_err(store_error)? != digest {
+        return Err(invalid("referenced blob digest uses wrong bytes or domain"));
+    }
+    let (key, members) = decode_batch(&bytes).map_err(store_error)?;
+    let keep = bytes.len() <= limit;
+    let verified = std::sync::Arc::new(VerifiedBatch {
+        digest: digest.to_owned(),
+        bytes,
+        key,
+        members,
+    });
+    if keep {
+        LAST_BATCH.with(|last| *last.borrow_mut() = Some(std::sync::Arc::clone(&verified)));
+    }
+    Ok(verified)
 }
 
 async fn upsert_once(
@@ -464,4 +537,65 @@ fn invalid(detail: impl Into<String>) -> EventLogError {
 }
 fn store_error(error: AsyncStoreError) -> EventLogError {
     EventLogError::Invalid(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use entity_store::asynchronous::{BatchKey, batch_comparison_bytes};
+
+    use super::{BATCH_BLOB_DOMAIN, LAST_BATCH, LAST_BATCH_LIMIT, framed_key, verify_batch};
+
+    fn blob(name: &str) -> (String, Vec<u8>) {
+        let bytes =
+            batch_comparison_bytes(&BatchKey::Named(name.to_owned()), &[]).expect("batch bytes");
+        (
+            framed_key(BATCH_BLOB_DOMAIN, &bytes).expect("digest"),
+            bytes,
+        )
+    }
+
+    fn kept() -> Option<String> {
+        LAST_BATCH.with(|last| last.borrow().as_ref().map(|batch| batch.digest.clone()))
+    }
+
+    #[test]
+    fn a_batch_within_the_limit_is_kept_and_reused_for_exactly_its_bytes() {
+        let (digest, bytes) = blob("within");
+        let first = verify_batch(&digest, bytes.clone(), LAST_BATCH_LIMIT).expect("verifies");
+        assert_eq!(kept(), Some(digest.clone()));
+        let again = verify_batch(&digest, bytes, LAST_BATCH_LIMIT).expect("verifies again");
+        assert!(
+            Arc::ptr_eq(&first, &again),
+            "the same bytes reuse the kept answer"
+        );
+    }
+
+    #[test]
+    fn a_batch_over_the_limit_still_verifies_and_decodes_but_is_not_kept() {
+        let (kept_digest, kept_bytes) = blob("kept");
+        verify_batch(&kept_digest, kept_bytes, LAST_BATCH_LIMIT).expect("verifies");
+        let (digest, bytes) = blob("over");
+        let limit = bytes.len() - 1;
+        let verified = verify_batch(&digest, bytes, limit).expect("an oversized batch verifies");
+        assert_eq!(verified.key, BatchKey::Named("over".to_owned()));
+        assert!(verified.members.is_empty());
+        assert_eq!(kept(), None, "a batch over the limit empties the slot");
+    }
+
+    #[test]
+    fn a_batch_that_does_not_verify_empties_the_slot() {
+        let (digest, bytes) = blob("kept");
+        verify_batch(&digest, bytes.clone(), LAST_BATCH_LIMIT).expect("verifies");
+        let (other, _) = blob("other");
+        let refused = verify_batch(&other, bytes, LAST_BATCH_LIMIT);
+        assert!(
+            matches!(&refused, Err(eventlog_core::EventLogError::Invalid(detail))
+                if detail == "referenced blob digest uses wrong bytes or domain"),
+            "{:?}",
+            refused.err()
+        );
+        assert_eq!(kept(), None, "a refusal empties the slot");
+    }
 }

@@ -4,6 +4,16 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Fixed
+
+- `entity-eventlog`: a recorded batch now costs time linear in its members. Every member of a
+  batch was checked against the whole batch again as it was written, so twice the members cost
+  about four times as long (a 128-member batch about 1.3 s instead of 0.17 s in a release build).
+  The same checks still run; a batch is decoded once per batch instead of once per member. Record
+  bytes, digests and projection rows are unchanged. This holds on SQLite stores; the File and
+  PostgreSQL providers still verify the whole batch blob on each member's read, so a large batch
+  there still grows faster than its member count.
+
 ## [0.30.1] — 2026-10-08
 
 ### Changed

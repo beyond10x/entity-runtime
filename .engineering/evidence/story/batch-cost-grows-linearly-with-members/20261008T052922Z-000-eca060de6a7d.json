@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-08T05:29:22Z",
+  "actor": "human:timo",
+  "artifact": "story:batch-cost-grows-linearly-with-members",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:er-batch-cost-adversary-1",
+    "review": "review-result:er-batch-cost-adversary-1",
+    "outcome": "fixed"
+  }
+}
