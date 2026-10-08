@@ -391,8 +391,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-core"
-version = "0.8.1"
-source = "git+https://github.com/beyond10x/eventlog?tag=0.8.1#d5db40da9c0bee874eba3938a259c13c86f53277"
+version = "0.8.3"
+source = "git+https://github.com/beyond10x/eventlog?tag=0.8.3#2a7e92528893a30a80a16760d8bd4cc9b638727c"
 dependencies = [
  "serde",
  "serde_json",
@@ -404,8 +404,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-sqlite"
-version = "0.8.1"
-source = "git+https://github.com/beyond10x/eventlog?tag=0.8.1#d5db40da9c0bee874eba3938a259c13c86f53277"
+version = "0.8.3"
+source = "git+https://github.com/beyond10x/eventlog?tag=0.8.3#2a7e92528893a30a80a16760d8bd4cc9b638727c"
 dependencies = [
  "eventlog-core",
  "nix",

@@ -1,8 +1,9 @@
 //! Adversary case: the member-doubling bound of `batch_cost.rs`, held on the File provider.
 //!
 //! The File provider is the one `entity-cli` builds with (`eventlog-providers` enables `file`).
-//! Its `ProjectionStore::get_blob` reads the blob file and hashes it in full on every call, and
-//! the projector still calls `get_blob` for the batch blob once per member.
+//! The projector calls `ProjectionStore::get_blob` for the batch blob once per member. Since
+//! Eventlog 0.8.2 the File provider hashes each distinct blob content once per handle, so those
+//! reads no longer cost a full hash each.
 #![cfg(all(feature = "file", feature = "sync-bridge", target_os = "linux"))]
 
 use std::{num::NonZeroU16, path::Path, time::Duration};
@@ -183,7 +184,6 @@ fn least_cost(directory: &Path, batch: usize, store: usize) -> Duration {
 /// The story's acceptance bound (at most about 2.5x per doubling of members at a fixed store
 /// size), on the File provider rather than SQLite. Sizes reach the ~400 members the story names.
 #[test]
-#[ignore = "eventlog-file verifies the whole blob on each get_blob; linear on File needs an Eventlog read path"]
 fn a_file_provider_batch_costs_time_linear_in_its_members() {
     let directory = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("directory");
     let store = 256;
