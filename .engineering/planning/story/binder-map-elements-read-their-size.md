@@ -7,7 +7,38 @@ title: A declared map element under a quantifier binder reads its size
 relations:
 - serves: vision:O2
 - informed_by: story:binder-elements-carry-their-declaration
-revision: 2
+scope:
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: inferred
+  path: crates/entity-core/src/definition.rs
+- confidence: inferred
+  path: crates/entity-core/src/runtime.rs
+- confidence: cited
+  path: crates/entity-core/tests/adversary_text_count.rs
+- confidence: cited
+  path: crates/entity-core/tests/security_text_count.rs
+- confidence: inferred
+  path: crates/entity-core/tests/service_semantics.rs
+- confidence: cited
+  path: crates/entity-core/tests/service_values.rs
+- confidence: inferred
+  path: crates/entity-store/src/projection.rs
+- confidence: inferred
+  path: crates/entity-yaml/tests/kernel_bytes.rs
+- confidence: cited
+  path: docs/design/service-semantics-v0.1.md
+- confidence: inferred
+  path: docs/requirements.md
+- confidence: inferred
+  path: ess/coverage.json
+- confidence: inferred
+  path: ess/ess-inputs.yaml
+- confidence: cited
+  path: ess/scenarios/core/service1-quantifier-map-count-recorded-replay.yaml
+- confidence: inferred
+  path: ess/service-semantics/domains/service.yaml
+revision: 4
 ---
 # A declared map element under a quantifier binder reads its size
 

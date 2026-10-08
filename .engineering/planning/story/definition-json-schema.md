@@ -7,7 +7,32 @@ title: A JSON Schema for the definition format, generated from the Rust types
 summary: entity schema emits the schema; the gate checks the committed copy against the types so editors and adopters validate definitions before registering them.
 relations:
 - derived_from: epic:kernel
-revision: 2
+scope:
+- confidence: inferred
+  path: .github/workflows/gate.yml
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: inferred
+  path: Cargo.lock
+- confidence: inferred
+  path: Cargo.toml
+- confidence: cited
+  path: Taskfile.yml
+- confidence: inferred
+  path: crates/entity-cli/Cargo.toml
+- confidence: cited
+  path: crates/entity-cli/src/cli.rs
+- confidence: inferred
+  path: crates/entity-cli/src/main.rs
+- confidence: cited
+  path: crates/entity-core/src/definition.rs
+- confidence: cited
+  path: examples/order.yaml
+- confidence: cited
+  path: schemas/
+- confidence: inferred
+  path: website/docs/reference/cli.md
+revision: 4
 ---
 # Story: A JSON Schema for the definition format, generated from the Rust types
 

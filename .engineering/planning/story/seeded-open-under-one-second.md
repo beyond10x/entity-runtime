@@ -6,7 +6,16 @@ status: draft
 title: A seeded open of a committed authority costs under one second on the ESS shape
 summary: build_model is 85-92% of an 8.4 s seeded open at 7,815 blobs / 174 MB; apply 90.3 s CPU vs a 10 s target
 owner: entity-runtime
-revision: 1
+scope:
+- confidence: inferred
+  path: .engineering/evidence/
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: cited
+  path: crates/entity-eventlog/src/adapter.rs
+- confidence: inferred
+  path: crates/entity-eventlog/tests/verified_model_heap.rs
+revision: 3
 ---
 ## Outcome
 

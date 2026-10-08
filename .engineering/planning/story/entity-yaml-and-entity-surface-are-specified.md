@@ -7,7 +7,26 @@ title: entity-yaml and entity-surface are specified in ESS
 relations:
 - serves: vision:O2
 - informed_by: decision-blocker:defects-outside-ess-scope
-revision: 1
+scope:
+- confidence: cited
+  path: AGENTS.md
+- confidence: inferred
+  path: checks/ess-conformance
+- confidence: inferred
+  path: docs/ess
+- confidence: inferred
+  path: ess/components
+- confidence: inferred
+  path: ess/coverage.json
+- confidence: inferred
+  path: ess/domains
+- confidence: cited
+  path: ess/ess-inputs.yaml
+- confidence: inferred
+  path: ess/generated
+- confidence: inferred
+  path: ess/scenarios
+revision: 3
 ---
 # entity-yaml and entity-surface are specified in ESS
 

@@ -4,7 +4,22 @@ id: story:provider-feature-combinations-compile-and-are-gated
 kind: story
 status: draft
 title: Every declared provider-feature combination of entity-eventlog compiles and a gate step checks them
-revision: 1
+scope:
+- confidence: inferred
+  path: .github/workflows/gate.yml
+- confidence: cited
+  path: AGENTS.md
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: cited
+  path: Taskfile.yml
+- confidence: cited
+  path: crates/entity-eventlog
+- confidence: inferred
+  path: crates/entity-eventlog/src/lib.rs
+- confidence: inferred
+  path: crates/entity-eventlog/src/sync.rs
+revision: 3
 ---
 ## Outcome
 
