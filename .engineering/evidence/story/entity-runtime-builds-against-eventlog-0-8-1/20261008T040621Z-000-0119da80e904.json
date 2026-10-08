@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T04:06:21Z",
+  "actor": "human:timo",
+  "artifact": "story:entity-runtime-builds-against-eventlog-0-8-1",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "Ten Eventlog dependency lines in five manifests name tag 0.8.1; Cargo.lock and checks/ess-conformance/Cargo.lock change only the Eventlog packages, 0.8.0 at de30462b -> 0.8.1 at d5db40da; CHANGELOG names the move. VERIFIED",
+    "reference": "6194ffc3"
+  }
+}
