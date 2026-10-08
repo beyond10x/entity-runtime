@@ -15,7 +15,7 @@ with the application around it. It ships as Rust libraries and one command, `ent
 [crates](https://beyond10x.github.io/entity-runtime/docs/reference/crates) ·
 [status](https://beyond10x.github.io/entity-runtime/docs/status)
 
-**Status:** [0.30.2](https://github.com/beyond10x/entity-runtime/releases/tag/0.30.2), released
+**Status:** [0.30.3](https://github.com/beyond10x/entity-runtime/releases/tag/0.30.3), released
 2026-10-08. The API is in development; a minor release may change it. The
 [status page](https://beyond10x.github.io/entity-runtime/docs/status) lists what is shipped, with
 the test that holds each item, and what is planned.
@@ -27,7 +27,7 @@ Every [release](https://github.com/beyond10x/entity-runtime/releases) carries `e
 with Rust 1.85 or newer:
 
 ```console
-cargo install --git https://github.com/beyond10x/entity-runtime --tag 0.30.2 --locked entity-cli
+cargo install --git https://github.com/beyond10x/entity-runtime --tag 0.30.3 --locked entity-cli
 ```
 
 ```console

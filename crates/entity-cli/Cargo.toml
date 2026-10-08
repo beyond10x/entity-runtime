@@ -16,18 +16,18 @@ default = []
 eventlog-providers = ["dep:entity-eventlog", "dep:entity-executor", "dep:eventlog-core", "dep:time"]
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.30.2" }
-entity-graph = { path = "../entity-graph", version = "0.30.2" }
-entity-mcp = { path = "../entity-mcp", version = "0.30.2" }
+entity-core = { path = "../entity-core", version = "0.30.3" }
+entity-graph = { path = "../entity-graph", version = "0.30.3" }
+entity-mcp = { path = "../entity-mcp", version = "0.30.3" }
 # The store-backed verbs share the exact-retry rule with MCP and the generated CLI, so they share
 # the one implementation of it rather than each keeping their own.
-entity-shell = { path = "../entity-shell", version = "0.30.2" }
-entity-surface = { path = "../entity-surface", version = "0.30.2" }
+entity-shell = { path = "../entity-shell", version = "0.30.3" }
+entity-surface = { path = "../entity-surface", version = "0.30.3" }
 # The shell's half of R-80: the CLI is a shell, so this is where a store belongs.
-entity-store = { path = "../entity-store", version = "0.30.2" }
-entity-yaml = { path = "../entity-yaml", version = "0.30.2" }
-entity-eventlog = { path = "../entity-eventlog", version = "0.30.2", features = ["sync-bridge", "file"], optional = true }
-entity-executor = { path = "../entity-executor", version = "0.30.2", optional = true }
+entity-store = { path = "../entity-store", version = "0.30.3" }
+entity-yaml = { path = "../entity-yaml", version = "0.30.3" }
+entity-eventlog = { path = "../entity-eventlog", version = "0.30.3", features = ["sync-bridge", "file"], optional = true }
+entity-executor = { path = "../entity-executor", version = "0.30.3", optional = true }
 eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.3", optional = true }
 time = { version = "0.3", features = ["parsing"], optional = true }
 serde.workspace = true

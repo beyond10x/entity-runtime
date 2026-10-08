@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-08T15:38:11Z",
+  "actor": "human:timo",
+  "artifact": "story:entity-runtime-builds-against-eventlog-0-8-3",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "package gates at 5169621c on Rust 1.91.0: clippy -D warnings and test for entity-eventlog (all features), entity-sqlite and entity-postgres (default and eventlog-facade), entity-cli (default and eventlog-providers): 43 test binaries, 293 passed, 0 failed; a_file_provider_batch_costs_time_linear_in_its_members ok; PR 76 CI at 5169621c: Gate, MSRV 1.85, Eventlog runtime (Rust 1.91), Build Docusaurus, Security and privacy, b10x-docs-check, planning validate: 7/7 pass; merged as d0bb4516"
+  }
+}
