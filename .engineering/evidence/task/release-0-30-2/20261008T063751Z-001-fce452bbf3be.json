@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T06:37:51Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-30-2",
+  "kind": "task",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "release.yml run 37736193452 at tag 0.30.2 (cc976fac): all 11 jobs success; 5 archives verified against SHA256SUMS locally and against the release asset digests; published by b10x-bot[bot] 2026-10-08T06:37:39Z with 6 assets, latest; annotated tag reachable from origin/main. VERIFIED",
+    "reference": "https://github.com/beyond10x/entity-runtime/releases/tag/0.30.2"
+  }
+}
