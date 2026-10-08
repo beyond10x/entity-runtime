@@ -17,10 +17,10 @@ postgres = ["dep:eventlog-postgres"]
 tree = ["dep:eventlog-tree"]
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.30.0" }
-entity-store = { path = "../entity-store", version = "0.30.0" }
-entity-executor = { path = "../entity-executor", version = "0.30.0", optional = true }
-entity-query = { path = "../entity-query", version = "0.30.0", optional = true }
+entity-core = { path = "../entity-core", version = "0.30.1" }
+entity-store = { path = "../entity-store", version = "0.30.1" }
+entity-executor = { path = "../entity-executor", version = "0.30.1", optional = true }
+entity-query = { path = "../entity-query", version = "0.30.1", optional = true }
 eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.1" }
 eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.1", optional = true }
 eventlog-sqlite = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.1", optional = true }
