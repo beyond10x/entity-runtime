@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T04:06:21Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-30-1",
+  "kind": "task",
+  "revision": 2,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "PR 71 CI at 54daadcb: Gate, MSRV 1.85, Eventlog runtime (Rust 1.91), Build Docusaurus, Security and privacy, docs-check, planning validate: 7/7 pass",
+    "reference": "54daadcb"
+  }
+}

@@ -7,7 +7,24 @@ title: clippy::pedantic in the gate
 summary: Raise the workspace lint level to pedantic and fix or justify every hit.
 relations:
 - derived_from: epic:kernel
-revision: 2
+scope:
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: cited
+  path: Cargo.toml
+- confidence: inferred
+  path: crates
+- confidence: cited
+  path: crates/entity-cli/src/main.rs
+- confidence: cited
+  path: crates/entity-core/src/observed.rs
+- confidence: cited
+  path: crates/entity-core/src/runtime.rs
+- confidence: cited
+  path: crates/entity-core/src/truth.rs
+- confidence: cited
+  path: crates/entity-eventlog/src/adapter.rs
+revision: 4
 ---
 # Story: clippy::pedantic in the gate
 

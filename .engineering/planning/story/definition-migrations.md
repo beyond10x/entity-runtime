@@ -7,7 +7,30 @@ title: Definition migrations between versions
 summary: How an instance created under version n is carried to version n+1, and who advances it.
 relations:
 - derived_from: epic:kernel
-revision: 2
+scope:
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: inferred
+  path: crates/entity-core/src/definition.rs
+- confidence: inferred
+  path: crates/entity-core/src/error.rs
+- confidence: inferred
+  path: crates/entity-core/src/runtime.rs
+- confidence: inferred
+  path: crates/entity-core/src/validation.rs
+- confidence: inferred
+  path: crates/entity-core/tests/requirements.rs
+- confidence: inferred
+  path: crates/entity-store/src/asynchronous/encoding.rs
+- confidence: inferred
+  path: docs/design/kernel-v0.2.md
+- confidence: cited
+  path: docs/requirements.md
+- confidence: inferred
+  path: ess/domains/core.yaml
+- confidence: inferred
+  path: ess/scenarios/core
+revision: 4
 ---
 # Story: Definition migrations between versions
 

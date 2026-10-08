@@ -7,7 +7,34 @@ title: The gate and release path enforce what they claim
 summary: Rust checks close manifest, test-pin, protocol, supply-chain, token and release provenance blind spots.
 relations:
 - decomposes: epic:the-shell
-revision: 2
+scope:
+- confidence: cited
+  path: .github/workflows/gate.yml
+- confidence: cited
+  path: .github/workflows/release.yml
+- confidence: inferred
+  path: AGENTS.md
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: cited
+  path: Taskfile.yml
+- confidence: inferred
+  path: crates/entity-core/tests/requirements.rs
+- confidence: inferred
+  path: crates/entity-xtask
+- confidence: inferred
+  path: crates/scan-support/src/lib.rs
+- confidence: inferred
+  path: docs/design/service-semantics-v0.1.md
+- confidence: inferred
+  path: docs/requirements.md
+- confidence: cited
+  path: scripts/changelog-section.py
+- confidence: cited
+  path: scripts/check-pin.py
+- confidence: cited
+  path: scripts/check-requirements.py
+revision: 4
 ---
 ## Context
 

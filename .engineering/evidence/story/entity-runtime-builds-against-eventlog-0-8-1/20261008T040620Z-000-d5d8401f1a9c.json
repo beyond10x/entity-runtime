@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T04:06:20Z",
+  "actor": "human:timo",
+  "artifact": "story:entity-runtime-builds-against-eventlog-0-8-1",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "package gates on wave/eventlog-0.8.1 at 6194ffc3 (same tree as 54daadcb for the eventlog crates), each its own exit: task eventlog-runtime-check 0, task provider-ess-check 0, cargo +1.91.0 test -p entity-cli --features eventlog-providers 0, cargo +1.91.0 clippy -p entity-sqlite -p entity-postgres --features eventlog-facade 0; 32 test-result lines ok; PR 71 CI 7/7 pass",
+    "reference": "6194ffc3"
+  }
+}

@@ -7,7 +7,24 @@ title: A creation set_if_present leaf ignores argument-parent defaults
 relations:
 - serves: vision:O2
 - informed_by: review-result:er-54-u1-adversary-pass-1
-revision: 2
+scope:
+- confidence: cited
+  path: CHANGELOG.md
+- confidence: cited
+  path: crates/entity-core/src/validation.rs
+- confidence: cited
+  path: crates/entity-core/tests/adversary_operation_set_if_present.rs
+- confidence: inferred
+  path: crates/entity-core/tests/service_binding_boundary.rs
+- confidence: cited
+  path: docs/design/service-binding-boundary-v0.1.md
+- confidence: inferred
+  path: docs/requirements.md
+- confidence: inferred
+  path: ess/generated/suite.json
+- confidence: inferred
+  path: ess/scenarios/core/conditional-presence-registration-requires-one-typed-optional-leaf.yaml
+revision: 4
 ---
 # A creation set_if_present leaf ignores argument-parent defaults
 

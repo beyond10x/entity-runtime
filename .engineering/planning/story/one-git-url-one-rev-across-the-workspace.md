@@ -9,7 +9,24 @@ owner: entity-runtime
 relations:
 - informed_by: task:eventlog-provider-pin-verify-once
 - informed_by: review-result:er-eventlog-pin-review-1
-revision: 2
+scope:
+- confidence: cited
+  path: .github/workflows/gate.yml
+- confidence: cited
+  path: AGENTS.md
+- confidence: cited
+  path: CHANGELOG.md
+- confidence: inferred
+  path: Cargo.toml
+- confidence: cited
+  path: Taskfile.yml
+- confidence: inferred
+  path: crates/entity-xtask/Cargo.toml
+- confidence: inferred
+  path: crates/entity-xtask/src/main.rs
+- confidence: cited
+  path: crates/entity-xtask/tests/gate_sees_pinned_git_features.rs
+revision: 4
 ---
 ## Outcome
 

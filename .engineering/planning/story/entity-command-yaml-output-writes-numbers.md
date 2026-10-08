@@ -7,7 +7,16 @@ title: The entity command writes numbers as numbers in its YAML output
 relations:
 - serves: vision:O2
 - informed_by: story:generated-yaml-contracts-write-numbers
-revision: 1
+scope:
+- confidence: cited
+  path: CHANGELOG.md
+- confidence: cited
+  path: crates/entity-cli/src/main.rs
+- confidence: inferred
+  path: crates/entity-cli/tests/cli.rs
+- confidence: inferred
+  path: crates/entity-surface/src/lib.rs
+revision: 3
 ---
 # The entity command writes numbers as numbers in its YAML output
 

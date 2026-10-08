@@ -7,7 +7,32 @@ title: 'entity explain: why an operation is or is not permitted from here'
 summary: Per-rule verdicts for an operation against an instance, without executing it; the kernel exposes the verdicts, the CLI renders them.
 relations:
 - derived_from: epic:kernel
-revision: 2
+scope:
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: inferred
+  path: crates/entity-cli/src/cli.rs
+- confidence: inferred
+  path: crates/entity-cli/src/main.rs
+- confidence: cited
+  path: crates/entity-cli/tests/cli.rs
+- confidence: inferred
+  path: crates/entity-core/src/lib.rs
+- confidence: inferred
+  path: crates/entity-core/src/runtime.rs
+- confidence: inferred
+  path: crates/entity-runtime-docs/src/status.rs
+- confidence: inferred
+  path: docs/requirements.md
+- confidence: inferred
+  path: ess/domains/core.yaml
+- confidence: inferred
+  path: ess/scenarios/core
+- confidence: cited
+  path: examples/order.yaml
+- confidence: inferred
+  path: website/docs/reference/cli.md
+revision: 4
 ---
 # Story: entity explain — why an operation is or is not permitted from here
 

@@ -11,7 +11,36 @@ refs:
 relations:
 - serves: vision:O2
 - informed_by: story:verified-model-holds-each-record-once
-revision: 1
+scope:
+- confidence: cited
+  path: CHANGELOG.md
+- confidence: cited
+  path: Cargo.toml
+- confidence: cited
+  path: crates/entity-core/Cargo.toml
+- confidence: inferred
+  path: crates/entity-core/src/replay.rs
+- confidence: cited
+  path: crates/entity-core/src/runtime.rs
+- confidence: cited
+  path: crates/entity-core/tests/purity.rs
+- confidence: inferred
+  path: crates/entity-eventlog/src/encoding.rs
+- confidence: cited
+  path: crates/entity-eventlog/tests/verified_model_heap.rs
+- confidence: inferred
+  path: crates/entity-shell/src/lib.rs
+- confidence: inferred
+  path: crates/entity-store/src/asynchronous/encoding.rs
+- confidence: inferred
+  path: crates/entity-store/src/asynchronous/memory.rs
+- confidence: inferred
+  path: crates/entity-store/src/asynchronous/verify.rs
+- confidence: inferred
+  path: crates/entity-store/src/lib.rs
+- confidence: inferred
+  path: docs/ess/evidence/provider-tracking/model-heap-issue-59.txt
+revision: 3
 ---
 # Recorded decisions that name one definition share one decoded copy of it
 

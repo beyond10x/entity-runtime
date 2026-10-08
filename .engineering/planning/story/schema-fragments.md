@@ -7,7 +7,18 @@ title: Reusable schema fragments and definition inheritance
 summary: Authoring convenience for large definition sets; nothing in the kernel's semantics changes.
 relations:
 - derived_from: epic:kernel
-revision: 2
+scope:
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: inferred
+  path: crates/entity-cli/src/main.rs
+- confidence: inferred
+  path: crates/entity-yaml/src/lib.rs
+- confidence: inferred
+  path: crates/entity-yaml/tests/fragments.rs
+- confidence: inferred
+  path: docs/requirements.md
+revision: 3
 ---
 # Story: Reusable schema fragments and definition inheritance
 

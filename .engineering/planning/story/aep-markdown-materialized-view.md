@@ -8,7 +8,14 @@ summary: Make the Entity Runtime store authoritative and render engineering-prot
 relations:
 - derived_from: epic:drive-engineering-protocols
 - informed_by: epic:the-store-an-adopter-runs-on
-revision: 2
+scope:
+- confidence: inferred
+  path: .github/workflows/planning.yml
+- confidence: inferred
+  path: Taskfile.yml
+- confidence: inferred
+  path: crates/entity-store/src/file.rs
+revision: 3
 ---
 ## Outcome
 
