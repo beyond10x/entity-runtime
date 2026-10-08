@@ -22,11 +22,11 @@ eventlog-facade = [
 ]
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.30.1" }
-entity-eventlog = { path = "../entity-eventlog", version = "0.30.1", features = ["sync-bridge", "postgres"], optional = true }
-entity-executor = { path = "../entity-executor", version = "0.30.1", optional = true }
-entity-store = { path = "../entity-store", version = "0.30.1" }
-entity-query = { path = "../entity-query", version = "0.30.1" }
+entity-core = { path = "../entity-core", version = "0.30.2" }
+entity-eventlog = { path = "../entity-eventlog", version = "0.30.2", features = ["sync-bridge", "postgres"], optional = true }
+entity-executor = { path = "../entity-executor", version = "0.30.2", optional = true }
+entity-store = { path = "../entity-store", version = "0.30.2" }
+entity-query = { path = "../entity-query", version = "0.30.2" }
 eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.1", optional = true }
 eventlog-postgres = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.1", optional = true }
 serde.workspace = true

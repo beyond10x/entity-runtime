@@ -8,8 +8,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.30.1" }
-entity-store = { path = "../entity-store", version = "0.30.1" }
+entity-core = { path = "../entity-core", version = "0.30.2" }
+entity-store = { path = "../entity-store", version = "0.30.2" }
 serde_json.workspace = true
 
 [lints]

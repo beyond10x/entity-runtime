@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.30.2] — 2026-10-08
+
 ### Fixed
 
 - `entity-eventlog`: a recorded batch now costs time linear in its members. Every member of a

@@ -11,15 +11,15 @@ publish = false
 [dependencies]
 # The CLI reference is walked from the clap definition the `entity` binary parses, so it cannot
 # describe an option the binary does not have.
-entity-cli = { path = "../entity-cli", version = "0.30.1" }
+entity-cli = { path = "../entity-cli", version = "0.30.2" }
 clap.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
 # The "Embed the kernel" guide shows tests/embed_the_kernel.rs verbatim; running it keeps the page
 # true.
-entity-core = { path = "../entity-core", version = "0.30.1" }
-entity-yaml = { path = "../entity-yaml", version = "0.30.1" }
+entity-core = { path = "../entity-core", version = "0.30.2" }
+entity-yaml = { path = "../entity-yaml", version = "0.30.2" }
 
 [lints]
 workspace = true
