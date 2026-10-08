@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-08T15:59:16Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-30-3",
+  "kind": "task",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "PR 77 CI at fb1ab763: Gate, MSRV 1.85, Eventlog runtime (Rust 1.91), Build Docusaurus, Security and privacy, b10x-docs-check, planning validate: 7/7 pass; package gates at fb1ab763 on Rust 1.91.0: clippy --workspace --all-targets -D warnings and test --workspace: 128 test binaries, 776 passed, 0 failed; merged as 5fff7eb5"
+  }
+}
