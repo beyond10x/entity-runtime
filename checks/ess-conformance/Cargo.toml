@@ -14,7 +14,7 @@ eventlog = ["dep:entity-eventlog", "dep:eventlog-core", "dep:rusqlite", "dep:tim
 
 [dependencies]
 entity-eventlog = { path = "../../crates/entity-eventlog", features = ["sqlite", "sync-bridge"], optional = true }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.0", optional = true }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.1", optional = true }
 # SQL mutation fixtures exercise a second connection; they never substitute provider observations.
 rusqlite = { version = "=0.40.2", features = ["bundled"], optional = true }
 time = { version = "0.3", optional = true }
