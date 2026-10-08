@@ -4,6 +4,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- `entity-eventlog`, and the Eventlog features of `entity-cli`, `entity-sqlite` and
+  `entity-postgres`, depend on Eventlog's `0.8.1` tag instead of `0.8.0`. With the `file`
+  provider, appends and reads inside the retained window no longer slow down as the store grows.
+  An open handle now keeps the store's committed journal in memory: about its size on disk after
+  open, up to about twice that before it is compacted. No API or on-disk format changes.
+
 ## [0.30.0] — 2026-10-07
 
 ### Added
