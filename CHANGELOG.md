@@ -4,12 +4,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.30.3] — 2026-10-08
+
 ### Changed
 
 - `entity-eventlog`, and the Eventlog features of `entity-cli`, `entity-sqlite` and
-  `entity-postgres`, depend on Eventlog's `0.8.3` tag instead of `0.8.1`. With the `file` and
-  `postgres` providers, a recorded batch now costs time linear in its members too: the handle
-  hashes each batch blob once instead of once per member read. No API or on-disk format changes.
+  `entity-postgres`, depend on Eventlog's `0.8.3` tag instead of `0.8.1`. With the `file`
+  provider, a recorded batch now costs time linear in its members, as it already did on SQLite:
+  the handle hashes each batch blob once instead of once per member read. PostgreSQL handles make
+  the same change. No API or on-disk format changes.
 
 ## [0.30.2] — 2026-10-08
 

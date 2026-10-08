@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:entity-runtime-builds-against-eventlog-0-8-3
 kind: story
-status: active
+status: implemented
 title: Entity Runtime builds against Eventlog 0.8.3
 relations:
 - serves: vision:O2
@@ -25,10 +25,11 @@ scope:
   path: crates/entity-postgres/Cargo.toml
 - confidence: cited
   path: crates/entity-sqlite/Cargo.toml
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T15:14:29Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-08T15:14:29Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-10-08T15:38:11Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Entity Runtime builds against Eventlog 0.8.3
 
