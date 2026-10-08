@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T05:56:34Z",
+  "actor": "human:timo",
+  "artifact": "story:batch-cost-grows-linearly-with-members",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check exit 0 at 42108e1f (13 steps; batch_cost ok, batch_cost_file ignored); PR 73 CI at 42108e1f: Gate, MSRV 1.85, Eventlog runtime (Rust 1.91), Build Docusaurus, Security and privacy, b10x-docs-check, planning validate: 7/7 pass; merged as c7037ae3",
+    "reference": "42108e1f"
+  }
+}
