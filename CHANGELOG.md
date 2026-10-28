@@ -4,6 +4,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- The ESS conformance checker pins ESS 0.72.0 instead of revision `ac6fc6fe` (0.38.0 plus the
+  governed direct-return extension, which 0.72.0 contains); the regenerated suites move to
+  `ess-conformance/35`. No library API or behaviour changes.
+
 ## [0.30.3] — 2026-10-08
 
 ### Changed
