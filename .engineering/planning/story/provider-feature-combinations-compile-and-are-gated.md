@@ -2,8 +2,10 @@
 format: aep.planning-md/3
 id: story:provider-feature-combinations-compile-and-are-gated
 kind: story
-status: draft
+status: proposed
 title: Every declared provider-feature combination of entity-eventlog compiles and a gate step checks them
+relations:
+- serves: vision:O2
 scope:
 - confidence: inferred
   path: .github/workflows/gate.yml
@@ -19,7 +21,9 @@ scope:
   path: crates/entity-eventlog/src/lib.rs
 - confidence: inferred
   path: crates/entity-eventlog/src/sync.rs
-revision: 3
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-30T04:41:45Z", actor: "human:timo", revision: 4}
 ---
 ## Outcome
 
