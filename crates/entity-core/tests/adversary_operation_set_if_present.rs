@@ -111,7 +111,8 @@ fn a_parent_default_cannot_make_an_operation_set_if_present_leaf_present_for_a_c
 /// Registration refuses a creation outcome when its required argument parent declares a default
 /// carrying the conditional leaf, because omission of the parent would otherwise imply presence.
 #[test]
-fn a_parent_default_cannot_make_a_creation_set_if_present_leaf_present_for_a_caller_who_sent_none() {
+fn a_parent_default_cannot_make_a_creation_set_if_present_leaf_present_for_a_caller_who_sent_none()
+{
     let mut document = memo_definition();
     document["create"]["arguments"]["fields"]["bound"]["default"] = json!({"note": "from-default"});
     document["operations"]
