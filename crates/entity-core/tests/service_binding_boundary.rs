@@ -463,6 +463,44 @@ fn a_prepared_operation_binds_definition_input_operation_and_identity() {
 }
 
 #[test]
+fn a_creation_parent_default_is_rejected_for_every_conditional_presence_map() {
+    let mut document = presence_definition();
+    document["create"]["arguments"]["fields"]["bound"]["default"] =
+        json!({"note": "from-default"});
+
+    let defects = ValidatedDefinition::new(definition(document)).unwrap_err();
+    let mut refused = defects
+        .iter()
+        .filter_map(|defect| match defect {
+            DefinitionError::ConditionalArgumentInvalid {
+                path, argument, ..
+            } => Some((path.clone(), argument.clone())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    refused.sort_unstable();
+
+    assert_eq!(defects.len(), 3, "{defects:?}");
+    assert_eq!(
+        refused,
+        vec![
+            (
+                "create.outcomes.accepted.emits[0].payload_if_present.note".to_owned(),
+                "bound.note".to_owned(),
+            ),
+            (
+                "create.outcomes.accepted.responds_if_present.note".to_owned(),
+                "bound.note".to_owned(),
+            ),
+            (
+                "create.outcomes.accepted.set_if_present.note".to_owned(),
+                "bound.note".to_owned(),
+            ),
+        ]
+    );
+}
+
+#[test]
 fn conditional_presence_distinguishes_absent_present_and_null_in_all_output_positions() {
     let presence = validated(presence_definition());
     let absent = entity_core::decide_create(
