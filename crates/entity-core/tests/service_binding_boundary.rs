@@ -465,16 +465,15 @@ fn a_prepared_operation_binds_definition_input_operation_and_identity() {
 #[test]
 fn a_creation_parent_default_is_rejected_for_every_conditional_presence_map() {
     let mut document = presence_definition();
-    document["create"]["arguments"]["fields"]["bound"]["default"] =
-        json!({"note": "from-default"});
+    document["create"]["arguments"]["fields"]["bound"]["default"] = json!({"note": "from-default"});
 
     let defects = ValidatedDefinition::new(definition(document)).unwrap_err();
     let mut refused = defects
         .iter()
         .filter_map(|defect| match defect {
-            DefinitionError::ConditionalArgumentInvalid {
-                path, argument, ..
-            } => Some((path.clone(), argument.clone())),
+            DefinitionError::ConditionalArgumentInvalid { path, argument, .. } => {
+                Some((path.clone(), argument.clone()))
+            }
             _ => None,
         })
         .collect::<Vec<_>>();
