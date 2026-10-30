@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:entity-command-yaml-output-writes-numbers
 kind: story
-status: draft
+status: proposed
 title: The entity command writes numbers as numbers in its YAML output
 relations:
 - serves: vision:O2
@@ -16,7 +16,9 @@ scope:
   path: crates/entity-cli/tests/cli.rs
 - confidence: inferred
   path: crates/entity-surface/src/lib.rs
-revision: 3
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-30T04:41:38Z", actor: "human:timo", revision: 4}
 ---
 # The entity command writes numbers as numbers in its YAML output
 
