@@ -331,13 +331,14 @@ For every `PresentArgument`, registration requires:
 1. a nonempty dot-separated `argument` with no `$`, empty segment, array ordinal, map-key lookup,
    union dynamic selection, or open-schema segment;
 2. a path through declared closed `object` fields in the command argument schema;
-3. every parent on the path is required, so exactly the leaf controls presence. For an operation
-   outcome's `set_if_present`, no parent declares a default either: normalization materializes a
-   defaulted parent for a caller who omits it, and with it any leaf its default carries, so the
-   field would be overwritten although the caller sent nothing (`ConditionalArgumentInvalid`).
-   The creation map, `responds_if_present` and `payload_if_present` do not check parent defaults
-   yet: refusing one there would refuse definitions an earlier release admitted.
-   `story:creation-set-if-present-ignores-parent-defaults` tracks the creation map;
+3. every parent on the path is required, so exactly the leaf controls presence. No parent declares a
+   default for any of the three maps: normalization materializes a defaulted parent for a caller who
+   omits it, and with it any leaf its default carries, so a conditional output would be present
+   although the caller sent nothing (`ConditionalArgumentInvalid`). This restriction applies to
+   creation and operation `set_if_present`, `responds_if_present`, and `payload_if_present`; definitions
+   admitted by earlier releases with these parent defaults are narrowed and must remove the default
+   or use an ordinary template. The repository's committed consumer definitions and fixtures were
+   checked before applying the restriction; none uses a defaulted parent for a conditional map;
 4. the leaf is optional and has `DeclaredDefault::Absent`; a required leaf is an ordinary template,
    and a defaulted leaf is always materialized after normalization;
 5. the destination key does not also occur in the ordinary `set`, `payload`, or `responds` map;

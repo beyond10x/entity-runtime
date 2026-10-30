@@ -4,6 +4,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- Registration refuses a parent default on any `set_if_present`, `responds_if_present`, or
+  `payload_if_present` argument path, on creations and operations. Normalizing an omitted parent
+  could make its conditional leaf appear present without caller input. This narrows definitions that
+  earlier releases admitted; the in-repository example and fixture definitions have no such use.
+
 ## [0.30.3] — 2026-10-08
 
 ### Changed

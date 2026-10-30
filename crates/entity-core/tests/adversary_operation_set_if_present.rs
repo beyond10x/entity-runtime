@@ -108,35 +108,25 @@ fn a_parent_default_cannot_make_an_operation_set_if_present_leaf_present_for_a_c
     }
 }
 
-/// The same registration rule on a creation outcome, which the base commit already admitted: this
-/// case separates what the unit introduced from what it inherited.
-///
-/// It asserts today's behaviour, which is the defect: the creation registers and a caller who sent
-/// no `bound` gets `note` from the parent's default. Refusing it would refuse definitions an
-/// earlier release admitted, so it is `story:creation-set-if-present-ignores-parent-defaults`, not
-/// this unit. When that story lands this assertion flips to the refusal the operation case holds.
+/// Registration refuses a creation outcome when its required argument parent declares a default
+/// carrying the conditional leaf, because omission of the parent would otherwise imply presence.
 #[test]
-fn a_parent_default_makes_a_creation_set_if_present_leaf_present_for_a_caller_who_sent_none_until_creation_set_if_present_ignores_parent_defaults(
-) {
+fn a_parent_default_cannot_make_a_creation_set_if_present_leaf_present_for_a_caller_who_sent_none()
+{
     let mut document = memo_definition();
     document["create"]["arguments"]["fields"]["bound"]["default"] = json!({"note": "from-default"});
     document["operations"]
         .as_object_mut()
         .expect("operations is an object")
         .clear();
-    let registered = ValidatedDefinition::new(definition(document)).expect(
-        "a creation set_if_present under a defaulted parent still registers until \
-         story:creation-set-if-present-ignores-parent-defaults lands; then this flips to a refusal",
-    );
-    let decision = decide_create(&registered, "m-1".to_owned(), json!({"title": "T"}))
-        .expect("the creation evaluates")
-        .into_decision()
-        .expect("the creation accepts");
-    assert_eq!(
-        decision.instance.fields.get("note"),
-        Some(&json!("from-default")),
-        "a caller that sent no `bound` gets note from the parent default until \
-         story:creation-set-if-present-ignores-parent-defaults lands; then this assertion flips"
+    let defects = ValidatedDefinition::new(definition(document)).unwrap_err();
+    assert!(
+        defects.iter().any(|defect| matches!(
+            defect,
+            DefinitionError::ConditionalArgumentInvalid { path, argument, .. }
+                if path == "create.outcomes.opened.set_if_present.note" && argument == "bound.note"
+        )),
+        "the defaulted argument parent must be refused at the conditional leaf path: {defects}"
     );
 }
 
