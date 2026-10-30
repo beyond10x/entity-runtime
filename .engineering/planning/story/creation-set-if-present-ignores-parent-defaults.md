@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:creation-set-if-present-ignores-parent-defaults
 kind: story
-status: active
+status: implemented
 title: A creation set_if_present leaf ignores argument-parent defaults
 relations:
 - serves: vision:O2
@@ -24,10 +24,11 @@ scope:
   path: ess/generated/suite.json
 - confidence: inferred
   path: ess/scenarios/core/conditional-presence-registration-requires-one-typed-optional-leaf.yaml
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T13:36:58Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-30T14:04:15Z", actor: "human:unknown", revision: 6, executor: "agent:takt"}
+- {from: "active", to: "implemented", at: "2026-10-30T15:07:43Z", actor: "agent:takt", revision: 7, decided_on: {"recorded":{"test_result":1}}}
 ---
 # A creation set_if_present leaf ignores argument-parent defaults
 
