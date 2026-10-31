@@ -11,8 +11,6 @@ rust-version.workspace = true
 entity-core = { path = "../entity-core", version = "0.30.3" }
 serde.workspace = true
 serde_yaml_ng.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true
 
 [lints]
