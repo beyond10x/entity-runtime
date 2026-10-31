@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-10-31
+
 ### Added
 
 - YAML definitions can share document-local `$defs` fragments through `$ref` JSON pointers and
