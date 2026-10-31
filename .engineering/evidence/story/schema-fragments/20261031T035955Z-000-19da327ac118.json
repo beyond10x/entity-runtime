@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-31T03:59:55Z",
+  "actor": "agent:takt",
+  "artifact": "story:schema-fragments",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "takt",
+    "reference": ".takt/cases/story-schema-fragments-20261031T035737Z/evidence/0004-test-result-5.json#sha256=d219660a4256f94d28d8ece86f81e7f3cb93699bb4cd5f51bf8d8c1262769cba&result=pass&revision=d5a7d9c75d602b66a45a12d1271138f9155d5783&producer=takt.tests-run"
+  }
+}
