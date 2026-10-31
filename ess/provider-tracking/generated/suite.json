@@ -143,9 +143,10 @@
   },
   "provenance": {
     "contract_digest": "076180cf467c39aacc459c1e2832aef609667a91176530664d21d45ccd3f41a8",
+    "scenario_initial_state": "empty",
     "spec_digest": "bd0ba065d5b56f5b8869ff93237681c648868a8238f2387a0700c734bd0e4f6a",
     "specification_version": "v1",
-    "suite_version": "ess-conformance/29",
+    "suite_version": "ess-conformance/35",
     "system": "entity-provider"
   },
   "scenarios": {
