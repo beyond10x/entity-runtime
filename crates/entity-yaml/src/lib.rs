@@ -24,13 +24,15 @@
 //! # Ok::<(), entity_yaml::YamlError>(())
 //! ```
 
+mod fragments;
+
 use entity_core::EntityDefinition;
 use serde::de::{DeserializeSeed, Error as _, MapAccess, SeqAccess, Visitor};
 use std::fmt;
 
 /// The YAML could not be parsed into an [`EntityDefinition`].
 ///
-/// Carries the parser's own message, which names the line and column.
+/// Carries the parser's message (including location when available) or a fragment-resolution error.
 #[derive(Debug)]
 pub struct YamlError(serde_yaml_ng::Error);
 
@@ -48,6 +50,14 @@ impl std::error::Error for YamlError {
 
 /// Parses a YAML document into an [`EntityDefinition`].
 ///
+/// An optional root `$defs` mapping supplies reusable fragments. A mapping containing `$ref`
+/// resolves a document-local JSON pointer such as `#/$defs/money` before kernel deserialization.
+/// Sibling keys override the referenced mapping recursively; sequences and scalars replace rather
+/// than concatenate. This also permits a root `$ref` to inherit a base definition. References may
+/// be chained, but cycles, missing targets and external references are refused. Expansion is
+/// limited to 128 nesting levels. `$defs` is removed from the resulting kernel definition.
+/// YAML merge keys and duplicate keys remain errors, including inside unused fragments.
+///
 /// # Errors
 ///
 /// [`YamlError`] when the text is not valid YAML or does not have the shape of a definition —
@@ -56,6 +66,11 @@ pub fn from_str(input: &str) -> Result<EntityDefinition, YamlError> {
     let mut documents = serde_yaml_ng::Deserializer::from_str(input);
     if let Some(document) = documents.next() {
         NoDuplicates.deserialize(document).map_err(YamlError)?;
+    }
+    let keys: std::collections::BTreeMap<String, serde::de::IgnoredAny> =
+        serde_yaml_ng::from_str(input).map_err(YamlError)?;
+    if keys.contains_key("$defs") || keys.contains_key("$ref") {
+        return fragments::parse(input);
     }
     // A data-carrying variant, `effect: { moves: { from: open, to: paid } }`, is a mapping with one
     // key, as JSON writes it. The YAML reader on its own takes such a variant only as a `!moves`

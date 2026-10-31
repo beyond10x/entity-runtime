@@ -4,6 +4,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- YAML definitions can share document-local `$defs` fragments through `$ref` JSON pointers and
+  inherit a base definition with local overrides. Mappings combine recursively; other values
+  replace the base. Cyclic, missing and external references are refused, and YAML merge keys and
+  duplicate keys remain refused. The kernel definition model is unchanged.
+
 ### Changed
 
 - Registration refuses a parent default on any `set_if_present`, `responds_if_present`, or
