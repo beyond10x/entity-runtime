@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:schema-fragments
 kind: story
-status: proposed
+status: active
 title: Reusable schema fragments and definition inheritance
 summary: Authoring convenience for large definition sets; nothing in the kernel's semantics changes.
 relations:
@@ -19,9 +19,10 @@ scope:
   path: crates/entity-yaml/tests/fragments.rs
 - confidence: inferred
   path: docs/requirements.md
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-31T03:17:14Z", actor: "human:timo", revision: 5}
+- {from: "proposed", to: "active", at: "2026-10-31T03:57:38Z", actor: "human:unknown", revision: 6, executor: "agent:takt"}
 ---
 # Story: Reusable schema fragments and definition inheritance
 
