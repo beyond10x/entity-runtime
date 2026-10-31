@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-31T08:37:45Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-31-0",
+  "kind": "task",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "PR 89 CI at 3c222717: Gate, MSRV 1.85, Eventlog runtime (Rust 1.91), Build Docusaurus, Security and privacy, b10x-docs-check, planning validate: 7/7 pass; merged as 487e2792; no local full gate (D321), CI's gate decided"
+  }
+}

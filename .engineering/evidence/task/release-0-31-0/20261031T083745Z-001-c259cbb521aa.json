@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-31T08:37:45Z",
+  "actor": "human:timo",
+  "artifact": "task:release-0-31-0",
+  "kind": "task",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "release.yml run 41184868253 at tag 0.31.0 (487e2792): all 11 jobs success; 5 archives verified against SHA256SUMS locally and against the release asset digests (5/5 match); published by b10x-bot[bot] with 6 assets, latest; annotated tag reachable from origin/main. verify-release.sh failed one check (adversary test rewritten by story:creation-set-if-present-ignores-parent-defaults, hunk names no story id); accepted as reviewed under D323. VERIFIED"
+  }
+}
