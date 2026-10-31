@@ -6,9 +6,25 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Changed
 
-- The ESS conformance checker pins ESS 0.72.0 instead of revision `ac6fc6fe` (0.38.0 plus the
-  governed direct-return extension, which 0.72.0 contains); the regenerated suites move to
+- The ESS conformance checker pins ESS 0.77.0 instead of revision `ac6fc6fe` (0.38.0 plus the
+  governed direct-return extension, which 0.77.0 contains); the regenerated suites move to
   `ess-conformance/35`. No library API or behaviour changes.
+
+## [0.31.0] — 2026-10-31
+
+### Added
+
+- YAML definitions can share document-local `$defs` fragments through `$ref` JSON pointers and
+  inherit a base definition with local overrides. Mappings combine recursively; other values
+  replace the base. Cyclic, missing and external references are refused, and YAML merge keys and
+  duplicate keys remain refused. The kernel definition model is unchanged.
+
+### Changed
+
+- Registration refuses a parent default on any `set_if_present`, `responds_if_present`, or
+  `payload_if_present` argument path, on creations and operations. Normalizing an omitted parent
+  could make its conditional leaf appear present without caller input. This narrows definitions that
+  earlier releases admitted; the in-repository example and fixture definitions have no such use.
 
 ## [0.30.3] — 2026-10-08
 

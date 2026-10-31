@@ -89,7 +89,7 @@ cargo install --locked --git https://github.com/beyond10x/ess --rev PIN_FROM_CHE
 ```
 
 The initial integration baseline was ESS 0.37.0. The governed direct-return extension was first
-ported onto ESS 0.38.0; the current pin is ESS 0.72.0, which contains it.
+ported onto ESS 0.38.0; the current pin is ESS 0.77.0, which contains it.
 Historical prototype suites retain their original identities under `evidence/prototype-0.37/`;
 current execution uses inventory suite/35. No ESS dependency is added to a production crate. New executable tooling is Rust;
 the checker's command line uses clap derive.

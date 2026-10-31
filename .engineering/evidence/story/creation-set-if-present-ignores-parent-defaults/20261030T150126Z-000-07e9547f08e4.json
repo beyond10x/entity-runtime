@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-30T15:01:26Z",
+  "actor": "agent:takt",
+  "artifact": "story:creation-set-if-present-ignores-parent-defaults",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "takt",
+    "reference": ".takt/cases/story-creation-set-if-present-ignores-parent-defaults-20261030T140414Z/evidence/0015-test-result-35.json#sha256=e14ce7307b280fea0cc43d34673db87e76a0f9819c8890ac2256e9d25cdabb54&result=pass&revision=9402c5644b28c36279bd7200b5ba404c05d49573&producer=takt.tests-run"
+  }
+}
