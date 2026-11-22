@@ -14,6 +14,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   verified, so a retry of K consecutive decisions on one subject checks each record once instead
   of 1 + … + K times. `verify_subject_prefix` no longer copies the history it verifies. Refusals
   and the batch membership checks are unchanged.
+- `entity-executor` runs the creation kernel once for a fresh create: its request-comparison bytes
+  are encoded from the record the kernel just produced instead of deciding the creation again. A
+  retry is still compared by deciding its request again under the saved definition, so a
+  different request under the same record id is still refused.
 
 ## [0.32.0] — 2026-11-22
 

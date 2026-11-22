@@ -466,6 +466,7 @@ impl<'a> Executor<'a> {
     fn prepare(&self, action: &BoundAction) -> Result<PreparedAction<'_>, ExecutionError> {
         match &action.action {
             BatchAction::Create(request) => {
+                count_creation_kernel_call();
                 let creation = Runtime::new(self.registry).decide_create(
                     &request.subject.entity,
                     request.definition_version,
@@ -561,7 +562,7 @@ impl<'a> Executor<'a> {
                 .expect("subject was loaded before decision")
                 .as_ref();
             let (expect, entry) = self.decide(action, current, prepared)?;
-            let request_bytes = request_comparison_bytes(action, &entry)?;
+            let request_bytes = fresh_request_comparison_bytes(action, &entry)?;
             let next = match &entry {
                 RecordedEntry::Decision(commit) => Some(commit.instance.clone()),
                 RecordedEntry::Observation(_) => current.cloned(),
@@ -1128,6 +1129,71 @@ fn recording_value(recording: &Recording) -> Value {
     })
 }
 
+/// The comparison bytes of a request whose record `decided` was just decided from it.
+///
+/// A fresh create's record carries the normalized command the creation kernel produced from this
+/// very request, so its bytes are encoded from that record; deciding the creation a second time
+/// only reproduced the same command at the cost of a second kernel run. A retry never comes here:
+/// it is compared through [`request_comparison_bytes`], which decides the request independently.
+fn fresh_request_comparison_bytes(
+    action: &BatchAction,
+    decided: &RecordedEntry,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    if let (BatchAction::Create(request), RecordedEntry::Decision(commit)) = (action, decided) {
+        if let DecisionCommand::Create { fields, arguments } = &commit.envelope.record.command {
+            return create_request_bytes(request, decided, fields, arguments);
+        }
+    }
+    request_comparison_bytes(action, decided)
+}
+
+/// Encodes a create request from its normalized creation fields and arguments.
+fn create_request_bytes(
+    request: &CreateRequest,
+    original: &RecordedEntry,
+    fields: &serde_json::Map<String, Value>,
+    arguments: &serde_json::Map<String, Value>,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    // A `service/1` creation reconstructs the caller's **arguments**; a `kernel/1` one
+    // reconstructs its fields, in the framing and the shape it has always used.
+    let domain = request_domain(original);
+    if matches!(domain, "er.request/2" | "er.request/3" | "er.request/4") {
+        canonical_domain_bytes(
+            domain,
+            serde_json::json!({
+                "kind": "create",
+                "subject": [request.subject.entity, request.subject.id],
+                "definition_version": request.definition_version,
+                "arguments": arguments,
+                "recording": recording_value(&request.recording),
+            }),
+        )
+    } else {
+        canonical_domain_bytes(
+            domain,
+            serde_json::json!({
+                "kind": "create",
+                "subject": [request.subject.entity, request.subject.id],
+                "definition_version": request.definition_version,
+                "fields": fields,
+                "recording": recording_value(&request.recording),
+            }),
+        )
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Creation-kernel runs on this thread, for the tests that hold a fresh create to one.
+    static CREATION_KERNEL_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Counts one creation-kernel run in tests; nothing outside them.
+fn count_creation_kernel_call() {
+    #[cfg(test)]
+    CREATION_KERNEL_CALLS.with(|calls| calls.set(calls.get() + 1));
+}
+
 fn request_comparison_bytes(
     action: &BatchAction,
     original: &RecordedEntry,
@@ -1137,7 +1203,10 @@ fn request_comparison_bytes(
     }
     match (action, original) {
         (BatchAction::Create(request), RecordedEntry::Decision(commit)) => {
+            // A retry is compared independently: the request is decided again under the saved
+            // definition, so a different request cannot borrow the stored record's command.
             let definition = saved_definition(original)?;
+            count_creation_kernel_call();
             let decision = decide_create(
                 &definition,
                 request.subject.id.clone(),
@@ -1156,32 +1225,7 @@ fn request_comparison_bytes(
                     record_id: request.recording.record_id.clone(),
                 });
             }
-            // A `service/1` creation reconstructs the caller's **arguments**; a `kernel/1` one
-            // reconstructs its fields, in the framing and the shape it has always used.
-            let domain = request_domain(original);
-            if matches!(domain, "er.request/2" | "er.request/3" | "er.request/4") {
-                canonical_domain_bytes(
-                    domain,
-                    serde_json::json!({
-                        "kind": "create",
-                        "subject": [request.subject.entity, request.subject.id],
-                        "definition_version": request.definition_version,
-                        "arguments": arguments,
-                        "recording": recording_value(&request.recording),
-                    }),
-                )
-            } else {
-                canonical_domain_bytes(
-                    domain,
-                    serde_json::json!({
-                        "kind": "create",
-                        "subject": [request.subject.entity, request.subject.id],
-                        "definition_version": request.definition_version,
-                        "fields": fields,
-                        "recording": recording_value(&request.recording),
-                    }),
-                )
-            }
+            create_request_bytes(request, original, &fields, &arguments)
         }
         (BatchAction::Execute(request), RecordedEntry::Decision(commit)) => {
             let definition = saved_definition(original)?;
@@ -1572,6 +1616,10 @@ mod tests {
         actions
     }
 
+    fn creation_kernel_calls() -> usize {
+        CREATION_KERNEL_CALLS.with(std::cell::Cell::get)
+    }
+
     #[test]
     fn a_retried_named_batch_reads_each_subject_history_once() {
         let registry = registry();
@@ -1620,6 +1668,55 @@ mod tests {
             matches!(
                 error.store_error(),
                 Some(AsyncStoreError::RecordConflict { record_id }) if record_id == "b-0"
+            ),
+            "unexpected refusal: {error:?}"
+        );
+    }
+
+    #[test]
+    fn a_fresh_create_runs_the_creation_kernel_once() {
+        let registry = registry();
+        let store = MemoryRecordedStore::new();
+        let executor = Executor::new(&registry, &store);
+        let before = creation_kernel_calls();
+
+        let outcome = test_support::block_on(executor.create(create("a", "first", "a-create")))
+            .expect("the create commits");
+
+        assert!(matches!(
+            outcome,
+            AppendOutcome::Committed {
+                replayed: false,
+                ..
+            }
+        ));
+        assert_eq!(creation_kernel_calls() - before, 1);
+    }
+
+    #[test]
+    fn a_create_retry_is_compared_by_deciding_the_request_again() {
+        let registry = registry();
+        let store = MemoryRecordedStore::new();
+        let executor = Executor::new(&registry, &store);
+        test_support::block_on(executor.create(create("a", "first", "a-create")))
+            .expect("the create commits");
+        let before = creation_kernel_calls();
+
+        let replayed = test_support::block_on(executor.create(create("a", "first", "a-create")))
+            .expect("the identical retry replays");
+        assert!(matches!(
+            replayed,
+            AppendOutcome::Committed { replayed: true, .. }
+        ));
+        // The retry decides the request again rather than trusting the stored record.
+        assert_eq!(creation_kernel_calls() - before, 1);
+
+        let error = test_support::block_on(executor.create(create("a", "second", "a-create")))
+            .expect_err("a different request under the same record id is refused");
+        assert!(
+            matches!(
+                error.store_error(),
+                Some(AsyncStoreError::RecordConflict { record_id }) if record_id == "a-create"
             ),
             "unexpected refusal: {error:?}"
         );
