@@ -1445,20 +1445,38 @@ fn read_instance(source: &str, stdin: &mut StdinOnce) -> Result<EntityInstance, 
 /// Every file is reported, whatever went wrong with the one before it: a syntax slip in the first
 /// example must not hide a broken lifecycle in the third.
 fn validate(paths: &[PathBuf], out: &mut impl Write) -> Result<(), Failure> {
+    validate_loaded_by(paths, out, load_definition)
+}
+
+/// [`validate`] with each file read by `load`, called once per path: the set checks run on the
+/// definitions the file checks validated, never on a second read that could see another file.
+fn validate_loaded_by(
+    paths: &[PathBuf],
+    out: &mut impl Write,
+    mut load: impl FnMut(&Path) -> Result<EntityDefinition, String>,
+) -> Result<(), Failure> {
     let mut invalid = 0usize;
+    let mut validated = Vec::with_capacity(paths.len());
     for path in paths {
-        let outcome = load_definition(path)
+        let outcome = load(path)
             .map_err(|reason| vec![reason])
             .and_then(|definition| {
                 definition
                     .validate()
-                    .map(|()| (definition.entity.clone(), definition.version))
+                    .map(|()| definition)
                     .map_err(|errors| errors.iter().map(ToString::to_string).collect())
             });
         match outcome {
-            Ok((entity, version)) => {
-                writeln!(out, "{}: valid ({entity} v{version})", path.display())
-                    .map_err(io_failure)?;
+            Ok(definition) => {
+                writeln!(
+                    out,
+                    "{}: valid ({} v{})",
+                    path.display(),
+                    definition.entity,
+                    definition.version
+                )
+                .map_err(io_failure)?;
+                validated.push(definition);
             }
             Err(reasons) => {
                 invalid += 1;
@@ -1485,13 +1503,11 @@ fn validate(paths: &[PathBuf], out: &mut impl Write) -> Result<(), Failure> {
     let mut set_defects = 0usize;
     if invalid == 0 {
         let mut registry = Registry::new();
-        for path in paths {
-            if let Ok(definition) = load_definition(path) {
-                if let Err(errors) = registry.register(definition) {
-                    set_defects += errors.len();
-                    for error in &errors {
-                        writeln!(out, "across the set: {error}").map_err(io_failure)?;
-                    }
+        for definition in validated {
+            if let Err(errors) = registry.register(definition) {
+                set_defects += errors.len();
+                for error in &errors {
+                    writeln!(out, "across the set: {error}").map_err(io_failure)?;
                 }
             }
         }
@@ -1897,6 +1913,68 @@ fn io_failure(error: io::Error) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
+    fn examples(names: &[&str]) -> Vec<PathBuf> {
+        names
+            .iter()
+            .map(|name| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../examples")
+                    .join(name)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn validate_reads_each_definition_file_once() {
+        let paths = examples(&["order.yaml", "refund.yaml"]);
+        let mut reads: BTreeMap<PathBuf, usize> = BTreeMap::new();
+        let mut out = Vec::new();
+        let result = validate_loaded_by(&paths, &mut out, |path| {
+            *reads.entry(path.to_path_buf()).or_default() += 1;
+            load_definition(path)
+        });
+        assert!(result.is_ok(), "{}", String::from_utf8_lossy(&out));
+        for path in &paths {
+            assert_eq!(reads.get(path), Some(&1), "{} is read once", path.display());
+        }
+    }
+
+    #[test]
+    fn definition_files_that_vanish_after_their_first_read_cannot_certify_the_set() {
+        // The same type twice is a defect of the set. Every read after the first two fails, as
+        // it would once the files are gone: set checks that read again would see an empty set
+        // and report no defect.
+        let paths = examples(&["order.yaml", "order.yaml"]);
+        let mut reads = 0;
+        let mut out = Vec::new();
+        let result = validate_loaded_by(&paths, &mut out, |path| {
+            reads += 1;
+            if reads > 2 {
+                return Err("cannot read: No such file or directory (os error 2)".to_owned());
+            }
+            load_definition(path)
+        });
+        let printed = String::from_utf8_lossy(&out);
+        assert!(matches!(result, Err(Failure::Reported)), "{printed}");
+        assert!(printed.contains("across the set: "), "{printed}");
+    }
+
+    #[test]
+    fn an_unreadable_definition_file_is_reported_invalid() {
+        let mut paths = examples(&["order.yaml"]);
+        paths.push(PathBuf::from("missing-definition.yaml"));
+        let mut out = Vec::new();
+        let result = validate_loaded_by(&paths, &mut out, load_definition);
+        let printed = String::from_utf8_lossy(&out);
+        assert!(matches!(result, Err(Failure::Reported)), "{printed}");
+        assert!(
+            printed.contains("missing-definition.yaml: invalid: cannot read"),
+            "{printed}"
+        );
+        assert!(printed.ends_with("2 file(s), 1 invalid\n"), "{printed}");
+    }
 
     fn refund_lifecycle() -> entity_graph::Graph {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/refund.yaml");
