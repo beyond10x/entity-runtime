@@ -4,11 +4,12 @@
 //! may additionally implement [`DocumentQueryProvider`] so callers can page over selected instance
 //! documents without enumerating and hydrating an entire entity type.
 
+use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::fmt;
 
 use entity_core::EntityInstance;
-use entity_store::{MemoryStore, StateProvider, StoreError};
+use entity_store::{MemoryStore, StoreError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -190,14 +191,14 @@ pub trait DocumentQueryProvider {
 
 impl DocumentQueryProvider for MemoryStore {
     fn query_documents(&self, query: &DocumentQuery) -> Result<DocumentPage, QueryError> {
-        query_ordered_instances(
+        // Seek past the cursor and borrow: only the rows the page keeps are copied, never every
+        // instance of the type.
+        let after = query.after_id()?;
+        page_ordered(
             query,
-            self.ids(&query.entity)?
-                .into_iter()
-                .map(|id| self.load(&query.entity, &id))
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .flatten(),
+            &after,
+            self.instances_after(&query.entity, &after),
+            EntityInstance::clone,
         )
     }
 }
@@ -215,22 +216,37 @@ pub fn query_ordered_instances(
     instances: impl IntoIterator<Item = EntityInstance>,
 ) -> Result<DocumentPage, QueryError> {
     let after = query.after_id()?;
+    page_ordered(query, &after, instances, |instance| instance)
+}
+
+/// The query semantics over owned or borrowed ordered instances; `keep` turns a row the page keeps
+/// into an owned document, so a borrowing caller copies only those rows.
+fn page_ordered<T: Borrow<EntityInstance>>(
+    query: &DocumentQuery,
+    after: &str,
+    instances: impl IntoIterator<Item = T>,
+    keep: impl Fn(T) -> EntityInstance,
+) -> Result<DocumentPage, QueryError> {
     let wanted = query.effective_limit()? + 1;
     let mut previous: Option<String> = None;
     let mut items = Vec::with_capacity(wanted);
-    for instance in instances {
+    for row in instances {
+        let instance = row.borrow();
         if instance.entity != query.entity {
             return Err(QueryError::Invalid(
                 "query input contains an instance of another entity".to_owned(),
             ));
         }
-        if previous.as_ref().is_some_and(|id| id >= &instance.id) {
-            return Err(QueryError::Invalid(
-                "query input is not strictly ordered by identity".to_owned(),
-            ));
+        match &mut previous {
+            Some(id) if *id >= instance.id => {
+                return Err(QueryError::Invalid(
+                    "query input is not strictly ordered by identity".to_owned(),
+                ));
+            }
+            Some(id) => id.clone_from(&instance.id),
+            None => previous = Some(instance.id.clone()),
         }
-        previous = Some(instance.id.clone());
-        if instance.id <= after {
+        if instance.id.as_str() <= after {
             continue;
         }
         if query.matching.iter().all(|(field, expected)| {
@@ -239,7 +255,7 @@ pub fn query_ordered_instances(
                 .get(field)
                 .is_some_and(|actual| contains(actual, expected))
         }) {
-            items.push(instance);
+            items.push(keep(row));
             if items.len() == wanted {
                 break;
             }
@@ -361,5 +377,56 @@ mod tests {
             &actual,
             &serde_json::json!({ "metadata": { "locator": "story:two" } })
         ));
+    }
+
+    #[test]
+    fn a_memory_store_page_holds_only_matches_after_the_cursor_and_of_the_queried_type() {
+        use entity_core::Decision;
+        use entity_store::{Expect, Store};
+
+        let mut store = MemoryStore::new();
+        let rows = [
+            ("other", "a", "active"),
+            ("work", "a", "active"),
+            ("work", "b", "draft"),
+            ("work", "c", "active"),
+            ("work", "d", "active"),
+            ("workz", "a", "active"),
+        ];
+        for (entity, id, status) in rows {
+            let instance = EntityInstance {
+                id: id.into(),
+                entity: entity.into(),
+                version: 1,
+                revision: 1,
+                lifecycle_state: "open".into(),
+                fields: [("status".to_owned(), Value::from(status))]
+                    .into_iter()
+                    .collect(),
+            };
+            store
+                .commit(
+                    &Decision::legacy_import(instance, Vec::new()),
+                    Expect::Absent,
+                )
+                .expect("accepted");
+        }
+        let query = DocumentQuery::for_entity("work")
+            .matching("status", Value::from("active"))
+            .with_limit(1);
+        let mut seen = Vec::new();
+        let mut page = store.query_documents(&query).expect("first page");
+        loop {
+            seen.extend(
+                page.items
+                    .iter()
+                    .map(|item| format!("{}/{}", item.entity, item.id)),
+            );
+            let Some(next) = page.next.clone() else { break };
+            page = store
+                .query_documents(&query.clone().after(next))
+                .expect("next page");
+        }
+        assert_eq!(seen, ["work/a", "work/c", "work/d"]);
     }
 }

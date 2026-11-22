@@ -4,6 +4,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- `MemoryStore::instances_after(entity, after)` borrows one entity type's instances after an
+  identity, in identity order, for keyset paging.
+
 ### Changed
 
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
@@ -12,6 +17,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `Hybrid::catch_up` reads the destination's observations once per restore pass. It read them
   again for every eligible observation before each missing decision: 10 reads to restore 4
   revisions with one observation each, N(N+1)/2 in general.
+- `MemoryStore` document queries seek past the cursor and copy only the documents a page returns.
+  A one-document page over 1,024 documents with a 1 KiB title allocated 2,007,992 bytes; it now
+  allocates 3,824 bytes.
 
 ### Fixed
 

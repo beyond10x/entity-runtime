@@ -8,6 +8,7 @@
 //! is stated here rather than discovered later.
 
 use std::collections::BTreeMap;
+use std::ops::Bound;
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 use serde_json::Value;
@@ -55,6 +56,27 @@ impl MemoryStore {
     /// Every instance it holds, in key order.
     pub fn instances(&self) -> impl Iterator<Item = &EntityInstance> {
         self.instances.values()
+    }
+
+    /// The instances of one entity type whose identity sorts strictly after `after`, in identity
+    /// order, borrowed.
+    ///
+    /// For a keyset page: it seeks into the ordered map rather than walking or copying the
+    /// instances that come before, so a caller copies only the rows its page keeps. An empty
+    /// `after` starts at the first identity, and an instance whose identity is empty is never
+    /// returned — the same lower bound a query cursor's empty identity means.
+    pub fn instances_after<'a>(
+        &'a self,
+        entity: &'a str,
+        after: &str,
+    ) -> impl Iterator<Item = &'a EntityInstance> + 'a {
+        self.instances
+            .range((
+                Bound::Excluded((entity.to_owned(), after.to_owned())),
+                Bound::Unbounded,
+            ))
+            .take_while(move |((held, _), _)| held == entity)
+            .map(|(_, instance)| instance)
     }
 }
 
@@ -237,5 +259,56 @@ impl AtomicBatchStore for MemoryStore {
         }
         *self = candidate;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn instances_after_seeks_past_the_cursor_and_stays_inside_one_entity_type() {
+        let mut store = MemoryStore::new();
+        for (entity, id) in [("a", "1"), ("ticket", ""), ("ticket", "1"), ("ticket", "2")] {
+            let instance = EntityInstance {
+                id: id.into(),
+                entity: entity.into(),
+                version: 1,
+                revision: 1,
+                lifecycle_state: "open".into(),
+                fields: Default::default(),
+            };
+            store
+                .commit(
+                    &Decision::legacy_import(instance, Vec::new()),
+                    Expect::Absent,
+                )
+                .expect("accepted");
+        }
+        store
+            .commit(
+                &Decision::legacy_import(
+                    EntityInstance {
+                        id: "0".into(),
+                        entity: "ticketz".into(),
+                        version: 1,
+                        revision: 1,
+                        lifecycle_state: "open".into(),
+                        fields: Default::default(),
+                    },
+                    Vec::new(),
+                ),
+                Expect::Absent,
+            )
+            .expect("accepted");
+        let ids = |after: &str| -> Vec<String> {
+            store
+                .instances_after("ticket", after)
+                .map(|instance| format!("{}/{}", instance.entity, instance.id))
+                .collect()
+        };
+        assert_eq!(ids(""), ["ticket/1", "ticket/2"]);
+        assert_eq!(ids("1"), ["ticket/2"]);
+        assert_eq!(ids("2"), Vec::<String>::new());
     }
 }
