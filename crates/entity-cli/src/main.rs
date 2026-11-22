@@ -8,6 +8,8 @@
 //! invalid (the typed refusal is printed) · `2` the invocation itself was wrong — a missing file,
 //! unparsable input, two flags reading standard input.
 
+mod generated_output;
+
 use clap::Parser;
 #[cfg(feature = "eventlog-providers")]
 use entity_cli::cli::EventlogContextArgs;
@@ -408,7 +410,7 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                     .map(|definition| definition.as_definition().clone())
                     .collect();
                 let bundle = entity_surface::documentation(&definitions).map_err(Failure::Usage)?;
-                install_documentation(&destination, &bundle, force)?;
+                generated_output::install_documentation(&destination, &bundle, force)?;
                 writeln!(
                     out,
                     "generated {} file(s) for {} definition(s) at {}",
@@ -751,98 +753,6 @@ fn provision_eventlog_file(
 
 const ENTITY_SKILL: &str = include_str!("../assets/entity-skill.md");
 
-fn install_documentation(
-    destination: &Path,
-    bundle: &entity_surface::DocumentationBundle,
-    force: bool,
-) -> Result<(), Failure> {
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    let name = destination.file_name().ok_or_else(|| {
-        Failure::Usage("--out must name a directory, not a filesystem root".into())
-    })?;
-    fs::create_dir_all(parent)
-        .map_err(|error| Failure::Usage(format!("cannot create {}: {error}", parent.display())))?;
-    if destination.exists() {
-        if !force {
-            return Err(Failure::Usage(format!(
-                "{} already exists; pass --force to replace a generated directory",
-                destination.display()
-            )));
-        }
-        if !destination.join(entity_surface::DOCS_MARKER).is_file() {
-            return Err(Failure::Usage(format!(
-                "{} is not marked as entity-runtime generated documentation and will not be replaced",
-                destination.display()
-            )));
-        }
-    }
-    let stage = parent.join(format!(
-        ".{}.generating.{}",
-        name.to_string_lossy(),
-        std::process::id()
-    ));
-    if stage.exists() {
-        return Err(Failure::Usage(format!(
-            "staging directory {} already exists",
-            stage.display()
-        )));
-    }
-    for (relative, contents) in bundle {
-        let relative = Path::new(relative);
-        if relative.is_absolute()
-            || relative
-                .components()
-                .any(|part| !matches!(part, std::path::Component::Normal(_)))
-        {
-            return Err(Failure::Usage(format!(
-                "generator produced unsafe relative path {}",
-                relative.display()
-            )));
-        }
-        let path = stage.join(relative);
-        if let Some(directory) = path.parent() {
-            fs::create_dir_all(directory).map_err(|error| {
-                Failure::Usage(format!("cannot create {}: {error}", directory.display()))
-            })?;
-        }
-        fs::write(&path, contents)
-            .map_err(|error| Failure::Usage(format!("cannot write {}: {error}", path.display())))?;
-    }
-    if destination.exists() {
-        let backup = parent.join(format!(
-            ".{}.replaced.{}",
-            name.to_string_lossy(),
-            std::process::id()
-        ));
-        fs::rename(destination, &backup).map_err(|error| {
-            Failure::Usage(format!(
-                "cannot stage replacement of {}: {error}",
-                destination.display()
-            ))
-        })?;
-        if let Err(error) = fs::rename(&stage, destination) {
-            let _ = fs::rename(&backup, destination);
-            return Err(Failure::Usage(format!(
-                "cannot publish {}: {error}",
-                destination.display()
-            )));
-        }
-        fs::remove_dir_all(&backup).map_err(|error| {
-            Failure::Usage(format!(
-                "published {}, but cannot remove generated backup {}: {error}",
-                destination.display(),
-                backup.display()
-            ))
-        })
-    } else {
-        fs::rename(&stage, destination).map_err(|error| {
-            Failure::Usage(format!("cannot publish {}: {error}", destination.display()))
-        })
-    }
-}
-
-const GENERATED_CLI_MARKER: &str = ".entity-runtime-cli.json";
-
 #[allow(clippy::too_many_arguments)]
 fn generate_rust_cli(
     definition_paths: &[PathBuf],
@@ -914,23 +824,16 @@ fn generate_rust_cli(
             "--build-dir must not be a filesystem root".into(),
         ));
     }
-    if build_dir.exists() {
-        if !force || !build_dir.join(GENERATED_CLI_MARKER).is_file() {
-            return Err(Failure::Usage(format!(
-                "{} already exists and is not authorised for replacement",
-                build_dir.display()
-            )));
-        }
-        fs::remove_dir_all(&build_dir).map_err(|error| {
-            Failure::Usage(format!("cannot replace {}: {error}", build_dir.display()))
-        })?;
-    }
     if destination.exists() && !force {
         return Err(Failure::Usage(format!(
             "{} already exists; pass --force to replace that exact binary",
             destination.display()
         )));
     }
+    // A forced regeneration replaces the generated sources and keeps Cargo's `target/` and, for
+    // the same runtime version, the lockfile: a change confined to an embedded definition then
+    // recompiles the generated crate alone instead of the whole dependency graph.
+    let lockfile = generated_output::prepare_build_dir(&build_dir, force)?;
     fs::create_dir_all(build_dir.join("src")).map_err(|error| {
         Failure::Usage(format!("cannot create {}: {error}", build_dir.display()))
     })?;
@@ -944,11 +847,8 @@ fn generate_rust_cli(
         })?;
     }
     fs::write(
-        build_dir.join(GENERATED_CLI_MARKER),
-        format!(
-            "{{\"format\":\"entity-runtime-cli/1\",\"runtime\":\"{}\"}}\n",
-            env!("CARGO_PKG_VERSION")
-        ),
+        build_dir.join(generated_output::GENERATED_CLI_MARKER),
+        generated_output::generated_cli_marker(),
     )
     .map_err(|error| Failure::Usage(format!("cannot write generator marker: {error}")))?;
 
@@ -965,7 +865,7 @@ fn generate_rust_cli(
     // self-contained: a `CARGO_TARGET_DIR` in the environment or a `build.target-dir` in a parent
     // `.cargo/config.toml` would otherwise scatter the build somewhere else.
     let target_dir = build_dir.join("target");
-    run_cargo(&build_dir, &["generate-lockfile", "--offline"])?;
+    run_cargo(&build_dir, lockfile.cargo_arguments())?;
     let built = cargo_build_executable(&build_dir, &target_dir, name)?;
     let parent = destination.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)
@@ -2049,3 +1949,4 @@ fn write_all(out: &mut impl Write, text: &str) -> Result<(), Failure> {
 fn io_failure(error: io::Error) -> Failure {
     Failure::Usage(format!("cannot write output: {error}"))
 }
+

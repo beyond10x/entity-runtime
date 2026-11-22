@@ -10,6 +10,19 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
 
+### Fixed
+
+- `entity generate docs` no longer removes a directory another writer creates at `--out` while
+  the documentation is being generated. Publication decides again under a lock file beside the
+  destination (`.<name>.lock`, removed afterwards), moves into place without replacing anything
+  (`renameat2(RENAME_NOREPLACE)` on Linux), and with `--force` replaces only the directory it
+  checked for the generator marker. A leftover lock file from an interrupted run is named in the
+  error; remove it when no generation is running.
+- `entity generate rust-cli --force` keeps the retained crate's `target/` and, when the same
+  runtime version generated it, its `Cargo.lock` (refreshed with `cargo update --offline
+  --workspace` instead of resolved again). A change confined to an embedded definition recompiles
+  the generated crate rather than every dependency.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security
