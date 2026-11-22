@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 
-use entity_core::{EntityDefinition, Registry};
+use entity_core::{EntityDefinition, OperationFieldActions, Registry, SetAssignment};
 use entity_shell::{ShellError, StoredRuntime};
 use entity_store::{Recording, Store};
 use serde_json::{json, Map, Value};
@@ -17,11 +17,87 @@ const MODERN: &str = "2026-07-28";
 const LEGACY: &str = "2025-11-25";
 const RESERVED: [&str; 4] = ["create", "get", "list", "events"];
 
+/// The default for the largest request frame [`Server::serve`] reads, in bytes, newline excluded.
+///
+/// A peer on stdio is not trusted to bound its own lines: without a limit one unterminated line
+/// is buffered whole before parsing, and the buffer keeps that allocation afterwards.
+pub const DEFAULT_FRAME_LIMIT: usize = 4 * 1024 * 1024;
+
+/// The frame buffer capacity kept between requests; a larger one is released after its frame.
+const RETAINED_FRAME_CAPACITY: usize = 64 * 1024;
+
 /// A configured MCP tools server.
 pub struct Server<'a, S> {
     registry: &'a Registry,
     store: S,
     tools: BTreeMap<String, ToolTarget>,
+    /// The `tools/list` result, built once: the registry and the tool set are fixed for the
+    /// server's life, and rebuilding every description and JSON schema per request was a quarter
+    /// of a short session's instructions.
+    catalogue: Value,
+    frame_limit: usize,
+    /// How many tool descriptors this server has built, so a test can hold it to one per tool.
+    #[cfg(test)]
+    descriptor_builds: std::cell::Cell<usize>,
+}
+
+/// What one read of a newline-delimited frame found.
+#[derive(Debug, PartialEq, Eq)]
+enum Frame {
+    /// The input ended before any byte of a new frame.
+    End,
+    /// A complete frame, now in the buffer without its newline.
+    Line,
+    /// A frame longer than the limit. Its bytes were read and dropped, never buffered.
+    Oversized,
+}
+
+/// Reads one frame into `frame`, holding at most `limit` bytes of it at any time.
+///
+/// An oversized frame is consumed up to its newline (or the end of input) so the next frame starts
+/// cleanly, and its partial contents are released rather than kept as the buffer's capacity.
+fn read_frame(
+    input: &mut impl BufRead,
+    frame: &mut Vec<u8>,
+    limit: usize,
+) -> Result<Frame, std::io::Error> {
+    frame.clear();
+    let mut started = false;
+    let mut oversized = false;
+    loop {
+        let available = match input.fill_buf() {
+            Ok(available) => available,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        if available.is_empty() {
+            return Ok(match (started, oversized) {
+                (false, _) => Frame::End,
+                (true, false) => Frame::Line,
+                (true, true) => Frame::Oversized,
+            });
+        }
+        started = true;
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let chunk = &available[..newline.unwrap_or(available.len())];
+        if !oversized {
+            if frame.len() + chunk.len() > limit {
+                oversized = true;
+                *frame = Vec::new();
+            } else {
+                frame.extend_from_slice(chunk);
+            }
+        }
+        let used = newline.map_or(available.len(), |at| at + 1);
+        input.consume(used);
+        if newline.is_some() {
+            return Ok(if oversized {
+                Frame::Oversized
+            } else {
+                Frame::Line
+            });
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -76,14 +152,39 @@ where
                 });
             }
         }
-        Ok(Self {
+        let mut server = Self {
             registry,
             store,
             tools,
-        })
+            catalogue: Value::Null,
+            frame_limit: DEFAULT_FRAME_LIMIT,
+            #[cfg(test)]
+            descriptor_builds: std::cell::Cell::new(0),
+        };
+        let listed: Vec<Value> = server
+            .tools
+            .iter()
+            .map(|(name, target)| server.tool(name, target))
+            .collect();
+        server.catalogue = json!({ "tools": listed, "ttlMs": 300_000 });
+        Ok(server)
+    }
+
+    /// Sets the largest request frame [`Self::serve`] reads, in bytes, newline excluded.
+    ///
+    /// The default is [`DEFAULT_FRAME_LIMIT`]. A longer frame is discarded unparsed and answered
+    /// with a JSON-RPC `-32600` error; the server goes on with the next frame.
+    #[must_use]
+    pub const fn with_frame_limit(mut self, bytes: usize) -> Self {
+        self.frame_limit = bytes;
+        self
     }
 
     /// Processes newline-delimited JSON-RPC until EOF.
+    ///
+    /// A frame longer than the frame limit is read and dropped without being buffered, and
+    /// answered with a JSON-RPC `-32600` error whose `id` is `null`, since the request was never
+    /// parsed.
     ///
     /// # Errors
     ///
@@ -93,23 +194,40 @@ where
         input: &mut impl BufRead,
         output: &mut impl Write,
     ) -> Result<(), std::io::Error> {
-        let mut line = String::new();
+        let mut frame = Vec::new();
         loop {
-            line.clear();
-            if input.read_line(&mut line)? == 0 {
-                return Ok(());
+            if frame.capacity() > RETAINED_FRAME_CAPACITY {
+                // One large frame is not kept as the buffer's capacity for the rest of the session.
+                frame = Vec::new();
             }
-            let trimmed = line.trim_end_matches(['\r', '\n']);
-            if trimmed.is_empty() {
-                continue;
-            }
-            let response = match serde_json::from_str(trimmed) {
-                Ok(request) => self.handle(request),
-                Err(error) => Some(error_response(
+            let response = match read_frame(input, &mut frame, self.frame_limit)? {
+                Frame::End => return Ok(()),
+                Frame::Oversized => Some(error_response(
                     Value::Null,
-                    -32700,
-                    format!("Parse error: {error}"),
+                    -32600,
+                    format!(
+                        "Invalid Request: frame exceeds {} bytes and was discarded",
+                        self.frame_limit
+                    ),
                 )),
+                Frame::Line => {
+                    let mut end = frame.len();
+                    while end > 0 && frame[end - 1] == b'\r' {
+                        end -= 1;
+                    }
+                    let trimmed = &frame[..end];
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    match serde_json::from_slice(trimmed) {
+                        Ok(request) => self.handle(request),
+                        Err(error) => Some(error_response(
+                            Value::Null,
+                            -32700,
+                            format!("Parse error: {error}"),
+                        )),
+                    }
+                }
             };
             if let Some(response) = response {
                 serde_json::to_writer(&mut *output, &response)?;
@@ -173,15 +291,19 @@ where
     }
 
     fn list_tools(&self) -> Value {
-        let listed: Vec<Value> = self
-            .tools
-            .iter()
-            .map(|(name, target)| self.tool(name, target))
-            .collect();
-        json!({ "tools": listed, "ttlMs": 300_000 })
+        self.catalogue.clone()
     }
 
+    /// Builds one tool descriptor. Called once per tool, from [`Self::new`].
     fn tool(&self, name: &str, target: &ToolTarget) -> Value {
+        #[cfg(test)]
+        self.descriptor_builds.set(self.descriptor_builds.get() + 1);
+        let destructive = match target {
+            ToolTarget::Execute { entity, operation } => {
+                removes_fields(&self.definitions(entity), operation)
+            }
+            _ => false,
+        };
         let (description, input, read_only, idempotent) = match target {
             ToolTarget::Create(entity) => (
                 format!("Create and durably record one {entity}."),
@@ -222,7 +344,7 @@ where
             "outputSchema": { "type": "object" },
             "annotations": {
                 "readOnlyHint": read_only,
-                "destructiveHint": false,
+                "destructiveHint": destructive,
                 "idempotentHint": idempotent,
                 "openWorldHint": false
             }
@@ -311,6 +433,35 @@ where
             .map(|definition| definition.as_definition())
             .collect()
     }
+}
+
+/// Whether any registered version of `operation` can remove a live field value: a
+/// `{cleared: true}` assignment in its `set` or in any outcome's `set`, or a fulfillment target
+/// whose actions admit `Remove`. Every outcome counts, accepted ones included, because the tool's
+/// annotation describes what a call may do before the branch is known. An MCP client may use
+/// `destructiveHint` to decide whether to ask for confirmation, so a removal must not be
+/// advertised as additive.
+fn removes_fields(definitions: &[&EntityDefinition], operation: &str) -> bool {
+    let clears = |set: &BTreeMap<String, Value>| {
+        set.values().any(|value| {
+            matches!(
+                SetAssignment::of(value),
+                SetAssignment::Cleared(Value::Bool(true))
+            )
+        })
+    };
+    definitions
+        .iter()
+        .filter_map(|definition| definition.operations.get(operation))
+        .any(|declared| {
+            clears(&declared.set)
+                || declared.outcomes.iter().any(|outcome| {
+                    clears(&outcome.set)
+                        || outcome.fulfills.values().any(|requirement| {
+                            matches!(requirement.actions, OperationFieldActions::Optional)
+                        })
+                })
+        })
 }
 
 fn validate_component(kind: &str, value: &str) -> Result<(), String> {
@@ -527,6 +678,201 @@ mod tests {
         let mut server = Server::new(&registry, MemoryStore::new()).unwrap();
         let result = server.handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "refund.create", "arguments": input}})).unwrap();
         assert_eq!(result["result"]["isError"], false);
+    }
+
+    #[test]
+    fn repeated_tool_listings_build_each_descriptor_once_per_session() {
+        let registry = registry();
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let tools = server.tools.len();
+        let first = server
+            .handle(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }))
+            .expect("response");
+        for id in 2..=4 {
+            let again = server
+                .handle(json!({ "jsonrpc": "2.0", "id": id, "method": "tools/list" }))
+                .expect("response");
+            assert_eq!(
+                again["result"], first["result"],
+                "the catalogue is immutable"
+            );
+        }
+        assert_eq!(
+            first["result"]["tools"].as_array().map(Vec::len),
+            Some(tools)
+        );
+        assert_eq!(
+            server.descriptor_builds.get(),
+            tools,
+            "four listings must build {tools} descriptors, one per tool, not one per request"
+        );
+    }
+
+    #[test]
+    fn an_operation_that_can_remove_a_field_is_advertised_as_destructive() {
+        let snoozer: EntityDefinition = serde_json::from_value(json!({
+            "entity": "snoozer",
+            "schema": { "fields": { "snoozed_until": { "type": "string" } } },
+            "lifecycle": { "initial": "active", "states": ["active"] },
+            "operations": {
+                "wake": {
+                    "transitions": [{ "from": "active", "to": "active" }],
+                    "set": { "snoozed_until": { "cleared": true } }
+                },
+                "touch": { "transitions": [{ "from": "active", "to": "active" }] }
+            }
+        }))
+        .expect("definition");
+        let invoice: EntityDefinition = serde_json::from_value(json!({
+            "entity": "invoice", "version": 1, "semantics": "service/3",
+            "schema": { "fields": {
+                "issued_at": { "type": "string", "required": true },
+                "note": { "type": "string" },
+                "draft": { "type": "string" }
+            }},
+            "lifecycle": { "initial": "Draft", "states": ["Draft"] },
+            "operations": {
+                "Discard": { "outcomes": [{
+                    "name": "discarded", "effect": "updates",
+                    "set": { "draft": { "cleared": true } }
+                }]},
+                "Annotate": { "outcomes": [{
+                    "name": "annotated", "effect": "updates",
+                    "fulfills": { "note": { "actions": "optional" } }
+                }]},
+                "Issue": { "outcomes": [{
+                    "name": "issued", "effect": "updates",
+                    "fulfills": { "issued_at": { "actions": "required" } }
+                }]}
+            }
+        }))
+        .expect("definition");
+        let mut registry = registry();
+        registry.register(snoozer).expect("valid");
+        registry.register(invoice).expect("valid");
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let listed = server
+            .handle(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }))
+            .expect("response");
+        let hints: BTreeMap<&str, &Value> = listed["result"]["tools"]
+            .as_array()
+            .expect("tools")
+            .iter()
+            .map(|tool| {
+                (
+                    tool["name"].as_str().expect("name"),
+                    &tool["annotations"]["destructiveHint"],
+                )
+            })
+            .collect();
+        for (tool, destructive) in [
+            ("snoozer.wake", true),
+            ("invoice.Discard", true),
+            ("invoice.Annotate", true),
+            ("snoozer.touch", false),
+            ("invoice.Issue", false),
+            ("refund.approve", false),
+            ("invoice.create", false),
+        ] {
+            assert_eq!(
+                hints[tool],
+                &json!(destructive),
+                "{tool} destructiveHint must be {destructive}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_oversized_frame_is_answered_with_an_error_and_the_next_frame_is_served() {
+        let registry = registry();
+        let mut server = Server::new(&registry, MemoryStore::new())
+            .expect("server")
+            .with_frame_limit(64);
+        let oversized = format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"pad\":\"{}\"}}",
+            "x".repeat(4096)
+        );
+        let input =
+            format!("{oversized}\r\n{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}}\n");
+        // A small read buffer makes the frame arrive in many chunks, as a pipe delivers it.
+        let mut reader = std::io::BufReader::with_capacity(7, input.as_bytes());
+        let mut output = Vec::new();
+        server.serve(&mut reader, &mut output).expect("serves");
+        let responses: Vec<Value> = String::from_utf8(output)
+            .expect("utf-8")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("json"))
+            .collect();
+        assert_eq!(responses.len(), 2, "one answer per frame: {responses:?}");
+        assert_eq!(responses[0]["id"], Value::Null);
+        assert_eq!(responses[0]["error"]["code"], -32600);
+        assert!(
+            responses[0]["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("frame exceeds 64 bytes")),
+            "the error names the limit: {}",
+            responses[0]
+        );
+        assert_eq!(responses[1]["id"], 2);
+        assert_eq!(responses[1]["result"], json!({}));
+    }
+
+    #[test]
+    fn a_frame_that_is_not_utf_8_is_a_parse_error_and_the_session_goes_on() {
+        let registry = registry();
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let mut input = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"p\xffng\"}\n".to_vec();
+        input.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}\n");
+        let mut output = Vec::new();
+        server
+            .serve(&mut input.as_slice(), &mut output)
+            .expect("serves");
+        let responses: Vec<Value> = String::from_utf8(output)
+            .expect("utf-8")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("json"))
+            .collect();
+        assert_eq!(responses.len(), 2, "one answer per frame: {responses:?}");
+        assert_eq!(responses[0]["error"]["code"], -32700);
+        assert_eq!(responses[1]["id"], 2);
+    }
+
+    #[test]
+    fn an_oversized_frame_is_never_buffered_beyond_the_limit() {
+        let input = format!("{}\nnext\n", "y".repeat(1 << 20));
+        let mut reader = std::io::BufReader::with_capacity(4096, input.as_bytes());
+        let mut frame = Vec::new();
+        let read = read_frame(&mut reader, &mut frame, 1024).expect("reads");
+        assert_eq!(read, Frame::Oversized);
+        assert!(
+            frame.capacity() <= 1024,
+            "a megabyte line held {} bytes of buffer under a 1024-byte limit",
+            frame.capacity()
+        );
+        assert_eq!(
+            read_frame(&mut reader, &mut frame, 1024).expect("reads"),
+            Frame::Line
+        );
+        assert_eq!(frame, b"next");
+        assert_eq!(
+            read_frame(&mut reader, &mut frame, 1024).expect("reads"),
+            Frame::End
+        );
+    }
+
+    #[test]
+    fn an_unterminated_oversized_frame_at_the_end_of_input_is_still_answered() {
+        let input = "z".repeat(200);
+        let mut reader = std::io::BufReader::with_capacity(16, input.as_bytes());
+        let mut frame = Vec::new();
+        assert_eq!(
+            read_frame(&mut reader, &mut frame, 100).expect("reads"),
+            Frame::Oversized
+        );
+        assert_eq!(
+            read_frame(&mut reader, &mut frame, 100).expect("reads"),
+            Frame::End
+        );
     }
 
     #[test]

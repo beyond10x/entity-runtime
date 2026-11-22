@@ -10,8 +10,21 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   one asked for, as `StoreError::Backend` naming both subjects. Before, a misrouted reply was
   returned as the requested subject, and `StoredRuntime::execute` committed to the returned
   instance's coordinates, so a routing bug on the far side could redirect a write.
+- `entity mcp` (`entity_mcp::Server::serve`) reads at most 4 MiB of one request line. A longer
+  line is discarded without being buffered and answered with a JSON-RPC `-32600` error with a
+  `null` id; the session goes on with the next line. `Server::with_frame_limit` sets another
+  limit. Before, a peer could make the server buffer an unbounded line and keep that allocation.
+  A line that is not UTF-8 is now answered with a `-32700` parse error instead of ending the
+  session with an I/O error.
+- `entity mcp` advertises `destructiveHint: true` on an operation tool that can remove a field
+  value — a `{cleared: true}` assignment in the operation's or any outcome's `set`, or an
+  optional fulfillment target, which admits `Remove`. Before, every tool claimed
+  `destructiveHint: false`.
 
 ### Changed
+
+- `entity mcp` builds its `tools/list` catalogue once per server instead of on every request; the
+  reply is unchanged.
 
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
