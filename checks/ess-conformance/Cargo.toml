@@ -23,10 +23,10 @@ entity-store = { path = "../../crates/entity-store" }
 entity-executor = { path = "../../crates/entity-executor" }
 entity-shell = { path = "../../crates/entity-shell" }
 entity-query = { path = "../../crates/entity-query" }
-ess-conformance = { git = "https://github.com/beyond10x/ess", rev = "f692aabbb0fcd321eca0a9eef86e12b25a7601f4" }
-ess-compiler = { git = "https://github.com/beyond10x/ess", rev = "f692aabbb0fcd321eca0a9eef86e12b25a7601f4" }
-ess-domain = { git = "https://github.com/beyond10x/ess", rev = "f692aabbb0fcd321eca0a9eef86e12b25a7601f4" }
-ess-primitives = { git = "https://github.com/beyond10x/ess", rev = "f692aabbb0fcd321eca0a9eef86e12b25a7601f4" }
+ess-conformance = { git = "https://github.com/beyond10x/ess", rev = "b076ef00be60564dc532d30912c684c62ea09d6c" }
+ess-compiler = { git = "https://github.com/beyond10x/ess", rev = "b076ef00be60564dc532d30912c684c62ea09d6c" }
+ess-domain = { git = "https://github.com/beyond10x/ess", rev = "b076ef00be60564dc532d30912c684c62ea09d6c" }
+ess-primitives = { git = "https://github.com/beyond10x/ess", rev = "b076ef00be60564dc532d30912c684c62ea09d6c" }
 clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
