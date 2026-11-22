@@ -42,6 +42,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `entity store migrate-file --to converted` (a destination with no directory part) succeeds.
   Before, it installed the migrated store, then failed to sync the empty parent path and exited 2,
   and a retry refused because the destination existed.
+- A refused File Store write (a revision or record conflict) and an idempotent retry no longer
+  grow and sync `.entity-store-lock`. The invalidation epoch advances only right before a write
+  changes the store, so other handles keep their record-id index after a conflict.
 
 ### Security
 

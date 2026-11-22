@@ -69,6 +69,13 @@ struct RecordLocation {
     observation: bool,
 }
 
+/// The exclusive writer lock on `.entity-store-lock`, held until dropped, and its epoch.
+struct WriteGuard {
+    file: fs::File,
+    path: PathBuf,
+    epoch: u64,
+}
+
 /// What a record-id lookup already knows about the subject the write targets.
 enum Target {
     /// Nothing was read for it; the write reads the subject itself.
@@ -132,15 +139,19 @@ impl FileStore {
         &self.root
     }
 
+    /// Takes the exclusive writer lock and reads its epoch, dropping the cached index if another
+    /// writer advanced it. The epoch itself advances only through [`FileStore::advance_epoch`],
+    /// right before the write's first durable change, so a refused write (a revision or record
+    /// conflict, an idempotent retry) leaves it alone and other handles keep their index.
+    ///
     /// The lock file is never removed: unlinking a locked inode would admit another writer.
-    /// Append the invalidation epoch before mutation, so an interrupted write cannot leave
-    /// another handle trusting stale locations. A crash releases the OS lock automatically.
-    fn write_guard(&self) -> Result<fs::File, StoreError> {
+    /// A crash releases the OS lock automatically.
+    fn write_guard(&self) -> Result<WriteGuard, StoreError> {
         reject_symlink_components(&self.root)?;
         create_directory_durably(&self.root)?;
         let path = self.root.join(".entity-store-lock");
         reject_symlink_components(&path)?;
-        let mut file = fs::OpenOptions::new()
+        let file = fs::OpenOptions::new()
             .read(true)
             .append(true)
             .create(true)
@@ -155,12 +166,24 @@ impl FileStore {
         if epoch != self.epoch.load(Ordering::Relaxed) {
             *lock(&self.records) = None;
         }
-        file.write_all(&[0])
-            .map_err(|e| backend("advancing epoch", &path, &e))?;
-        file.sync_all()
-            .map_err(|e| backend("syncing epoch", &path, &e))?;
-        self.epoch.store(epoch + 1, Ordering::Relaxed);
-        Ok(file)
+        self.epoch.store(epoch, Ordering::Relaxed);
+        Ok(WriteGuard { file, path, epoch })
+    }
+
+    /// Appends one synced byte to the epoch before the guarded write changes anything durable, so
+    /// an interrupted write cannot leave another handle trusting stale locations.
+    fn advance_epoch(&self, guard: &mut WriteGuard) -> Result<(), StoreError> {
+        guard
+            .file
+            .write_all(&[0])
+            .map_err(|e| backend("advancing epoch", &guard.path, &e))?;
+        guard
+            .file
+            .sync_all()
+            .map_err(|e| backend("syncing epoch", &guard.path, &e))?;
+        guard.epoch += 1;
+        self.epoch.store(guard.epoch, Ordering::Relaxed);
+        Ok(())
     }
 
     /// Coordinates a source acquisition with every FileStore writer without advancing its epoch.
@@ -984,7 +1007,7 @@ impl Store for FileStore {
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         // Refused before the guard creates a root or a lock for a subject it could never hold.
         refuse_overlong_names(&decision.instance.entity, &decision.instance.id, WRITES.load(Ordering::Relaxed))?;
-        let _guard = self.write_guard()?;
+        let mut guard = self.write_guard()?;
         let instance = &decision.instance;
         let held = self.read_subject(&instance.entity, &instance.id)?;
         check(
@@ -1005,6 +1028,7 @@ impl Store for FileStore {
             stored.events.push(event.clone());
         }
         stored.instance = instance.clone();
+        self.advance_epoch(&mut guard)?;
         self.write_subject(&stored)
     }
 
@@ -1015,7 +1039,7 @@ impl Store for FileStore {
     ) -> Result<(), StoreError> {
         commit.validate()?;
         refuse_overlong_names(&commit.instance.entity, &commit.instance.id, WRITES.load(Ordering::Relaxed))?;
-        let _guard = self.write_guard()?;
+        let mut guard = self.write_guard()?;
         let document =
             serde_json::to_value(commit).map_err(|error| StoreError::Backend(error.to_string()))?;
         let entity = &commit.instance.entity;
@@ -1074,6 +1098,7 @@ impl Store for FileStore {
         });
         stored.instance = commit.instance.clone();
         stored.records.push(commit.envelope.clone());
+        self.advance_epoch(&mut guard)?;
         self.write_subject(&stored)?;
         self.remember(&commit.envelope.record_id, entity, id, false);
         Ok(())
@@ -1081,7 +1106,7 @@ impl Store for FileStore {
 
     fn observe(&mut self, observation: &RecordedObservation) -> Result<(), StoreError> {
         observation.validate()?;
-        let _guard = self.write_guard()?;
+        let mut guard = self.write_guard()?;
         let document = serde_json::to_value(observation)
             .map_err(|error| StoreError::Backend(error.to_string()))?;
         let (existing, target) = self.record_document(
@@ -1137,6 +1162,7 @@ impl Store for FileStore {
             Some(stored.instance.revision),
         )?;
         stored.observations.push(observation.clone());
+        self.advance_epoch(&mut guard)?;
         self.write_subject(&stored)?;
         self.remember(
             &observation.envelope.record_id,

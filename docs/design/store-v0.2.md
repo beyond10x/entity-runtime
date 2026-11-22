@@ -69,8 +69,10 @@ the index is a cache of what is on disk and never the authority.
 
 From 0.17.7 every write holds an OS advisory exclusive lock on `.entity-store-lock` across root
 initialization, global record-id lookup, revision checking and subject publication. The lock file
-is never unlinked. Its length is an invalidation epoch, advanced by one synced byte before a write:
-a handle invalidates its cached index if another writer advanced the epoch. A process crash releases
+is never unlinked. Its length is an invalidation epoch, advanced by one synced byte after the
+write's checks pass and before its first durable change: a handle invalidates its cached index if
+another writer advanced the epoch. A refused write (a revision or record conflict) and an
+idempotent retry change nothing and leave the epoch alone. A process crash releases
 the lock. This retains the single-writer index benefit while serializing independent handles and
 processes. Multi-subject transactions remain unsupported. All concurrent writers must use 0.17.7
 or later and a filesystem that supports advisory locking and atomic rename; older writers do not

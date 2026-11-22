@@ -126,6 +126,45 @@ fn an_existing_handle_invalidates_its_index_after_another_writer() {
 }
 
 #[test]
+fn a_refused_write_leaves_the_invalidation_epoch_alone() {
+    let registry = registry();
+    let root = scratch("refused-epoch");
+    let lock = root.join(".entity-store-lock");
+    let epoch = || std::fs::metadata(&lock).expect("lock exists").len();
+    let mut store = FileStore::open(&root);
+    store
+        .commit_recorded(&recorded(opening(&registry, "one"), "r-1"), Expect::Absent)
+        .expect("created");
+    let after_create = epoch();
+    assert_eq!(after_create, 1, "the accepted create advanced the epoch once");
+
+    let mut other = FileStore::open(&root);
+    for attempt in 0..3 {
+        let refused = other.commit_recorded(
+            &recorded(opening(&registry, "one"), &format!("again-{attempt}")),
+            Expect::Absent,
+        );
+        assert!(
+            matches!(refused, Err(StoreError::RevisionConflict { .. })),
+            "{refused:?}"
+        );
+    }
+    store
+        .commit_recorded(&recorded(opening(&registry, "one"), "r-1"), Expect::Absent)
+        .expect("an identical retry is an idempotent success");
+    assert_eq!(
+        epoch(),
+        after_create,
+        "revision conflicts and idempotent retries change nothing, so they advance no epoch"
+    );
+
+    other
+        .commit_recorded(&recorded(opening(&registry, "two"), "r-2"), Expect::Absent)
+        .expect("created");
+    assert_eq!(epoch(), after_create + 1, "an accepted write still advances it");
+}
+
+#[test]
 fn separate_writers_preserve_exactly_one_winning_revision_and_all_its_records() {
     use entity_store::{HistoryProvider, StateProvider};
     let registry = registry();
