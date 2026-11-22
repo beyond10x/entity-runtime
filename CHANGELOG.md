@@ -25,6 +25,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - Document-query array containment indexes a stored array's scalars once when a query names more
   of them than the logarithm of its length, instead of searching from the start for each member
   (131,328 comparisons for 512 tags, now under 20,000). Numbers still match by exact value.
+- `MemoryStore::commit_batch` stages only the subjects a batch touches instead of copying the
+  whole store, and still applies every member or none. A one-member batch beside 1,024 subjects
+  with a 1 KiB title allocated 2,033,234 bytes; it now allocates 3,727 bytes.
 
 ### Fixed
 

@@ -7,6 +7,7 @@
 //! It is **not** a cache and not a fallback. A process that exits has forgotten everything, which
 //! is stated here rather than discovered later.
 
+use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::ops::Bound;
 
@@ -251,20 +252,148 @@ impl Store for MemoryStore {
 
 impl AtomicBatchStore for MemoryStore {
     fn commit_batch(&mut self, commits: &[AtomicCommit]) -> Result<(), StoreError> {
-        // The clone is the transaction: every expectation sees earlier entries in `candidate`, and
-        // an error drops it without exposing a prefix through either map.
-        let mut candidate = self.clone();
+        // The stage is the transaction: it holds only the keys the batch touches, every
+        // expectation sees earlier members through it, and an error drops it before either map
+        // has changed. Copying the whole store instead made a one-member batch cost every
+        // unrelated subject.
+        let mut staged: BTreeMap<Key, (EntityInstance, Vec<DomainEvent>)> = BTreeMap::new();
         for commit in commits {
-            candidate.commit(&commit.decision, commit.expect)?;
+            let instance = &commit.decision.instance;
+            let key = (instance.entity.clone(), instance.id.clone());
+            let found = match staged.get(&key) {
+                Some((held, _)) => Some(held.revision),
+                None => self.instances.get(&key).map(|held| held.revision),
+            };
+            check(&instance.entity, &instance.id, commit.expect, found)?;
+            let events = &commit.decision.record.events;
+            match staged.entry(key) {
+                Entry::Occupied(mut entry) => {
+                    let (held, staged_events) = entry.get_mut();
+                    held.clone_from(instance);
+                    staged_events.extend(events.iter().cloned());
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert((instance.clone(), events.clone()));
+                }
+            }
         }
-        *self = candidate;
+        // Nothing fallible from here on: every member lands, or (above) none did.
+        for (key, (instance, events)) in staged {
+            if !events.is_empty() {
+                self.events.entry(key.clone()).or_default().extend(events);
+            }
+            self.instances.insert(key, instance);
+        }
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use entity_core::{Registry, Runtime};
+    use serde_json::json;
+
     use super::*;
+
+    fn registry() -> Registry {
+        let definition = serde_json::from_value(json!({
+            "entity": "ticket",
+            "version": 1,
+            "schema": { "fields": { "title": { "type": "string", "required": true } } },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "create": { "emit": { "type": "TicketOpened", "payload": { "ticket": "$id" } } },
+            "operations": {
+                "rename": {
+                    "arguments": { "fields": { "title": { "type": "string", "required": true } } },
+                    "transitions": [{ "from": "open", "to": "open" }],
+                    "set": { "title": "$args.title" },
+                    "emits": [{ "type": "TicketRenamed", "payload": { "title": "$args.title" } }]
+                }
+            }
+        }))
+        .expect("parses");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("validates");
+        registry
+    }
+
+    fn created(registry: &Registry, id: &str) -> Decision {
+        Runtime::new(registry)
+            .create("ticket", 1, id, json!({ "title": id }))
+            .expect("permitted")
+    }
+
+    fn renamed(registry: &Registry, instance: &EntityInstance, title: &str) -> Decision {
+        Runtime::new(registry)
+            .execute(instance, "rename", json!({ "title": title }))
+            .expect("permitted")
+    }
+
+    #[test]
+    fn a_batch_whose_later_member_is_refused_leaves_every_subject_as_it_was() {
+        let registry = registry();
+        let mut store = MemoryStore::new();
+        let held = created(&registry, "held");
+        store.commit(&held, Expect::Absent).expect("accepted");
+        let before = store.clone();
+
+        let second = renamed(&registry, &held.instance, "moved in the batch");
+        // The third member expects the revision the store holds, which the second member already
+        // moved past inside the batch: the stage, not the store, is what it must be checked against.
+        let stale = renamed(&registry, &held.instance, "expects the old revision");
+        let refused = store.commit_batch(&[
+            AtomicCommit::new(second, Expect::Revision(1)),
+            AtomicCommit::new(created(&registry, "fresh"), Expect::Absent),
+            AtomicCommit::new(stale, Expect::Revision(1)),
+        ]);
+
+        assert_eq!(
+            refused,
+            Err(StoreError::RevisionConflict {
+                entity: "ticket".into(),
+                id: "held".into(),
+                expected: Expect::Revision(1),
+                found: Some(2),
+            })
+        );
+        assert_eq!(
+            store.instances, before.instances,
+            "no member's state landed"
+        );
+        assert_eq!(store.events, before.events, "no member's events landed");
+    }
+
+    #[test]
+    fn a_batch_that_moves_one_subject_twice_publishes_its_last_state_and_every_event_in_order() {
+        let registry = registry();
+        let mut store = MemoryStore::new();
+        let untouched = created(&registry, "untouched");
+        store.commit(&untouched, Expect::Absent).expect("accepted");
+        let first = created(&registry, "moved");
+        let second = renamed(&registry, &first.instance, "second");
+        let third = renamed(&registry, &second.instance, "third");
+
+        store
+            .commit_batch(&[
+                AtomicCommit::new(first, Expect::Absent),
+                AtomicCommit::new(second, Expect::Revision(1)),
+                AtomicCommit::new(third.clone(), Expect::Revision(2)),
+            ])
+            .expect("accepted");
+
+        assert_eq!(store.load("ticket", "moved"), Ok(Some(third.instance)));
+        let revisions: Vec<u64> = store
+            .events("ticket", "moved")
+            .expect("events")
+            .iter()
+            .map(|event| event.revision)
+            .collect();
+        assert_eq!(revisions, [1, 2, 3]);
+        assert_eq!(
+            store.load("ticket", "untouched"),
+            Ok(Some(untouched.instance))
+        );
+    }
 
     #[test]
     fn instances_after_seeks_past_the_cursor_and_stays_inside_one_entity_type() {
