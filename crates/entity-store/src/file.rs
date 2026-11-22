@@ -305,11 +305,8 @@ impl FileStore {
         let text = serde_json::to_string_pretty(subject)
             .map_err(|error| backend("serialising", &path, &error))?;
         let result = (|| {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temporary)
-                .map_err(|error| backend("creating", &temporary, &error))?;
+            let mut file = create_private(&temporary)?;
+            keep_permissions(&file, &path, &temporary)?;
             file.write_all(format!("{text}\n").as_bytes())
                 .map_err(|error| backend("writing", &temporary, &error))?;
             file.sync_all()
@@ -668,6 +665,45 @@ fn sync_directory(path: &Path) -> Result<(), StoreError> {
     fs::File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(|error| backend("syncing directory", path, &error))
+}
+
+/// Creates a temporary subject document readable by its owner alone (`0600` on Unix).
+///
+/// The rename that installs it replaces the old inode, so a document created with the process
+/// default permissions would be readable by anyone the umask admits for as long as it exists and,
+/// once installed, would silently widen a subject the operator had restricted.
+fn create_private(temporary: &Path) -> Result<fs::File, StoreError> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options
+        .open(temporary)
+        .map_err(|error| backend("creating", temporary, &error))
+}
+
+/// Gives the temporary document the permission bits of the subject it is about to replace, before
+/// any subject data is written, so a replacement neither widens nor narrows what the operator set.
+/// A new subject keeps the private bits [`create_private`] gave it.
+fn keep_permissions(file: &fs::File, path: &Path, temporary: &Path) -> Result<(), StoreError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = match fs::symlink_metadata(path) {
+            Ok(metadata) => metadata.permissions().mode() & 0o777,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(backend("inspecting", path, &error)),
+        };
+        file.set_permissions(fs::Permissions::from_mode(mode))
+            .map_err(|error| backend("restricting", temporary, &error))
+    }
+    #[cfg(not(unix))]
+    {
+        // Copying a read-only flag onto the temporary file would make the write below fail; the
+        // directory's access control list governs the replacement on these platforms.
+        let _ = (file, path, temporary);
+        Ok(())
+    }
 }
 
 fn is_temporary_subject(name: &str) -> bool {

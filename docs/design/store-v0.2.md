@@ -24,7 +24,9 @@ A v2 root contains `.entity-store-format` with `entity.file-store/2`. Each subje
 document under `subjects/<hex entity>/<hex id>.json`; caller-controlled entity names and ids never
 become path syntax. Existing path components and subject files may not be symlinks. A write creates
 and syncs a temporary document, then renames it over the subject, so current state and history
-cannot tear apart. Unix also syncs containing directories; Windows flushes file contents but does
+cannot tear apart. On Unix the temporary document is created `0600` and, when it replaces a
+subject, takes that subject's permission bits before any data is written, so a replacement never
+widens what an operator restricted. Unix also syncs containing directories; Windows flushes file contents but does
 not promise directory-entry persistence across power loss. Recognizable abandoned subject
 temporary files are ignored by enumeration and record-id scans. All existing path components,
 including the format marker, are checked on reads and writes.

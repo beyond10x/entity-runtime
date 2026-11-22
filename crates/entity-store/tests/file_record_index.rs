@@ -319,3 +319,67 @@ fn separate_processes_serialize_revision_checks_and_survive_a_killed_lock_holder
         2
     );
 }
+
+/// The one subject document under `root`, wherever its hex path puts it.
+#[cfg(unix)]
+fn only_subject_file(root: &Path) -> PathBuf {
+    let mut files = Vec::new();
+    for entity in std::fs::read_dir(root.join("subjects")).expect("subjects listed") {
+        for file in std::fs::read_dir(entity.expect("entity entry").path()).expect("entity listed")
+        {
+            files.push(file.expect("subject entry").path());
+        }
+    }
+    assert_eq!(files.len(), 1, "exactly one subject document: {files:?}");
+    files.pop().expect("one file")
+}
+
+#[cfg(unix)]
+fn mode_of(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).expect("metadata").permissions().mode() & 0o777
+}
+
+#[cfg(unix)]
+#[test]
+fn a_new_subject_document_is_readable_by_its_owner_alone() {
+    let registry = registry();
+    let root = scratch("private-new-subject");
+    let mut store = FileStore::open(&root);
+    store
+        .commit_recorded(&recorded(opening(&registry, "one"), "r-1"), Expect::Absent)
+        .expect("created");
+    let mode = mode_of(&only_subject_file(&root));
+    assert_eq!(
+        mode, 0o600,
+        "a subject document is created private rather than with the process umask: {mode:o}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn replacing_a_restricted_subject_document_keeps_its_restriction() {
+    use std::os::unix::fs::PermissionsExt;
+    let registry = registry();
+    let root = scratch("restricted-replacement");
+    let mut store = FileStore::open(&root);
+    let created = opening(&registry, "one");
+    store
+        .commit_recorded(&recorded(created.clone(), "r-1"), Expect::Absent)
+        .expect("created");
+    let path = only_subject_file(&root);
+    // Owner read-only: tighter than any creation policy, so a replacement built with the
+    // default permissions or with `0600` alone would widen it.
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).expect("restricted");
+    let closed = Runtime::new(&registry)
+        .execute(&created.instance, "close", serde_json::json!({}))
+        .expect("close is permitted");
+    store
+        .commit_recorded(&recorded(closed, "r-2"), Expect::Revision(1))
+        .expect("replaced");
+    assert_eq!(
+        mode_of(&path),
+        0o400,
+        "the replacement document keeps the permissions the operator set on the subject"
+    );
+}

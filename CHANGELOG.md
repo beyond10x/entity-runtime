@@ -10,6 +10,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
 
+### Security
+
+- The File Store creates a subject document readable by its owner alone (`0600` on Unix) instead
+  of with the process umask, and a replacement takes the permission bits of the document it
+  replaces before any data is written. Before, every recorded write installed a new file with the
+  default permissions, so a subject an operator had restricted became readable again after its
+  next command.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security
