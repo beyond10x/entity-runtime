@@ -20,6 +20,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `MemoryStore` document queries seek past the cursor and copy only the documents a page returns.
   A one-document page over 1,024 documents with a 1 KiB title allocated 2,007,992 bytes; it now
   allocates 3,824 bytes.
+- Continuing a document query checks that the cursor belongs to the query without decoding the
+  cursor or serialising the query into a buffer. The cursor format is unchanged.
 
 ### Fixed
 

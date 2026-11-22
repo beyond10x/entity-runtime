@@ -101,13 +101,29 @@ impl DocumentQuery {
             .0
             .split_once('.')
             .ok_or_else(|| QueryError::Invalid("query cursor is malformed".to_owned()))?;
-        if decode_hex(identity)? != self.identity_bytes()? {
+        check_hex(identity)?;
+        if !self.identity_is(identity)? {
             return Err(QueryError::Invalid(
                 "query cursor belongs to another query".to_owned(),
             ));
         }
         String::from_utf8(decode_hex(last_id)?)
             .map_err(|_| QueryError::Invalid("query cursor identity is not UTF-8".to_owned()))
+    }
+
+    /// Whether `hex`, already checked as canonical hexadecimal, encodes this query's identity.
+    ///
+    /// The identity is serialised straight into a comparison with the cursor's text, so a
+    /// continuation allocates neither a decoded copy of the cursor nor a serialised copy of the
+    /// query — both the size of the predicate.
+    fn identity_is(&self, hex: &str) -> Result<bool, QueryError> {
+        let mut matcher = HexMatcher {
+            expected: hex.as_bytes(),
+            matched: true,
+        };
+        serde_json::to_writer(&mut matcher, &(&self.entity, &self.matching))
+            .map_err(|error| QueryError::Invalid(error.to_string()))?;
+        Ok(matcher.matched && matcher.expected.is_empty())
     }
 
     fn identity_bytes(&self) -> Result<Vec<u8>, QueryError> {
@@ -292,6 +308,47 @@ fn encode_hex(bytes: &[u8]) -> String {
     encoded
 }
 
+/// Compares bytes written to it with the bytes a canonical hexadecimal text encodes.
+struct HexMatcher<'a> {
+    /// The hexadecimal digits not yet compared.
+    expected: &'a [u8],
+    /// `false` once a written byte differed or outran `expected`.
+    matched: bool,
+}
+
+impl std::io::Write for HexMatcher<'_> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        for &byte in bytes {
+            if !self.matched {
+                break;
+            }
+            match self.expected {
+                [high, low, rest @ ..]
+                    if hex_digit(*high) == Ok(byte >> 4) && hex_digit(*low) == Ok(byte & 0x0f) =>
+                {
+                    self.expected = rest;
+                }
+                _ => self.matched = false,
+            }
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Refuses text that is not canonical lowercase hexadecimal, as [`decode_hex`] would.
+fn check_hex(value: &str) -> Result<(), QueryError> {
+    if value.len() % 2 != 0 || !value.bytes().all(|byte| hex_digit(byte).is_ok()) {
+        return Err(QueryError::Invalid(
+            "query cursor has invalid hexadecimal data".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn decode_hex(value: &str) -> Result<Vec<u8>, QueryError> {
     if value.len() % 2 != 0 {
         return Err(QueryError::Invalid(
@@ -333,6 +390,34 @@ mod tests {
             Err(QueryError::Invalid(
                 "query cursor belongs to another query".to_owned()
             ))
+        );
+    }
+
+    #[test]
+    fn a_cursor_whose_identity_is_a_prefix_or_an_extension_of_the_query_belongs_to_another_query() {
+        let query = DocumentQuery::for_entity("work").matching("status", Value::from("active"));
+        let identity = encode_hex(&query.identity_bytes().expect("identity"));
+        let last = encode_hex(b"id-1");
+        for foreign in [
+            identity[..identity.len() - 2].to_owned(),
+            format!("{identity}00"),
+            String::new(),
+        ] {
+            let cursor = QueryCursor(format!("{foreign}.{last}"));
+            assert_eq!(
+                query.clone().after(cursor).after_id(),
+                Err(QueryError::Invalid(
+                    "query cursor belongs to another query".to_owned()
+                )),
+                "identity {foreign:?}"
+            );
+        }
+        assert_eq!(
+            query
+                .clone()
+                .after(QueryCursor(format!("{identity}.{last}")))
+                .after_id(),
+            Ok("id-1".to_owned())
         );
     }
 
