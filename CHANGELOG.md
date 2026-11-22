@@ -22,6 +22,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   instead of its whole ancestor set, so a chain of N decisions holds N − 1 entries instead of
   N(N − 1)/2 (at 512 decisions the extra peak heap fell from 17.2 MB to 0.55 MB). Ancestry is
   walked only for a record that follows more than one decision. Heads and refusals are unchanged.
+- `LegacyStoreSnapshot::new`, which the file, SQLite and PostgreSQL legacy readers call, verifies
+  the histories it owns in place instead of copying every history and terminal state first (128
+  subjects of 64 KiB: extra peak heap from 17.1 MB to 0.1 MB). Refusals are unchanged.
 
 ## [0.32.0] — 2026-11-22
 

@@ -1070,9 +1070,25 @@ pub fn verify_store_histories(
     }
     verify_histories(
         &snapshot.scope,
-        &snapshot.histories,
+        snapshot.histories.iter().map(snapshot_parts),
         StoreCoverage::ExplicitSet,
     )
+}
+
+/// [`verify_store_histories`] of an explicit set held as borrowed histories and terminal states.
+///
+/// A caller that owns its histories and keeps them after verifying, as the legacy acquisition
+/// does, would otherwise copy every history and terminal state into a [`CompleteStoreSnapshot`]
+/// only to verify it.
+pub(crate) fn verify_explicit_histories<'a>(
+    scope: &str,
+    histories: impl IntoIterator<Item = (&'a SubjectHistory, &'a EntityInstance)>,
+) -> Result<StoreAssurance, AsyncStoreError> {
+    verify_histories(scope, histories, StoreCoverage::ExplicitSet)
+}
+
+fn snapshot_parts(snapshot: &super::SubjectSnapshot) -> (&SubjectHistory, &EntityInstance) {
+    (&snapshot.history, &snapshot.terminal)
 }
 
 /// Obtains and verifies one fresh provider-owned complete snapshot.
@@ -1102,14 +1118,14 @@ pub async fn verify_complete_store(
     }
     verify_histories(
         &snapshot.scope,
-        &snapshot.histories,
+        snapshot.histories.iter().map(snapshot_parts),
         StoreCoverage::CompleteSnapshot,
     )
 }
 
-fn verify_histories(
+fn verify_histories<'a>(
     scope: &str,
-    histories: &[super::SubjectSnapshot],
+    histories: impl IntoIterator<Item = (&'a SubjectHistory, &'a EntityInstance)>,
     coverage: StoreCoverage,
 ) -> Result<StoreAssurance, AsyncStoreError> {
     if scope.trim().is_empty() {
@@ -1117,22 +1133,22 @@ fn verify_histories(
             "store verification requires a nonblank logical scope".to_owned(),
         ));
     }
-    let mut assurances = Vec::with_capacity(histories.len());
+    let histories = histories.into_iter();
+    let mut assurances = Vec::with_capacity(histories.size_hint().0);
     let mut subjects = BTreeSet::new();
     let mut record_ids: BTreeMap<String, Subject> = BTreeMap::new();
     let mut store_positions: BTreeMap<u64, Subject> = BTreeMap::new();
     let mut memberships: BTreeMap<(super::BatchKey, u64), (String, Subject, RecordKind)> =
         BTreeMap::new();
     let mut batch_orders: BTreeMap<super::BatchKey, Vec<(u64, u64, Subject)>> = BTreeMap::new();
-    for subject_snapshot in histories {
-        let history = &subject_snapshot.history;
+    for (history, terminal) in histories {
         if !subjects.insert(history.subject.clone()) {
             return Err(corrupt(
                 &history.subject,
                 "subject appears more than once in the supplied scope",
             ));
         }
-        assurances.push(verify_subject_history(history, &subject_snapshot.terminal)?);
+        assurances.push(verify_subject_history(history, terminal)?);
         if let HistoryOrigin::Imported(anchor) = &history.origin {
             for evidence in &anchor.evidence {
                 if let LegacyEvidence::Envelope(envelope) = evidence {
