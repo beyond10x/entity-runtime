@@ -122,8 +122,12 @@ fn sqlite_acquisition_refuses_evidence_without_terminal_state() {
         .expect("orphan fixture");
     drop(connection);
     let mut source = SqliteStore::open(&path).expect("source");
+    let refusal = source
+        .acquire_legacy("sqlite/orphan")
+        .expect_err("evidence without its terminal instance cannot be silently omitted");
     assert!(
-        source.acquire_legacy("sqlite/orphan").is_err(),
-        "evidence without its terminal instance cannot be silently omitted"
+        matches!(&refusal, entity_store::StoreError::Backend(message)
+            if message.contains("\"ticket\"/\"orphan\" has no terminal instance")),
+        "the refusal names the subject whose terminal instance is missing: {refusal}"
     );
 }

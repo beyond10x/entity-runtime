@@ -48,7 +48,7 @@
 //! authentication beyond the URL are the deployment's, not this crate's — choosing a TLS backend
 //! here would choose it for every adopter.
 
-use std::sync::Mutex;
+use std::{collections::HashMap, sync::Mutex};
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 #[cfg(feature = "eventlog-facade")]
@@ -923,6 +923,26 @@ impl LegacyStoreSource for PostgresStore {
                 &[],
             )
             .map_err(|error| database("acquiring legacy instances", &error))?;
+        // Every subject's origin, bare events and history, read as three ordered statements in this
+        // snapshot rather than three per subject: acquisition costs four statements whatever the
+        // store holds. Every grouped row belongs to a coordinate above, because the coordinates are
+        // the union of these tables.
+        let mut origins = grouped(
+            &mut transaction,
+            "SELECT entity, id, revision FROM legacy_origins",
+            "acquiring legacy origins",
+        )?;
+        let mut events = grouped(
+            &mut transaction,
+            "SELECT entity, id, document FROM events ORDER BY entity, id, revision, position",
+            "acquiring legacy events",
+        )?;
+        let mut histories_by_subject = grouped(
+            &mut transaction,
+            "SELECT entity, id, position, kind, record_id, document FROM history \
+             ORDER BY entity, id, position",
+            "acquiring legacy history",
+        )?;
         let mut histories = Vec::with_capacity(coordinates.len());
         for row in coordinates {
             let entity: String = row.get(0);
@@ -944,13 +964,14 @@ impl LegacyStoreSource for PostgresStore {
                     "legacy PostgreSQL instance row {entity:?}/{id:?} substitutes its identity or revision"
                 )));
             }
-            let legacy_origin = transaction
-                .query_opt(
-                    "SELECT revision FROM legacy_origins WHERE entity = $1 AND id = $2",
-                    &[&entity, &id],
-                )
-                .map_err(|error| database("acquiring a legacy origin", &error))?
-                .map(|row| revision_of(row.get::<_, i64>(0)))
+            let subject = (entity, id);
+            let origin_rows = origins.remove(&subject).unwrap_or_default();
+            let event_rows = events.remove(&subject).unwrap_or_default();
+            let history_rows = histories_by_subject.remove(&subject).unwrap_or_default();
+            let (entity, id) = subject;
+            let legacy_origin = origin_rows
+                .first()
+                .map(|row| revision_of(row.get::<_, i64>(2)))
                 .transpose()?;
             if legacy_origin.is_some_and(|revision| revision > instance.revision) {
                 return Err(StoreError::Backend(format!(
@@ -958,28 +979,15 @@ impl LegacyStoreSource for PostgresStore {
                     instance.revision
                 )));
             }
-            let has_bare_events: bool = transaction
-                .query_one(
-                    "SELECT EXISTS(SELECT 1 FROM events WHERE entity = $1 AND id = $2)",
-                    &[&entity, &id],
-                )
-                .map_err(|error| database("checking legacy event evidence", &error))?
-                .get(0);
-            let history_rows = transaction
-                .query(
-                    "SELECT position, kind, record_id, document FROM history \
-                     WHERE entity = $1 AND id = $2 ORDER BY position",
-                    &[&entity, &id],
-                )
-                .map_err(|error| database("acquiring legacy history", &error))?;
+            let has_bare_events = !event_rows.is_empty();
             let mut evidence = Vec::new();
             let mut decision_position = 0_u64;
             let mut observation_position = 0_u64;
             for row in history_rows {
-                let position = revision_of(row.get::<_, i64>(0))?;
-                let kind: String = row.get(1);
-                let record_id: String = row.get(2);
-                let document: String = row.get(3);
+                let position = revision_of(row.get::<_, i64>(2))?;
+                let kind: String = row.get(3);
+                let record_id: String = row.get(4);
+                let document: String = row.get(5);
                 let (entry, per_kind_position) = match kind.as_str() {
                     "decision" => {
                         let envelope: Envelope<DecisionRecord> = serde_json::from_str(&document)
@@ -1040,15 +1048,8 @@ impl LegacyStoreSource for PostgresStore {
                     .map_err(|error| StoreError::Backend(error.to_string()))?,
                 ));
             }
-            for row in transaction
-                .query(
-                    "SELECT document FROM events WHERE entity = $1 AND id = $2 \
-                     ORDER BY revision, position",
-                    &[&entity, &id],
-                )
-                .map_err(|error| database("acquiring legacy events", &error))?
-            {
-                let document: String = row.get(0);
+            for row in event_rows {
+                let document: String = row.get(2);
                 evidence.push(LegacyEvidence::Event(
                     serde_json::from_str(&document)
                         .map_err(|error| backend("parsing a legacy event", &error))?,
@@ -1076,6 +1077,26 @@ impl LegacyStoreSource for PostgresStore {
         drop(client);
         LegacyStoreSnapshot::new(source_id, histories)
     }
+}
+
+/// The rows of one statement whose first two columns are `entity` and `id`, grouped by subject in
+/// the order the statement returned them.
+fn grouped(
+    transaction: &mut postgres::Transaction<'_>,
+    sql: &str,
+    operation: &str,
+) -> Result<HashMap<(String, String), Vec<postgres::Row>>, StoreError> {
+    let mut grouped: HashMap<(String, String), Vec<postgres::Row>> = HashMap::new();
+    for row in transaction
+        .query(sql, &[])
+        .map_err(|error| database(operation, &error))?
+    {
+        grouped
+            .entry((row.get(0), row.get(1)))
+            .or_default()
+            .push(row);
+    }
+    Ok(grouped)
 }
 
 impl PostgresStore {

@@ -683,3 +683,89 @@ fn a_session_events_read_never_returns_a_later_recorded_revision_without_the_bar
         store.with_transaction(|session| session.events("ticket", "raced"))
     });
 }
+
+#[test]
+fn legacy_acquisition_scans_history_a_fixed_number_of_times_whatever_the_subject_count() {
+    // The server counts every scan of a table, and a closing backend flushes its counts. Bare
+    // commits never read `history`, but creating it builds its two indexes, and each build is a
+    // scan counted to the creating backend. So the writer closes first, its counts are taken as
+    // the baseline, and what the acquiring backend adds on closing is what acquisition cost.
+    let Some(url) = url() else { return };
+    let (mut writer, schema) = fresh(&url, "acquisition_statements");
+    let registry = registry();
+    for n in 0..32 {
+        let created = Runtime::new(&registry)
+            .create(
+                "ticket",
+                1,
+                format!("t{n:03}"),
+                json!({ "title": "A ticket" }),
+            )
+            .expect("permitted");
+        writer.commit(&created, Expect::Absent).expect("accepted");
+    }
+    drop(writer);
+
+    let mut observer = postgres::Client::connect(&url, postgres::NoTls).expect("observer");
+    let mut history_scans = || -> i64 {
+        observer
+            .query_one(
+                "SELECT COALESCE(seq_scan, 0) + COALESCE(idx_scan, 0) FROM pg_stat_user_tables \
+                 WHERE schemaname = $1 AND relname = 'history'",
+                &[&schema],
+            )
+            .expect("statistics answer")
+            .get(0)
+    };
+    let wait_above = |floor: i64, scans: &mut dyn FnMut() -> i64| -> i64 {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let seen = scans();
+            if seen > floor {
+                return seen;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "a closed backend's statistics never arrived"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    let baseline = wait_above(0, &mut history_scans);
+
+    let mut acquirer = PostgresStore::connect_in_schema(&url, &schema).expect("acquirer");
+    let snapshot = acquirer.acquire_legacy("postgres/count").expect("acquired");
+    assert_eq!(snapshot.histories.len(), 32, "every subject acquired");
+    drop(acquirer);
+    let scans = wait_above(baseline, &mut history_scans) - baseline;
+
+    assert_eq!(
+        scans, 2,
+        "history is read once for the coordinates and once for its rows, not once per subject"
+    );
+    observer
+        .batch_execute(&format!("DROP SCHEMA \"{schema}\" CASCADE"))
+        .expect("dropped");
+}
+
+#[test]
+fn legacy_acquisition_refuses_evidence_without_its_terminal_instance() {
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "acquisition_orphan");
+    let mut raw = postgres::Client::connect(&url, postgres::NoTls).expect("raw connection");
+    raw.batch_execute(&format!(
+        "SET search_path TO \"{schema}\";
+         INSERT INTO events (entity, id, revision, position, document)
+         VALUES ('ticket', 'orphan', 1, 0, '{{}}');"
+    ))
+    .expect("orphan fixture");
+    let refusal = store
+        .acquire_legacy("postgres/orphan")
+        .expect_err("evidence without its terminal instance cannot be silently omitted");
+    assert!(
+        matches!(&refusal, StoreError::Backend(message)
+            if message.contains("\"ticket\"/\"orphan\" has no terminal instance")),
+        "the refusal names the subject whose terminal instance is missing: {refusal}"
+    );
+    store.drop_schema(&schema).expect("dropped");
+}

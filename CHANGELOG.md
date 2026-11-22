@@ -22,6 +22,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   next time a store opens it. Building it blocks writes to `instances` while it builds; for a large
   table, run `CREATE INDEX CONCURRENTLY instances_id_byte_order ON instances (entity, id COLLATE "C")`
   first.
+- `acquire_legacy` on `SqliteStore` and `PostgresStore` reads a store in four statements, however
+  many subjects it holds. Before, it ran four statements per subject (4,097 for 1,024 subjects on
+  SQLite). The snapshot it returns is unchanged, and evidence without a terminal instance is still
+  refused.
 
 ## [0.32.0] — 2026-11-22
 

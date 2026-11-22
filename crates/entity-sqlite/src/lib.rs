@@ -33,7 +33,7 @@
 //! behaviour depends on the host's library version is a store two machines can disagree about,
 //! which is the one thing a provider must not be.
 
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 #[cfg(feature = "eventlog-facade")]
@@ -663,6 +663,37 @@ impl LegacyStoreSource for SqliteStore {
             .collect::<Result<Vec<_>, _>>()?;
         drop(instances);
 
+        // Every subject's origin, bare events and history, read as three ordered statements in this
+        // transaction rather than three per subject: acquisition costs four statements whatever the
+        // store holds. Every grouped row belongs to a coordinate above, because the coordinates are
+        // the union of these tables.
+        let mut origins = grouped(
+            &transaction,
+            "SELECT entity, id, revision FROM legacy_origins",
+            "acquiring legacy origins",
+            |row| row.get::<_, i64>(2),
+        )?;
+        let mut events = grouped(
+            &transaction,
+            "SELECT entity, id, document FROM events ORDER BY entity, id, revision, position",
+            "acquiring legacy events",
+            |row| row.get::<_, String>(2),
+        )?;
+        let mut histories_by_subject = grouped(
+            &transaction,
+            "SELECT entity, id, position, kind, record_id, document FROM history \
+             ORDER BY entity, id, position",
+            "acquiring legacy history",
+            |row| {
+                Ok((
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            },
+        )?;
+
         let mut histories = Vec::with_capacity(coordinates.len());
         for (entity, id, stored_revision, document) in coordinates {
             let (Some(stored_revision), Some(document)) = (stored_revision, document) else {
@@ -670,6 +701,11 @@ impl LegacyStoreSource for SqliteStore {
                     "legacy SQLite evidence at {entity:?}/{id:?} has no terminal instance"
                 )));
             };
+            let subject = (entity, id);
+            let legacy_origin = origins.remove(&subject).unwrap_or_default();
+            let event_documents = events.remove(&subject).unwrap_or_default();
+            let history_rows = histories_by_subject.remove(&subject).unwrap_or_default();
+            let (entity, id) = subject;
             let instance: EntityInstance = serde_json::from_str(&document)
                 .map_err(|error| backend("parsing a legacy instance", &error))?;
             if instance.entity != entity
@@ -680,14 +716,9 @@ impl LegacyStoreSource for SqliteStore {
                     "legacy SQLite instance row {entity:?}/{id:?} substitutes its identity or revision"
                 )));
             }
-            let legacy_origin = transaction
-                .query_row(
-                    "SELECT revision FROM legacy_origins WHERE entity = ?1 AND id = ?2",
-                    params![entity, id],
-                    |row| row.get::<_, i64>(0),
-                )
-                .optional()
-                .map_err(|error| backend("acquiring a legacy origin", &error))?
+            let legacy_origin = legacy_origin
+                .into_iter()
+                .next()
                 .map(revision_from_sql)
                 .transpose()?;
             if legacy_origin.is_some_and(|revision| revision > instance.revision) {
@@ -696,33 +727,7 @@ impl LegacyStoreSource for SqliteStore {
                     instance.revision
                 )));
             }
-            let has_bare_events = transaction
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM events WHERE entity = ?1 AND id = ?2)",
-                    params![entity, id],
-                    |row| row.get::<_, bool>(0),
-                )
-                .map_err(|error| backend("checking legacy event evidence", &error))?;
-            let mut history_statement = transaction
-                .prepare(
-                    "SELECT position, kind, record_id, document FROM history \
-                     WHERE entity = ?1 AND id = ?2 ORDER BY position",
-                )
-                .map_err(|error| backend("preparing legacy history acquisition", &error))?;
-            let history_rows = history_statement
-                .query_map(params![entity, id], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                    ))
-                })
-                .map_err(|error| backend("acquiring legacy history", &error))?;
-            let history_rows = history_rows
-                .map(|row| row.map_err(|error| backend("reading legacy history", &error)))
-                .collect::<Result<Vec<_>, _>>()?;
-            drop(history_statement);
+            let has_bare_events = !event_documents.is_empty();
             let mut evidence = Vec::new();
             let mut decision_position = 0_u64;
             let mut observation_position = 0_u64;
@@ -790,23 +795,12 @@ impl LegacyStoreSource for SqliteStore {
                     .map_err(|error| StoreError::Backend(error.to_string()))?,
                 ));
             }
-            let mut event_statement = transaction
-                .prepare(
-                    "SELECT document FROM events WHERE entity = ?1 AND id = ?2 \
-                     ORDER BY revision, position",
-                )
-                .map_err(|error| backend("preparing legacy event acquisition", &error))?;
-            let event_rows = event_statement
-                .query_map(params![entity, id], |row| row.get::<_, String>(0))
-                .map_err(|error| backend("acquiring legacy events", &error))?;
-            for row in event_rows {
-                let document = row.map_err(|error| backend("reading a legacy event", &error))?;
+            for document in event_documents {
                 evidence.push(LegacyEvidence::Event(
                     serde_json::from_str(&document)
                         .map_err(|error| backend("parsing a legacy event", &error))?,
                 ));
             }
-            drop(event_statement);
             histories.push(SubjectHistory {
                 subject: Subject::new(entity, id)
                     .map_err(|error| StoreError::Backend(error.to_string()))?,
@@ -827,5 +821,98 @@ impl LegacyStoreSource for SqliteStore {
             .commit()
             .map_err(|error| backend("ending legacy acquisition", &error))?;
         LegacyStoreSnapshot::new(source_id, histories)
+    }
+}
+
+/// The rows of one statement whose first two columns are `entity` and `id`, grouped by subject in
+/// the order the statement returned them; `value` reads the remaining columns of a row.
+fn grouped<T>(
+    transaction: &Transaction<'_>,
+    sql: &str,
+    operation: &str,
+    value: impl Fn(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+) -> Result<HashMap<(String, String), Vec<T>>, StoreError> {
+    let mut statement = transaction
+        .prepare(sql)
+        .map_err(|error| backend(operation, &error))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
+                value(row)?,
+            ))
+        })
+        .map_err(|error| backend(operation, &error))?;
+    let mut grouped: HashMap<(String, String), Vec<T>> = HashMap::new();
+    for row in rows {
+        let (subject, value) = row.map_err(|error| backend(operation, &error))?;
+        grouped.entry(subject).or_default().push(value);
+    }
+    Ok(grouped)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    use entity_core::{Registry, Runtime};
+    use entity_store::{Expect, LegacyStoreSource, Store};
+    use rusqlite::trace::{TraceEvent, TraceEventCodes};
+
+    use super::SqliteStore;
+
+    #[test]
+    fn legacy_acquisition_reads_a_fixed_number_of_statements_whatever_the_subject_count() {
+        let mut registry = Registry::new();
+        registry
+            .register(
+                serde_json::from_value(serde_json::json!({
+                    "entity": "ticket",
+                    "version": 1,
+                    "schema": { "fields": { "title": { "type": "string", "required": true } } },
+                    "lifecycle": { "initial": "open", "states": ["open"] }
+                }))
+                .expect("definition parses"),
+            )
+            .expect("definition validates");
+        let mut store = SqliteStore::in_memory().expect("store");
+        for n in 0..64 {
+            let created = Runtime::new(&registry)
+                .create(
+                    "ticket",
+                    1,
+                    format!("t{n:03}"),
+                    serde_json::json!({"title": "T"}),
+                )
+                .expect("creation");
+            store.commit(&created, Expect::Absent).expect("commit");
+        }
+
+        let selects = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&selects);
+        store
+            .connection
+            .trace_v2(
+                TraceEventCodes::SQLITE_TRACE_STMT,
+                Some(move |event: TraceEvent<'_>| {
+                    if let TraceEvent::Stmt(_, sql) = event {
+                        if sql.trim_start().starts_with("SELECT") {
+                            counter.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                }),
+            )
+            .expect("trace installed");
+        let snapshot = store.acquire_legacy("sqlite/count").expect("acquired");
+
+        assert_eq!(snapshot.histories.len(), 64, "every subject acquired");
+        assert_eq!(
+            selects.load(Ordering::Relaxed),
+            4,
+            "coordinates, origins, events and history: one statement each, not one per subject"
+        );
     }
 }
