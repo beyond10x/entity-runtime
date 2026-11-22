@@ -33,6 +33,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   default, left out of a map value, was refused with `required property is missing` at a path such
   as `fields.routing.east.enabled`; it is now filled. No map entry is invented for a key the caller
   did not send.
+- A number in a definition that a binary64 cannot hold is read as written. `entity` and
+  `entity_yaml::from_str` read a bound such as `min: 1.0000000000000001`, in a YAML or a `.json`
+  file, as `1.0` and then admitted `rate: 1`; the bound now keeps its digits and `1` is refused.
+  A number a binary64 already holds (`0.5`, `1e3`) reads exactly as before, so existing
+  definitions keep their bytes. Documents with a root `$defs` or `$ref` still round.
 
 ## [0.32.0] — 2026-11-22
 
