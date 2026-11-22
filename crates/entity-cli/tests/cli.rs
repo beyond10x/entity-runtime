@@ -1549,6 +1549,34 @@ fn file_store_migration_is_out_of_place_and_dry_run_writes_nothing() {
 }
 
 #[test]
+fn file_store_migration_to_a_bare_relative_destination_succeeds_once() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-file-migration-relative");
+    let _ = fs::remove_dir_all(&root);
+    let entity_dir = root.join("old").join("ticket");
+    fs::create_dir_all(&entity_dir).expect("legacy entity directory");
+    fs::write(
+        entity_dir.join("one.json"),
+        r#"{"entity":"ticket","version":1,"id":"one","lifecycle_state":"open","revision":1,"fields":{}}"#,
+    )
+    .expect("legacy state");
+    // `converted` has an empty parent path; the migration must treat it as the current directory.
+    let migrated = entity()
+        .current_dir(&root)
+        .args(["store", "migrate-file", "--from", "old", "--to", "converted"])
+        .output()
+        .expect("runs");
+    assert!(
+        migrated.status.success(),
+        "a bare relative destination migrates and reports success: {}",
+        String::from_utf8_lossy(&migrated.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("converted").join(".entity-store-format")).expect("marker"),
+        "entity.file-store/2\n"
+    );
+}
+
+#[test]
 fn generated_documentation_is_complete_and_replaces_only_generator_owned_output() {
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-docs");
     let _ = fs::remove_dir_all(&root);

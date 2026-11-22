@@ -1186,7 +1186,13 @@ pub fn migrate_file_store_v1(
         return Ok(report);
     }
 
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
+    // A bare relative destination (`converted`) has an empty parent, which no directory call
+    // accepts: syncing it after the publishing rename failed and reported an installed store as a
+    // failure. It is the current directory.
+    let parent = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
     create_directory_durably(parent)?;
     reject_symlink_components(parent)?;
     let file_name = destination.file_name().ok_or_else(|| {

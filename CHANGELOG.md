@@ -39,6 +39,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   (an identity over about 116 bytes, an entity type over 127) with a `store_backend` error that
   names the limit, before it creates any file or directory. Before, the write failed part-way with
   the operating system's "File name too long".
+- `entity store migrate-file --to converted` (a destination with no directory part) succeeds.
+  Before, it installed the migrated store, then failed to sync the empty parent path and exited 2,
+  and a retry refused because the destination existed.
 
 ### Security
 
