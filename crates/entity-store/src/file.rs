@@ -21,8 +21,9 @@ use crate::{
         HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
         LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
     },
-    check, Envelope, EventProvider, Expect, HistoryProvider, LegacyStoreSnapshot, LoadedSubject,
-    LegacyStoreSource, RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
+    check, Envelope, EventProvider, Expect, HistoryProvider, LegacyStoreSnapshot,
+    LegacyStoreSource, LoadedSubject, RecordedCommit, RecordedObservation, StateProvider, Store,
+    StoreError,
 };
 
 const FORMAT: &str = "entity.file-store/2";
@@ -403,9 +404,7 @@ impl FileStore {
             return Ok((None, target));
         };
         let held = match target {
-            Target::Scanned(Some(subject))
-                if location.entity == entity && location.id == id =>
-            {
+            Target::Scanned(Some(subject)) if location.entity == entity && location.id == id => {
                 Some(subject)
             }
             _ => self.read_subject(&location.entity, &location.id)?,
@@ -414,14 +413,13 @@ impl FileStore {
         let Some(subject) = held else {
             return Ok((None, Target::Unread));
         };
-        let document = Self::stored_document(subject, &location, record_id)
-            .map_err(|error| {
-                backend(
-                    "serialising a stored record",
-                    &self.subject_path(&location.entity, &location.id),
-                    &error,
-                )
-            })?;
+        let document = Self::stored_document(subject, &location, record_id).map_err(|error| {
+            backend(
+                "serialising a stored record",
+                &self.subject_path(&location.entity, &location.id),
+                &error,
+            )
+        })?;
         Ok((document, Target::Unread))
     }
 
@@ -997,16 +995,18 @@ impl Store for FileStore {
         entity: &str,
         id: &str,
     ) -> Result<Option<LoadedSubject>, StoreError> {
-        Ok(self
-            .read_subject(entity, id)?
-            .map(|stored| LoadedSubject {
-                instance: stored.instance,
-                records: Some(stored.records),
-            }))
+        Ok(self.read_subject(entity, id)?.map(|stored| LoadedSubject {
+            instance: stored.instance,
+            records: Some(stored.records),
+        }))
     }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         // Refused before the guard creates a root or a lock for a subject it could never hold.
-        refuse_overlong_names(&decision.instance.entity, &decision.instance.id, WRITES.load(Ordering::Relaxed))?;
+        refuse_overlong_names(
+            &decision.instance.entity,
+            &decision.instance.id,
+            WRITES.load(Ordering::Relaxed),
+        )?;
         let mut guard = self.write_guard()?;
         let instance = &decision.instance;
         let held = self.read_subject(&instance.entity, &instance.id)?;
@@ -1038,7 +1038,11 @@ impl Store for FileStore {
         expect: Expect,
     ) -> Result<(), StoreError> {
         commit.validate()?;
-        refuse_overlong_names(&commit.instance.entity, &commit.instance.id, WRITES.load(Ordering::Relaxed))?;
+        refuse_overlong_names(
+            &commit.instance.entity,
+            &commit.instance.id,
+            WRITES.load(Ordering::Relaxed),
+        )?;
         let mut guard = self.write_guard()?;
         let document =
             serde_json::to_value(commit).map_err(|error| StoreError::Backend(error.to_string()))?;
@@ -1128,11 +1132,11 @@ impl Store for FileStore {
             Target::Unread => self.read_subject(&observation.entity, &observation.id)?,
         };
         let mut stored = held.ok_or_else(|| StoreError::RevisionConflict {
-                entity: observation.entity.clone(),
-                id: observation.id.clone(),
-                expected: Expect::Revision(observation.revision),
-                found: None,
-            })?;
+            entity: observation.entity.clone(),
+            id: observation.id.clone(),
+            expected: Expect::Revision(observation.revision),
+            found: None,
+        })?;
         if let Some(existing) = stored
             .observations
             .iter()
@@ -1451,7 +1455,10 @@ mod tests {
         let mut store = FileStore::open(&root);
         take_directory_events();
         store
-            .commit_recorded(&created(&registry, "ticket", "a", "ticket-a"), Expect::Absent)
+            .commit_recorded(
+                &created(&registry, "ticket", "a", "ticket-a"),
+                Expect::Absent,
+            )
             .expect("the first subject is accepted");
         let events = take_directory_events();
         let created_directories: Vec<&PathBuf> = events
@@ -1485,7 +1492,10 @@ mod tests {
 
         take_directory_events();
         store
-            .commit_recorded(&created(&registry, "ticket", "b", "ticket-b"), Expect::Absent)
+            .commit_recorded(
+                &created(&registry, "ticket", "b", "ticket-b"),
+                Expect::Absent,
+            )
             .expect("a second subject is accepted");
         assert!(
             take_directory_events()
@@ -1547,7 +1557,12 @@ mod tests {
         let root = scratch(name);
         let mut writer = FileStore::open(&root);
         let mut paths = Vec::new();
-        for (entity, id) in [("ticket", "a"), ("ticket", "b"), ("ticket", "c"), ("note", "n")] {
+        for (entity, id) in [
+            ("ticket", "a"),
+            ("ticket", "b"),
+            ("ticket", "c"),
+            ("note", "n"),
+        ] {
             writer
                 .commit_recorded(
                     &created(registry, entity, id, &format!("{entity}-{id}")),
@@ -1566,7 +1581,10 @@ mod tests {
         let mut fresh = FileStore::open(&root);
         take_reads();
         fresh
-            .commit_recorded(&created(&registry, "ticket", "d", "ticket-d"), Expect::Absent)
+            .commit_recorded(
+                &created(&registry, "ticket", "d", "ticket-d"),
+                Expect::Absent,
+            )
             .expect("a new subject is accepted");
         let reads = take_reads();
         for path in &existing {
@@ -1635,7 +1653,11 @@ mod tests {
             1,
             "the index scan's reading of the target serves the revision check: {reads:?}"
         );
-        assert_eq!(reads.len(), existing.len(), "every other subject once: {reads:?}");
+        assert_eq!(
+            reads.len(),
+            existing.len(),
+            "every other subject once: {reads:?}"
+        );
 
         take_reads();
         let observation = RecordedObservation {

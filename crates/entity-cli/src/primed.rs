@@ -261,8 +261,15 @@ mod tests {
 
         store.reads.set(0);
         let retried = execute(&registry, &mut store, request(&finish, Some(1))).expect("retry");
-        assert_eq!(retried, accepted, "a named revision still recovers the original");
-        assert_eq!(store.reads.get(), 1, "a named revision reads the subject once too");
+        assert_eq!(
+            retried, accepted,
+            "a named revision still recovers the original"
+        );
+        assert_eq!(
+            store.reads.get(),
+            1,
+            "a named revision reads the subject once too"
+        );
     }
 
     #[test]

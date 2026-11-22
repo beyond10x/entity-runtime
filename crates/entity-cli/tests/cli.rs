@@ -1562,7 +1562,14 @@ fn file_store_migration_to_a_bare_relative_destination_succeeds_once() {
     // `converted` has an empty parent path; the migration must treat it as the current directory.
     let migrated = entity()
         .current_dir(&root)
-        .args(["store", "migrate-file", "--from", "old", "--to", "converted"])
+        .args([
+            "store",
+            "migrate-file",
+            "--from",
+            "old",
+            "--to",
+            "converted",
+        ])
         .output()
         .expect("runs");
     assert!(

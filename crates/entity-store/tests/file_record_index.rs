@@ -136,7 +136,10 @@ fn a_refused_write_leaves_the_invalidation_epoch_alone() {
         .commit_recorded(&recorded(opening(&registry, "one"), "r-1"), Expect::Absent)
         .expect("created");
     let after_create = epoch();
-    assert_eq!(after_create, 1, "the accepted create advanced the epoch once");
+    assert_eq!(
+        after_create, 1,
+        "the accepted create advanced the epoch once"
+    );
 
     let mut other = FileStore::open(&root);
     for attempt in 0..3 {
@@ -161,7 +164,11 @@ fn a_refused_write_leaves_the_invalidation_epoch_alone() {
     other
         .commit_recorded(&recorded(opening(&registry, "two"), "r-2"), Expect::Absent)
         .expect("created");
-    assert_eq!(epoch(), after_create + 1, "an accepted write still advances it");
+    assert_eq!(
+        epoch(),
+        after_create + 1,
+        "an accepted write still advances it"
+    );
 }
 
 #[test]
@@ -376,7 +383,11 @@ fn only_subject_file(root: &Path) -> PathBuf {
 #[cfg(unix)]
 fn mode_of(path: &Path) -> u32 {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path).expect("metadata").permissions().mode() & 0o777
+    std::fs::metadata(path)
+        .expect("metadata")
+        .permissions()
+        .mode()
+        & 0o777
 }
 
 #[cfg(unix)]
@@ -439,14 +450,21 @@ fn an_identity_too_long_for_a_file_name_is_refused_before_anything_is_written() 
             id.len()
         );
     }
-    assert!(!root.exists(), "a refused identity creates no root, lock or directory");
+    assert!(
+        !root.exists(),
+        "a refused identity creates no root, lock or directory"
+    );
 
     let fits = "y".repeat(100);
     store
         .commit_recorded(&recorded(opening(&registry, &fits), "fits"), Expect::Absent)
         .expect("a 100-byte identity has a v2 path");
     assert_eq!(
-        store.load("ticket", &fits).expect("readable").expect("stored").id,
+        store
+            .load("ticket", &fits)
+            .expect("readable")
+            .expect("stored")
+            .id,
         fits
     );
 }
