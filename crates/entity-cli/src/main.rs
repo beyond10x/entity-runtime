@@ -1703,13 +1703,23 @@ fn graph(drawing: &entity_graph::Graph, format: GraphFormat) -> String {
     // The drawing, the layout and every emitter live in `entity-graph`: this is a shell, and a
     // renderer in it would be one nothing but this binary could use — the library caller who wants
     // the same picture would have to reimplement it.
-    let layout = entity_graph::Layout::of(drawing);
+    graph_laid_out_by(drawing, format, entity_graph::Layout::of)
+}
+
+/// [`graph`] with the layout computed by `layout`, which runs only for the formats that place
+/// nodes (SVG and HTML): text, Mermaid and DOT render from the drawing alone, and a layout of a
+/// long lifecycle costs more than rendering it as text.
+fn graph_laid_out_by(
+    drawing: &entity_graph::Graph,
+    format: GraphFormat,
+    layout: impl FnOnce(&entity_graph::Graph) -> entity_graph::Layout,
+) -> String {
     match format {
         GraphFormat::Text => entity_graph::render::text(drawing),
         GraphFormat::Mermaid => entity_graph::render::mermaid(drawing),
         GraphFormat::Dot => entity_graph::render::dot(drawing),
-        GraphFormat::Svg => entity_graph::render::svg(drawing, &layout),
-        GraphFormat::Html => entity_graph::render::html(drawing, &layout),
+        GraphFormat::Svg => entity_graph::render::svg(drawing, &layout(drawing)),
+        GraphFormat::Html => entity_graph::render::html(drawing, &layout(drawing)),
     }
 }
 
@@ -1950,3 +1960,47 @@ fn io_failure(error: io::Error) -> Failure {
     Failure::Usage(format!("cannot write output: {error}"))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn refund_lifecycle() -> entity_graph::Graph {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/refund.yaml");
+        let definition =
+            load_validated(&path).unwrap_or_else(|_| panic!("{} validates", path.display()));
+        entity_graph::Graph::lifecycle(&definition)
+    }
+
+    #[test]
+    fn text_mermaid_and_dot_graphs_are_rendered_without_a_layout() {
+        let drawing = refund_lifecycle();
+        for (name, format) in [
+            ("text", GraphFormat::Text),
+            ("mermaid", GraphFormat::Mermaid),
+            ("dot", GraphFormat::Dot),
+        ] {
+            let rendered = graph_laid_out_by(&drawing, format, |_| {
+                panic!("{name} rendering computed a layout it does not use")
+            });
+            assert!(rendered.contains("approved"), "{name} renders the drawing");
+        }
+    }
+
+    #[test]
+    fn svg_and_html_graphs_are_rendered_from_one_layout() {
+        let drawing = refund_lifecycle();
+        for (name, format) in [("svg", GraphFormat::Svg), ("html", GraphFormat::Html)] {
+            let mut layouts = 0;
+            let rendered = graph_laid_out_by(&drawing, format, |drawing| {
+                layouts += 1;
+                entity_graph::Layout::of(drawing)
+            });
+            assert_eq!(layouts, 1, "{name} lays the drawing out once");
+            assert!(
+                rendered.contains("<svg"),
+                "{name} draws the laid-out picture"
+            );
+            assert_eq!(rendered, graph(&drawing, format));
+        }
+    }
+}

@@ -22,6 +22,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   runtime version generated it, its `Cargo.lock` (refreshed with `cargo update --offline
   --workspace` instead of resolved again). A change confined to an embedded definition recompiles
   the generated crate rather than every dependency.
+- `entity graph` computes the diagram layout only for `--format svg` and `--format html`; text,
+  Mermaid and DOT output no longer pay for a layout they do not use.
 
 ## [0.32.0] — 2026-11-22
 
