@@ -28,6 +28,7 @@ mod fragments;
 
 use entity_core::EntityDefinition;
 use serde::de::{DeserializeSeed, Error as _, MapAccess, SeqAccess, Visitor};
+use std::collections::BTreeSet;
 use std::fmt;
 
 /// The YAML could not be parsed into an [`EntityDefinition`].
@@ -111,17 +112,32 @@ impl<'de> Visitor<'de> for NoDuplicatesVisitor {
     where
         A: MapAccess<'de>,
     {
-        let mut keys = Vec::new();
+        // A plain string key equals another key only when that key is the same plain string, so
+        // string keys — every key of a definition document in practice — are looked up in an
+        // ordered set, and a mapping of n fields costs n log n comparisons rather than n²/2.
+        // Every other key (a number, a tagged scalar, a sequence) keeps YAML value equality
+        // against the other non-string keys; no such key can equal a plain string.
+        let mut text_keys: BTreeSet<String> = BTreeSet::new();
+        let mut other_keys: Vec<serde_yaml_ng::Value> = Vec::new();
         while let Some(key) = map.next_key::<serde_yaml_ng::Value>()? {
             if key.as_str() == Some("<<") {
                 return Err(A::Error::custom(
                     "YAML merge keys are not accepted; write every effective key once",
                 ));
             }
-            if keys.contains(&key) {
+            let repeated = match &key {
+                serde_yaml_ng::Value::String(text) => text_keys.contains(text.as_str()),
+                other => other_keys.contains(other),
+            };
+            if repeated {
                 return Err(A::Error::custom(format!("duplicate mapping key {key:?}")));
             }
-            keys.push(key);
+            match key {
+                serde_yaml_ng::Value::String(text) => {
+                    text_keys.insert(text);
+                }
+                other => other_keys.push(other),
+            }
             map.next_value_seed(NoDuplicates)?;
         }
         Ok(())

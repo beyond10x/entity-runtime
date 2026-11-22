@@ -16,6 +16,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - Validating a `service/1` definition builds its set of lifecycle states once instead of once per
   command, and skips commands with no outcomes. A definition with many states and operations
   validates faster; the defects reported are unchanged.
+- `entity-yaml` looks up repeated mapping keys in an ordered set instead of comparing each key
+  with every key before it, so a definition with hundreds of fields parses in n log n rather than
+  n² comparisons. Repeated keys and merge keys are refused as before, with the same message.
 
 ### Fixed
 
