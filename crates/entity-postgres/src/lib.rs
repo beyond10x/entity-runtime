@@ -322,6 +322,15 @@ impl PostgresStore {
     /// Called by [`Self::connect`]; public so an operator can run it as a step of its own — schema
     /// creation is a command, not a README instruction.
     ///
+    /// Every statement is additive (`IF NOT EXISTS`), so a database created by an older release
+    /// gains a later index the next time a store opens it. `instances_id_byte_order` exists because
+    /// listings and document pages order and seek by `id COLLATE "C"` (byte order, so every
+    /// provider agrees), and the primary key uses the column's default collation, which that
+    /// expression cannot use: without it a page is a full scan and a sort. Building it takes a
+    /// lock that blocks writes to `instances` for the build; an operator with a large table can run
+    /// `CREATE INDEX CONCURRENTLY instances_id_byte_order ON instances (entity, id COLLATE "C")`
+    /// first, and this statement then finds it and does nothing.
+    ///
     /// # Errors
     ///
     /// [`StoreError::Backend`] when the server refuses the statements.
@@ -363,7 +372,9 @@ impl PostgresStore {
                      next_value BIGINT NOT NULL CHECK (next_value >= 0)
                  );
                  CREATE INDEX IF NOT EXISTS instances_document_query
-                     ON instances USING GIN ((document::jsonb) jsonb_path_ops);",
+                     ON instances USING GIN ((document::jsonb) jsonb_path_ops);
+                 CREATE INDEX IF NOT EXISTS instances_id_byte_order
+                     ON instances (entity, id COLLATE \"C\");",
             )
             .map_err(|error| database("establishing the schema", &error))
     }
@@ -390,6 +401,13 @@ impl DocumentQueryProvider for PostgresStore {
     }
 }
 
+/// One page of matching documents after a cursor, in byte order of `id`; served by the
+/// `instances_id_byte_order` index rather than a scan and a sort.
+const DOCUMENT_PAGE: &str = "SELECT document FROM instances
+     WHERE entity = $1 AND id COLLATE \"C\" > $2
+       AND document::jsonb @> $3::text::jsonb
+     ORDER BY id COLLATE \"C\" LIMIT $4";
+
 fn query_documents(
     client: &mut impl GenericClient,
     query: &DocumentQuery,
@@ -400,13 +418,7 @@ fn query_documents(
     let matching = serde_json::to_string(&serde_json::json!({ "fields": query.matching }))
         .map_err(|error| QueryError::Invalid(error.to_string()))?;
     let rows = client
-        .query(
-            "SELECT document FROM instances
-             WHERE entity = $1 AND id COLLATE \"C\" > $2
-               AND document::jsonb @> $3::text::jsonb
-             ORDER BY id COLLATE \"C\" LIMIT $4",
-            &[&query.entity, &after, &matching, &limit],
-        )
+        .query(DOCUMENT_PAGE, &[&query.entity, &after, &matching, &limit])
         .map_err(|error| QueryError::from(database("querying instances", &error)))?;
     let items = rows
         .into_iter()
@@ -1097,5 +1109,92 @@ impl PostgresStore {
                 "the connection is poisoned: a previous call panicked while holding it".to_owned(),
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PostgresStore, DOCUMENT_PAGE};
+
+    /// Every `Node Type` in an `EXPLAIN (FORMAT JSON)` plan, outermost first.
+    fn node_types(plan: &serde_json::Value, into: &mut Vec<String>) {
+        if let Some(kind) = plan.get("Node Type").and_then(serde_json::Value::as_str) {
+            let index = plan
+                .get("Index Name")
+                .and_then(serde_json::Value::as_str)
+                .map_or(String::new(), |name| format!(" using {name}"));
+            into.push(format!("{kind}{index}"));
+        }
+        for child in plan
+            .get("Plans")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            node_types(child, into);
+        }
+    }
+
+    #[test]
+    fn a_document_page_after_a_cursor_reads_an_index_in_byte_order_without_sorting() {
+        let Some(url) = std::env::var("ENTITY_POSTGRES_URL")
+            .ok()
+            .filter(|url| !url.trim().is_empty())
+        else {
+            eprintln!("skipped: ENTITY_POSTGRES_URL unset, so no server to hold this provider to");
+            return;
+        };
+        let schema = format!("entity_test_{}_document_page_plan", std::process::id());
+        let mut store = PostgresStore::connect_in_schema(&url, &schema).unwrap_or_else(|error| {
+            panic!("ENTITY_POSTGRES_URL is set and the server refused: {error}")
+        });
+        let plan: String = {
+            let mut client = store.client().expect("connection");
+            // 16,384 subjects of one entity, as the review measured; a page of two after the
+            // midpoint. With the planner's statistics current, only an index whose order is the
+            // query's byte order avoids reading half the table and sorting it.
+            client
+                .batch_execute(
+                    "INSERT INTO instances (entity, id, revision, document)
+                     SELECT 'ticket', lpad(n::text, 6, '0'), 1,
+                            json_build_object('fields', json_build_object('title', 'T'))::text
+                     FROM generate_series(1, 16384) AS n;
+                     ANALYZE instances;",
+                )
+                .expect("seeded");
+            // The exact shipped statement, prepared and explained over the simple protocol, which
+            // returns the JSON plan as text.
+            client
+                .batch_execute(&format!(
+                    "PREPARE document_page (text, text, text, bigint) AS {DOCUMENT_PAGE}"
+                ))
+                .expect("prepared");
+            client
+                .simple_query(
+                    "EXPLAIN (FORMAT JSON) \
+                     EXECUTE document_page ('ticket', '008192', '{\"fields\":{}}', 3)",
+                )
+                .expect("explains")
+                .into_iter()
+                .find_map(|message| match message {
+                    postgres::SimpleQueryMessage::Row(row) => row.get(0).map(str::to_owned),
+                    _ => None,
+                })
+                .expect("a plan row")
+        };
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("JSON plan");
+        let mut nodes = Vec::new();
+        node_types(&plan[0]["Plan"], &mut nodes);
+        assert!(
+            nodes
+                .iter()
+                .any(|node| node == "Index Scan using instances_id_byte_order"),
+            "the page must be read from the byte-order index: {nodes:?}"
+        );
+        assert!(
+            !nodes.iter().any(|node| node == "Sort"),
+            "the page must come in index order, not from a sort: {nodes:?}"
+        );
+        store.drop_schema(&schema).expect("dropped");
     }
 }

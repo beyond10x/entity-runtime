@@ -16,6 +16,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   in one statement. Before, they read them in two, each with its own snapshot, so a bare revision
   and then a recorded revision committing between the two reads produced a history that showed the
   later recorded event and left out the bare event before it.
+- `PostgresStore` document pages after a cursor read an index instead of scanning and sorting the
+  entity's instances. `migrate` now creates `instances_id_byte_order` on
+  `(entity, id COLLATE "C")`, the order pages seek and sort by. An existing database gets it the
+  next time a store opens it. Building it blocks writes to `instances` while it builds; for a large
+  table, run `CREATE INDEX CONCURRENTLY instances_id_byte_order ON instances (entity, id COLLATE "C")`
+  first.
 
 ## [0.32.0] — 2026-11-22
 
