@@ -9,6 +9,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
+- `entity-executor` recovers a retried batch with one history read per subject instead of one
+  per member, and verifies each member's history prefix as an extension of the prefix already
+  verified, so a retry of K consecutive decisions on one subject checks each record once instead
+  of 1 + … + K times. `verify_subject_prefix` no longer copies the history it verifies. Refusals
+  and the batch membership checks are unchanged.
 
 ## [0.32.0] — 2026-11-22
 

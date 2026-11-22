@@ -999,26 +999,32 @@ pub fn verify_subject_prefix(
                 format!("record {record_id:?} is absent from its claimed history"),
             )
         })?;
-    let mut prefix = history.clone();
-    prefix.records.truncate(index + 1);
-    let terminal = prefix.records[..=index]
+    // The prefix is read in place: copying the history only to truncate it cloned every record of
+    // the subject, the suffix included, on every call.
+    let prefix = HistoryView {
+        subject: &history.subject,
+        origin: &history.origin,
+        records: &history.records[..=index],
+    };
+    let terminal = prefix
+        .records
         .iter()
         .rev()
         .find_map(|record| match &record.entry {
             RecordedEntry::Decision(commit) => Some(commit.instance.clone()),
             RecordedEntry::Observation(_) => None,
         })
-        .or_else(|| match &prefix.origin {
+        .or_else(|| match prefix.origin {
             HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
             HistoryOrigin::Genesis => None,
         })
         .ok_or_else(|| {
             corrupt(
-                &prefix.subject,
+                prefix.subject,
                 "verified prefix has no state-producing decision",
             )
         })?;
-    verify_subject_history(&prefix, &terminal)
+    verify_whole(prefix, &terminal)
 }
 
 /// Verifies cross-subject identities, positions, and batch coordinates in one explicit scope.
