@@ -74,7 +74,8 @@ object explicitly enables additional fields.
 ### Typed references
 
 A `ref` declares that a string identity points at another entity type. Register all related
-definitions together and call `Registry::validate_all`; an unknown target type is refused. The
+definitions together and call `Registry::validate_all`; an unknown target type is refused, whether
+the `ref` is declared in the schema, in a `create` argument or in an operation argument. The
 kernel is intentionally given one instance at a time and cannot prove that the referenced instance
 exists. The shell enforces existence and `acyclic` graph constraints.
 

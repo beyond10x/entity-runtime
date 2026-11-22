@@ -1387,3 +1387,62 @@ fn two_versions_of_an_owner_repeating_one_owns_relation_load_together() {
     ));
 }
 
+// --- Creation arguments are checked against the set ------------------------------------------------
+
+/// A `service/1` parcel whose creation argument `tracking` references `carrier`.
+fn parcel_with_create_argument_ref() -> Value {
+    json!({
+        "entity": "parcel",
+        "version": 1,
+        "semantics": "service/1",
+        "schema": { "fields": { "label": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "open", "states": ["open"] },
+        "create": {
+            "arguments": { "fields": {
+                "label_text": { "type": "string", "required": true },
+                "tracking": { "type": "ref", "entity": "carrier" },
+                "legs": { "type": "array", "items": {
+                    "type": "object", "properties": { "via": { "type": "ref", "entity": "carrier" } }
+                }}
+            }},
+            "outcomes": [
+                { "name": "opened", "effect": "creates", "set": { "label": "$args.label_text" } }
+            ]
+        }
+    })
+}
+
+#[test]
+fn a_creation_argument_referencing_an_unregistered_entity_is_refused_by_validate_all() {
+    let mut registry = Registry::new();
+    registry
+        .register(definition(parcel_with_create_argument_ref()))
+        .expect("registers: references are a question about the set");
+    let defects = registry
+        .validate_all()
+        .expect_err("nobody registered carrier");
+    let unknown = |path: &str| DefinitionError::UnknownRelationTarget {
+        entity: "parcel".to_owned(),
+        path: path.to_owned(),
+        target: "carrier".to_owned(),
+    };
+    assert_eq!(
+        defects.iter().cloned().collect::<Vec<_>>(),
+        vec![
+            unknown("create.arguments.legs[].via"),
+            unknown("create.arguments.tracking"),
+        ]
+    );
+
+    registry
+        .register(definition(json!({
+            "entity": "carrier",
+            "version": 1,
+            "schema": { "fields": { "name": { "type": "string" } } },
+            "lifecycle": { "initial": "active", "states": ["active"] }
+        })))
+        .expect("registers");
+    registry
+        .validate_all()
+        .expect("with carrier registered the creation argument resolves");
+}

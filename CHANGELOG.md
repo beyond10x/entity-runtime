@@ -9,6 +9,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
+- `entity validate` and `Registry::validate_all` now check a `ref` declared in a `service/1`
+  `create` argument, as they already checked one in the schema or an operation argument. A set
+  whose creation argument points at an entity type nobody registered is refused with
+  `unknown_relation_target` at a path such as `create.arguments.tracking`; it used to pass.
 
 ### Fixed
 

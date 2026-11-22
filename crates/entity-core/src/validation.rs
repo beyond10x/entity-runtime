@@ -2416,16 +2416,17 @@ fn validate_schema_definition(
     defects
 }
 
-/// Which constraints a kind admits. A constraint outside its kind's list is refused rather than
-/// ignored, because an author who writes one believes it is enforced.
 /// Every `ref` a definition declares, as `(path, target entity)`, at any depth.
 ///
-/// Walks the entity schema and every operation's argument schema, through `items` and `properties`,
-/// because a reference nested in a list of objects is still a reference and a check that only
-/// looked at top-level fields would be one an author discovers by being wrong.
+/// Walks the entity schema, the creation argument schema and every operation's argument schema,
+/// through `items` and `properties`, because a reference nested in a list of objects is still a
+/// reference and a check that only looked at top-level fields would be one an author discovers by
+/// being wrong. A `service/1` creation argument is a declared input like any operation's, so a
+/// `ref` there names a type the set must hold just as one in a persisted field does.
 pub(crate) fn relation_targets(definition: &EntityDefinition) -> Vec<(String, String)> {
     let mut found = Vec::new();
     collect_targets(&definition.schema, "schema", &mut found);
+    collect_targets(&definition.create.arguments, "create.arguments", &mut found);
     for (name, operation) in &definition.operations {
         collect_targets(
             &operation.arguments,
