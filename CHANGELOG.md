@@ -22,6 +22,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   declared creation arguments in `fields` (OpenAPI component `<Entity>V<n>CreateArguments`);
   before, both surfaces required the instance fields and refused the arguments the kernel accepts.
   A definition without creation outcomes still takes its instance fields.
+- Drawing a graph as Mermaid or SVG (`entity graph`, `entity generate docs`) looks up each edge's
+  endpoints in an index built once per drawing instead of scanning every node per endpoint; a
+  300-state chain no longer costs about 90,000 id comparisons. The output is byte-identical, and a
+  duplicate node id still resolves to its last node.
 
 ## [0.32.0] — 2026-11-22
 
