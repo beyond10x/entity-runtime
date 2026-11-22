@@ -1894,11 +1894,38 @@ fn insert_present_arguments(
     }
 }
 
+/// The definition snapshot a decision record carries, computed once per validated handle.
 fn definition_snapshot(definition: &ValidatedDefinition) -> EntityDefinition {
-    let value = serde_json::to_value(definition.as_definition())
-        .expect("an EntityDefinition always serializes to JSON");
-    serde_json::from_value(canonicalize(value))
+    definition.record_form().clone()
+}
+
+/// The definition as a decision record carries it: serialized, every JSON object's keys put in
+/// canonical order, and read back, so the record's bytes do not depend on the order a caller built
+/// a map in.
+///
+/// [`ValidatedDefinition::new`] calls this once; every decision reuses the result.
+pub(crate) fn record_form(definition: &EntityDefinition) -> EntityDefinition {
+    let value =
+        serde_json::to_value(definition).expect("an EntityDefinition always serializes to JSON");
+    // `canonicalize` only reorders object keys. When `serde_json` keeps its maps sorted (no
+    // `preserve_order` feature anywhere in the build) every object already is in that order and
+    // the rebuild is skipped; the result is the same value either way.
+    let value = if maps_are_sorted() {
+        value
+    } else {
+        canonicalize(value)
+    };
+    serde_json::from_value(value)
         .expect("canonicalizing JSON cannot change an EntityDefinition's shape")
+}
+
+/// Whether `serde_json::Map` iterates in key order, which it does unless a crate in the build
+/// enables `serde_json`'s `preserve_order` feature.
+fn maps_are_sorted() -> bool {
+    let mut probe = Map::new();
+    probe.insert("b".to_owned(), Value::Null);
+    probe.insert("a".to_owned(), Value::Null);
+    probe.keys().next().map(String::as_str) == Some("a")
 }
 
 /// Defaults and validates operation arguments without evaluating state-dependent rules.
@@ -3576,5 +3603,76 @@ mod tests {
             compared > 300 && lengths >= 8 && map_members >= 6,
             "compared {compared} paths, {lengths} text lengths, {map_members} map counts"
         );
+    }
+
+    /// The per-decision snapshot this replaced, kept here as the reference the cached form is held
+    /// to byte for byte.
+    fn snapshot_as_it_was(definition: &EntityDefinition) -> EntityDefinition {
+        let value = serde_json::to_value(definition).expect("serializes");
+        serde_json::from_value(super::canonicalize(value)).expect("deserializes")
+    }
+
+    #[test]
+    fn a_decision_record_carries_the_same_definition_bytes_as_the_per_decision_snapshot_did() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "ticket", "version": 3,
+            "schema": { "fields": {
+                "title": { "type": "string", "required": true },
+                "meta": { "type": "json", "default": { "z": 1, "a": { "y": [ { "b": 2, "a": 1 } ] } } }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+            "create": { "emit": { "type": "Opened", "payload": { "z": "$id", "a": "$fields.title" } } },
+            "operations": { "close": {
+                "transitions": [{ "from": "open", "to": "closed" }],
+                "set": { "meta": { "zz": "$id", "aa": "$fields.title" } },
+                "emits": [{ "type": "Closed", "payload": { "y": "$id", "b": "$old_fields.title" } }]
+            }}
+        }))
+        .expect("definition");
+        let expected = serde_json::to_vec(&snapshot_as_it_was(&definition)).expect("bytes");
+        assert_eq!(
+            serde_json::to_vec(&super::record_form(&definition)).expect("bytes"),
+            expected
+        );
+
+        let mut registry = crate::Registry::new();
+        registry.register(definition.clone()).expect("valid");
+        let runtime = crate::Runtime::new(&registry);
+        let created = runtime
+            .create("ticket", 3, "t-1", json!({ "title": "A" }))
+            .expect("created");
+        let closed = runtime
+            .execute(&created.instance, "close", json!({}))
+            .expect("closed");
+        for record in [&created.record, &closed.record] {
+            assert_eq!(
+                serde_json::to_vec(record.definition.as_ref().expect("snapshot")).expect("bytes"),
+                expected,
+                "the record's definition must keep the bytes the per-decision snapshot wrote"
+            );
+        }
+
+        // The cached form is not part of the handle's identity or its rendering.
+        let validated = ValidatedDefinition::new(definition.clone()).expect("valid");
+        assert_eq!(validated.as_definition(), &definition);
+        assert!(format!("{validated:?}").starts_with("ValidatedDefinition(EntityDefinition {"));
+    }
+
+    #[test]
+    fn skipping_canonicalization_on_sorted_maps_changes_no_value() {
+        let value = json!({ "z": { "b": [ { "d": 1, "c": 2 } ], "a": null }, "m": 1 });
+        if super::maps_are_sorted() {
+            assert_eq!(super::canonicalize(value.clone()), value);
+            let keys: Vec<&String> = value.as_object().expect("object").keys().collect();
+            assert_eq!(keys, ["m", "z"]);
+        } else {
+            let keys: Vec<String> = super::canonicalize(value)
+                .as_object()
+                .expect("object")
+                .keys()
+                .cloned()
+                .collect();
+            assert_eq!(keys, ["m", "z"]);
+        }
     }
 }

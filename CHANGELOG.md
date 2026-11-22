@@ -25,7 +25,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 - `entity mcp` builds its `tools/list` catalogue once per server instead of on every request; the
   reply is unchanged.
-
+- `ValidatedDefinition::new` computes the definition snapshot a decision record carries once, and
+  every decision reuses it, instead of serializing, canonicalizing and reading back the definition
+  per decision. Records keep the same bytes. Validating a definition costs that computation once,
+  whether or not it ever decides.
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.

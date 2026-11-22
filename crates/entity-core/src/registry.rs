@@ -9,8 +9,16 @@ use std::ops::Deref;
 /// The inner value is intentionally private: execution accepts this handle rather than a raw
 /// [`EntityDefinition`], making the validation boundary part of the type system instead of a
 /// convention every caller has to remember.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ValidatedDefinition(EntityDefinition);
+#[derive(Clone)]
+pub struct ValidatedDefinition {
+    definition: EntityDefinition,
+    /// The definition as every decision record carries it ([`crate::runtime::record_form`]).
+    ///
+    /// Computed once here rather than per decision: one handle decides many commands in a
+    /// long-lived runtime, and the serialize-canonicalize-deserialize round trip was a tenth of a
+    /// whole CLI create. It is a pure function of `definition`, so equality and `Debug` ignore it.
+    record_form: EntityDefinition,
+}
 
 impl ValidatedDefinition {
     /// Validates `definition` and returns the executable handle.
@@ -20,19 +28,42 @@ impl ValidatedDefinition {
     /// Every independent definition defect found.
     pub fn new(definition: EntityDefinition) -> Result<Self, DefinitionErrors> {
         definition.validate()?;
-        Ok(Self(definition))
+        let record_form = crate::runtime::record_form(&definition);
+        Ok(Self {
+            definition,
+            record_form,
+        })
     }
 
     /// The validated definition data, for inspection and deterministic storage.
     #[must_use]
     pub const fn as_definition(&self) -> &EntityDefinition {
-        &self.0
+        &self.definition
     }
 
     /// Returns the validated definition data.
     #[must_use]
     pub fn into_definition(self) -> EntityDefinition {
-        self.0
+        self.definition
+    }
+
+    /// The definition snapshot a decision record carries.
+    pub(crate) const fn record_form(&self) -> &EntityDefinition {
+        &self.record_form
+    }
+}
+
+impl PartialEq for ValidatedDefinition {
+    fn eq(&self, other: &Self) -> bool {
+        self.definition == other.definition
+    }
+}
+
+impl std::fmt::Debug for ValidatedDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ValidatedDefinition")
+            .field(&self.definition)
+            .finish()
     }
 }
 
@@ -40,7 +71,7 @@ impl Deref for ValidatedDefinition {
     type Target = EntityDefinition;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.definition
     }
 }
 
