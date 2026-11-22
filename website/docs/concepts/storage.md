@@ -71,8 +71,9 @@ same contract, and is itself checked against a deliberately broken provider.
 
 The File Store serializes concurrent writers to one root and refreshes cached record identities
 when another writer changed the store. Use a filesystem with advisory locks and atomic rename.
-Subject data is flushed before replacement; Unix also flushes directories, while Windows does not
-promise directory entries survive power loss. A store written before 0.15 must be migrated first:
+Subject data is flushed before replacement; Unix also flushes directories, including the parent of
+each directory a first write creates, while Windows does not promise directory entries survive
+power loss. A store written before 0.15 must be migrated first:
 [migrate a File Store](../guides/migrate-a-file-store.md).
 
 ## Eventlog-backed recorded stores

@@ -19,6 +19,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `migrate_file_store_v1` now publishes the `.entity-store-lock` coordination file with the store,
   and `FileStore::acquire_legacy` creates that file the way a writer does when an initialized v2
   root lacks it, instead of failing with "No such file or directory".
+- On Unix the File Store syncs the parent of every directory it creates — the root, `subjects/`
+  and a type directory on the first write of a type. Before, only the subject's own directory was
+  synced, so power loss right after a successful first write could lose the path to the subject.
 
 ### Security
 

@@ -26,8 +26,9 @@ become path syntax. Existing path components and subject files may not be symlin
 and syncs a temporary document, then renames it over the subject, so current state and history
 cannot tear apart. On Unix the temporary document is created `0600` and, when it replaces a
 subject, takes that subject's permission bits before any data is written, so a replacement never
-widens what an operator restricted. Unix also syncs containing directories; Windows flushes file contents but does
-not promise directory-entry persistence across power loss. Recognizable abandoned subject
+widens what an operator restricted. Unix also syncs containing directories, and the parent of
+every directory a write creates (`subjects/` and a type directory on the first write of a type);
+Windows flushes file contents but does not promise directory-entry persistence across power loss. Recognizable abandoned subject
 temporary files are ignored by enumeration and record-id scans. All existing path components,
 including the format marker, are checked on reads and writes.
 

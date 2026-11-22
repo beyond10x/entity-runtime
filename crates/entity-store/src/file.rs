@@ -128,7 +128,7 @@ impl FileStore {
     /// another handle trusting stale locations. A crash releases the OS lock automatically.
     fn write_guard(&self) -> Result<fs::File, StoreError> {
         reject_symlink_components(&self.root)?;
-        fs::create_dir_all(&self.root).map_err(|e| backend("creating", &self.root, &e))?;
+        create_directory_durably(&self.root)?;
         let path = self.root.join(".entity-store-lock");
         reject_symlink_components(&path)?;
         let mut file = fs::OpenOptions::new()
@@ -248,7 +248,7 @@ impl FileStore {
             RootState::V2 => return Ok(()),
             RootState::Missing | RootState::Empty => {}
         }
-        fs::create_dir_all(&self.root).map_err(|error| backend("creating", &self.root, &error))?;
+        create_directory_durably(&self.root)?;
         reject_symlink_components(&self.root)?;
         let marker = self.format_path();
         let temporary = self.root.join(".entity-store-format.writing");
@@ -314,7 +314,7 @@ impl FileStore {
         let id = &subject.instance.id;
         let directory = self.entity_directory(entity);
         reject_symlink_components(&directory)?;
-        fs::create_dir_all(&directory).map_err(|error| backend("creating", &directory, &error))?;
+        create_directory_durably(&directory)?;
         reject_symlink_components(&directory)?;
         let path = self.subject_path(entity, id);
         reject_symlink(&path)?;
@@ -676,7 +676,47 @@ fn reject_symlink_components(path: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 
+/// Creates `path` and every missing ancestor, syncing the parent of each directory it creates.
+///
+/// A directory entry is durable only once its parent is synced. Syncing the subject's own
+/// directory after the rename is not enough on a first write: the entries for `subjects/` and the
+/// type directory could still be lost on power loss, taking the flushed subject with them.
+fn create_directory_durably(path: &Path) -> Result<(), StoreError> {
+    if path.as_os_str().is_empty() {
+        return Ok(());
+    }
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_dir() => return Ok(()),
+        Ok(_) => {
+            return Err(StoreError::Backend(format!(
+                "File Store path {} is not a directory",
+                path.display()
+            )))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(backend("inspecting", path, &error)),
+    }
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    create_directory_durably(parent)?;
+    match fs::create_dir(path) {
+        Ok(()) => {
+            #[cfg(test)]
+            tests::log_directory_event("created", path);
+        }
+        // Another process created it between the check and here; its entry may not be synced yet,
+        // and syncing the parent again is cheap and makes it so.
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(backend("creating", path, &error)),
+    }
+    sync_directory(parent)
+}
+
 fn sync_directory(path: &Path) -> Result<(), StoreError> {
+    #[cfg(test)]
+    tests::log_directory_event("synced", path);
     #[cfg(windows)]
     {
         // Windows cannot flush a directory through the ordinary File API.
@@ -1037,7 +1077,7 @@ pub fn migrate_file_store_v1(
     }
 
     let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent).map_err(|error| backend("creating", parent, &error))?;
+    create_directory_durably(parent)?;
     reject_symlink_components(parent)?;
     let file_name = destination.file_name().ok_or_else(|| {
         StoreError::Backend("migration destination must name one directory".to_owned())
@@ -1231,7 +1271,8 @@ fn parse_legacy_events(path: &Path, text: &str) -> Result<Vec<DomainEvent>, Stor
 
 #[cfg(test)]
 mod tests {
-    //! Counts of subject document reads, which an integration test cannot see.
+    //! Subject document reads and directory creation and syncs, which an integration test cannot
+    //! see.
     use super::*;
     use crate::Recording;
     use entity_core::{Registry, Runtime};
@@ -1239,6 +1280,7 @@ mod tests {
 
     thread_local! {
         static READS: RefCell<Vec<PathBuf>> = const { RefCell::new(Vec::new()) };
+        static DIRECTORIES: RefCell<Vec<(&'static str, PathBuf)>> = const { RefCell::new(Vec::new()) };
     }
 
     /// Called by `parse_subject` before it opens a document.
@@ -1249,6 +1291,66 @@ mod tests {
     /// Every subject document read since the last call, in order.
     fn take_reads() -> Vec<PathBuf> {
         READS.with(|reads| std::mem::take(&mut *reads.borrow_mut()))
+    }
+
+    /// Called when a directory is created (`created`) or synced (`synced`).
+    pub(super) fn log_directory_event(event: &'static str, path: &Path) {
+        DIRECTORIES.with(|log| log.borrow_mut().push((event, path.to_owned())));
+    }
+
+    fn take_directory_events() -> Vec<(&'static str, PathBuf)> {
+        DIRECTORIES.with(|log| std::mem::take(&mut *log.borrow_mut()))
+    }
+
+    #[test]
+    fn a_first_write_syncs_the_parent_of_every_directory_it_creates() {
+        let registry = registry();
+        let root = scratch("durable-directories");
+        let mut store = FileStore::open(&root);
+        take_directory_events();
+        store
+            .commit_recorded(&created(&registry, "ticket", "a", "ticket-a"), Expect::Absent)
+            .expect("the first subject is accepted");
+        let events = take_directory_events();
+        let created_directories: Vec<&PathBuf> = events
+            .iter()
+            .filter(|(event, _)| *event == "created")
+            .map(|(_, path)| path)
+            .collect();
+        let subjects = root.join("subjects");
+        let entity = store.entity_directory("ticket");
+        for expected in [&root, &subjects, &entity] {
+            assert!(
+                created_directories.contains(&expected),
+                "{} is created by the first write: {events:?}",
+                expected.display()
+            );
+        }
+        for (position, (event, path)) in events.iter().enumerate() {
+            if *event != "created" {
+                continue;
+            }
+            let parent = path.parent().expect("a created directory has a parent");
+            assert!(
+                events[position + 1..]
+                    .iter()
+                    .any(|(later, synced)| *later == "synced" && synced == parent),
+                "creating {} is followed by a sync of {}: {events:?}",
+                path.display(),
+                parent.display()
+            );
+        }
+
+        take_directory_events();
+        store
+            .commit_recorded(&created(&registry, "ticket", "b", "ticket-b"), Expect::Absent)
+            .expect("a second subject is accepted");
+        assert!(
+            take_directory_events()
+                .iter()
+                .all(|(event, _)| *event != "created"),
+            "a later write creates no directory"
+        );
     }
 
     /// A fresh directory beside the test binary: never `/tmp`, and outside the source tree.
