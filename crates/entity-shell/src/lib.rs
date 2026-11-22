@@ -8,7 +8,7 @@
 use std::fmt;
 
 use entity_core::{CoreError, DomainEvent, EntityInstance, Registry, Runtime};
-use entity_store::{Expect, RecordedCommit, Recording, Store, StoreError};
+use entity_store::{Expect, LoadedSubject, RecordedCommit, Recording, Store, StoreError};
 use serde_json::Value;
 
 /// Why a provider-backed command produced no result.
@@ -185,45 +185,51 @@ where
         arguments: Value,
         recording: &Recording,
     ) -> Result<RecordedCommit, ShellError> {
-        let instance = self.get(entity, id)?;
-        if let Some(history) = self.store.history() {
-            if let Some(envelope) = history
-                .records(entity, id)?
-                .into_iter()
-                .find(|entry| entry.record_id == recording.record_id)
-            {
-                let matches = (|| {
-                    let record = &envelope.record;
-                    let definition =
-                        entity_core::ValidatedDefinition::new(record.definition.clone()?).ok()?;
-                    let args =
-                        entity_core::normalize_arguments(&definition, operation, arguments.clone())
-                            .ok()?;
-                    Some(
-                        record.entity == entity
-                            && record.id == id
-                            && expected_revision.checked_add(1) == Some(record.revision)
-                            && record.command
-                                == entity_core::DecisionCommand::Execute {
-                                    operation: operation.to_owned(),
-                                    arguments: args,
-                                    fulfillments: Default::default(),
-                                }
-                            && recording.seal(record.clone()).ok()? == envelope,
-                    )
-                })()
-                .unwrap_or(false);
-                if !matches {
-                    return Err(StoreError::RecordConflict {
-                        record_id: recording.record_id.clone(),
-                    }
-                    .into());
+        // State and retry history in one provider call: a provider keeping both in one document
+        // reads it once rather than once for each.
+        let LoadedSubject { instance, records } = self
+            .store
+            .load_with_history(entity, id)?
+            .ok_or_else(|| ShellError::NotFound {
+                entity: entity.to_owned(),
+                id: id.to_owned(),
+            })?;
+        if let Some(envelope) = records
+            .into_iter()
+            .flatten()
+            .find(|entry| entry.record_id == recording.record_id)
+        {
+            let matches = (|| {
+                let record = &envelope.record;
+                let definition =
+                    entity_core::ValidatedDefinition::new(record.definition.clone()?).ok()?;
+                let args =
+                    entity_core::normalize_arguments(&definition, operation, arguments.clone())
+                        .ok()?;
+                Some(
+                    record.entity == entity
+                        && record.id == id
+                        && expected_revision.checked_add(1) == Some(record.revision)
+                        && record.command
+                            == entity_core::DecisionCommand::Execute {
+                                operation: operation.to_owned(),
+                                arguments: args,
+                                fulfillments: Default::default(),
+                            }
+                        && recording.seal(record.clone()).ok()? == envelope,
+                )
+            })()
+            .unwrap_or(false);
+            if !matches {
+                return Err(StoreError::RecordConflict {
+                    record_id: recording.record_id.clone(),
                 }
-                return Ok(RecordedCommit {
-                    instance: envelope.record.result.clone(),
-                    envelope,
-                });
+                .into());
             }
+            return Ok(RecordedCommit {
+                instance: envelope.record.result.clone(),
+                envelope,
+            });
         }
         if instance.revision != expected_revision {
             return Err(ShellError::StaleRevision {
@@ -301,6 +307,99 @@ mod tests {
             matches!(changed, Err(ShellError::Store(StoreError::RecordConflict { record_id })) if record_id == "finish")
         );
         assert_eq!(runtime.get("thing", "one").unwrap().revision, 2);
+    }
+
+    /// Records which read each provider call was, delegating to a memory store.
+    struct Reads {
+        inner: MemoryStore,
+        calls: std::cell::RefCell<Vec<&'static str>>,
+    }
+
+    impl entity_store::StateProvider for Reads {
+        fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
+            self.calls.borrow_mut().push("load");
+            self.inner.load(entity, id)
+        }
+        fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+            self.inner.ids(entity)
+        }
+    }
+
+    impl entity_store::EventProvider for Reads {
+        fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
+            self.inner.events(entity, id)
+        }
+    }
+
+    impl entity_store::HistoryProvider for Reads {
+        fn records(
+            &self,
+            entity: &str,
+            id: &str,
+        ) -> Result<Vec<entity_store::Envelope<entity_core::DecisionRecord>>, StoreError> {
+            self.calls.borrow_mut().push("records");
+            self.inner.records(entity, id)
+        }
+        fn observations(
+            &self,
+            entity: &str,
+            id: &str,
+        ) -> Result<Vec<entity_store::RecordedObservation>, StoreError> {
+            self.inner.observations(entity, id)
+        }
+    }
+
+    impl Store for Reads {
+        fn history(&self) -> Option<&dyn entity_store::HistoryProvider> {
+            Some(self)
+        }
+        fn load_with_history(
+            &self,
+            entity: &str,
+            id: &str,
+        ) -> Result<Option<LoadedSubject>, StoreError> {
+            self.calls.borrow_mut().push("load_with_history");
+            self.inner.load_with_history(entity, id)
+        }
+        fn commit(
+            &mut self,
+            decision: &entity_core::Decision,
+            expect: Expect,
+        ) -> Result<(), StoreError> {
+            self.inner.commit(decision, expect)
+        }
+        fn commit_recorded(
+            &mut self,
+            commit: &RecordedCommit,
+            expect: Expect,
+        ) -> Result<(), StoreError> {
+            self.inner.commit_recorded(commit, expect)
+        }
+    }
+
+    #[test]
+    fn execute_asks_the_provider_for_state_and_retry_history_in_one_read() {
+        let registry = registry();
+        let mut store = Reads {
+            inner: MemoryStore::new(),
+            calls: std::cell::RefCell::new(Vec::new()),
+        };
+        let mut runtime = StoredRuntime::new(&registry, &mut store);
+        runtime
+            .create("thing", 1, "one", json!({}), &recording("create"))
+            .unwrap();
+        let accepted = runtime
+            .execute("thing", "one", 1, "finish", json!({}), &recording("finish"))
+            .unwrap();
+        let retried = runtime
+            .execute("thing", "one", 1, "finish", json!({}), &recording("finish"))
+            .unwrap();
+        assert_eq!(retried, accepted);
+        assert_eq!(
+            *store.calls.borrow(),
+            ["load_with_history", "load_with_history"],
+            "each execute, first try and retry, reads state and history through one call"
+        );
     }
 
     #[test]

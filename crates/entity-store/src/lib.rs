@@ -236,6 +236,32 @@ pub trait Store: StateProvider + EventProvider {
         None
     }
 
+    /// The current instance together with its decision history, which is what a shell needs to
+    /// check a command retry before it executes.
+    ///
+    /// The default reads state first and asks [`Store::history`] for the envelopes only when the
+    /// subject exists, so each read's failure surfaces as it did when callers made the two calls
+    /// themselves. A provider that keeps state and history in one document overrides it to read
+    /// that document once.
+    ///
+    /// # Errors
+    ///
+    /// Provider failures as [`StoreError`]. A missing subject is `Ok(None)`.
+    fn load_with_history(
+        &self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Option<LoadedSubject>, StoreError> {
+        let Some(instance) = self.load(entity, id)? else {
+            return Ok(None);
+        };
+        let records = match self.history() {
+            Some(history) => Some(history.records(entity, id)?),
+            None => None,
+        };
+        Ok(Some(LoadedSubject { instance, records }))
+    }
+
     /// Writes a decision: the instance and its events, as one step.
     ///
     /// `expect` is checked **before** anything is written, so a refusal changes nothing — the same
@@ -275,6 +301,15 @@ pub trait Store: StateProvider + EventProvider {
             "this provider does not support recorded observations".to_owned(),
         ))
     }
+}
+
+/// A subject's current state and decision history, read together by [`Store::load_with_history`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoadedSubject {
+    /// The instance currently stored.
+    pub instance: EntityInstance,
+    /// Its decision envelopes, oldest first; `None` when the provider keeps no recorded history.
+    pub records: Option<Vec<Envelope<DecisionRecord>>>,
 }
 
 /// One state-changing decision and its durable envelope.

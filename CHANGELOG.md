@@ -4,6 +4,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- `Store::load_with_history` returns a subject's current instance and its decision envelopes
+  together as a `LoadedSubject`. The provided default calls `load` and then `history().records`,
+  so existing providers keep working unchanged; `FileStore` overrides it with one read of the
+  subject document.
+
 ### Changed
 
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
@@ -12,6 +19,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - The first recorded write of a File Store handle reads each stored subject once while it builds
   the record-id index, instead of once to list it and again to index it. A new `entity create` in
   a store of 32 subjects opened 64 subject documents and now opens 32.
+- A stored `entity execute` reads its subject document twice instead of six times.
+  `StoredRuntime::execute` (and so MCP) reads state and retry history through one
+  `load_with_history` call, the command hands the shell the reading it took the implicit revision
+  from, and a write on a fresh `FileStore` handle reuses the index scan's reading of its target
+  subject. With 32 prior records on one subject, one command read 1,209,312 bytes and now reads
+  403,104 bytes. Every recorded write still rewrites the whole subject document.
 
 ### Fixed
 

@@ -21,7 +21,7 @@ use crate::{
         HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
         LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
     },
-    check, Envelope, EventProvider, Expect, HistoryProvider, LegacyStoreSnapshot,
+    check, Envelope, EventProvider, Expect, HistoryProvider, LegacyStoreSnapshot, LoadedSubject,
     LegacyStoreSource, RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
 };
 
@@ -67,6 +67,15 @@ struct RecordLocation {
     id: String,
     /// `true` for a recorded observation, `false` for a decision record.
     observation: bool,
+}
+
+/// What a record-id lookup already knows about the subject the write targets.
+enum Target {
+    /// Nothing was read for it; the write reads the subject itself.
+    Unread,
+    /// Read under the write guard by the scan that built the index: the subject, or `None` when
+    /// the store holds no such subject.
+    Scanned(Option<StoredSubject>),
 }
 
 fn lock(records: &Mutex<Option<RecordIndex>>) -> std::sync::MutexGuard<'_, Option<RecordIndex>> {
@@ -342,27 +351,65 @@ impl FileStore {
         result
     }
 
-    fn record_document(&self, record_id: &str) -> Result<Option<Value>, StoreError> {
+    /// Whether `record_id` is held anywhere, and the stored document if it is. Called under the
+    /// write guard, for a write to the subject `entity`/`id`.
+    ///
+    /// When the index has to be built, its scan reads every subject anyway, so the target subject
+    /// it read is handed back as [`Target::Scanned`] and the write does not read it a second time.
+    fn record_document(
+        &self,
+        record_id: &str,
+        entity: &str,
+        id: &str,
+    ) -> Result<(Option<Value>, Target), StoreError> {
         match self.root_state()? {
-            RootState::Missing | RootState::Empty => return Ok(None),
+            RootState::Missing | RootState::Empty => return Ok((None, Target::Scanned(None))),
             RootState::V2 => {}
         }
+        let mut target = Target::Unread;
         let location = {
             let mut records = lock(&self.records);
             if records.is_none() {
-                *records = Some(self.scan_records()?);
+                let (index, scanned) = self.scan_records((entity, id))?;
+                *records = Some(index);
+                target = Target::Scanned(scanned);
             }
             records
                 .as_ref()
                 .and_then(|index| index.locations.get(record_id).cloned())
         };
         let Some(location) = location else {
-            return Ok(None);
+            return Ok((None, target));
         };
-        let Some(subject) = self.read_subject(&location.entity, &location.id)? else {
-            return Ok(None);
+        let held = match target {
+            Target::Scanned(Some(subject))
+                if location.entity == entity && location.id == id =>
+            {
+                Some(subject)
+            }
+            _ => self.read_subject(&location.entity, &location.id)?,
         };
-        let subject_path = self.subject_path(&location.entity, &location.id);
+        // A hit ends the write, which never needs the target subject after it.
+        let Some(subject) = held else {
+            return Ok((None, Target::Unread));
+        };
+        let document = Self::stored_document(subject, &location, record_id)
+            .map_err(|error| {
+                backend(
+                    "serialising a stored record",
+                    &self.subject_path(&location.entity, &location.id),
+                    &error,
+                )
+            })?;
+        Ok((document, Target::Unread))
+    }
+
+    /// The stored observation, or the recorded commit, that holds `record_id` in `subject`.
+    fn stored_document(
+        subject: StoredSubject,
+        location: &RecordLocation,
+        record_id: &str,
+    ) -> Result<Option<Value>, serde_json::Error> {
         if location.observation {
             subject
                 .observations
@@ -370,7 +417,6 @@ impl FileStore {
                 .find(|observation| observation.envelope.record_id == record_id)
                 .map(serde_json::to_value)
                 .transpose()
-                .map_err(|error| backend("serialising a stored observation", &subject_path, &error))
         } else {
             subject
                 .records
@@ -383,18 +429,23 @@ impl FileStore {
                     })
                 })
                 .transpose()
-                .map_err(|error| backend("serialising a stored record", &subject_path, &error))
         }
     }
 
-    /// One read of every subject: where each record id lives. Built once per handle.
-    fn scan_records(&self) -> Result<RecordIndex, StoreError> {
+    /// One read of every subject: where each record id lives. Built once per handle. The subject
+    /// `target` names is returned as the scan read it, or `None` when the store holds no such
+    /// subject.
+    fn scan_records(
+        &self,
+        target: (&str, &str),
+    ) -> Result<(RecordIndex, Option<StoredSubject>), StoreError> {
         let mut index = RecordIndex::default();
+        let mut held = None;
         let subjects = self.root.join("subjects");
         reject_symlink_components(&subjects)?;
         let entities = match fs::read_dir(&subjects) {
             Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(index),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok((index, None)),
             Err(error) => return Err(backend("listing", &subjects, &error)),
         };
         for entity_entry in entities {
@@ -451,9 +502,12 @@ impl FileStore {
                         },
                     );
                 }
+                if entity == target.0 && id == target.1 {
+                    held = Some(subject);
+                }
             }
         }
-        Ok(index)
+        Ok((index, held))
     }
 
     /// A write this handle made: keep the index current without reading anything.
@@ -885,6 +939,19 @@ impl Store for FileStore {
     fn history(&self) -> Option<&dyn HistoryProvider> {
         Some(self)
     }
+    /// State and history live in one subject document, so both come from one read of it.
+    fn load_with_history(
+        &self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Option<LoadedSubject>, StoreError> {
+        Ok(self
+            .read_subject(entity, id)?
+            .map(|stored| LoadedSubject {
+                instance: stored.instance,
+                records: Some(stored.records),
+            }))
+    }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
         let _guard = self.write_guard()?;
         let instance = &decision.instance;
@@ -919,7 +986,10 @@ impl Store for FileStore {
         let _guard = self.write_guard()?;
         let document =
             serde_json::to_value(commit).map_err(|error| StoreError::Backend(error.to_string()))?;
-        if let Some(existing) = self.record_document(&commit.envelope.record_id)? {
+        let entity = &commit.instance.entity;
+        let id = &commit.instance.id;
+        let (existing, target) = self.record_document(&commit.envelope.record_id, entity, id)?;
+        if let Some(existing) = existing {
             return if existing == document {
                 Ok(())
             } else {
@@ -928,9 +998,10 @@ impl Store for FileStore {
                 })
             };
         }
-        let entity = &commit.instance.entity;
-        let id = &commit.instance.id;
-        let mut held = self.read_subject(entity, id)?;
+        let mut held = match target {
+            Target::Scanned(held) => held,
+            Target::Unread => self.read_subject(entity, id)?,
+        };
         if let Some(stored) = &held {
             if let Some(existing) = stored
                 .records
@@ -981,7 +1052,12 @@ impl Store for FileStore {
         let _guard = self.write_guard()?;
         let document = serde_json::to_value(observation)
             .map_err(|error| StoreError::Backend(error.to_string()))?;
-        if let Some(existing) = self.record_document(&observation.envelope.record_id)? {
+        let (existing, target) = self.record_document(
+            &observation.envelope.record_id,
+            &observation.entity,
+            &observation.id,
+        )?;
+        if let Some(existing) = existing {
             return if existing == document {
                 Ok(())
             } else {
@@ -990,9 +1066,11 @@ impl Store for FileStore {
                 })
             };
         }
-        let mut stored = self
-            .read_subject(&observation.entity, &observation.id)?
-            .ok_or_else(|| StoreError::RevisionConflict {
+        let held = match target {
+            Target::Scanned(held) => held,
+            Target::Unread => self.read_subject(&observation.entity, &observation.id)?,
+        };
+        let mut stored = held.ok_or_else(|| StoreError::RevisionConflict {
                 entity: observation.entity.clone(),
                 id: observation.id.clone(),
                 expected: Expect::Revision(observation.revision),
@@ -1436,5 +1514,88 @@ mod tests {
                 path.display()
             );
         }
+    }
+
+    #[test]
+    fn state_and_retry_history_come_from_one_read_of_the_subject() {
+        let registry = registry();
+        let (root, existing) = populated("load-with-history", &registry);
+        let store = FileStore::open(&root);
+        take_reads();
+        let loaded = store
+            .load_with_history("ticket", "a")
+            .expect("readable")
+            .expect("stored");
+        assert_eq!(loaded.instance.id, "a");
+        assert_eq!(
+            loaded.records.expect("the File Store keeps history").len(),
+            1
+        );
+        assert_eq!(take_reads(), [existing[0].clone()], "one document read");
+        assert!(store
+            .load_with_history("ticket", "absent")
+            .expect("readable")
+            .is_none());
+    }
+
+    #[test]
+    fn a_cold_write_to_a_stored_subject_reads_that_subject_once() {
+        let registry = registry();
+        let (root, existing) = populated("cold-write-target", &registry);
+        let held = FileStore::open(&root)
+            .load("ticket", "a")
+            .expect("readable")
+            .expect("stored");
+        let closed = Runtime::new(&registry)
+            .execute(&held, "close", serde_json::json!({}))
+            .expect("close is permitted");
+        let commit = RecordedCommit::new(
+            closed,
+            &Recording {
+                record_id: "ticket-a-close".to_owned(),
+                recorded_at: "2026-11-22T12:00:00Z".to_owned(),
+                correlation: None,
+                causation: None,
+                actor: None,
+            },
+        )
+        .expect("valid metadata");
+        let mut fresh = FileStore::open(&root);
+        take_reads();
+        fresh
+            .commit_recorded(&commit, Expect::Revision(1))
+            .expect("the operation is recorded");
+        let reads = take_reads();
+        assert_eq!(
+            reads.iter().filter(|read| **read == existing[0]).count(),
+            1,
+            "the index scan's reading of the target serves the revision check: {reads:?}"
+        );
+        assert_eq!(reads.len(), existing.len(), "every other subject once: {reads:?}");
+
+        take_reads();
+        let observation = RecordedObservation {
+            entity: "ticket".to_owned(),
+            id: "b".to_owned(),
+            revision: 1,
+            envelope: Recording {
+                record_id: "ticket-b-seen".to_owned(),
+                recorded_at: "2026-11-22T12:00:00Z".to_owned(),
+                correlation: None,
+                causation: None,
+                actor: None,
+            }
+            .seal(serde_json::json!({"seen": true}))
+            .expect("observation envelope"),
+        };
+        FileStore::open(&root)
+            .observe(&observation)
+            .expect("observed");
+        let reads = take_reads();
+        assert_eq!(
+            reads.iter().filter(|read| **read == existing[1]).count(),
+            1,
+            "an observation on a cold handle reads its subject once too: {reads:?}"
+        );
     }
 }
