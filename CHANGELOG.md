@@ -4,6 +4,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Security
+
+- `RemoteStore::load` refuses an answer whose instance names another entity type or id than the
+  one asked for, as `StoreError::Backend` naming both subjects. Before, a misrouted reply was
+  returned as the requested subject, and `StoredRuntime::execute` committed to the returned
+  instance's coordinates, so a routing bug on the far side could redirect a write.
+
 ### Changed
 
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay

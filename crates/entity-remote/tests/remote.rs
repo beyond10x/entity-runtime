@@ -148,6 +148,70 @@ fn a_version_refusal_is_not_reported_as_unreachable() {
 }
 
 #[test]
+fn a_remote_answer_for_another_subject_is_refused_rather_than_loaded() {
+    // A shell commits to the coordinates of the instance it loaded. A reply routed from another
+    // subject at the expected revision would otherwise redirect the write to that subject.
+    struct Misrouted {
+        inner: LoopbackTransport<MemoryStore>,
+        entity: &'static str,
+        id: &'static str,
+    }
+    impl entity_remote::Transport for Misrouted {
+        fn name(&self) -> String {
+            "misrouted".to_owned()
+        }
+        fn call(&self, request: &Request) -> Result<Answer, String> {
+            let mut routed = request.clone();
+            if let Ask::Load { entity, id } = &mut routed.ask {
+                self.entity.clone_into(entity);
+                self.id.clone_into(id);
+            }
+            self.inner.call(&routed)
+        }
+    }
+
+    let registry = registry();
+    let backing = || {
+        let mut store = MemoryStore::new();
+        for id in ["one", "two"] {
+            let created = Runtime::new(&registry)
+                .create("ticket", 1, id, json!({ "title": "A ticket" }))
+                .expect("permitted");
+            store.commit(&created, Expect::Absent).expect("accepted");
+        }
+        LoopbackTransport::new(store)
+    };
+
+    let other_id = RemoteStore::new(Misrouted {
+        inner: backing(),
+        entity: "ticket",
+        id: "two",
+    });
+    let error = other_id
+        .load("ticket", "one")
+        .expect_err("an answer about ticket/two is not an answer about ticket/one");
+    assert!(
+        matches!(&error, StoreError::Backend(detail)
+            if detail.contains("asked for ticket/one but answered with ticket/two")),
+        "the refusal names both subjects: {error}"
+    );
+
+    let other_entity = RemoteStore::new(Misrouted {
+        inner: backing(),
+        entity: "ticket",
+        id: "one",
+    });
+    let error = other_entity
+        .load("order", "one")
+        .expect_err("an answer about a ticket is not an answer about an order");
+    assert!(
+        matches!(&error, StoreError::Backend(detail)
+            if detail.contains("asked for order/one but answered with ticket/one")),
+        "the refusal names both entity types: {error}"
+    );
+}
+
+#[test]
 fn an_unreachable_store_on_the_far_side_stays_unreachable_on_this_one() {
     // The third value has to survive the wire. Flattened into a backend failure, every
     // `WhenUnreachable` policy downstream stops applying to it.
