@@ -9,6 +9,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
+- The first recorded write of a File Store handle reads each stored subject once while it builds
+  the record-id index, instead of once to list it and again to index it. A new `entity create` in
+  a store of 32 subjects opened 64 subject documents and now opens 32.
 
 ### Security
 

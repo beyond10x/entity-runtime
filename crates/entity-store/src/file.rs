@@ -260,8 +260,15 @@ impl FileStore {
             RootState::Missing | RootState::Empty => return Ok(None),
             RootState::V2 => {}
         }
+        self.parse_subject(entity, id)
+    }
+
+    /// Reads and validates one subject document of a root already known to be v2.
+    fn parse_subject(&self, entity: &str, id: &str) -> Result<Option<StoredSubject>, StoreError> {
         let path = self.subject_path(entity, id);
         reject_symlink_components(&path)?;
+        #[cfg(test)]
+        tests::count_subject_read(&path);
         let text = match fs::read_to_string(&path) {
             Ok(text) => text,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -404,10 +411,12 @@ impl FileStore {
                     entity_path.display()
                 ))
             })?;
-            for id in self.ids(&entity)? {
-                let subject = self
-                    .read_subject(&entity, &id)?
-                    .expect("ids validates every returned subject");
+            // One read per subject: parsing it is the validation `ids` would have done, so the
+            // listing reads names only and the document read here is the only one.
+            for id in self.listed_ids(&entity)? {
+                let Some(subject) = self.parse_subject(&entity, &id)? else {
+                    continue;
+                };
                 for envelope in &subject.records {
                     index.locations.insert(
                         envelope.record_id.clone(),
@@ -730,6 +739,19 @@ impl StateProvider for FileStore {
             RootState::Missing | RootState::Empty => return Ok(Vec::new()),
             RootState::V2 => {}
         }
+        let mut ids = self.listed_ids(entity)?;
+        for id in &ids {
+            self.parse_subject(entity, id)?;
+        }
+        ids.sort();
+        Ok(ids)
+    }
+}
+
+impl FileStore {
+    /// The identities stored for `entity` in a v2 root, from file names alone: no document is read,
+    /// abandoned temporary files are skipped, and any other unexpected entry is refused.
+    fn listed_ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
         let directory = self.entity_directory(entity);
         reject_symlink_components(&directory)?;
         let entries = match fs::read_dir(&directory) {
@@ -768,10 +790,8 @@ impl StateProvider for FileStore {
                     path.display()
                 ))
             })?;
-            self.read_subject(entity, &id)?;
             ids.push(id);
         }
-        ids.sort();
         Ok(ids)
     }
 }
@@ -1184,4 +1204,112 @@ fn parse_legacy_events(path: &Path, text: &str) -> Result<Vec<DomainEvent>, Stor
             serde_json::from_str(line).map_err(|error| backend("parsing", path, &error))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    //! Counts of subject document reads, which an integration test cannot see.
+    use super::*;
+    use crate::Recording;
+    use entity_core::{Registry, Runtime};
+    use std::cell::RefCell;
+
+    thread_local! {
+        static READS: RefCell<Vec<PathBuf>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// Called by `parse_subject` before it opens a document.
+    pub(super) fn count_subject_read(path: &Path) {
+        READS.with(|reads| reads.borrow_mut().push(path.to_owned()));
+    }
+
+    /// Every subject document read since the last call, in order.
+    fn take_reads() -> Vec<PathBuf> {
+        READS.with(|reads| std::mem::take(&mut *reads.borrow_mut()))
+    }
+
+    /// A fresh directory beside the test binary: never `/tmp`, and outside the source tree.
+    fn scratch(name: &str) -> PathBuf {
+        let root = std::env::current_exe()
+            .expect("test binary path")
+            .parent()
+            .expect("binary directory")
+            .join("entity-store-file-unit")
+            .join(name);
+        let _ = fs::remove_dir_all(&root);
+        root
+    }
+
+    fn registry() -> Registry {
+        let mut registry = Registry::new();
+        for entity in ["ticket", "note"] {
+            let definition = serde_json::from_value(serde_json::json!({
+                "entity": entity,
+                "version": 1,
+                "schema": {},
+                "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+                "operations": {
+                    "close": { "transitions": [{ "from": "open", "to": "closed" }] }
+                }
+            }))
+            .expect("the definition parses");
+            registry.register(definition).expect("it validates");
+        }
+        registry
+    }
+
+    fn created(registry: &Registry, entity: &str, id: &str, record_id: &str) -> RecordedCommit {
+        let decision = Runtime::new(registry)
+            .create(entity, 1, id, serde_json::json!({}))
+            .expect("creation is permitted");
+        RecordedCommit::new(
+            decision,
+            &Recording {
+                record_id: record_id.to_owned(),
+                recorded_at: "2026-11-22T12:00:00Z".to_owned(),
+                correlation: None,
+                causation: None,
+                actor: None,
+            },
+        )
+        .expect("valid metadata")
+    }
+
+    /// A store holding three tickets and one note, written by a handle that is then dropped.
+    fn populated(name: &str, registry: &Registry) -> (PathBuf, Vec<PathBuf>) {
+        let root = scratch(name);
+        let mut writer = FileStore::open(&root);
+        let mut paths = Vec::new();
+        for (entity, id) in [("ticket", "a"), ("ticket", "b"), ("ticket", "c"), ("note", "n")] {
+            writer
+                .commit_recorded(
+                    &created(registry, entity, id, &format!("{entity}-{id}")),
+                    Expect::Absent,
+                )
+                .expect("created");
+            paths.push(writer.subject_path(entity, id));
+        }
+        (root, paths)
+    }
+
+    #[test]
+    fn building_the_record_index_reads_each_stored_subject_once() {
+        let registry = registry();
+        let (root, existing) = populated("index-reads-once", &registry);
+        let mut fresh = FileStore::open(&root);
+        take_reads();
+        fresh
+            .commit_recorded(&created(&registry, "ticket", "d", "ticket-d"), Expect::Absent)
+            .expect("a new subject is accepted");
+        let reads = take_reads();
+        for path in &existing {
+            let times = reads.iter().filter(|read| *read == path).count();
+            assert_eq!(
+                times,
+                1,
+                "the cold record-id scan reads {} once, not once to list and again to index: {reads:?}",
+                path.display()
+            );
+        }
+    }
 }
