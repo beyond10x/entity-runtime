@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-11-22
+
 ### Security
 
 - `entity-eventlog`, `entity-sqlite`, and the Eventlog features of `entity-cli` and
