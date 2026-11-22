@@ -10,6 +10,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
 
+### Fixed
+
+- `Hybrid::catch_up` keeps a divergence when a legacy replica that is behind holds events up to
+  its revision that are not the source's. It used to append only the source's later events and
+  clear the divergence, leaving the replica with the source's state over a history the source
+  never produced. The divergence now says the replica's history is not the source's.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security

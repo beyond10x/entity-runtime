@@ -332,13 +332,16 @@ impl<L: Store, R: Store> Hybrid<L, R> {
     /// # What it compares, and what it therefore cannot catch
     ///
     /// Divergence is judged on the **revision** the replica holds, plus an equality check when the
-    /// two are at the same one. A replica that took somebody else's write at a revision this store
-    /// has already passed is not detected while it stays behind — detecting that needs the
-    /// definition, to fold this store's own history down to that revision and compare, and a store
-    /// does not hold definitions. It is caught as soon as the replica reaches this store's
-    /// revision, and the write itself is still protected: the replay is committed with
-    /// [`Expect::Revision`] of what the replica held, so a replica that moves in between refuses
-    /// it and the divergence stays outstanding.
+    /// two are at the same one. A replica that is behind must also hold exactly this store's
+    /// events up to its revision; the replay appends only the events above it, so a replica whose
+    /// earlier events differ keeps its divergence rather than ending with this store's state over
+    /// a history this store never produced. A replica that took somebody else's write at a
+    /// revision this store has already passed, and emitted the same events doing it, is not
+    /// detected while it stays behind — detecting that needs the definition, to fold this store's
+    /// own history down to that revision and compare, and a store does not hold definitions. It is
+    /// caught as soon as the replica reaches this store's revision, and the write itself is still
+    /// protected: the replay is committed with [`Expect::Revision`] of what the replica held, so a
+    /// replica that moves in between refuses it and the divergence stays outstanding.
     pub fn catch_up(&mut self) -> usize {
         let outstanding: Vec<Divergence> = std::mem::take(&mut self.divergences);
         let mut still = Vec::new();
@@ -526,6 +529,22 @@ fn reconcile<S: Store, D: Store>(
             "the destination moved on its own: it holds revision {behind} and the source holds {}; no merge rule exists",
             instance.revision
         ));
+    }
+    // The import below appends only the source's events above `behind`, so the destination's own
+    // events up to `behind` stay. Unless they are the source's events up to `behind`, the commit
+    // would lay the source's state over a history the source never produced and clear the
+    // divergence that is the only record of it. A prefix that cannot be proved stays a conflict.
+    if held.is_some() {
+        let held_events = destination
+            .events(entity, id)
+            .map_err(|error| format!("the destination history could not be read: {error}"))?;
+        let held_prefix = held_events.iter().filter(|event| event.revision <= behind);
+        let source_prefix = events.iter().filter(|event| event.revision <= behind);
+        if !held_prefix.eq(source_prefix) {
+            return Err(format!(
+                "the destination's history up to revision {behind} is not the source's: it moved on its own and no merge rule exists"
+            ));
+        }
     }
     let decision = Decision::legacy_import(
         instance,

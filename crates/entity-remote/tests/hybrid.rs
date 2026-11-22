@@ -657,6 +657,103 @@ fn catch_up_refuses_to_overwrite_a_replica_that_moved_on_its_own() {
     );
 }
 
+/// A ticket that stays open and is renamed, emitting the new title, at every revision.
+fn renamable() -> Registry {
+    let definition = serde_json::from_value(json!({
+        "entity": "ticket",
+        "version": 1,
+        "schema": { "fields": { "title": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "open", "states": ["open"] },
+        "create": { "emit": { "type": "TicketOpened", "payload": { "ticket": "$id" } } },
+        "operations": {
+            "rename": {
+                "arguments": { "fields": { "title": { "type": "string", "required": true } } },
+                "transitions": [{ "from": "open", "to": "open" }],
+                "set": { "title": "$args.title" },
+                "emits": [{ "type": "TicketRenamed", "payload": { "title": "$args.title" } }]
+            }
+        }
+    }))
+    .expect("parses");
+    let mut registry = Registry::new();
+    registry.register(definition).expect("validates");
+    registry
+}
+
+#[test]
+fn catch_up_keeps_a_divergence_whose_replica_is_behind_with_an_earlier_event_of_its_own() {
+    // A legacy replica took its own revision 2 while the authority went on to revision 3. The
+    // replay appended only the authority's events above 2, kept the replica's own revision-2 event
+    // under the authority's revision-3 state, and cleared the divergence.
+    let registry = renamable();
+    let runtime = Runtime::new(&registry);
+    let rename = |instance: &EntityInstance, title: &str| {
+        runtime
+            .execute(instance, "rename", json!({ "title": title }))
+            .expect("permitted")
+    };
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+
+    store.remote().transport().go_dark("on a train");
+    let created = opened(&registry);
+    store.commit(&created, Expect::Absent).expect("accepted");
+    let second = rename(&created.instance, "Ours");
+    store
+        .commit(&second, Expect::Revision(1))
+        .expect("accepted");
+    let third = rename(&second.instance, "Ours again");
+    store.commit(&third, Expect::Revision(2)).expect("accepted");
+
+    let theirs = rename(&created.instance, "Theirs");
+    {
+        let transport = store.remote().transport();
+        transport.come_back();
+        transport
+            .store_mut()
+            .commit(&created, Expect::Absent)
+            .expect("accepted");
+        transport
+            .store_mut()
+            .commit(&theirs, Expect::Revision(1))
+            .expect("accepted");
+    }
+
+    assert_eq!(store.catch_up(), 3, "every divergence stays outstanding");
+    assert!(
+        store.divergences().iter().all(|divergence| divergence
+            .detail
+            .contains("history up to revision 2 is not the source's")),
+        "each says why: {:?}",
+        store.divergences()
+    );
+    assert_eq!(
+        store.remote().load("ticket", "one").expect("answers"),
+        Some(theirs.instance),
+        "the replica keeps its own version"
+    );
+    let titles: Vec<serde_json::Value> = store
+        .remote()
+        .events("ticket", "one")
+        .expect("events")
+        .into_iter()
+        .map(|event| event.payload)
+        .collect();
+    assert_eq!(
+        titles,
+        vec![json!({ "ticket": "one" }), json!({ "title": "Theirs" })],
+        "and only its own history"
+    );
+}
+
 #[test]
 fn catch_up_appends_only_what_the_replica_has_not_seen() {
     // Replaying the whole local log appended events the replica already had, and a log with an
