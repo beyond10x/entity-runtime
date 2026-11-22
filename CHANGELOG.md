@@ -13,6 +13,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `create` argument, as they already checked one in the schema or an operation argument. A set
   whose creation argument points at an entity type nobody registered is refused with
   `unknown_relation_target` at a path such as `create.arguments.tracking`; it used to pass.
+- Validating a `service/1` definition builds its set of lifecycle states once instead of once per
+  command, and skips commands with no outcomes. A definition with many states and operations
+  validates faster; the defects reported are unchanged.
 
 ### Fixed
 

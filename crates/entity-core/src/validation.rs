@@ -91,6 +91,19 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
             state: definition.lifecycle.initial.clone(),
         });
     }
+    // The states a service outcome may name, every declared spelling included, built once for the
+    // creation and every operation rather than once per command: a definition with many states and
+    // many operations otherwise spends most of its validation rebuilding this one set.
+    let outcome_states: BTreeSet<&str> = if service {
+        definition
+            .lifecycle
+            .states
+            .iter()
+            .map(String::as_str)
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
 
     // What only a `service/1` definition may carry. Refused rather than ignored: an author who
     // writes a branch believes something selects it.
@@ -234,7 +247,12 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
             "create.response",
             semantics,
         ));
-        defects.extend(validate_outcomes(definition, None, "create"));
+        defects.extend(validate_outcomes(
+            definition,
+            None,
+            "create",
+            &outcome_states,
+        ));
 
         let create_selector = Scope {
             kind: ScopeKind::CreateSelector,
@@ -358,6 +376,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 definition,
                 Some(operation),
                 operation_name,
+                &outcome_states,
             ));
         }
 
@@ -888,22 +907,23 @@ fn validate_conditional_target(
 /// states they name.
 ///
 /// `operation` is `None` for the creation, which has no held state, no move and no wrong state.
+/// `states` is every declared lifecycle state, built once by the caller.
 fn validate_outcomes(
     definition: &EntityDefinition,
     operation: Option<&crate::OperationDefinition>,
     command: &str,
+    states: &BTreeSet<&str>,
 ) -> Vec<DefinitionError> {
     let outcomes: &[OutcomeDefinition] = match operation {
         Some(operation) => &operation.outcomes,
         None => &definition.create.outcomes,
     };
+    // Every check below is about a declared outcome, and the one after the loop needs a
+    // wrong-state outcome, so a command with none has nothing to report.
+    if outcomes.is_empty() {
+        return Vec::new();
+    }
     let mut defects = Vec::new();
-    let states: BTreeSet<&str> = definition
-        .lifecycle
-        .states
-        .iter()
-        .map(String::as_str)
-        .collect();
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     let mut defaults = 0_usize;
     let mut wrong_states = 0_usize;
