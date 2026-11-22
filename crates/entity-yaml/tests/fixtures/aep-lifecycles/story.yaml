@@ -21,6 +21,8 @@ transitions:
   rejected: [archived]
   archived: []
 
+closed: [implemented, rejected]
+
 # What a rung costs. `implemented` was a claim nothing checked — gap register :39, opened by an
 # adopter's governed dogfood run — and this is the line that checks it. A story reaches
 # `implemented` when at least one test result has been presented for it, and the refusal when none

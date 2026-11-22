@@ -26,3 +26,5 @@ transitions:
   rejected: [archived]
   superseded: [archived]
   archived: []
+
+closed: [rejected]

@@ -15,3 +15,5 @@ transitions:
   # record.
   rejected: []
   superseded: []
+
+closed: [rejected]

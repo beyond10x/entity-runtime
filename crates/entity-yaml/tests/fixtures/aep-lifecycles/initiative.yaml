@@ -18,3 +18,5 @@ transitions:
   implemented: [archived]
   rejected: [archived]
   archived: []
+
+closed: [implemented, rejected]

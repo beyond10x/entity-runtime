@@ -35,6 +35,10 @@ and its claim is deliberately narrow: *these say exactly what their ladders say*
   conditions alongside the lifecycle edges.
 * **The body is `json`.** `artifacts/kinds/*.yaml` upstream declares `required_sections`; modelling
   those as fields is a later step.
+* **`closed:` and `descriptions:` are not carried.** Upstream ladders list the states a board shows
+  as closed (`closed:`, AEP 0.80.0) and one line of prose per rung. Neither adds, removes or charges
+  for an edge, an entity definition has no field for either, and the equivalence test reads
+  neither.
 * **Every move emits `ArtifactMoved`.** The kernel produces the fact; who records it, with what
   correlation and causation, is the shell's — and is what a journal would fold.
 
