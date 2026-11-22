@@ -48,6 +48,7 @@ tasks:
     cmds:
       - cargo +1.91.0 test -p entity-eventlog --all-features --locked
       - cargo +1.91.0 clippy -p entity-eventlog --all-targets --all-features --no-deps --locked -- -D warnings
+      - cargo +1.91.0 build -p entity-sqlite --all-features --locked
 
   postgres-check:
     desc: the Postgres provider's tests, against the server ENTITY_POSTGRES_URL names — or one line saying they did not run

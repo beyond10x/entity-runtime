@@ -41,8 +41,8 @@ The libraries are not on a registry; depend on them by Git tag
 
 ## Build from source
 
-Requires Rust 1.85 or newer and [go-task](https://taskfile.dev). `entity-eventlog` and the
-provider contract need Rust 1.91.0 as well, which `task check` calls by name (`cargo +1.91.0`).
+Requires Rust 1.85 or newer and [go-task](https://taskfile.dev). `entity-eventlog`,
+`entity-sqlite` and the provider contract need Rust 1.91.0 as well, which `task check` calls by name (`cargo +1.91.0`).
 PostgreSQL tests run when `ENTITY_POSTGRES_URL` names a server and print that they were skipped
 otherwise.
 

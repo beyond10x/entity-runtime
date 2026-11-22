@@ -4,8 +4,20 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Security
+
+- `entity-eventlog`, `entity-sqlite`, and the Eventlog features of `entity-cli` and
+  `entity-postgres`, depend on Eventlog's `0.9.4` tag instead of `0.8.3`, and `entity-sqlite`
+  pins `rusqlite` 0.41.0 instead of 0.40.2. The workspace now builds one `libsqlite3-sys`, 0.39.1
+  with bundled SQLite 3.54.1, which fixes RUSTSEC-2026-0459 (uninitialized page-cache memory when
+  a database opens with a `-wal` file of another page size). No Entity Runtime API or on-disk
+  format changes.
+
 ### Changed
 
+- `entity-sqlite` requires Rust 1.91 (was 1.85): rusqlite 0.41 needs Rust 1.89, and 1.91 is the
+  toolchain `entity-eventlog` and CI already use. The other libraries and the `entity` command
+  still build on Rust 1.85.
 - The ESS conformance checker pins ESS 0.77.0 instead of revision `ac6fc6fe` (0.38.0 plus the
   governed direct-return extension, which 0.77.0 contains); the regenerated suites move to
   `ess-conformance/35`. No library API or behaviour changes.

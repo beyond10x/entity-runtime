@@ -191,7 +191,8 @@ examples/*.yaml` and `examples/aep/*.yaml`, `examples/references/*.yaml`) · `re
 a moved copy and an unpinned file beside it) · `postgres-check` (the Postgres provider's tests
 against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they did not run) ·
 `eventlog-runtime-check` (`entity-eventlog`'s tests and Clippy with `--all-features` on the
-`+1.91.0` toolchain) · `notes-check` · `ess-check` (canonical regeneration, reviewed scenario
+`+1.91.0` toolchain, and an all-features build of `entity-sqlite`, whose `rust-version` is 1.91
+because rusqlite 0.41 needs Rust 1.89) · `notes-check` · `ess-check` (canonical regeneration, reviewed scenario
 contracts and complete execution against the selected libraries) · `provider-ess-check` (the
 separate SQLite tracking/facade contract on Rust 1.91). Every cargo step runs `--locked`, so the
 gate judges the dependency set the repository committed rather than one cargo re-resolved on the
@@ -203,8 +204,8 @@ well as your default toolchain. The ESS steps build into `checks/ess-conformance
 `ER_ESS_TARGET_DIR` names another directory; set it, and `CARGO_TARGET_DIR`, outside a managed
 worktree.
 
-No gate step builds `entity-cli` with `eventlog-providers` or `entity-sqlite`/`entity-postgres`
-with `eventlog-facade`, so their feature-gated tests (for example
+No gate step tests `entity-cli` with `eventlog-providers` or `entity-sqlite`/`entity-postgres`
+with `eventlog-facade` (only `entity-sqlite`'s is built), so their feature-gated tests (for example
 `crates/entity-cli/tests/cli.rs::explicit_eventlog_file_selection_provisions_creates_executes_retries_and_lists`)
 run only when you ask for them: `cargo +1.91.0 test -p entity-cli --features eventlog-providers`.
 
@@ -225,7 +226,7 @@ evidence when validating the composition (Atlas ADR 0046).
 CI's reusable `.github/workflows/gate.yml` runs format, Clippy, tests, rustdoc, examples,
 requirements and the PostgreSQL provider against its service container; both `check.yml` and
 `release.yml` call it. CI also has an MSRV job on 1.85.0, which builds the workspace except
-`entity-eventlog`, and a separate `Eventlog runtime (Rust 1.91)` job that runs
+`entity-eventlog` and `entity-sqlite`, and a separate `Eventlog runtime (Rust 1.91)` job that runs
 `eventlog-runtime-check`'s commands against its own PostgreSQL service. `pin-check` and
 `notes-check` remain local-only. `docs-check` is not a `gate.yml` step, but the docs crate's tests
 that hold the same checks run in its Test step, and `pages.yml` runs `generate --check` itself. If

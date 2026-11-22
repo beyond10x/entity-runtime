@@ -110,7 +110,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Build on the declared MSRV
-        run: cargo build --workspace --exclude entity-eventlog --locked
+        run: cargo build --workspace --exclude entity-eventlog --exclude entity-sqlite --locked
 
       - name: Build the isolated conformance checker on the declared MSRV
         run: cargo build --manifest-path checks/ess-conformance/Cargo.toml --locked
@@ -159,6 +159,10 @@ jobs:
 
       - name: Lint every Eventlog provider and bridge
         run: cargo clippy -p entity-eventlog --all-targets --all-features --no-deps --locked -- -D warnings
+
+      # rusqlite 0.41 needs Rust 1.89, so `entity-sqlite` declares 1.91 and leaves the MSRV job.
+      - name: Build the SQLite provider on its declared rust-version
+        run: cargo build -p entity-sqlite --all-features --locked
 
       - name: Executable SQLite provider contracts
         run: |
