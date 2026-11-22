@@ -46,6 +46,24 @@ pub fn object_schema(schema: &ObjectSchema) -> Value {
     Value::Object(out)
 }
 
+/// The schema of a creation command's input: what the kernel validates the input against.
+///
+/// A `service/1`, `service/2` or `service/3` definition that declares creation outcomes takes its
+/// declared creation arguments, and its selected branch writes the fields; every other definition
+/// takes the instance fields directly. This is the selection `entity_core::decide_create` makes.
+#[must_use]
+pub fn create_input_schema(definition: &EntityDefinition) -> Value {
+    if has_branched_creation(definition) {
+        object_schema(&definition.create.arguments)
+    } else {
+        object_schema(&definition.schema)
+    }
+}
+
+fn has_branched_creation(definition: &EntityDefinition) -> bool {
+    definition.semantics.has_service_semantics() && !definition.create.outcomes.is_empty()
+}
+
 /// Generates the canonical contract-only OpenAPI 3.2 document for a definition set.
 #[must_use]
 pub fn openapi(definitions: &[EntityDefinition]) -> Value {
@@ -55,6 +73,15 @@ pub fn openapi(definitions: &[EntityDefinition]) -> Value {
         let key = schema_key(definition);
         schemas.insert(format!("{key}Fields"), object_schema(&definition.schema));
         schemas.insert(format!("{key}Instance"), instance_schema(definition, &key));
+        let create_input = if has_branched_creation(definition) {
+            schemas.insert(
+                format!("{key}CreateArguments"),
+                create_input_schema(definition),
+            );
+            format!("#/components/schemas/{key}CreateArguments")
+        } else {
+            format!("#/components/schemas/{key}Fields")
+        };
 
         let collection = format!(
             "/entities/{}/versions/{}",
@@ -72,7 +99,7 @@ pub fn openapi(definitions: &[EntityDefinition]) -> Value {
                         "required": ["id", "fields", "recording"],
                         "properties": {
                             "id": { "type": "string", "minLength": 1 },
-                            "fields": { "$ref": format!("#/components/schemas/{key}Fields") },
+                            "fields": { "$ref": create_input },
                             "recording": { "$ref": "#/components/schemas/Recording" }
                         }
                     }}}},
@@ -167,45 +194,44 @@ pub fn asyncapi(definitions: &[EntityDefinition]) -> Value {
     let mut messages = Map::new();
     let mut operations = Map::new();
     let mut declared: BTreeMap<String, (String, String, Vec<Value>)> = BTreeMap::new();
+    let mut declare = |definition: &EntityDefinition,
+                       event: &entity_core::EventDefinition,
+                       arguments: Option<&ObjectSchema>| {
+        declared
+            .entry(format!(
+                "{}.{}",
+                safe_identifier(&definition.entity),
+                safe_identifier(&event.event_type)
+            ))
+            .or_insert_with(|| {
+                (
+                    definition.entity.clone(),
+                    event.event_type.clone(),
+                    Vec::new(),
+                )
+            })
+            .2
+            .push(event_envelope_schema(definition, event, arguments));
+    };
     for definition in definitions {
+        // A `kernel/1` creation event sees no arguments; the events of a `service/1` creation
+        // branch see the creation command's arguments, as the kernel materializes them.
         if let Some(event) = &definition.create.emit {
-            declared
-                .entry(format!(
-                    "{}.{}",
-                    safe_identifier(&definition.entity),
-                    safe_identifier(&event.event_type)
-                ))
-                .or_insert_with(|| {
-                    (
-                        definition.entity.clone(),
-                        event.event_type.clone(),
-                        Vec::new(),
-                    )
-                })
-                .2
-                .push(event_envelope_schema(definition, event, None));
+            declare(definition, event, None);
+        }
+        for outcome in &definition.create.outcomes {
+            for event in &outcome.emits {
+                declare(definition, event, Some(&definition.create.arguments));
+            }
         }
         for operation in definition.operations.values() {
             for event in &operation.emits {
-                declared
-                    .entry(format!(
-                        "{}.{}",
-                        safe_identifier(&definition.entity),
-                        safe_identifier(&event.event_type)
-                    ))
-                    .or_insert_with(|| {
-                        (
-                            definition.entity.clone(),
-                            event.event_type.clone(),
-                            Vec::new(),
-                        )
-                    })
-                    .2
-                    .push(event_envelope_schema(
-                        definition,
-                        event,
-                        Some(&operation.arguments),
-                    ));
+                declare(definition, event, Some(&operation.arguments));
+            }
+            for outcome in &operation.outcomes {
+                for event in &outcome.emits {
+                    declare(definition, event, Some(&operation.arguments));
+                }
             }
         }
     }
@@ -1134,6 +1160,141 @@ mod tests {
         let mut invalid = serde_json::to_value(&decision.events[0]).unwrap();
         invalid["payload"]["reason"] = json!(42);
         assert!(!jsonschema::is_valid(schema, &invalid));
+    }
+
+    /// The review's `outcome.yaml` (`service/1`, the event declared on the creation branch), with
+    /// one operation whose event is declared on an operation branch and reads its arguments.
+    fn parcel() -> EntityDefinition {
+        serde_json::from_value(json!({
+            "entity": "parcel",
+            "version": 1,
+            "semantics": "service/1",
+            "schema": { "fields": {} },
+            "lifecycle": { "initial": "open", "states": ["open", "sealed"] },
+            "create": { "outcomes": [{
+                "name": "opened",
+                "effect": "creates",
+                "emits": [{ "type": "ParcelOpened", "payload": {} }]
+            }]},
+            "operations": { "seal": {
+                "arguments": { "fields": { "reason": { "type": "string", "required": true } } },
+                "outcomes": [{
+                    "name": "sealed",
+                    "effect": { "moves": { "from": "open", "to": "sealed" } },
+                    "emits": [{ "type": "ParcelSealed", "payload": { "reason": "$args.reason" } }]
+                }]
+            }}
+        }))
+        .expect("the fixture is a definition document")
+    }
+
+    #[test]
+    fn events_declared_on_creation_and_operation_outcomes_are_published_with_their_payloads() {
+        let definition = parcel();
+        let spec = asyncapi(std::slice::from_ref(&definition));
+        let mut registry = entity_core::Registry::new();
+        registry
+            .register(definition)
+            .expect("the fixture registers");
+        let runtime = entity_core::Runtime::new(&registry);
+        let created = runtime
+            .create("parcel", 1, "one", json!({}))
+            .expect("created");
+        let sealed = runtime
+            .execute(&created.instance, "seal", json!({ "reason": "full" }))
+            .expect("sealed");
+
+        for (channel, message, event) in [
+            (
+                "parcel.ParcelOpened",
+                "parcel_ParcelOpened",
+                &created.events,
+            ),
+            ("parcel.ParcelSealed", "parcel_ParcelSealed", &sealed.events),
+        ] {
+            assert_eq!(
+                spec["channels"][channel]["messages"][message]["$ref"],
+                format!("#/components/messages/{message}"),
+                "the outcome's event has no channel: {spec}"
+            );
+            assert!(
+                spec["operations"][format!("receive_{message}")].is_object(),
+                "the outcome's event has no receive operation: {spec}"
+            );
+            let schema = &spec["components"]["messages"][message]["payload"];
+            let emitted = serde_json::to_value(&event[0]).expect("an event serializes");
+            assert!(
+                jsonschema::is_valid(schema, &emitted),
+                "the published message refuses the event the kernel emits: {emitted} {schema}"
+            );
+        }
+        let schema = &spec["components"]["messages"]["parcel_ParcelSealed"]["payload"];
+        assert_eq!(
+            schema["properties"]["payload"]["properties"]["reason"]["type"], "string",
+            "an operation branch's event payload keeps its declared argument schema"
+        );
+        let mut wrong = serde_json::to_value(&sealed.events[0]).expect("an event serializes");
+        wrong["payload"]["reason"] = json!(42);
+        assert!(!jsonschema::is_valid(schema, &wrong));
+    }
+
+    /// The schema an OpenAPI create request's `fields` member names, with its `$ref` followed.
+    fn create_fields_schema(spec: &Value, collection: &str) -> Value {
+        let reference = spec["paths"][collection]["post"]["requestBody"]["content"]
+            ["application/json"]["schema"]["properties"]["fields"]["$ref"]
+            .as_str()
+            .expect("the create request names its input schema");
+        let name = reference
+            .strip_prefix("#/components/schemas/")
+            .expect("a local component");
+        spec["components"]["schemas"][name].clone()
+    }
+
+    #[test]
+    fn a_branched_creation_request_takes_the_creation_arguments_the_kernel_accepts() {
+        // The review's `runtime/parcel.yaml`.
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "parcel",
+            "version": 1,
+            "semantics": "service/1",
+            "schema": { "fields": { "label": { "type": "string", "required": true } } },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "create": {
+                "arguments": { "fields": { "label_text": { "type": "string", "required": true } } },
+                "outcomes": [{
+                    "name": "opened", "effect": "creates", "set": { "label": "$args.label_text" }
+                }]
+            },
+            "operations": {}
+        }))
+        .expect("the fixture is a definition document");
+        let spec = openapi(std::slice::from_ref(&definition));
+        let input = create_fields_schema(&spec, "/entities/parcel/versions/1");
+        let accepted = json!({ "label_text": "Post" });
+        assert!(
+            jsonschema::is_valid(&input, &accepted),
+            "the create request refuses the creation arguments the kernel accepts: {input}"
+        );
+        assert!(
+            !jsonschema::is_valid(&input, &json!({ "label": "Post" })),
+            "the create request admits instance fields the kernel refuses as arguments: {input}"
+        );
+
+        let mut registry = entity_core::Registry::new();
+        registry
+            .register(definition)
+            .expect("the fixture registers");
+        let created = entity_core::Runtime::new(&registry)
+            .create("parcel", 1, "parcel-1", accepted)
+            .expect("the kernel accepts the arguments");
+        assert_eq!(created.instance.fields["label"], "Post");
+
+        // The direct field-based path keeps the instance fields.
+        let direct = openapi(&[self::definition()]);
+        assert_eq!(
+            create_fields_schema(&direct, "/entities/refund/versions/1"),
+            object_schema(&self::definition().schema)
+        );
     }
 
     #[test]

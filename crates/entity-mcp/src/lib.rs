@@ -385,7 +385,7 @@ fn recording(object: &Map<String, Value>) -> Result<Recording, ShellError> {
 fn create_schema(definitions: Vec<&EntityDefinition>) -> Value {
     let field_schemas: Vec<Value> = definitions
         .iter()
-        .map(|definition| entity_surface::object_schema(&definition.schema))
+        .map(|definition| entity_surface::create_input_schema(definition))
         .collect();
     let fields = if field_schemas.len() == 1 {
         field_schemas
@@ -407,7 +407,7 @@ fn create_schema(definitions: Vec<&EntityDefinition>) -> Value {
         "type": "object", "additionalProperties": false, "required": required,
         "allOf": definitions.iter().map(|definition| json!({
             "if": { "properties": { "version": { "const": definition.version } }, "required": ["version"] },
-            "then": { "properties": { "fields": entity_surface::object_schema(&definition.schema) } }
+            "then": { "properties": { "fields": entity_surface::create_input_schema(definition) } }
         })).collect::<Vec<_>>(),
         "properties": {
             "id": { "type": "string", "minLength": 1 },
@@ -595,6 +595,58 @@ mod tests {
         assert_eq!(
             stale["result"]["structuredContent"]["kind"],
             "revision_conflict"
+        );
+    }
+
+    /// The review's `runtime/parcel.yaml`: a branched `service/1` creation whose input is its
+    /// declared arguments, not the instance fields its branch writes.
+    #[test]
+    fn a_branched_creation_tool_takes_the_creation_arguments_the_kernel_accepts() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "parcel",
+            "version": 1,
+            "semantics": "service/1",
+            "schema": { "fields": { "label": { "type": "string", "required": true } } },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "create": {
+                "arguments": { "fields": { "label_text": { "type": "string", "required": true } } },
+                "outcomes": [{
+                    "name": "opened", "effect": "creates", "set": { "label": "$args.label_text" }
+                }]
+            },
+            "operations": {}
+        }))
+        .expect("definition");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("valid");
+        let schema = create_schema(registry.iter().map(|d| d.as_definition()).collect());
+        let recording =
+            json!({ "record_id": "one", "recorded_at": "2026-11-22T12:00:00Z", "actor": null });
+        let accepted =
+            json!({ "id": "parcel-1", "fields": { "label_text": "Post" }, "recording": recording });
+        assert!(
+            jsonschema::is_valid(&schema, &accepted),
+            "the tool refuses the creation arguments the kernel accepts: {schema}"
+        );
+        let mut fields_instead = accepted.clone();
+        fields_instead["fields"] = json!({ "label": "Post" });
+        assert!(
+            !jsonschema::is_valid(&schema, &fields_instead),
+            "the tool admits instance fields the kernel refuses as arguments: {schema}"
+        );
+
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let created = server
+            .handle(
+                json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                    "name": "parcel.create", "arguments": accepted
+                }}),
+            )
+            .expect("response");
+        assert_eq!(created["result"]["isError"], false, "{created}");
+        assert_eq!(
+            created["result"]["structuredContent"]["instance"]["fields"]["label"], "Post",
+            "{created}"
         );
     }
 }

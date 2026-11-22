@@ -10,6 +10,19 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
 
+### Fixed
+
+- `entity generate docs` (and `entity_surface::asyncapi`) publishes the events a `service/1`
+  definition declares on its creation and operation outcomes. Before, only `create.emit` and an
+  operation's `emits` reached the AsyncAPI contract, so an event the kernel emitted from an
+  outcome had no channel, message or receive operation. Each payload keeps the schema of the
+  creation's or the operation's arguments it reads.
+- The OpenAPI create request and the MCP `<entity>.create` tool describe the input the kernel
+  validates. A `service/1`, `service/2` or `service/3` definition with creation outcomes takes its
+  declared creation arguments in `fields` (OpenAPI component `<Entity>V<n>CreateArguments`);
+  before, both surfaces required the instance fields and refused the arguments the kernel accepts.
+  A definition without creation outcomes still takes its instance fields.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security
