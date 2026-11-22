@@ -824,11 +824,21 @@ fn generate_rust_cli(
             "--build-dir must not be a filesystem root".into(),
         ));
     }
-    if destination.exists() && !force {
-        return Err(Failure::Usage(format!(
-            "{} already exists; pass --force to replace that exact binary",
+    let destination = std::path::absolute(destination).map_err(|error| {
+        Failure::Usage(format!(
+            "cannot resolve output path {}: {error}",
             destination.display()
-        )));
+        ))
+    })?;
+    let previous = generated_output::previous_installation(&build_dir);
+    if fs::symlink_metadata(&destination).is_ok() {
+        if !force {
+            return Err(Failure::Usage(format!(
+                "{} already exists; pass --force to replace that exact binary",
+                destination.display()
+            )));
+        }
+        generated_output::check_output_owned(&destination, previous.as_ref())?;
     }
     // A forced regeneration replaces the generated sources and keeps Cargo's `target/` and, for
     // the same runtime version, the lockfile: a change confined to an embedded definition then
@@ -848,7 +858,8 @@ fn generate_rust_cli(
     }
     fs::write(
         build_dir.join(generated_output::GENERATED_CLI_MARKER),
-        generated_output::generated_cli_marker(),
+        // Until the new binary is installed, the one installed before is still the one at --out.
+        generated_output::cli_marker_text(previous.clone()),
     )
     .map_err(|error| Failure::Usage(format!("cannot write generator marker: {error}")))?;
 
@@ -867,86 +878,7 @@ fn generate_rust_cli(
     let target_dir = build_dir.join("target");
     run_cargo(&build_dir, lockfile.cargo_arguments())?;
     let built = cargo_build_executable(&build_dir, &target_dir, name)?;
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent)
-        .map_err(|error| Failure::Usage(format!("cannot create {}: {error}", parent.display())))?;
-    let temporary = parent.join(format!(
-        ".{}.installing.{}",
-        destination
-            .file_name()
-            .unwrap_or_else(|| OsStr::new(name))
-            .to_string_lossy(),
-        std::process::id()
-    ));
-    let mut source = fs::File::open(&built).map_err(|error| {
-        Failure::Usage(format!(
-            "cannot open built binary {}: {error}",
-            built.display()
-        ))
-    })?;
-    let mut staged = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .map_err(|error| {
-            Failure::Usage(format!(
-                "cannot reserve installation path {}: {error}",
-                temporary.display()
-            ))
-        })?;
-    io::copy(&mut source, &mut staged)
-        .map_err(|error| Failure::Usage(format!("cannot stage {}: {error}", built.display())))?;
-    drop(source);
-    drop(staged);
-    fs::set_permissions(
-        &temporary,
-        fs::metadata(&built)
-            .map_err(|error| {
-                Failure::Usage(format!("cannot inspect {}: {error}", built.display()))
-            })?
-            .permissions(),
-    )
-    .map_err(|error| Failure::Usage(format!("cannot preserve binary permissions: {error}")))?;
-    if destination.exists() {
-        let backup = parent.join(format!(
-            ".{}.replaced.{}",
-            destination
-                .file_name()
-                .unwrap_or_else(|| OsStr::new(name))
-                .to_string_lossy(),
-            std::process::id()
-        ));
-        if backup.exists() {
-            return Err(Failure::Usage(format!(
-                "replacement backup {} already exists",
-                backup.display()
-            )));
-        }
-        fs::rename(destination, &backup).map_err(|error| {
-            Failure::Usage(format!(
-                "cannot stage replacement of {}: {error}",
-                destination.display()
-            ))
-        })?;
-        if let Err(error) = fs::rename(&temporary, destination) {
-            let _ = fs::rename(&backup, destination);
-            return Err(Failure::Usage(format!(
-                "cannot install {}: {error}",
-                destination.display()
-            )));
-        }
-        fs::remove_file(&backup).map_err(|error| {
-            Failure::Usage(format!(
-                "installed {}, but cannot remove backup {}: {error}",
-                destination.display(),
-                backup.display()
-            ))
-        })?;
-    } else {
-        fs::rename(&temporary, destination).map_err(|error| {
-            Failure::Usage(format!("cannot install {}: {error}", destination.display()))
-        })?;
-    }
+    generated_output::install_binary(&built, &destination, &build_dir, previous.as_ref())?;
     writeln!(
         out,
         "generated {name} at {}; source retained at {}",

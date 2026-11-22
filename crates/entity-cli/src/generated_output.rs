@@ -256,15 +256,223 @@ fn rename_noreplace(from: &Path, to: &Path) -> io::Result<()> {
     fs::rename(from, to)
 }
 
-/// The marker a retained Rust CLI crate carries, naming the runtime version that generated it.
-pub(crate) fn generated_cli_marker() -> String {
-    format!(
-        "{{\"format\":\"entity-runtime-cli/1\",\"runtime\":\"{}\"}}\n",
-        env!("CARGO_PKG_VERSION")
-    )
+/// The marker a retained Rust CLI crate carries: the runtime version that generated it and, once
+/// it has installed one, the binary it installed — the only file `--force` may replace at `--out`.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CliMarker {
+    format: String,
+    runtime: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    installed: Option<Installed>,
 }
 
-/// The file [`generated_cli_marker`] is written to.
+/// A binary the generator installed: where, and a fingerprint of its bytes.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Installed {
+    path: String,
+    length: u64,
+    fnv1a64: String,
+}
+
+/// The marker text for this runtime version, recording `installed` when there is one.
+pub(crate) fn cli_marker_text(installed: Option<Installed>) -> String {
+    let marker = CliMarker {
+        format: "entity-runtime-cli/1".to_owned(),
+        runtime: env!("CARGO_PKG_VERSION").to_owned(),
+        installed,
+    };
+    serde_json::to_string(&marker).expect("the marker serializes") + "\n"
+}
+
+fn read_cli_marker(build_dir: &Path) -> Option<CliMarker> {
+    let text = fs::read_to_string(build_dir.join(GENERATED_CLI_MARKER)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// The binary the generator last installed from `build_dir`, as its marker records it.
+pub(crate) fn previous_installation(build_dir: &Path) -> Option<Installed> {
+    read_cli_marker(build_dir).and_then(|marker| marker.installed)
+}
+
+/// Length and FNV-1a 64 of the bytes at `path`. Not a defence against a forger — whoever can write
+/// the build directory can write its marker — but it tells the binary the generator installed from
+/// a file that was put at `--out` some other way.
+fn fingerprint(path: &Path) -> io::Result<(u64, String)> {
+    let mut file = fs::File::open(path)?;
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut length = 0_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = io::Read::read(&mut file, &mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        length += read as u64;
+        for byte in &buffer[..read] {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    Ok((length, format!("{hash:016x}")))
+}
+
+fn record(destination: &Path, contents: &Path) -> io::Result<Installed> {
+    let (length, fnv1a64) = fingerprint(contents)?;
+    Ok(Installed {
+        path: destination.to_string_lossy().into_owned(),
+        length,
+        fnv1a64,
+    })
+}
+
+/// Refuse unless the file whose bytes are at `contents` is the binary `previous` records as
+/// installed at `destination`.
+fn owned(destination: &Path, contents: &Path, previous: Option<&Installed>) -> Result<(), Failure> {
+    let refusal = || {
+        Failure::Usage(format!(
+            "{} exists and is not the binary this generator installed from the build directory; \
+             remove it or choose another --out",
+            destination.display()
+        ))
+    };
+    let previous = previous.ok_or_else(refusal)?;
+    let found = record(destination, contents).map_err(|error| {
+        Failure::Usage(format!("cannot inspect {}: {error}", destination.display()))
+    })?;
+    if &found == previous {
+        Ok(())
+    } else {
+        Err(refusal())
+    }
+}
+
+/// Refuse to replace an existing `destination` (an absolute path) that the build directory's
+/// marker does not record as installed by this generator. Checked before the build so a refusal
+/// costs nothing; [`install_binary`] checks again on the file it moves aside.
+pub(crate) fn check_output_owned(
+    destination: &Path,
+    previous: Option<&Installed>,
+) -> Result<(), Failure> {
+    owned(destination, destination, previous)
+}
+
+/// Install `built` at `destination` (an absolute path) and record it in `build_dir`'s marker.
+///
+/// An existing `destination` is replaced only when it is the binary `previous` records; it is
+/// moved aside first and its bytes are checked there, so a file put in its place after
+/// [`check_output_owned`] is moved back, not removed.
+pub(crate) fn install_binary(
+    built: &Path,
+    destination: &Path,
+    build_dir: &Path,
+    previous: Option<&Installed>,
+) -> Result<(), Failure> {
+    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
+    let name = destination
+        .file_name()
+        .ok_or_else(|| Failure::Usage("--out must name a file".into()))?
+        .to_string_lossy()
+        .into_owned();
+    fs::create_dir_all(parent)
+        .map_err(|error| Failure::Usage(format!("cannot create {}: {error}", parent.display())))?;
+    let temporary = parent.join(format!(".{name}.installing.{}", std::process::id()));
+    let result = stage_binary(built, &temporary)
+        .and_then(|()| place_binary(&temporary, destination, parent, &name, previous))
+        .and_then(|()| {
+            record(destination, destination)
+                .map_err(|error| error.to_string())
+                .and_then(|installed| {
+                    fs::write(
+                        build_dir.join(GENERATED_CLI_MARKER),
+                        cli_marker_text(Some(installed)),
+                    )
+                    .map_err(|error| error.to_string())
+                })
+                .map_err(|error| {
+                    Failure::Usage(format!(
+                        "installed {}, but cannot record it in {}: {error}",
+                        destination.display(),
+                        build_dir.join(GENERATED_CLI_MARKER).display()
+                    ))
+                })
+        });
+    if result.is_err() {
+        // Reserved with `create_new` by this process: removing it removes nobody else's file.
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn stage_binary(built: &Path, temporary: &Path) -> Result<(), Failure> {
+    let mut source = fs::File::open(built).map_err(|error| {
+        Failure::Usage(format!(
+            "cannot open built binary {}: {error}",
+            built.display()
+        ))
+    })?;
+    let mut staged = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(temporary)
+        .map_err(|error| {
+            Failure::Usage(format!(
+                "cannot reserve installation path {}: {error}",
+                temporary.display()
+            ))
+        })?;
+    io::copy(&mut source, &mut staged)
+        .map_err(|error| Failure::Usage(format!("cannot stage {}: {error}", built.display())))?;
+    drop(staged);
+    let permissions = fs::metadata(built)
+        .map_err(|error| Failure::Usage(format!("cannot inspect {}: {error}", built.display())))?
+        .permissions();
+    fs::set_permissions(temporary, permissions)
+        .map_err(|error| Failure::Usage(format!("cannot preserve binary permissions: {error}")))
+}
+
+fn place_binary(
+    temporary: &Path,
+    destination: &Path,
+    parent: &Path,
+    name: &str,
+    previous: Option<&Installed>,
+) -> Result<(), Failure> {
+    if fs::symlink_metadata(destination).is_err() {
+        return rename_noreplace(temporary, destination).map_err(|error| {
+            Failure::Usage(format!("cannot install {}: {error}", destination.display()))
+        });
+    }
+    let backup = parent.join(format!(".{name}.replaced.{}", std::process::id()));
+    rename_noreplace(destination, &backup).map_err(|error| {
+        Failure::Usage(format!(
+            "cannot stage replacement of {}: {error}",
+            destination.display()
+        ))
+    })?;
+    if let Err(refusal) = owned(destination, &backup, previous) {
+        let reason = match refusal {
+            Failure::Usage(reason) => reason,
+            _ => format!("{} will not be replaced", destination.display()),
+        };
+        return Err(restore(&backup, destination, reason));
+    }
+    if let Err(error) = rename_noreplace(temporary, destination) {
+        return Err(restore(
+            &backup,
+            destination,
+            format!("cannot install {}: {error}", destination.display()),
+        ));
+    }
+    fs::remove_file(&backup).map_err(|error| {
+        Failure::Usage(format!(
+            "installed {}, but cannot remove backup {}: {error}",
+            destination.display(),
+            backup.display()
+        ))
+    })
+}
+
+/// The file [`cli_marker_text`] is written to.
 pub(crate) const GENERATED_CLI_MARKER: &str = ".entity-runtime-cli.json";
 
 /// How the retained crate gets its `Cargo.lock`.
@@ -305,7 +513,8 @@ pub(crate) fn prepare_build_dir(build_dir: &Path, force: bool) -> Result<Lockfil
             build_dir.display()
         )));
     }
-    let same_runtime = fs::read_to_string(&marker).is_ok_and(|text| text == generated_cli_marker());
+    let same_runtime = read_cli_marker(build_dir)
+        .is_some_and(|marker| marker.runtime == env!("CARGO_PKG_VERSION"));
     let replace = |error: io::Error| {
         Failure::Usage(format!("cannot replace {}: {error}", build_dir.display()))
     };
@@ -552,7 +761,7 @@ mod tests {
 
     #[test]
     fn forced_regeneration_keeps_the_cargo_cache_and_the_lockfile_of_the_same_runtime() {
-        let build_dir = generated_build_dir("rust-cli-same-runtime", &generated_cli_marker());
+        let build_dir = generated_build_dir("rust-cli-same-runtime", &cli_marker_text(None));
         let lockfile = succeeds(
             prepare_build_dir(&build_dir, true),
             "authorised replacement",
@@ -617,6 +826,121 @@ mod tests {
         assert_eq!(
             fs::read_to_string(build_dir.join("keep")).expect("untouched"),
             "operator data"
+        );
+    }
+
+    /// A marked build directory, a built binary with `contents`, and an output path, all under one
+    /// scratch root; no Cargo build.
+    fn installation(test: &str, contents: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let root = scratch(test);
+        let build_dir = root.join("build");
+        fs::create_dir_all(&build_dir).expect("build dir");
+        fs::write(build_dir.join(GENERATED_CLI_MARKER), cli_marker_text(None)).expect("marker");
+        let built = root.join("built-binary");
+        fs::write(&built, contents).expect("built binary");
+        (build_dir, built, root.join("bin").join("refundctl"))
+    }
+
+    #[test]
+    fn an_unrelated_file_at_the_output_is_not_replaced_even_with_force() {
+        let (build_dir, built, destination) = installation("rust-cli-unrelated-output", "binary 1");
+        fs::create_dir_all(destination.parent().expect("bin")).expect("bin dir");
+        fs::write(&destination, "operator data").expect("unrelated file");
+        let previous = previous_installation(&build_dir);
+        let early = usage(check_output_owned(&destination, previous.as_ref()));
+        assert!(
+            early.contains("is not the binary this generator installed"),
+            "{early}"
+        );
+        let late = usage(install_binary(
+            &built,
+            &destination,
+            &build_dir,
+            previous.as_ref(),
+        ));
+        assert!(
+            late.contains("is not the binary this generator installed"),
+            "{late}"
+        );
+        assert_eq!(
+            fs::read_to_string(&destination).expect("unrelated file survives"),
+            "operator data"
+        );
+        assert_eq!(
+            leftovers(destination.parent().expect("bin")),
+            Vec::<String>::new(),
+            "no staged binary or backup is left beside the output"
+        );
+    }
+
+    #[test]
+    fn a_binary_this_generator_installed_is_replaced_and_the_new_one_recorded() {
+        let (build_dir, built, destination) = installation("rust-cli-owned-output", "binary 1");
+        succeeds(
+            install_binary(&built, &destination, &build_dir, None),
+            "first installation",
+        );
+        let previous = previous_installation(&build_dir);
+        assert!(previous.is_some(), "the installation is recorded");
+        succeeds(
+            check_output_owned(&destination, previous.as_ref()),
+            "the recorded binary is owned",
+        );
+        fs::write(&built, "binary 2").expect("rebuilt binary");
+        succeeds(
+            install_binary(&built, &destination, &build_dir, previous.as_ref()),
+            "forced reinstallation",
+        );
+        assert_eq!(
+            fs::read_to_string(&destination).expect("installed"),
+            "binary 2"
+        );
+        assert_ne!(
+            previous_installation(&build_dir),
+            previous,
+            "the record follows the binary"
+        );
+    }
+
+    #[test]
+    fn a_binary_changed_since_it_was_installed_is_not_replaced() {
+        let (build_dir, built, destination) = installation("rust-cli-changed-output", "binary 1");
+        succeeds(
+            install_binary(&built, &destination, &build_dir, None),
+            "first installation",
+        );
+        let previous = previous_installation(&build_dir);
+        fs::write(&destination, "operator data").expect("someone else's file");
+        let message = usage(install_binary(
+            &built,
+            &destination,
+            &build_dir,
+            previous.as_ref(),
+        ));
+        assert!(
+            message.contains("is not the binary this generator installed"),
+            "{message}"
+        );
+        assert_eq!(
+            fs::read_to_string(&destination).expect("their file survives"),
+            "operator data"
+        );
+    }
+
+    #[test]
+    fn an_installation_recorded_for_another_output_does_not_authorise_this_one() {
+        let (build_dir, built, destination) = installation("rust-cli-other-output", "binary 1");
+        succeeds(
+            install_binary(&built, &destination, &build_dir, None),
+            "first installation",
+        );
+        let previous = previous_installation(&build_dir);
+        let elsewhere = destination.with_file_name("other");
+        fs::copy(&destination, &elsewhere).expect("same bytes, another path");
+        let message = usage(check_output_owned(&elsewhere, previous.as_ref()));
+        assert!(
+            message.contains("is not the binary this generator installed"),
+            "{message}"
         );
     }
 }

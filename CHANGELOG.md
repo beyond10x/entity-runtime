@@ -24,6 +24,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   the generated crate rather than every dependency.
 - `entity graph` computes the diagram layout only for `--format svg` and `--format html`; text,
   Mermaid and DOT output no longer pay for a layout they do not use.
+- `entity generate rust-cli --force` no longer replaces an unrelated file at `--out`. The build
+  directory's marker now records the binary the generator installed (path, length and FNV-1a
+  digest), and an existing output is replaced only when it is that binary, checked before the
+  build and again on the file moved aside. A binary installed by 0.32.0 or earlier carries no
+  record: remove it once by hand before regenerating over it.
 
 ## [0.32.0] — 2026-11-22
 
