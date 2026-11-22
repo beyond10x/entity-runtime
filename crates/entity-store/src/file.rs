@@ -83,7 +83,7 @@ enum Target {
     Unread,
     /// Read under the write guard by the scan that built the index: the subject, or `None` when
     /// the store holds no such subject.
-    Scanned(Option<StoredSubject>),
+    Scanned(Option<Box<StoredSubject>>),
 }
 
 fn lock(records: &Mutex<Option<RecordIndex>>) -> std::sync::MutexGuard<'_, Option<RecordIndex>> {
@@ -394,7 +394,7 @@ impl FileStore {
             if records.is_none() {
                 let (index, scanned) = self.scan_records((entity, id))?;
                 *records = Some(index);
-                target = Target::Scanned(scanned);
+                target = Target::Scanned(scanned.map(Box::new));
             }
             records
                 .as_ref()
@@ -405,7 +405,7 @@ impl FileStore {
         };
         let held = match target {
             Target::Scanned(Some(subject)) if location.entity == entity && location.id == id => {
-                Some(subject)
+                Some(*subject)
             }
             _ => self.read_subject(&location.entity, &location.id)?,
         };
@@ -1059,7 +1059,7 @@ impl Store for FileStore {
             };
         }
         let mut held = match target {
-            Target::Scanned(held) => held,
+            Target::Scanned(held) => held.map(|subject| *subject),
             Target::Unread => self.read_subject(entity, id)?,
         };
         if let Some(stored) = &held {
@@ -1128,7 +1128,7 @@ impl Store for FileStore {
             };
         }
         let held = match target {
-            Target::Scanned(held) => held,
+            Target::Scanned(held) => held.map(|subject| *subject),
             Target::Unread => self.read_subject(&observation.entity, &observation.id)?,
         };
         let mut stored = held.ok_or_else(|| StoreError::RevisionConflict {
