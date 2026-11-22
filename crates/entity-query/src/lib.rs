@@ -5,6 +5,7 @@
 //! documents without enumerating and hydrating an entire entity type.
 
 use std::borrow::Borrow;
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -282,6 +283,7 @@ fn page_ordered<T: Borrow<EntityInstance>>(
 
 /// The provider-neutral meaning of PostgreSQL JSONB containment.
 fn contains(actual: &Value, expected: &Value) -> bool {
+    comparisons::note();
     match (actual, expected) {
         (Value::Number(actual), Value::Number(expected)) => {
             entity_core::compare_numbers(actual, expected).is_eq()
@@ -291,10 +293,86 @@ fn contains(actual: &Value, expected: &Value) -> bool {
                 .get(key)
                 .is_some_and(|candidate| contains(candidate, value))
         }),
-        (Value::Array(actual), Value::Array(expected)) => expected
-            .iter()
-            .all(|value| actual.iter().any(|candidate| contains(candidate, value))),
+        (Value::Array(actual), Value::Array(expected)) => array_contains(actual, expected),
         _ => actual == expected,
+    }
+}
+
+/// Every expected member is contained by some actual member.
+///
+/// A scalar member can only be contained by an equal scalar, numbers by exact value. Searching
+/// the stored array from its start for each member costs its length per member, quadratic when a
+/// query names many of a row's members; a sorted index of the stored scalars costs about
+/// `n·log n` once and `log n` per member, so it is built when the expected scalars outnumber
+/// `log n`. Objects and nested arrays are still searched recursively.
+fn array_contains(actual: &[Value], expected: &[Value]) -> bool {
+    let scalars = expected.iter().filter(|value| is_scalar(value)).count();
+    let log = (usize::BITS - actual.len().leading_zeros()) as usize;
+    let indexed = scalars > 1 && scalars > log;
+    let mut index: Option<Vec<&Value>> = None;
+    expected.iter().all(|value| {
+        if indexed && is_scalar(value) {
+            let index = index.get_or_insert_with(|| {
+                let mut held: Vec<&Value> = actual.iter().filter(|held| is_scalar(held)).collect();
+                held.sort_by(|left, right| scalar_order(left, right));
+                held
+            });
+            index
+                .binary_search_by(|held| scalar_order(held, value))
+                .is_ok()
+        } else {
+            actual.iter().any(|candidate| contains(candidate, value))
+        }
+    })
+}
+
+const fn is_scalar(value: &Value) -> bool {
+    !matches!(value, Value::Array(_) | Value::Object(_))
+}
+
+/// A total order on scalars whose equality is containment's: numbers by exact value, everything
+/// else by kind and then value.
+fn scalar_order(left: &Value, right: &Value) -> Ordering {
+    comparisons::note();
+    const fn rank(value: &Value) -> u8 {
+        match value {
+            Value::Null => 0,
+            Value::Bool(_) => 1,
+            Value::Number(_) => 2,
+            Value::String(_) => 3,
+            Value::Array(_) => 4,
+            Value::Object(_) => 5,
+        }
+    }
+    match (left, right) {
+        (Value::Bool(left), Value::Bool(right)) => left.cmp(right),
+        (Value::Number(left), Value::Number(right)) => entity_core::compare_numbers(left, right),
+        (Value::String(left), Value::String(right)) => left.cmp(right),
+        _ => rank(left).cmp(&rank(right)),
+    }
+}
+
+/// Counts value comparisons in this crate's tests, so a test can hold containment's cost; a no-op
+/// otherwise.
+mod comparisons {
+    #[cfg(test)]
+    thread_local! {
+        static COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    }
+
+    #[cfg(test)]
+    pub(crate) fn note() {
+        COUNT.with(|count| count.set(count.get() + 1));
+    }
+
+    #[cfg(not(test))]
+    #[inline(always)]
+    pub(crate) const fn note() {}
+
+    /// Comparisons made on this thread so far.
+    #[cfg(test)]
+    pub(crate) fn taken() -> u64 {
+        COUNT.with(std::cell::Cell::get)
     }
 }
 
@@ -419,6 +497,63 @@ mod tests {
                 .after_id(),
             Ok("id-1".to_owned())
         );
+    }
+
+    #[test]
+    fn array_containment_keeps_numeric_equivalence_and_nested_matching_on_the_indexed_path() {
+        let actual = serde_json::json!([
+            1, 2.0, "a", null, true, 0, { "k": 1, "j": [5, "x"] }, [3, 4]
+        ]);
+        // Five scalars against eight stored members: enough to take the index.
+        assert!(contains(
+            &actual,
+            &serde_json::json!([1.0, 2, "a", null, true])
+        ));
+        assert!(contains(
+            &actual,
+            &serde_json::json!([-0.0, 1e0, 20e-1, "a", true, { "k": 1.0 }, [4.0]])
+        ));
+        assert!(contains(
+            &actual,
+            &serde_json::json!([{ "j": ["x", 5.0] }, 1, 2, "a", null])
+        ));
+        assert!(!contains(
+            &actual,
+            &serde_json::json!([1, 2, "a", null, false])
+        ));
+        assert!(!contains(&actual, &serde_json::json!([1, 2, "a", null, 3])));
+        assert!(!contains(
+            &actual,
+            &serde_json::json!([1, 2, "a", null, "1"])
+        ));
+        assert!(!contains(
+            &actual,
+            &serde_json::json!([1, 2, "a", null, { "k": 2 }])
+        ));
+        // A scalar never matches a stored array or object, indexed or not.
+        assert!(!contains(
+            &serde_json::json!([[3], { "k": 3 }]),
+            &serde_json::json!([3, 3.0, 3e0, 30e-1, 300e-2])
+        ));
+        assert!(!contains(
+            &serde_json::json!([[3]]),
+            &serde_json::json!([3])
+        ));
+    }
+
+    #[test]
+    fn containing_every_member_of_a_long_array_makes_a_near_linear_number_of_comparisons() {
+        // Searching the stored array from its start for each requested member made
+        // 512 · 513 / 2 = 131,328 comparisons here.
+        let tags: Vec<Value> = (0..512)
+            .map(|tag| Value::from(format!("tag-{tag:04}")))
+            .collect();
+        let actual = Value::Array(tags.clone());
+        let expected = Value::Array(tags);
+        let before = comparisons::taken();
+        assert!(contains(&actual, &expected));
+        let taken = comparisons::taken() - before;
+        assert!(taken < 20_000, "{taken} comparisons");
     }
 
     #[test]

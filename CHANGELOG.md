@@ -22,6 +22,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   allocates 3,824 bytes.
 - Continuing a document query checks that the cursor belongs to the query without decoding the
   cursor or serialising the query into a buffer. The cursor format is unchanged.
+- Document-query array containment indexes a stored array's scalars once when a query names more
+  of them than the logarithm of its length, instead of searching from the start for each member
+  (131,328 comparisons for 512 tags, now under 20,000). Numbers still match by exact value.
 
 ### Fixed
 
