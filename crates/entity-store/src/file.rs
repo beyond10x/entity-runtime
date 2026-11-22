@@ -162,10 +162,24 @@ impl FileStore {
         }
         let path = self.root.join(".entity-store-lock");
         reject_symlink_components(&path)?;
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .open(&path)
-            .map_err(|error| backend("opening acquisition lock", &path, &error))?;
+        let file = match fs::OpenOptions::new().read(true).open(&path) {
+            Ok(file) => file,
+            // A v2 root no writer has locked yet: a migrated store published before the migrator
+            // created the lock, or a root a pre-0.17.7 writer made. Create the lock exactly as a
+            // writer does — create-if-absent, never truncated or unlinked — so a writer racing
+            // this acquisition opens and locks the same inode.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let file = fs::OpenOptions::new()
+                    .read(true)
+                    .append(true)
+                    .create(true)
+                    .open(&path)
+                    .map_err(|error| backend("creating acquisition lock", &path, &error))?;
+                sync_directory(&self.root)?;
+                file
+            }
+            Err(error) => return Err(backend("opening acquisition lock", &path, &error)),
+        };
         FileExt::lock_shared(&file)
             .map_err(|error| backend("locking acquisition", &path, &error))?;
         Ok(Some(file))
@@ -1043,6 +1057,15 @@ pub fn migrate_file_store_v1(
     let result = (|| {
         let store = FileStore::open(&staging);
         store.prepare()?;
+        // The coordination file every writer and acquisition locks, published with the store so
+        // the migrated root is complete the moment it appears.
+        let lock = staging.join(".entity-store-lock");
+        fs::OpenOptions::new()
+            .append(true)
+            .create_new(true)
+            .open(&lock)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| backend("creating lock", &lock, &error))?;
         for subject in subjects.values() {
             store.write_subject(subject)?;
         }

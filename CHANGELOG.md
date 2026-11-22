@@ -13,6 +13,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   the record-id index, instead of once to list it and again to index it. A new `entity create` in
   a store of 32 subjects opened 64 subject documents and now opens 32.
 
+### Fixed
+
+- A store produced by `entity store migrate-file` can be acquired for an import at once.
+  `migrate_file_store_v1` now publishes the `.entity-store-lock` coordination file with the store,
+  and `FileStore::acquire_legacy` creates that file the way a writer does when an initialized v2
+  root lacks it, instead of failing with "No such file or directory".
+
 ### Security
 
 - The File Store creates a subject document readable by its owner alone (`0600` on Unix) instead

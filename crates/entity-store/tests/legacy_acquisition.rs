@@ -195,3 +195,54 @@ fn file_acquisition_refuses_a_stale_publication_intent() {
         "acquisition must not silently turn an interrupted publication into absence"
     );
 }
+
+/// A pre-0.15 split-file store holding one ticket, migrated to v2 at `<name>/migrated`.
+fn migrated(name: &str) -> PathBuf {
+    let base = scratch(name);
+    let legacy = base.join("legacy");
+    std::fs::create_dir_all(legacy.join("ticket")).expect("legacy entity directory");
+    let decision = Runtime::new(&registry())
+        .create("ticket", 1, "one", serde_json::json!({"title":"one"}))
+        .expect("creation");
+    std::fs::write(
+        legacy.join("ticket").join("one.json"),
+        serde_json::to_vec(&decision.instance).expect("instance serializes"),
+    )
+    .expect("legacy state");
+    let destination = base.join("migrated");
+    let report =
+        entity_store::migrate_file_store_v1(&legacy, &destination, false).expect("migrated");
+    assert_eq!(report.subjects, 1);
+    destination
+}
+
+#[test]
+fn a_freshly_migrated_file_store_can_be_acquired_at_once() {
+    let root = migrated("migrated-acquisition");
+    assert!(
+        root.join(".entity-store-lock").is_file(),
+        "the migrator publishes the coordination file with the store"
+    );
+    let snapshot = FileStore::open(&root)
+        .acquire_legacy("file/migrated")
+        .expect("a migrated store is acquirable without a write first");
+    assert_eq!(snapshot.histories.len(), 1);
+    assert_eq!(snapshot.histories[0].subject.id, "one");
+}
+
+#[test]
+fn acquiring_a_v2_store_without_a_lock_file_creates_the_lock_writers_use() {
+    let root = migrated("lockless-acquisition");
+    // A store migrated by an earlier release, or made by a writer older than 0.17.7.
+    std::fs::remove_file(root.join(".entity-store-lock")).expect("lock removed");
+    let snapshot = FileStore::open(&root)
+        .acquire_legacy("file/lockless")
+        .expect("an initialized v2 root without a lock is admitted");
+    assert_eq!(snapshot.histories.len(), 1);
+    let lock = root.join(".entity-store-lock");
+    assert_eq!(
+        std::fs::metadata(&lock).expect("lock created").len(),
+        0,
+        "acquisition creates the lock without advancing the writers' epoch"
+    );
+}
