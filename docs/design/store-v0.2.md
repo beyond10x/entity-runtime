@@ -22,7 +22,10 @@ writes are the required provenance path used by the CLI.
 
 A v2 root contains `.entity-store-format` with `entity.file-store/2`. Each subject is one JSON
 document under `subjects/<hex entity>/<hex id>.json`; caller-controlled entity names and ids never
-become path syntax. Existing path components and subject files may not be symlinks. A write creates
+become path syntax. Each name is one path component of at most 255 bytes, so an entity type over
+127 bytes, or an identity whose temporary document name (`<hex id>.json.writing.<pid>.<n>`) would
+exceed 255 bytes — about 116 bytes of identity — is refused with `StoreError::Backend` before
+anything is written. Existing path components and subject files may not be symlinks. A write creates
 and syncs a temporary document, then renames it over the subject, so current state and history
 cannot tear apart. On Unix the temporary document is created `0600` and, when it replaces a
 subject, takes that subject's permission bits before any data is written, so a replacement never

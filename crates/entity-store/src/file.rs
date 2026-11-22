@@ -318,20 +318,18 @@ impl FileStore {
     }
 
     fn write_subject(&self, subject: &StoredSubject) -> Result<(), StoreError> {
-        self.prepare()?;
         let entity = &subject.instance.entity;
         let id = &subject.instance.id;
+        let counter = WRITES.fetch_add(1, Ordering::Relaxed);
+        refuse_overlong_names(entity, id, counter)?;
+        self.prepare()?;
         let directory = self.entity_directory(entity);
         reject_symlink_components(&directory)?;
         create_directory_durably(&directory)?;
         reject_symlink_components(&directory)?;
         let path = self.subject_path(entity, id);
         reject_symlink(&path)?;
-        let temporary = path.with_extension(format!(
-            "json.writing.{}.{}",
-            std::process::id(),
-            WRITES.fetch_add(1, Ordering::Relaxed)
-        ));
+        let temporary = path.with_extension(temporary_extension(counter));
         let text = serde_json::to_string_pretty(subject)
             .map_err(|error| backend("serialising", &path, &error))?;
         let result = (|| {
@@ -730,6 +728,37 @@ fn reject_symlink_components(path: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 
+/// The longest path component the File Store writes: `NAME_MAX` on Linux and the BSDs, and the
+/// component limit of APFS and NTFS, all of which hold the ASCII hex names used here.
+const MAX_COMPONENT_BYTES: usize = 255;
+
+/// The extension after `<hex id>.` of the temporary document for write number `counter`.
+fn temporary_extension(counter: u64) -> String {
+    format!("json.writing.{}.{counter}", std::process::id())
+}
+
+/// Refuses, before anything is written, a subject whose names would exceed a path component.
+///
+/// File Store v2 spells an entity type and an identity as one hex component each, so an identity
+/// over about 116 bytes, or an entity name over 127, has no v2 path. Without this check the write
+/// failed half-way with the operating system's "File name too long". A bounded layout for long
+/// identities would change the v2 format and is not made here.
+fn refuse_overlong_names(entity: &str, id: &str, counter: u64) -> Result<(), StoreError> {
+    let directory = hex(entity.as_bytes()).len();
+    let temporary = hex(id.as_bytes()).len() + 1 + temporary_extension(counter).len();
+    let (what, bytes) = if directory > MAX_COMPONENT_BYTES {
+        ("entity type", directory)
+    } else if temporary > MAX_COMPONENT_BYTES {
+        ("identity", temporary)
+    } else {
+        return Ok(());
+    };
+    Err(StoreError::Backend(format!(
+        "File Store cannot hold {entity}/{id}: its hex-encoded {what} needs a {bytes}-byte file \
+         name, over the {MAX_COMPONENT_BYTES}-byte path component limit; use a shorter {what}"
+    )))
+}
+
 /// Creates `path` and every missing ancestor, syncing the parent of each directory it creates.
 ///
 /// A directory entry is durable only once its parent is synced. Syncing the subject's own
@@ -953,6 +982,8 @@ impl Store for FileStore {
             }))
     }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
+        // Refused before the guard creates a root or a lock for a subject it could never hold.
+        refuse_overlong_names(&decision.instance.entity, &decision.instance.id, WRITES.load(Ordering::Relaxed))?;
         let _guard = self.write_guard()?;
         let instance = &decision.instance;
         let held = self.read_subject(&instance.entity, &instance.id)?;
@@ -983,6 +1014,7 @@ impl Store for FileStore {
         expect: Expect,
     ) -> Result<(), StoreError> {
         commit.validate()?;
+        refuse_overlong_names(&commit.instance.entity, &commit.instance.id, WRITES.load(Ordering::Relaxed))?;
         let _guard = self.write_guard()?;
         let document =
             serde_json::to_value(commit).map_err(|error| StoreError::Backend(error.to_string()))?;

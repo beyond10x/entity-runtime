@@ -35,6 +35,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - On Unix the File Store syncs the parent of every directory it creates — the root, `subjects/`
   and a type directory on the first write of a type. Before, only the subject's own directory was
   synced, so power loss right after a successful first write could lose the path to the subject.
+- The File Store refuses an identity or entity type too long for its one-component hex file name
+  (an identity over about 116 bytes, an entity type over 127) with a `store_backend` error that
+  names the limit, before it creates any file or directory. Before, the write failed part-way with
+  the operating system's "File name too long".
 
 ### Security
 

@@ -383,3 +383,31 @@ fn replacing_a_restricted_subject_document_keeps_its_restriction() {
         "the replacement document keeps the permissions the operator set on the subject"
     );
 }
+
+#[test]
+fn an_identity_too_long_for_a_file_name_is_refused_before_anything_is_written() {
+    use entity_store::StateProvider;
+    let registry = registry();
+    let root = scratch("overlong-identity");
+    let mut store = FileStore::open(&root);
+    for id in ["x".repeat(128), "é".repeat(64)] {
+        let refused =
+            store.commit_recorded(&recorded(opening(&registry, &id), "long"), Expect::Absent);
+        assert!(
+            matches!(&refused, Err(StoreError::Backend(detail))
+                if detail.contains("path component limit") && detail.contains("identity")),
+            "a {}-byte identity is refused with the reason, not the OS error: {refused:?}",
+            id.len()
+        );
+    }
+    assert!(!root.exists(), "a refused identity creates no root, lock or directory");
+
+    let fits = "y".repeat(100);
+    store
+        .commit_recorded(&recorded(opening(&registry, &fits), "fits"), Expect::Absent)
+        .expect("a 100-byte identity has a v2 path");
+    assert_eq!(
+        store.load("ticket", &fits).expect("readable").expect("stored").id,
+        fits
+    );
+}
