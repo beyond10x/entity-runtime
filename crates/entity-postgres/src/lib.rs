@@ -448,32 +448,7 @@ impl PostgresSession<'_> {
 
     /// Reads one instance's events from this transaction's current view, oldest first.
     pub fn events(&mut self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
-        let mut events: Vec<DomainEvent> = self
-            .transaction
-            .query(
-                "SELECT document FROM events WHERE entity = $1 AND id = $2
-                 ORDER BY revision, position",
-                &[&entity, &id],
-            )
-            .map_err(|error| database("reading events in a session", &error))?
-            .into_iter()
-            .map(|row| {
-                let document: String = row.get(0);
-                serde_json::from_str(&document)
-                    .map_err(|error| backend("parsing an event in a session", &error))
-            })
-            .collect::<Result<_, _>>()?;
-        for row in self.transaction.query(
-            "SELECT document FROM history WHERE entity = $1 AND id = $2 AND kind = 'decision' ORDER BY position",
-            &[&entity, &id],
-        ).map_err(|e| database("reading session history", &e))? {
-            let document: String = row.get(0);
-            let envelope: Envelope<DecisionRecord> = serde_json::from_str(&document)
-                .map_err(|e| backend("parsing session history", &e))?;
-            events.extend(envelope.record.events);
-        }
-        events.sort_by_key(|event| event.revision);
-        Ok(events)
+        read_events(&mut self.transaction, entity, id)
     }
 
     /// Atomically reserves `count` monotonically increasing values in `namespace`.
@@ -602,28 +577,51 @@ impl StateProvider for PostgresStore {
 
 impl EventProvider for PostgresStore {
     fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
-        let mut client = self.client()?;
-        let rows = client
-            .query(
-                "SELECT document FROM events WHERE entity = $1 AND id = $2 \
-                 ORDER BY revision, position",
-                &[&entity, &id],
-            )
-            .map_err(|error| database("reading events", &error))?;
-        let mut events: Vec<DomainEvent> = rows
-            .iter()
-            .map(|row| {
-                let text: String = row.get(0);
-                serde_json::from_str(&text).map_err(|error| backend("parsing an event", &error))
-            })
-            .collect::<Result<_, _>>()?;
-        drop(client);
-        for record in self.records(entity, id)? {
-            events.extend(record.record.events);
-        }
-        events.sort_by_key(|event| event.revision);
-        Ok(events)
+        read_events(&mut *self.client()?, entity, id)
     }
+}
+
+/// One subject's events from both places they are kept: the bare-event table and the events inside
+/// recorded decisions, oldest first.
+///
+/// One statement, so one snapshot. Under `READ COMMITTED` every statement takes a snapshot of its
+/// own, so two reads would let a bare revision and then a recorded one commit between them: the
+/// second read would show the later recorded event and the first would already have missed the
+/// bare one before it — a history with a missing middle that sorting cannot repair. Bare rows come
+/// first in revision and position order, then decisions in history order; the stable sort by
+/// revision afterwards interleaves them as two separate reads used to.
+fn read_events(
+    client: &mut impl GenericClient,
+    entity: &str,
+    id: &str,
+) -> Result<Vec<DomainEvent>, StoreError> {
+    let rows = client
+        .query(
+            "SELECT 0 AS source, revision, position, document FROM events \
+             WHERE entity = $1 AND id = $2 \
+             UNION ALL \
+             SELECT 1, 0, position, document FROM history \
+             WHERE entity = $1 AND id = $2 AND kind = 'decision' \
+             ORDER BY source, revision, position",
+            &[&entity, &id],
+        )
+        .map_err(|error| database("reading events", &error))?;
+    let mut events: Vec<DomainEvent> = Vec::with_capacity(rows.len());
+    for row in rows {
+        let source: i32 = row.get(0);
+        let text: String = row.get(3);
+        if source == 0 {
+            events.push(
+                serde_json::from_str(&text).map_err(|error| backend("parsing an event", &error))?,
+            );
+        } else {
+            let envelope: Envelope<DecisionRecord> = serde_json::from_str(&text)
+                .map_err(|error| backend("parsing a history record", &error))?;
+            events.extend(envelope.record.events);
+        }
+    }
+    events.sort_by_key(|event| event.revision);
+    Ok(events)
 }
 
 impl HistoryProvider for PostgresStore {

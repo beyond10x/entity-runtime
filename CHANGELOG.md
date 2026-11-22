@@ -10,6 +10,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
 
+### Fixed
+
+- `PostgresStore::events` and `PostgresSession::events` read bare events and recorded decisions
+  in one statement. Before, they read them in two, each with its own snapshot, so a bare revision
+  and then a recorded revision committing between the two reads produced a history that showed the
+  later recorded event and left out the bare event before it.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security

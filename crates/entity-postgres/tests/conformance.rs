@@ -551,3 +551,135 @@ fn memory_and_postgres_match_equivalent_numeric_json_values() {
     }
     store.drop_schema(&schema).unwrap();
 }
+
+/// A ticket that can be closed and reopened, so one subject reaches revision 3.
+fn reopenable_registry() -> Registry {
+    let definition = serde_json::from_value(json!({
+        "entity": "ticket",
+        "version": 1,
+        "schema": { "fields": { "title": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+        "create": { "emit": { "type": "TicketOpened", "payload": { "ticket": "$id" } } },
+        "operations": {
+            "close": {
+                "transitions": [{ "from": "open", "to": "closed" }],
+                "emits": [{ "type": "TicketClosed", "payload": { "ticket": "$id" } }]
+            },
+            "reopen": {
+                "transitions": [{ "from": "closed", "to": "open" }],
+                "emits": [{ "type": "TicketReopened", "payload": { "ticket": "$id" } }]
+            }
+        }
+    }))
+    .expect("parses");
+    let mut registry = Registry::new();
+    registry.register(definition).expect("validates");
+    registry
+}
+
+/// Forces the interleaving a read of one subject's events must survive: revision 1 is committed,
+/// then the reader starts while another transaction holds `history` exclusively. A reader that
+/// reads the bare-event table and the recorded-decision table in two statements finishes the first
+/// and waits on the second; meanwhile a bare revision 2 and then a recorded revision 3 commit. The
+/// reader must return all three revisions — never 1 and 3 with the middle missing.
+fn assert_events_read_survives_commits_between_its_sources(
+    label: &str,
+    read: impl FnOnce(&mut PostgresStore) -> Result<Vec<entity_core::DomainEvent>, StoreError> + Send,
+) {
+    let Some(url) = url() else { return };
+    let (mut writer, schema) = fresh(&url, label);
+    let mut reader = PostgresStore::connect_in_schema(&url, &schema).expect("a reader connection");
+    let registry = reopenable_registry();
+    let created = Runtime::new(&registry)
+        .create("ticket", 1, "raced", json!({ "title": "A ticket" }))
+        .expect("permitted");
+    writer.commit(&created, Expect::Absent).expect("revision 1");
+    let closed = Runtime::new(&registry)
+        .execute(&created.instance, "close", json!({}))
+        .expect("permitted");
+    let reopened = Runtime::new(&registry)
+        .execute(&closed.instance, "reopen", json!({}))
+        .expect("permitted");
+    let recorded = RecordedCommit::new(reopened.clone(), &recording("reopened")).expect("seals");
+
+    // The lock holder writes the recorded revision itself, as `commit_recorded` stores it, because
+    // no other connection can write `history` while it holds the table.
+    let mut holder = postgres::Client::connect(&url, postgres::NoTls).expect("a holder connection");
+    holder
+        .batch_execute(&format!("SET search_path TO \"{schema}\""))
+        .expect("schema selected");
+    let mut lock = holder.transaction().expect("holder transaction");
+    lock.batch_execute("LOCK TABLE history IN ACCESS EXCLUSIVE MODE")
+        .expect("history held");
+
+    let events = std::thread::scope(|scope| {
+        let reading = scope.spawn(|| read(&mut reader));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let waiting: i64 = lock
+                .query_one(
+                    "SELECT count(*) FROM pg_locks WHERE NOT granted \
+                     AND relation = 'history'::regclass",
+                    &[],
+                )
+                .expect("pg_locks answers")
+                .get(0);
+            if waiting > 0 {
+                break;
+            }
+            assert!(
+                !reading.is_finished(),
+                "the reader finished without ever waiting on history"
+            );
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the reader never waited on history"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        writer
+            .commit(&closed, Expect::Revision(1))
+            .expect("bare revision 2 commits while the reader waits");
+        lock.execute(
+            "UPDATE instances SET revision = 3, document = $1 \
+             WHERE entity = 'ticket' AND id = 'raced'",
+            &[&serde_json::to_string(&reopened.instance).expect("serialises")],
+        )
+        .expect("instance at revision 3");
+        lock.execute(
+            "INSERT INTO history (entity, id, position, kind, record_id, document) \
+             VALUES ('ticket', 'raced', 0, 'decision', $1, $2)",
+            &[
+                &recorded.envelope.record_id,
+                &serde_json::to_string(&recorded.envelope).expect("serialises"),
+            ],
+        )
+        .expect("recorded revision 3");
+        lock.commit().expect("revisions 2 and 3 committed");
+        reading.join().expect("reader thread")
+    })
+    .expect("the read answers");
+
+    let revisions: Vec<u64> = events.iter().map(|event| event.revision).collect();
+    assert_eq!(
+        revisions,
+        [1, 2, 3],
+        "a history with recorded revision 3 must include bare revision 2: {events:?}"
+    );
+    writer.drop_schema(&schema).expect("dropped");
+}
+
+#[test]
+fn an_events_read_never_returns_a_later_recorded_revision_without_the_bare_one_before_it() {
+    use entity_store::EventProvider;
+    assert_events_read_survives_commits_between_its_sources("events_snapshot", |store| {
+        store.events("ticket", "raced")
+    });
+}
+
+#[test]
+fn a_session_events_read_never_returns_a_later_recorded_revision_without_the_bare_one_before_it() {
+    assert_events_read_survives_commits_between_its_sources("session_events_snapshot", |store| {
+        store.with_transaction(|session| session.events("ticket", "raced"))
+    });
+}
