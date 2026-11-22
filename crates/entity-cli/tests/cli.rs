@@ -1908,3 +1908,84 @@ fn generated_rust_cli_compiles_and_executes_definition_specific_commands() {
         String::from_utf8_lossy(&stale.stderr).contains("expected revision 1, found revision 2")
     );
 }
+
+/// Every value stored under `key` in `value`, outside an embedded `definition` (whose schema names
+/// the same fields).
+fn values_named<'a>(
+    value: &'a serde_yaml_ng::Value,
+    key: &str,
+    found: &mut Vec<&'a serde_yaml_ng::Value>,
+) {
+    match value {
+        serde_yaml_ng::Value::Mapping(members) => {
+            for (name, member) in members {
+                if name.as_str() == Some(key) {
+                    found.push(member);
+                }
+                if name.as_str() != Some("definition") {
+                    values_named(member, key, found);
+                }
+            }
+        }
+        serde_yaml_ng::Value::Sequence(items) => {
+            for item in items {
+                values_named(item, key, found);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A decision and a commit printed as YAML hold numbers a plain YAML reader decodes as numbers —
+/// not the private one-key maps `$serde_json::private::Number: '3.75'` that only this runtime's own
+/// reader turned back into numbers.
+#[test]
+fn decision_and_commit_yaml_write_numbers_as_yaml_numbers() {
+    let counter = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/counter.yaml");
+    let fields = r#"{"name": "City", "spent": 3.75, "views": 0}"#;
+    let decision = entity()
+        .args(["create", "--definition"])
+        .arg(&counter)
+        .args(["--id", "sample", "--fields", fields, "--format", "yaml"])
+        .output()
+        .expect("runs");
+    assert_eq!(decision.status.code(), Some(0), "{}", stderr(&decision));
+    let store = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("yaml-numbers-store");
+    let _ = fs::remove_dir_all(&store);
+    let commit = entity()
+        .args(["create", "--definition"])
+        .arg(&counter)
+        .args(["--id", "sample", "--fields", fields, "--store"])
+        .arg(&store)
+        .args([
+            "--record-id",
+            "create-sample",
+            "--recorded-at",
+            "2026-11-22T10:00:00Z",
+            "--actor",
+            "cli-test",
+            "--format",
+            "yaml",
+        ])
+        .output()
+        .expect("runs");
+    assert_eq!(commit.status.code(), Some(0), "{}", stderr(&commit));
+    for (name, output) in [("decision", &decision), ("commit", &commit)] {
+        let text = stdout(output);
+        let read: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("plain YAML");
+        let mut spent = Vec::new();
+        values_named(&read, "spent", &mut spent);
+        let mut views = Vec::new();
+        values_named(&read, "views", &mut views);
+        assert!(!spent.is_empty() && !views.is_empty(), "{name}: {text}");
+        for value in spent {
+            assert_eq!(value.as_f64(), Some(3.75), "{name} spent: {text}");
+        }
+        for value in views {
+            assert!(
+                value.is_number() && value.as_u64() == Some(0),
+                "{name} views: {text}"
+            );
+        }
+    }
+}

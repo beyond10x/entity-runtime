@@ -29,6 +29,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   digest), and an existing output is replaced only when it is that binary, checked before the
   build and again on the file moved aside. A binary installed by 0.32.0 or earlier carries no
   record: remove it once by hand before regenerating over it.
+- `entity create` and `execute` with `--format yaml` write numbers as YAML numbers
+  (`spent: 3.75`) with their exact digits, instead of one-key mappings
+  (`spent: {$serde_json::private::Number: '3.75'}`) that only this runtime's own reader turned
+  back into numbers. A consumer that matched the mapping form must read plain numbers now.
+  `inspect --format yaml` is unchanged.
 
 ## [0.32.0] — 2026-11-22
 

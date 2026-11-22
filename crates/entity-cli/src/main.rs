@@ -9,6 +9,7 @@
 //! unparsable input, two flags reading standard input.
 
 mod generated_output;
+mod yaml_output;
 
 use clap::Parser;
 #[cfg(feature = "eventlog-providers")]
@@ -1865,8 +1866,9 @@ fn to_json<T: serde::Serialize>(value: &T) -> Result<String, Failure> {
         .map_err(|error| Failure::Usage(format!("cannot render JSON: {error}")))
 }
 
+/// Decisions, commits and lists as YAML whose numbers are YAML numbers (see `yaml_output`).
 fn to_yaml<T: serde::Serialize>(value: &T) -> Result<String, Failure> {
-    serde_yaml_ng::to_string(value)
+    yaml_output::to_string(value)
         .map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))
 }
 
