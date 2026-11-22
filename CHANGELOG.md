@@ -10,6 +10,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
 
+### Fixed
+
+- Two versions of one entity that declare the same relation now load together. `entity validate`
+  and `Registry::validate_all` refused, for example, invoice v1 and v2 that both reference
+  `account` through `account_id` with `relation_field_claimed_twice` naming the same relation
+  twice, and two versions of one owner with `relation_second_owner` naming the same entity twice.
+  Both checks now count claims within one version; two relations on one field, or two owners of
+  one entity, inside one version are still refused.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security

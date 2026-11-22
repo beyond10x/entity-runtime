@@ -1260,3 +1260,130 @@ fn an_owns_carrier_is_the_owners_identity_once_on_both_cardinalities() {
         assert!(owns_carrier_is_wrong(&flattened), "owns/{cardinality}");
     }
 }
+
+// --- Relation claims are held per version ----------------------------------------------------------
+
+/// One version of an `invoice` that references `account` through `account_id` once, or twice under
+/// two names when `second` names the second relation.
+fn invoice_version(version: u32, second: Option<&str>) -> Value {
+    let mut relations = json!({ "account": {
+        "kind": "references", "target": "account", "cardinality": "one", "via": "account_id"
+    }});
+    if let Some(name) = second {
+        relations[name] = relations["account"].clone();
+    }
+    json!({
+        "entity": "invoice",
+        "version": version,
+        "semantics": "service/1",
+        "relations": relations,
+        "schema": { "fields": { "account_id": { "type": "string" } } },
+        "lifecycle": { "initial": "draft", "states": ["draft"] }
+    })
+}
+
+fn account_v1(relations: Value) -> Value {
+    json!({
+        "entity": "account",
+        "version": 1,
+        "semantics": "service/1",
+        "identity": { "field": "account_id" },
+        "relations": relations,
+        "schema": { "fields": { "account_id": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "open", "states": ["open"] }
+    })
+}
+
+#[test]
+fn two_versions_repeating_one_references_relation_load_together() {
+    let mut registry = Registry::new();
+    for document in [
+        account_v1(json!({})),
+        invoice_version(1, None),
+        invoice_version(2, None),
+    ] {
+        registry.register(definition(document)).expect("registers");
+    }
+    registry
+        .validate_all()
+        .expect("invoice v2 repeats v1's relation; the field is not claimed twice");
+
+    // Inside one version the claim stays exclusive, whatever other versions are registered.
+    registry
+        .register(definition(invoice_version(3, Some("billed_to"))))
+        .expect("registers");
+    let defects = registry
+        .validate_all()
+        .expect_err("one field of one version carries one relation");
+    assert_eq!(
+        defects.iter().cloned().collect::<Vec<_>>(),
+        vec![DefinitionError::RelationFieldClaimedTwice {
+            entity: "invoice".to_owned(),
+            field: "account_id".to_owned(),
+            relation: "account".to_owned(),
+            other: "billed_to".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn two_versions_of_an_owner_repeating_one_owns_relation_load_together() {
+    let owns = json!({ "invoices": {
+        "kind": "owns", "target": "invoice", "cardinality": "many", "via": "account_id"
+    }});
+    let mut registry = Registry::new();
+    let mut account_v2 = account_v1(owns.clone());
+    account_v2["version"] = json!(2);
+    for document in [
+        json!({
+            "entity": "invoice",
+            "version": 1,
+            "semantics": "service/1",
+            "schema": { "fields": { "account_id": { "type": "string", "required": true } } },
+            "lifecycle": { "initial": "draft", "states": ["draft"] }
+        }),
+        account_v1(owns),
+        account_v2,
+    ] {
+        registry.register(definition(document)).expect("registers");
+    }
+    registry.validate_all().expect(
+        "account v2 repeats v1's ownership; it is neither a second owner nor a second claim",
+    );
+
+    // A different owner of the same entity is still a second owner.
+    registry
+        .register(definition(json!({
+            "entity": "tenant",
+            "version": 1,
+            "semantics": "service/1",
+            "identity": { "field": "account_id" },
+            "relations": { "invoices": {
+                "kind": "owns", "target": "invoice", "cardinality": "many", "via": "account_id"
+            }},
+            "schema": { "fields": { "account_id": { "type": "string", "required": true } } },
+            "lifecycle": { "initial": "open", "states": ["open"] }
+        })))
+        .expect("registers");
+    let defects = registry
+        .validate_all()
+        .expect_err("one entity has at most one owner");
+    assert!(carries(
+        &defects,
+        &DefinitionError::RelationSecondOwner {
+            target: "invoice".to_owned(),
+            owner: "account".to_owned(),
+            other: "tenant".to_owned(),
+        }
+    ));
+    assert!(carries(
+        &defects,
+        &DefinitionError::RelationFieldClaimedTwice {
+            entity: "invoice".to_owned(),
+            field: "account_id".to_owned(),
+            relation: "invoices".to_owned(),
+            other: "invoices".to_owned(),
+        }
+    ));
+}
+

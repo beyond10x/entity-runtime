@@ -147,12 +147,19 @@ impl Registry {
     /// thing it owns" — so the check belongs here rather than on the declaring definition. The
     /// second claimant of a field and the second owner of an entity are reported in name order, so
     /// one registry assembled from ten files reports the same pair every time.
+    ///
+    /// Both exclusive claims are held **per version**. Two versions of one entity are alternatives
+    /// that coexist so older instances keep executing, not two documents that both hold at once, so
+    /// a relation that version 2 repeats unchanged from version 1 is the same relation, not a
+    /// second claimant of its field or a second owner of its target. Inside one version both checks
+    /// stay exactly as strict as before.
     fn declared_relation_defects(&self) -> Vec<DefinitionError> {
         let mut defects = Vec::new();
-        // Which definition claims to own each entity, and which relation of it first did.
-        let mut owners: BTreeMap<&str, (&str, &str)> = BTreeMap::new();
-        // Which relation claims each (entity, field) carrier.
-        let mut carriers: BTreeMap<(&str, &str), (&str, &str)> = BTreeMap::new();
+        // Which definitions, at which version, claim to own each entity, with the relation.
+        let mut owners: BTreeMap<&str, Vec<Claimant<'_>>> = BTreeMap::new();
+        // Which relations claim each (entity, version, field) carrier: the field belongs to one
+        // version of its document, so the version is part of what is claimed.
+        let mut carriers: Carriers<'_> = BTreeMap::new();
 
         for definition in self.iter() {
             for (name, relation) in &definition.relations {
@@ -173,9 +180,8 @@ impl Registry {
                     claim(
                         &mut carriers,
                         &mut defects,
-                        &definition.entity,
-                        &relation.via,
-                        name,
+                        (&definition.entity, definition.version, &relation.via),
+                        (&definition.entity, definition.version, name),
                     );
                     defects.extend(references_carrier_defects(
                         definition, target, name, relation,
@@ -183,22 +189,28 @@ impl Registry {
                     continue;
                 }
 
-                if let Some((owner, first)) = owners.get(target.entity.as_str()) {
+                let claimant = (
+                    definition.entity.as_str(),
+                    definition.version,
+                    name.as_str(),
+                );
+                let owned_by = owners.entry(target.entity.as_str()).or_default();
+                if let Some((owner, _, _)) = owned_by
+                    .iter()
+                    .find(|earlier| conflicting_claimants(**earlier, claimant))
+                {
                     defects.push(DefinitionError::RelationSecondOwner {
                         target: target.entity.clone(),
                         owner: (*owner).to_owned(),
                         other: definition.entity.clone(),
                     });
-                    let _ = first;
-                } else {
-                    owners.insert(&target.entity, (&definition.entity, name));
                 }
+                owned_by.push(claimant);
                 claim(
                     &mut carriers,
                     &mut defects,
-                    &target.entity,
-                    &relation.via,
-                    name,
+                    (&target.entity, target.version, &relation.via),
+                    claimant,
                 );
 
                 // The carrier lives on the target, is typed as the **source's** identity kind, and
@@ -429,23 +441,40 @@ fn references_carrier_defects(
     }
 }
 
+/// Who makes one exclusive claim: the declaring entity, its version, and the relation's name.
+type Claimant<'a> = (&'a str, u32, &'a str);
+
+/// Every claim on each carrier field, keyed by `(entity, version, field)` of the field's document.
+type Carriers<'a> = BTreeMap<(&'a str, u32, &'a str), Vec<Claimant<'a>>>;
+
+/// Whether two claims exclude each other.
+///
+/// Two versions of one declaring entity never do: they are alternatives, and a relation one
+/// version repeats from the other is the same relation. Everything else does, including two
+/// relations of one definition, because inside one version a field carries one relation and an
+/// entity has one owner.
+fn conflicting_claimants(earlier: Claimant<'_>, later: Claimant<'_>) -> bool {
+    earlier.0 != later.0 || earlier.1 == later.1
+}
+
 /// Records one relation's claim on one field, reporting the second claimant by name.
 fn claim<'a>(
-    carriers: &mut BTreeMap<(&'a str, &'a str), (&'a str, &'a str)>,
+    carriers: &mut Carriers<'a>,
     defects: &mut Vec<DefinitionError>,
-    entity: &'a str,
-    field: &'a str,
-    relation: &'a str,
+    carrier: (&'a str, u32, &'a str),
+    claimant: Claimant<'a>,
 ) {
-    match carriers.get(&(entity, field)) {
-        Some((_, first)) => defects.push(DefinitionError::RelationFieldClaimedTwice {
-            entity: entity.to_owned(),
-            field: field.to_owned(),
+    let claims = carriers.entry(carrier).or_default();
+    if let Some((_, _, first)) = claims
+        .iter()
+        .find(|earlier| conflicting_claimants(**earlier, claimant))
+    {
+        defects.push(DefinitionError::RelationFieldClaimedTwice {
+            entity: carrier.0.to_owned(),
+            field: carrier.2.to_owned(),
             relation: (*first).to_owned(),
-            other: relation.to_owned(),
-        }),
-        None => {
-            carriers.insert((entity, field), (entity, relation));
-        }
+            other: claimant.2.to_owned(),
+        });
     }
+    claims.push(claimant);
 }
