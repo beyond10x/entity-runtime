@@ -3,7 +3,7 @@ name = "entity-sqlite"
 description = "A transactional entity store over SQLite: the provider that can write state and events atomically."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+rust-version = "1.91"
 license.workspace = true
 repository.workspace = true
 
@@ -12,11 +12,11 @@ default = []
 eventlog-facade = ["dep:entity-eventlog", "dep:entity-query", "dep:eventlog-core", "dep:time"]
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.31.0" }
-entity-eventlog = { path = "../entity-eventlog", version = "0.31.0", features = ["sync-bridge", "sqlite"], optional = true }
-entity-query = { path = "../entity-query", version = "0.31.0", optional = true }
-entity-store = { path = "../entity-store", version = "0.31.0" }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.8.3", optional = true }
+entity-core = { path = "../entity-core", version = "0.32.0" }
+entity-eventlog = { path = "../entity-eventlog", version = "0.32.0", features = ["sync-bridge", "sqlite"], optional = true }
+entity-query = { path = "../entity-query", version = "0.32.0", optional = true }
+entity-store = { path = "../entity-store", version = "0.32.0" }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.9.4", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 time = { version = "0.3", optional = true }
@@ -25,7 +25,7 @@ time = { version = "0.3", optional = true }
 # machines can disagree about, which is the one thing a provider must not be.
 # Match the pinned Eventlog SQLite provider: Cargo permits only one sqlite3 native-link package
 # in the composed workspace.
-rusqlite = { version = "=0.40.2", features = ["bundled"] }
+rusqlite = { version = "=0.41.0", features = ["bundled"] }
 
 [lints]
 workspace = true

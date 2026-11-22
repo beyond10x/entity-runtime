@@ -80,8 +80,8 @@ promise directory entries survive power loss. A store written before 0.15 must b
 `entity-eventlog` keeps complete recorded state — the normalized request, the definition snapshot,
 the result, the response and the events — on an
 [Eventlog](https://beyond10x.github.io/ecosystem/eventlog/)
-([GitHub](https://github.com/beyond10x/eventlog)) provider. It needs Rust 1.91; the rest of the
-workspace builds on 1.85. The workspace pins Eventlog at its 0.7.0 tag. Every provider is an
+([GitHub](https://github.com/beyond10x/eventlog)) provider. It and `entity-sqlite` need Rust 1.91;
+the rest of the workspace builds on 1.85. The workspace pins Eventlog at its 0.9.4 tag. Every provider is an
 explicit Cargo feature:
 
 | Feature | Provider | Boundary |

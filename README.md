@@ -15,8 +15,8 @@ with the application around it. It ships as Rust libraries and one command, `ent
 [crates](https://beyond10x.github.io/entity-runtime/docs/reference/crates) ·
 [status](https://beyond10x.github.io/entity-runtime/docs/status)
 
-**Status:** [0.31.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.31.0), released
-2026-10-31. The API is in development; a minor release may change it. The
+**Status:** [0.32.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.32.0), released
+2026-11-22. The API is in development; a minor release may change it. The
 [status page](https://beyond10x.github.io/entity-runtime/docs/status) lists what is shipped, with
 the test that holds each item, and what is planned.
 
@@ -27,7 +27,7 @@ Every [release](https://github.com/beyond10x/entity-runtime/releases) carries `e
 with Rust 1.85 or newer:
 
 ```console
-cargo install --git https://github.com/beyond10x/entity-runtime --tag 0.31.0 --locked entity-cli
+cargo install --git https://github.com/beyond10x/entity-runtime --tag 0.32.0 --locked entity-cli
 ```
 
 ```console
@@ -41,8 +41,8 @@ The libraries are not on a registry; depend on them by Git tag
 
 ## Build from source
 
-Requires Rust 1.85 or newer and [go-task](https://taskfile.dev). `entity-eventlog` and the
-provider contract need Rust 1.91.0 as well, which `task check` calls by name (`cargo +1.91.0`).
+Requires Rust 1.85 or newer and [go-task](https://taskfile.dev). `entity-eventlog`,
+`entity-sqlite` and the provider contract need Rust 1.91.0 as well, which `task check` calls by name (`cargo +1.91.0`).
 PostgreSQL tests run when `ENTITY_POSTGRES_URL` names a server and print that they were skipped
 otherwise.
 
