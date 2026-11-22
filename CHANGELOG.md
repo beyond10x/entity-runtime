@@ -9,6 +9,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
+- `Hybrid::catch_up` reads the destination's observations once per restore pass. It read them
+  again for every eligible observation before each missing decision: 10 reads to restore 4
+  revisions with one observation each, N(N+1)/2 in general.
 
 ### Fixed
 

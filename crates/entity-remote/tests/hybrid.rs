@@ -1185,3 +1185,138 @@ fn missing_evidence_behind_the_destination_keeps_its_divergence_for_repair() {
         .unwrap()
         .is_empty());
 }
+
+/// A store that counts how often its observation history is read.
+#[derive(Debug, Default)]
+struct CountingObservations {
+    inner: MemoryStore,
+    reads: std::cell::Cell<usize>,
+}
+
+impl StateProvider for CountingObservations {
+    fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
+        self.inner.load(entity, id)
+    }
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        self.inner.ids(entity)
+    }
+}
+
+impl EventProvider for CountingObservations {
+    fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
+        self.inner.events(entity, id)
+    }
+}
+
+impl entity_store::HistoryProvider for CountingObservations {
+    fn records(
+        &self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Vec<entity_store::Envelope<entity_core::DecisionRecord>>, StoreError> {
+        entity_store::HistoryProvider::records(&self.inner, entity, id)
+    }
+    fn observations(
+        &self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Vec<entity_store::RecordedObservation>, StoreError> {
+        self.reads.set(self.reads.get() + 1);
+        entity_store::HistoryProvider::observations(&self.inner, entity, id)
+    }
+}
+
+impl Store for CountingObservations {
+    fn history(&self) -> Option<&dyn entity_store::HistoryProvider> {
+        Some(self)
+    }
+    fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
+        self.inner.commit(decision, expect)
+    }
+    fn commit_recorded(
+        &mut self,
+        commit: &entity_store::RecordedCommit,
+        expect: Expect,
+    ) -> Result<(), StoreError> {
+        self.inner.commit_recorded(commit, expect)
+    }
+    fn observe(
+        &mut self,
+        observation: &entity_store::RecordedObservation,
+    ) -> Result<(), StoreError> {
+        self.inner.observe(observation)
+    }
+}
+
+#[test]
+fn catch_up_reads_the_replicas_observations_once_however_many_revisions_it_restores() {
+    // Before each missing decision, and once after the last, catch-up re-read the replica's whole
+    // observation history for every observation at or below the revision it had reached: four
+    // revisions with one observation each cost 0 + 1 + 2 + 3 + 4 = 10 reads.
+    use entity_store::{HistoryProvider, RecordedCommit, RecordedObservation};
+    let registry = renamable();
+    let runtime = Runtime::new(&registry);
+    let mut local = MemoryStore::new();
+    let mut observed = Vec::new();
+    let mut decision = opened(&registry);
+    for revision in 1..=4_u64 {
+        if revision > 1 {
+            decision = runtime
+                .execute(
+                    &decision.instance,
+                    "rename",
+                    json!({ "title": format!("Title {revision}") }),
+                )
+                .expect("permitted");
+        }
+        let commit =
+            RecordedCommit::new(decision.clone(), &recording(&format!("r{revision}"))).unwrap();
+        let expect = if revision == 1 {
+            Expect::Absent
+        } else {
+            Expect::Revision(revision - 1)
+        };
+        local.commit_recorded(&commit, expect).expect("accepted");
+        let observation = RecordedObservation {
+            entity: "ticket".into(),
+            id: "one".into(),
+            revision,
+            envelope: recording(&format!("o{revision}"))
+                .seal(json!({ "seen": revision }))
+                .unwrap(),
+        };
+        local.observe(&observation).expect("accepted");
+        observed.push(observation);
+    }
+    let mut store = Hybrid::new(
+        local,
+        CountingObservations::default(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    store.remember(Divergence {
+        entity: "ticket".into(),
+        id: "one".into(),
+        local_revision: 4,
+        source: StoreSide::Local,
+        destination: StoreSide::Remote,
+        record_id: Some("r4".into()),
+        detail: "the replica was down".into(),
+    });
+
+    assert_eq!(store.catch_up(), 0, "{:?}", store.divergences());
+    assert_eq!(
+        store.remote().inner.observations("ticket", "one").unwrap(),
+        observed,
+        "every observation arrives, exactly"
+    );
+    assert_eq!(
+        store.remote().reads.get(),
+        1,
+        "one read of the replica's observations for the whole pass"
+    );
+}

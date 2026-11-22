@@ -419,7 +419,7 @@ fn reconcile_divergence<S: Store, D: Store>(
             .load(entity, id)
             .map_err(|e| e.to_string())?
             .map(|state| state.revision);
-        return restore_observations(destination, &observations, revision);
+        return ObservationRestore::new(&observations).up_to(destination, revision);
     }
     let held = destination.load(entity, id).map_err(|e| e.to_string())?;
     let mut revision = held.as_ref().map(|instance| instance.revision);
@@ -432,6 +432,7 @@ fn reconcile_divergence<S: Store, D: Store>(
         .history()
         .ok_or("destination has no recorded history capability")?;
     let existing = history.records(entity, id).map_err(|e| e.to_string())?;
+    let mut restore = ObservationRestore::new(&observations);
     for envelope in records {
         if let Some(previous) = existing
             .iter()
@@ -451,7 +452,7 @@ fn reconcile_divergence<S: Store, D: Store>(
         if revision.unwrap_or(0).checked_add(1) != Some(envelope.record.revision) {
             return Err("a missing legacy prefix or gap requires explicit history repair".into());
         }
-        restore_observations(destination, &observations, revision)?;
+        restore.up_to(destination, revision)?;
         let commit = RecordedCommit {
             instance: envelope.record.result.clone(),
             envelope,
@@ -461,43 +462,88 @@ fn reconcile_divergence<S: Store, D: Store>(
             .map_err(|e| e.to_string())?;
         revision = Some(commit.instance.revision);
     }
-    restore_observations(destination, &observations, revision)?;
+    restore.up_to(destination, revision)?;
     // Only after exact envelopes have arrived may a later legacy suffix be mirrored.
     reconcile(source, destination, entity, id)
 }
 
-fn restore_observations<D: Store>(
-    destination: &mut D,
-    observations: &[RecordedObservation],
-    revision: Option<u64>,
-) -> Result<(), String> {
-    for observation in observations
-        .iter()
-        .filter(|entry| revision.is_some_and(|at| entry.revision <= at))
-    {
-        let history = destination
-            .history()
-            .ok_or("destination has no recorded history capability")?;
-        let existing = history
-            .observations(&observation.entity, &observation.id)
-            .map_err(|e| e.to_string())?;
-        if let Some(previous) = existing
-            .iter()
-            .find(|entry| entry.envelope.record_id == observation.envelope.record_id)
-        {
-            if previous != observation {
-                return Err(format!(
-                    "conflicting observation {}",
-                    observation.envelope.record_id
-                ));
-            }
-        } else {
-            destination
-                .observe(observation)
-                .map_err(|e| e.to_string())?;
+/// Restores a source's observations at the destination in one pass over both.
+///
+/// Catch-up asks it to restore up to each revision before that revision's successor is committed
+/// (an observation is accepted only at the revision it is about), and once more at the end. It
+/// reads what the destination holds once per subject and walks the source's observations in
+/// revision order from where the previous call stopped, so `N` restored revisions cost one
+/// destination read rather than `N(N+1)/2`. Comparison stays exact: an observation the
+/// destination already holds under the same record id must equal the source's, envelope and all.
+struct ObservationRestore<'a> {
+    /// The source's observations, stably ordered by revision.
+    pending: Vec<&'a RecordedObservation>,
+    /// How many of `pending` are restored or proved present.
+    next: usize,
+    /// What the destination holds, per subject, read on first need and extended by what this pass
+    /// writes. Nothing else writes observations at the destination during one pass.
+    held: Vec<((&'a str, &'a str), Vec<RecordedObservation>)>,
+}
+
+impl<'a> ObservationRestore<'a> {
+    fn new(observations: &'a [RecordedObservation]) -> Self {
+        let mut pending: Vec<&RecordedObservation> = observations.iter().collect();
+        pending.sort_by_key(|observation| observation.revision);
+        Self {
+            pending,
+            next: 0,
+            held: Vec::new(),
         }
     }
-    Ok(())
+
+    /// Restores every source observation at or below `revision` not yet restored.
+    fn up_to<D: Store>(
+        &mut self,
+        destination: &mut D,
+        revision: Option<u64>,
+    ) -> Result<(), String> {
+        let Some(at) = revision else {
+            return Ok(());
+        };
+        while let Some(&observation) = self.pending.get(self.next) {
+            if observation.revision > at {
+                break;
+            }
+            let subject = (observation.entity.as_str(), observation.id.as_str());
+            let index = match self.held.iter().position(|(held, _)| *held == subject) {
+                Some(index) => index,
+                None => {
+                    let history = destination
+                        .history()
+                        .ok_or("destination has no recorded history capability")?;
+                    let existing = history
+                        .observations(subject.0, subject.1)
+                        .map_err(|e| e.to_string())?;
+                    self.held.push((subject, existing));
+                    self.held.len() - 1
+                }
+            };
+            let held = &mut self.held[index].1;
+            if let Some(previous) = held
+                .iter()
+                .find(|entry| entry.envelope.record_id == observation.envelope.record_id)
+            {
+                if previous != observation {
+                    return Err(format!(
+                        "conflicting observation {}",
+                        observation.envelope.record_id
+                    ));
+                }
+            } else {
+                destination
+                    .observe(observation)
+                    .map_err(|e| e.to_string())?;
+                held.push(observation.clone());
+            }
+            self.next += 1;
+        }
+        Ok(())
+    }
 }
 
 fn reconcile<S: Store, D: Store>(
