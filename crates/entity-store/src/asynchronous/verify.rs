@@ -625,8 +625,10 @@ fn walk_branches<R: Borrow<StoredRecord>>(
     // For each record, the decisions it sits on: itself for a decision, and for an observation the
     // decision it observed. The imported anchor is a decision here, under its own digest.
     let mut sits_on: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    // For each decision, every decision it descends from.
-    let mut ancestors: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    // For each decision, the decisions it directly follows. Keeping every decision's whole ancestor
+    // set instead held N(N−1)/2 entries for a chain of N decisions; the full ancestry is walked only
+    // where a record follows more than one decision and the walk is the question.
+    let mut parents: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut decisions: BTreeSet<String> = BTreeSet::new();
     let mut ids: BTreeSet<&str> = BTreeSet::new();
     let mut anchor_digest: Option<String> = None;
@@ -655,7 +657,7 @@ fn walk_branches<R: Borrow<StoredRecord>>(
                     && anchor_digest.get_or_insert_with(|| parent.clone()) == parent =>
                 {
                     decisions.insert(parent.clone());
-                    ancestors.entry(parent.clone()).or_default();
+                    parents.entry(parent.clone()).or_default();
                     vec![parent.clone()]
                 }
                 None => {
@@ -671,19 +673,19 @@ fn walk_branches<R: Borrow<StoredRecord>>(
                 }
             }
         }
-        // A decision another one this record follows descends from is not a branch it joins.
-        let on: Vec<String> = on
-            .iter()
-            .filter(|decision| {
-                !on.iter().any(|other| {
-                    other != *decision
-                        && ancestors
-                            .get(other)
-                            .is_some_and(|descends| descends.contains(*decision))
+        // A decision another one this record follows descends from is not a branch it joins. One
+        // followed decision joins nothing, so only a record that follows several walks ancestry.
+        let on: Vec<String> = if on.len() < 2 {
+            on
+        } else {
+            on.iter()
+                .filter(|decision| {
+                    !on.iter()
+                        .any(|other| other != *decision && descends_from(&parents, other, decision))
                 })
-            })
-            .cloned()
-            .collect();
+                .cloned()
+                .collect()
+        };
         let state_of = |decision: &String| match states.get(decision) {
             Some(state) => state.clone(),
             None => origin.clone(),
@@ -736,14 +738,7 @@ fn walk_branches<R: Borrow<StoredRecord>>(
             ));
         }
         if is_decision {
-            let mut descends: BTreeSet<String> = BTreeSet::new();
-            for decision in &on {
-                descends.insert(decision.clone());
-                if let Some(further) = ancestors.get(decision) {
-                    descends.extend(further.iter().cloned());
-                }
-            }
-            ancestors.insert(lineage.digest.clone(), descends);
+            parents.insert(lineage.digest.clone(), on);
             decisions.insert(lineage.digest.clone());
             sits_on.insert(lineage.digest.clone(), vec![lineage.digest.clone()]);
         } else {
@@ -751,16 +746,48 @@ fn walk_branches<R: Borrow<StoredRecord>>(
         }
         previous_position = Some(record.position);
     }
-    let decided: BTreeSet<&String> = ancestors.values().flatten().collect();
+    // A decision another decision descends from is followed directly by some decision on the way,
+    // so the heads are the decisions no decision directly follows.
+    let followed: BTreeSet<&String> = parents.values().flatten().collect();
     let heads = decisions
         .iter()
-        .filter(|decision| !decided.contains(decision))
+        .filter(|decision| !followed.contains(decision))
         .cloned()
         .collect();
+    #[cfg(test)]
+    RETAINED_PARENT_ENTRIES.with(|retained| retained.set(parents.values().map(Vec::len).sum()));
     if let Some(anchor) = anchor_digest {
         states.entry(anchor).or_insert(origin);
     }
     Ok(BranchWalk { states, heads })
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The parent entries the last branch walk on this thread retained, for the tests that hold a
+    /// chain of N decisions to N − 1.
+    static RETAINED_PARENT_ENTRIES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Decisions visited by ancestry walks on this thread.
+    static ANCESTRY_STEPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Whether `decision` descends from `ancestor` through the decisions each one directly follows.
+fn descends_from(parents: &BTreeMap<String, Vec<String>>, decision: &str, ancestor: &str) -> bool {
+    let mut pending: Vec<&str> = vec![decision];
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    while let Some(next) = pending.pop() {
+        #[cfg(test)]
+        ANCESTRY_STEPS.with(|steps| steps.set(steps.get() + 1));
+        for parent in parents.get(next).into_iter().flatten() {
+            if parent == ancestor {
+                return true;
+            }
+            if seen.insert(parent.as_str()) {
+                pending.push(parent.as_str());
+            }
+        }
+    }
+    false
 }
 
 /// Verifies a history whose records name the records they follow, as a store merged under
@@ -1194,5 +1221,221 @@ fn assurance_subject(assurance: &SubjectAssurance) -> &Subject {
     match assurance {
         SubjectAssurance::VerifiedFromGenesis { subject }
         | SubjectAssurance::VerifiedAfterBoundary { subject, .. } => subject,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use entity_core::{Decision, Registry, Runtime};
+    use serde_json::json;
+
+    use super::*;
+    use crate::{
+        asynchronous::{BatchKey, Lineage, RecordPosition, RecordReceipt},
+        RecordedCommit, Recording,
+    };
+
+    fn runtime_registry() -> Registry {
+        let definition = serde_json::from_value(json!({
+            "entity": "ticket",
+            "version": 1,
+            "schema": { "fields": {} },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "operations": {
+                "touch": { "transitions": [{ "from": "open", "to": "open" }] }
+            }
+        }))
+        .expect("definition parses");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("definition validates");
+        registry
+    }
+
+    fn digest(name: &str) -> String {
+        format!("{name:0>64}")
+    }
+
+    /// A history built record by record, each naming the digests it follows.
+    struct Builder {
+        history: SubjectHistory,
+    }
+
+    impl Builder {
+        fn new() -> Self {
+            Self {
+                history: SubjectHistory {
+                    subject: Subject::new("ticket", "one").expect("subject"),
+                    origin: HistoryOrigin::Genesis,
+                    records: Vec::new(),
+                },
+            }
+        }
+
+        fn push(&mut self, name: &str, decision: Decision, expect: Expect, parents: &[&str]) {
+            let position = self.history.records.len() as u64 + 1;
+            let record_id = format!("record-{name}");
+            let recording = Recording {
+                record_id: record_id.clone(),
+                recorded_at: "2026-11-22T00:00:00Z".to_owned(),
+                actor: None,
+                correlation: None,
+                causation: None,
+            };
+            let entry = RecordedEntry::Decision(
+                RecordedCommit::new(decision, &recording).expect("recording is valid"),
+            );
+            let revision = match &entry {
+                RecordedEntry::Decision(commit) => commit.instance.revision,
+                RecordedEntry::Observation(_) => unreachable!("only decisions are pushed"),
+            };
+            let position = RecordPosition {
+                subject: position,
+                store: position,
+            };
+            let receipt = RecordReceipt {
+                record_id: record_id.clone(),
+                subject: self.history.subject.clone(),
+                kind: entry.kind(),
+                revision,
+                position,
+                batch_key: BatchKey::SingleRecord(record_id),
+                member_index: 0,
+            };
+            self.history.records.push(StoredRecord {
+                request_bytes: original_request_comparison_bytes(&entry).expect("request bytes"),
+                record_bytes: record_comparison_bytes(&entry).expect("record bytes"),
+                entry,
+                position,
+                receipt,
+                expect,
+                lineage: Some(Box::new(Lineage {
+                    digest: digest(name),
+                    parents: parents.iter().map(|parent| digest(parent)).collect(),
+                })),
+            });
+        }
+    }
+
+    fn retained_parent_entries() -> usize {
+        RETAINED_PARENT_ENTRIES.with(std::cell::Cell::get)
+    }
+
+    fn ancestry_steps() -> usize {
+        ANCESTRY_STEPS.with(std::cell::Cell::get)
+    }
+
+    fn head_digests(history: &SubjectHistory) -> Vec<String> {
+        branch_heads(history)
+            .expect("the history verifies")
+            .into_iter()
+            .map(|(head, _)| head)
+            .collect()
+    }
+
+    #[test]
+    fn a_chain_of_decisions_has_one_head_and_retains_one_parent_entry_per_decision() {
+        let registry = runtime_registry();
+        let runtime = Runtime::new(&registry);
+        let mut builder = Builder::new();
+        let mut state = runtime
+            .create("ticket", 1, "one", json!({}))
+            .expect("create decides");
+        builder.push("0", state.clone(), Expect::Absent, &[]);
+        let decisions = 64u64;
+        for index in 1..decisions {
+            let next = runtime
+                .execute(&state.instance, "touch", json!({}))
+                .expect("touch decides");
+            builder.push(
+                &index.to_string(),
+                next.clone(),
+                Expect::Revision(index),
+                &[&(index - 1).to_string()],
+            );
+            state = next;
+        }
+        let steps_before = ancestry_steps();
+
+        let heads = branch_heads(&builder.history).expect("the chain verifies");
+
+        assert_eq!(heads.len(), 1);
+        assert_eq!(heads[0].0, digest(&(decisions - 1).to_string()));
+        assert_eq!(heads[0].1.as_ref(), Some(&state.instance));
+        // Each decision keeps the one decision it follows: N − 1 entries, where every decision's
+        // whole ancestor set held N(N − 1) / 2 = 2016.
+        assert_eq!(retained_parent_entries(), 63);
+        // No record follows more than one decision, so no ancestry is walked.
+        assert_eq!(ancestry_steps() - steps_before, 0);
+    }
+
+    #[test]
+    fn a_fork_has_both_heads_and_a_merge_joins_them_into_one() {
+        let registry = runtime_registry();
+        let runtime = Runtime::new(&registry);
+        let mut builder = Builder::new();
+        let created = runtime
+            .create("ticket", 1, "one", json!({}))
+            .expect("create decides");
+        builder.push("0", created.clone(), Expect::Absent, &[]);
+        let left = runtime
+            .execute(&created.instance, "touch", json!({}))
+            .expect("touch decides");
+        builder.push("a", left.clone(), Expect::Revision(1), &["0"]);
+        let right = runtime
+            .execute(&created.instance, "touch", json!({}))
+            .expect("touch decides");
+        builder.push("b", right, Expect::Revision(1), &["0"]);
+
+        assert_eq!(
+            head_digests(&builder.history),
+            vec![digest("a"), digest("b")]
+        );
+
+        // The merge is decided on the left head at the highest revision either head reached.
+        let mut base = left.instance.clone();
+        base.revision = 2;
+        let merge = runtime
+            .execute(&base, "touch", json!({}))
+            .expect("merge decides");
+        builder.push("m", merge.clone(), Expect::Revision(2), &["a", "b"]);
+        let steps_before = ancestry_steps();
+
+        let heads = branch_heads(&builder.history).expect("the merged history verifies");
+
+        assert_eq!(heads.len(), 1);
+        assert_eq!(heads[0].0, digest("m"));
+        assert_eq!(heads[0].1.as_ref(), Some(&merge.instance));
+        // Validating the merge asks whether either joined head descends from the other.
+        assert!(ancestry_steps() > steps_before);
+    }
+
+    #[test]
+    fn a_record_that_also_names_an_ancestor_of_its_parent_joins_no_branch() {
+        let registry = runtime_registry();
+        let runtime = Runtime::new(&registry);
+        let mut builder = Builder::new();
+        let created = runtime
+            .create("ticket", 1, "one", json!({}))
+            .expect("create decides");
+        builder.push("0", created.clone(), Expect::Absent, &[]);
+        let left = runtime
+            .execute(&created.instance, "touch", json!({}))
+            .expect("touch decides");
+        builder.push("a", left.clone(), Expect::Revision(1), &["0"]);
+        let right = runtime
+            .execute(&created.instance, "touch", json!({}))
+            .expect("touch decides");
+        builder.push("b", right, Expect::Revision(1), &["0"]);
+        // Naming "0" beside "a" adds nothing: "a" descends from it, so this follows "a" alone and
+        // the fork stays open.
+        let next = runtime
+            .execute(&left.instance, "touch", json!({}))
+            .expect("touch decides");
+        builder.push("c", next, Expect::Revision(2), &["a", "0"]);
+
+        assert_eq!(
+            head_digests(&builder.history),
+            vec![digest("b"), digest("c")]
+        );
     }
 }

@@ -18,6 +18,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   are encoded from the record the kernel just produced instead of deciding the creation again. A
   retry is still compared by deciding its request again under the saved definition, so a
   different request under the same record id is still refused.
+- `branch_heads` and the verification of a branched history keep each decision's direct parents
+  instead of its whole ancestor set, so a chain of N decisions holds N − 1 entries instead of
+  N(N − 1)/2 (at 512 decisions the extra peak heap fell from 17.2 MB to 0.55 MB). Ancestry is
+  walked only for a record that follows more than one decision. Heads and refusals are unchanged.
 
 ## [0.32.0] — 2026-11-22
 
