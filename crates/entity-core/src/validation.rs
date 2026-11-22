@@ -2697,11 +2697,14 @@ fn validate_alphabet(alphabet: &str, path: &str, defects: &mut Vec<DefinitionErr
 
 // --- Values --------------------------------------------------------------------------------------
 
-/// Fills in declared defaults, at every depth an object or array element already reaches.
+/// Fills in declared defaults, at every depth an object, array element or map value already
+/// reaches.
 ///
 /// A default inside an object that was not supplied at all is **not** materialised: filling it
 /// would invent an object the caller never sent. A default inside an object that *is* present —
-/// `{"address": {}}` — is filled, which is what a `default` on a nested property means.
+/// `{"address": {}}` — is filled, which is what a `default` on a nested property means. A map
+/// value is the same case as an array element: each value the caller sent gets its item
+/// defaults, and no value is invented for a key that was not sent.
 pub(crate) fn apply_defaults(schema: &ObjectSchema, object: &mut Map<String, Value>) {
     apply_member_defaults(&schema.fields, object);
 }
@@ -2733,6 +2736,13 @@ fn apply_nested_defaults(definition: &FieldDefinition, value: &mut Value) {
             if let (Some(items), Value::Array(values)) = (&definition.items, value) {
                 for element in values {
                     apply_nested_defaults(items, element);
+                }
+            }
+        }
+        FieldKind::Map => {
+            if let (Some(items), Value::Object(members)) = (&definition.items, value) {
+                for member in members.values_mut() {
+                    apply_nested_defaults(items, member);
                 }
             }
         }

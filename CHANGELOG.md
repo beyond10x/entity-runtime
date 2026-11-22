@@ -22,6 +22,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   twice, and two versions of one owner with `relation_second_owner` naming the same entity twice.
   Both checks now count claims within one version; two relations on one field, or two owners of
   one entity, inside one version are still refused.
+- Creation, operation arguments and definition defaults now fill item defaults inside each value
+  of a typed `map`, as they already did inside each array element. A required property with a
+  default, left out of a map value, was refused with `required property is missing` at a path such
+  as `fields.routing.east.enabled`; it is now filled. No map entry is invented for a key the caller
+  did not send.
 
 ## [0.32.0] — 2026-11-22
 

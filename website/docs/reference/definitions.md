@@ -62,7 +62,8 @@ schema:
 
 Every field also accepts `required` and `default`. Defaults are applied before validation and are
 validated when the definition is registered. A nested default is applied when its containing object
-exists; it does not invent the containing object.
+exists, inside an object field, an array element or a map value; it does not invent the containing
+object or a map entry.
 
 Numeric comparisons do not pass through `f64`, so large integers and bounds retain their JSON
 precision. A constraint on the wrong type is a definition defect, not an ignored decoration.

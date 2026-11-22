@@ -121,6 +121,61 @@ fn a_map_field_types_its_values_and_refuses_an_untyped_member() {
 }
 
 #[test]
+fn creation_fills_item_defaults_inside_each_map_value_as_inside_each_array_element() {
+    let item = json!({
+        "type": "object",
+        "properties": { "enabled": { "type": "boolean", "required": true, "default": true } }
+    });
+    let validated = ValidatedDefinition::new(definition(json!({
+        "entity": "settings",
+        "version": 1,
+        "semantics": "service/1",
+        "schema": { "fields": {
+            "routing": { "type": "map", "key": "string", "items": item },
+            "lanes": { "type": "array", "items": item }
+        }},
+        "lifecycle": { "initial": "open", "states": ["open"] }
+    })))
+    .expect("registers");
+
+    let decision = create(
+        &validated,
+        "cfg".to_owned(),
+        json!({
+            "routing": { "east": {}, "west": { "enabled": false } },
+            "lanes": [{}]
+        }),
+    )
+    .expect("the required property's default fills it in a map value as in an array element");
+    assert_eq!(
+        decision.instance.fields,
+        json!({
+            "routing": { "east": { "enabled": true }, "west": { "enabled": false } },
+            "lanes": [{ "enabled": true }]
+        })
+        .as_object()
+        .expect("an object")
+        .clone()
+    );
+
+    // Only values the caller sent are filled: a default invents no map entry.
+    let empty = create(&validated, "cfg".to_owned(), json!({ "routing": {} }))
+        .expect("an empty map is a map");
+    assert_eq!(empty.instance.fields["routing"], json!({}));
+
+    // A value of the wrong kind is still refused at its path rather than defaulted over.
+    let Err(CoreError::Validation(errors)) = create(
+        &validated,
+        "cfg".to_owned(),
+        json!({ "routing": { "east": { "enabled": "yes" } } }),
+    ) else {
+        panic!("a map value is still typed by `items`");
+    };
+    assert_eq!(errors[0].path, "fields.routing.east.enabled");
+    assert_eq!(errors[0].message, "expected boolean");
+}
+
+#[test]
 fn a_map_with_an_integer_key_refuses_a_key_that_is_not_integer_text() {
     let schema = json!({ "fields": { "counts": {
         "type": "map", "key": "integer", "items": { "type": "integer" }, "required": true
