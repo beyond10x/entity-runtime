@@ -94,22 +94,42 @@ impl DocumentQuery {
     }
 
     /// The last identity encoded by this query's continuation, or an empty lower bound.
+    ///
+    /// A cursor is `v1.<digest>.<last id>`: the 128-bit FNV-1a digest of the query's canonical
+    /// identity and the last instance id, both in lowercase hexadecimal, so its length does not
+    /// grow with the predicate. A cursor of the earlier form `<identity>.<last id>`, which carries
+    /// the whole canonical identity, still continues the query it belongs to.
     pub fn after_id(&self) -> Result<String, QueryError> {
         let Some(cursor) = &self.after else {
             return Ok(String::new());
         };
-        let (identity, last_id) = cursor
-            .0
-            .split_once('.')
-            .ok_or_else(|| QueryError::Invalid("query cursor is malformed".to_owned()))?;
-        check_hex(identity)?;
-        if !self.identity_is(identity)? {
-            return Err(QueryError::Invalid(
-                "query cursor belongs to another query".to_owned(),
-            ));
-        }
+        let malformed = || QueryError::Invalid("query cursor is malformed".to_owned());
+        let last_id = if let Some(rest) = cursor.0.strip_prefix(CURSOR_V1) {
+            let (digest, last_id) = rest.split_once('.').ok_or_else(malformed)?;
+            check_hex(digest)?;
+            if digest.as_bytes() != encode_hex(&self.digest()?.to_be_bytes()).as_bytes() {
+                return Err(another_query());
+            }
+            last_id
+        } else {
+            let (identity, last_id) = cursor.0.split_once('.').ok_or_else(malformed)?;
+            check_hex(identity)?;
+            if !self.identity_is(identity)? {
+                return Err(another_query());
+            }
+            last_id
+        };
         String::from_utf8(decode_hex(last_id)?)
             .map_err(|_| QueryError::Invalid("query cursor identity is not UTF-8".to_owned()))
+    }
+
+    /// The 128-bit FNV-1a digest of this query's canonical identity, serialised straight into the
+    /// hash without a buffer.
+    fn digest(&self) -> Result<u128, QueryError> {
+        let mut hasher = Fnv1a128::new();
+        serde_json::to_writer(&mut hasher, &(&self.entity, &self.matching))
+            .map_err(|error| QueryError::Invalid(error.to_string()))?;
+        Ok(hasher.0)
     }
 
     /// Whether `hex`, already checked as canonical hexadecimal, encodes this query's identity.
@@ -127,6 +147,7 @@ impl DocumentQuery {
         Ok(matcher.matched && matcher.expected.is_empty())
     }
 
+    #[cfg(test)]
     fn identity_bytes(&self) -> Result<Vec<u8>, QueryError> {
         serde_json::to_vec(&(&self.entity, &self.matching))
             .map_err(|error| QueryError::Invalid(error.to_string()))
@@ -134,10 +155,43 @@ impl DocumentQuery {
 
     fn cursor_after(&self, id: &str) -> Result<QueryCursor, QueryError> {
         Ok(QueryCursor(format!(
-            "{}.{}",
-            encode_hex(&self.identity_bytes()?),
+            "{CURSOR_V1}{}.{}",
+            encode_hex(&self.digest()?.to_be_bytes()),
             encode_hex(id.as_bytes())
         )))
+    }
+}
+
+/// The prefix of a cursor that carries a digest of its query rather than the whole query. An
+/// earlier cursor starts with hexadecimal digits, never with `v`.
+const CURSOR_V1: &str = "v1.";
+
+fn another_query() -> QueryError {
+    QueryError::Invalid("query cursor belongs to another query".to_owned())
+}
+
+/// The 128-bit FNV-1a hash of the bytes written to it.
+struct Fnv1a128(u128);
+
+impl Fnv1a128 {
+    const OFFSET_BASIS: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
+    const PRIME: u128 = 0x0000_0000_0100_0000_0000_0000_0000_013b;
+
+    const fn new() -> Self {
+        Self(Self::OFFSET_BASIS)
+    }
+}
+
+impl std::io::Write for Fnv1a128 {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        for &byte in bytes {
+            self.0 = (self.0 ^ u128::from(byte)).wrapping_mul(Self::PRIME);
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
@@ -494,6 +548,116 @@ mod tests {
             query
                 .clone()
                 .after(QueryCursor(format!("{identity}.{last}")))
+                .after_id(),
+            Ok("id-1".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_cursor_has_the_same_length_however_large_the_query_grows() {
+        // The cursor carried the hex-encoded query: 113, 2,097 and 131,121 bytes for these.
+        let lengths: Vec<usize> = [32, 1_024, 65_536]
+            .into_iter()
+            .map(|size| {
+                DocumentQuery::for_entity("work")
+                    .matching("title", Value::from("t".repeat(size)))
+                    .cursor_after("id-1")
+                    .expect("cursor")
+                    .as_str()
+                    .len()
+            })
+            .collect();
+        let expected = CURSOR_V1.len() + 32 + 1 + "id-1".len() * 2;
+        assert_eq!(lengths, [expected; 3]);
+    }
+
+    #[test]
+    fn a_cursor_names_its_version_the_fnv_1a_digest_of_the_query_and_the_last_id() {
+        let query = DocumentQuery::for_entity("docs");
+        assert_eq!(
+            query.cursor_after("a").expect("cursor").as_str(),
+            "v1.2b0ed12cf104ee82390a85b3b219daac.61"
+        );
+        // Published 128-bit FNV-1a vectors.
+        for (input, digest) in [
+            (&b""[..], 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d_u128),
+            (b"a", 0xd228_cb69_6f1a_8caf_7891_2b70_4e4a_8964),
+            (b"foobar", 0x343e_1662_793c_64bf_6f0d_3597_ba44_6f18),
+        ] {
+            let mut hasher = Fnv1a128::new();
+            std::io::Write::write_all(&mut hasher, input).expect("hashed");
+            assert_eq!(hasher.0, digest);
+        }
+    }
+
+    #[test]
+    fn a_cursor_carrying_the_whole_query_still_continues_that_query() {
+        let query = DocumentQuery::for_entity("work").matching("status", Value::from("active"));
+        let former = QueryCursor(format!(
+            "{}.{}",
+            encode_hex(&query.identity_bytes().expect("identity")),
+            encode_hex(b"id-1")
+        ));
+        assert_eq!(
+            query.clone().after(former.clone()).after_id(),
+            Ok("id-1".to_owned())
+        );
+        let other = DocumentQuery::for_entity("work").matching("status", Value::from("draft"));
+        assert_eq!(other.after(former).after_id(), Err(another_query()));
+    }
+
+    #[test]
+    fn a_digest_cursor_of_another_query_is_refused_as_another_query() {
+        let query = DocumentQuery::for_entity("work").matching("status", Value::from("active"));
+        let digest = encode_hex(&query.digest().expect("digest").to_be_bytes());
+        let last = encode_hex(b"id-1");
+        let others = [
+            DocumentQuery::for_entity("work").matching("status", Value::from("draft")),
+            DocumentQuery::for_entity("works").matching("status", Value::from("active")),
+            DocumentQuery::for_entity("work"),
+        ];
+        for other in &others {
+            let cursor = other.cursor_after("id-1").expect("cursor");
+            assert_eq!(
+                query.clone().after(cursor).after_id(),
+                Err(another_query()),
+                "cursor of {other:?}"
+            );
+        }
+        for foreign in [
+            digest[..digest.len() - 2].to_owned(),
+            format!("{digest}00"),
+            String::new(),
+        ] {
+            let cursor = QueryCursor(format!("{CURSOR_V1}{foreign}.{last}"));
+            assert_eq!(
+                query.clone().after(cursor).after_id(),
+                Err(another_query()),
+                "digest {foreign:?}"
+            );
+        }
+        assert_eq!(
+            query
+                .clone()
+                .after(QueryCursor(format!(
+                    "{CURSOR_V1}{}.{last}",
+                    digest.to_uppercase()
+                )))
+                .after_id(),
+            Err(QueryError::Invalid(
+                "query cursor has invalid hexadecimal data".to_owned()
+            ))
+        );
+        assert_eq!(
+            query
+                .clone()
+                .after(QueryCursor(format!("{CURSOR_V1}{digest}")))
+                .after_id(),
+            Err(QueryError::Invalid("query cursor is malformed".to_owned()))
+        );
+        assert_eq!(
+            query
+                .after(QueryCursor(format!("{CURSOR_V1}{digest}.{last}")))
                 .after_id(),
             Ok("id-1".to_owned())
         );

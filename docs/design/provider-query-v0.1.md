@@ -5,8 +5,10 @@ Status: accepted by `story:provider-indexed-transaction-session` and Atlas ADR 0
 ## 1. Optional query capability (R-119)
 
 `entity-query` is outside `entity-core` and defines recursive JSON containment predicates over one
-entity discriminator. Providers return byte-ordered keyset pages. A cursor carries the complete
-canonical query identity and the last opaque instance id; using it for another question is refused.
+entity discriminator. Providers return byte-ordered keyset pages. A cursor (`v1.<digest>.<last id>`)
+carries a 128-bit FNV-1a digest of the canonical query identity and the last opaque instance id;
+using it for another question is refused. A cursor of the earlier form, which carried the complete
+canonical query identity, is still accepted for its own query.
 Limits default to 100 and are bounded at 1,000.
 
 The memory implementation is the behavioural reference. PostgreSQL answers the same question with

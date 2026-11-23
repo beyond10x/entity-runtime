@@ -1,6 +1,6 @@
 {
   "format": "er-ess-coverage/2",
-  "review": "ESS 0.77.0 -> 0.97.4: suites re-synthesized by the pinned libraries",
+  "review": "E28: a query cursor is v1.<FNV-1a 128 digest of the query>.<last id> instead of the hex-encoded query; fixed-dataset-complete-traversal and page-builder-truncates-matches assert the new emitted cursor bytes; inventory and every refusal unchanged",
   "scenarios": [
     "entity.core.Address/outcome/returned",
     "entity.core.CompareNumbers/outcome/returned",
@@ -776,7 +776,7 @@
     "entity.query/authored/consumed-duplicate-identity-refuses": "sha256:06bfd1379ade14a540cd0e9ee5ce71b394add521e05a3a581351b62b95345044",
     "entity.query/authored/consumed-foreign-entity-refuses": "sha256:8fc4bc61ac7a6404e3ac70dea839dc863bdc2c288c0b32ddb3789b7e151f9bd4",
     "entity.query/authored/consumed-prefix-before-cursor-is-validated": "sha256:59458ca3776d7a44077a9f8f3f1e9549d9404f061babce3c83164e59659c1575",
-    "entity.query/authored/fixed-dataset-complete-traversal": "sha256:fcb80fbb1ec4346c4dc57c96847d9e6dd52f73d6e8fee42bf05303de8f70d90b",
+    "entity.query/authored/fixed-dataset-complete-traversal": "sha256:fa62c7bc74c5186014ac0233b72083c51c6e727da108d7658fc38de61e7a0a37",
     "entity.query/authored/foreign-entity-cursor-refuses": "sha256:f6e9b48b5ace924f26380cb990515bf3df91cd59010f5cffaa57e130d9da83fa",
     "entity.query/authored/foreign-predicate-cursor-refuses": "sha256:430fa17a811cc47f6b64659e5403c1b74dac0ad38646f635f441809bc50470fd",
     "entity.query/authored/malformed-cursors-are-typed-refusals": "sha256:1f6d948ae2f5fe8b0a25a6b3576b0d33ad6e84837dc9b7beaaabf52d3d336abe",
@@ -784,7 +784,7 @@
     "entity.query/authored/nested-numeric-containment": "sha256:face64e0f111cfa622336f3f9e0848b79057a0a007a7bab2bdd7dae5bef4f446",
     "entity.query/authored/numeric-values-remain-exact": "sha256:35da83d107901ae551074952f85c7ea01d70cec45c378a55bc298d452923d6a0",
     "entity.query/authored/ordered-api-stops-after-matching-lookahead": "sha256:d205dd71d1632e760d0cb9ce2a7c3026aedaf7a8f6bd5a1569bae701a4150fc3",
-    "entity.query/authored/page-builder-truncates-matches": "sha256:85cd55db0ed21c5a1c080d4422839d3ab50d4b00dcda1b547e57bf5d48b4873c",
+    "entity.query/authored/page-builder-truncates-matches": "sha256:6bc335e16d8e223e0cc15921ffa64dcb0a85bf29259b5d3033f36ef18d10200d",
     "entity.query/authored/page-limit-boundaries": "sha256:95586c316a733ddebe4be1eb4ee94594dd396306cb79b90287052d450327de2a",
     "entity.query/authored/query-document-keys-are-closed": "sha256:5c060fbd1120afc7c50415fff1759e38f7b53c865b0d33254a7f2e74d4f256e8",
     "entity.query/authored/recursive-containment": "sha256:b4661675ff29c58fc46606accc643158438833b6f5d2066d909e3c7eb20b71ce",

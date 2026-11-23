@@ -20,8 +20,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `MemoryStore` document queries seek past the cursor and copy only the documents a page returns.
   A one-document page over 1,024 documents with a 1 KiB title allocated 2,007,992 bytes; it now
   allocates 3,824 bytes.
-- Continuing a document query checks that the cursor belongs to the query without decoding the
-  cursor or serialising the query into a buffer. The cursor format is unchanged.
+- A document-query cursor is now `v1.<digest>.<last id>`, with a 128-bit FNV-1a digest of the
+  query in place of the whole hex-encoded query, so its length no longer grows with the predicate
+  (a 64 KiB filter made a 131,121-byte cursor; every cursor for the id `id-1` is now 44 bytes).
+  A cursor of the earlier form still continues its own query, checked without decoding the cursor
+  or serialising the query into a buffer; a cursor of another query is refused as before.
 - Document-query array containment indexes a stored array's scalars once when a query names more
   of them than the logarithm of its length, instead of searching from the start for each member
   (131,328 comparisons for 512 tags, now under 20,000). Numbers still match by exact value.
