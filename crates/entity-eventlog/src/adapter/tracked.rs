@@ -459,6 +459,7 @@ impl EventlogRecordedStore {
                     bounds.rows = verified.model.held.rows;
                     bounds.payload = verified.model.held.payload;
                     bounds.payload_added = verified.model.held.payload_added;
+                    bounds.charges.clear();
                 }
                 cache.held.as_ref().map(|h| Arc::clone(&h.model))
             };

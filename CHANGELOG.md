@@ -72,6 +72,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `EventLogError::Committed`, from the File provider) is answered as committed, once the recorded
   history confirms it, instead of failing. Without that confirmation it is reported as uncertain,
   as an unknown commit outcome is.
+- An Eventlog store's `max_payload_bytes` holds for a provider whose event ids are longer than a
+  UUID: a write's bound counts each physical reference with the longest event id the store has
+  seen, where it counted 36 characters, so such a provider can no longer take the store past the
+  cap. A provider that mints an id longer than any before can still pass it by that one write; the
+  next write is refused.
+- An Eventlog store handle's own writes no longer add their upper bound to the payload it holds:
+  once a write commits, the handle holds what the write added, counted from the rows it wrote, so
+  after any number of its own writes it holds what a fresh capture counts. Before, a long-lived
+  handle drifted above the store's real payload and refused writes the cap admitted.
 
 ## [0.33.1] — 2026-11-23
 

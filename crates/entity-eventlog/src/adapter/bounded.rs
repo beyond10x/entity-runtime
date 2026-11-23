@@ -91,6 +91,7 @@ impl EventlogRecordedStore {
             rows: usage.projection_rows,
             payload: Some(usage.payload_bytes),
             payload_added: 0,
+            charges: std::collections::BTreeMap::new(),
             digests: BTreeSet::new(),
             partial: true,
         };
@@ -113,6 +114,7 @@ impl EventlogRecordedStore {
         held.rows = suffix.usage.projection_rows;
         held.payload = Some(suffix.usage.payload_bytes);
         held.payload_added = 0;
+        held.charges.clear();
         held.digests
             .extend(delta.blobs.iter().map(|blob| blob.digest.clone()));
         self.model_advances.fetch_add(1, Ordering::Relaxed);
