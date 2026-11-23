@@ -62,7 +62,8 @@ schema:
 
 Every field also accepts `required` and `default`. Defaults are applied before validation and are
 validated when the definition is registered. A nested default is applied when its containing object
-exists; it does not invent the containing object.
+exists, inside an object field, an array element or a map value; it does not invent the containing
+object or a map entry.
 
 Numeric comparisons do not pass through `f64`, so large integers and bounds retain their JSON
 precision. A constraint on the wrong type is a definition defect, not an ignored decoration.
@@ -74,7 +75,8 @@ object explicitly enables additional fields.
 ### Typed references
 
 A `ref` declares that a string identity points at another entity type. Register all related
-definitions together and call `Registry::validate_all`; an unknown target type is refused. The
+definitions together and call `Registry::validate_all`; an unknown target type is refused, whether
+the `ref` is declared in the schema, in a `create` argument or in an operation argument. The
 kernel is intentionally given one instance at a time and cannot prove that the referenced instance
 exists. The shell enforces existence and `acyclic` graph constraints.
 

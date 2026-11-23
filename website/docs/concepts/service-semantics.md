@@ -141,7 +141,9 @@ record when the address agrees.
 **Relations** (`owns` or `references`, `one` or `many`, and the field that carries them) are
 checked at registration: the carrier's shape and optionality by `EntityDefinition::validate`, the
 target's identity kind, a second owner and a field claimed twice by `Registry::validate_all`.
-Whether a referenced instance exists is still the shell's to check.
+Both claims are counted within one version: a relation that version 2 repeats from version 1 is
+the same relation, so both versions load together. Whether a referenced instance exists is still
+the shell's to check.
 
 ## Values and conditions
 

@@ -286,3 +286,44 @@ operations: {}
     let error = entity_yaml::from_str(merged).expect_err("merge order is not a definition rule");
     assert!(error.to_string().contains("merge keys"), "{error}");
 }
+
+#[test]
+fn a_repeated_key_is_found_among_many_fields_and_whatever_scalar_spells_it() {
+    // The last of two thousand distinct fields repeats the first.
+    let mut fields: String = (0..2000)
+        .map(|index| format!("    field_{index}: {{ type: string }}\n"))
+        .collect();
+    let distinct = format!(
+        "entity: wide\nschema:\n  fields:\n{fields}lifecycle: {{ initial: open, states: [open] }}\n"
+    );
+    let wide = entity_yaml::from_str(&distinct).expect("two thousand distinct fields parse");
+    assert_eq!(wide.schema.fields.len(), 2000);
+    fields.push_str("    field_0: { type: integer }\n");
+    let repeated = format!(
+        "entity: wide\nschema:\n  fields:\n{fields}lifecycle: {{ initial: open, states: [open] }}\n"
+    );
+    let error = entity_yaml::from_str(&repeated).expect_err("field_0 is written twice");
+    assert!(
+        error
+            .to_string()
+            .contains(r#"duplicate mapping key String("field_0")"#),
+        "{error}"
+    );
+
+    // A key that is not a plain string keeps YAML value equality: two integer 7s and two equally
+    // tagged scalars are one key written twice, and the string "7" is not the integer 7.
+    for (text, key) in [("7: a\n7: b\n", "Number(7)"), ("!x k: a\n!x k: b\n", "!x")] {
+        let error = entity_yaml::from_str(text).expect_err("the key is written twice");
+        let message = error.to_string();
+        assert!(
+            message.contains("duplicate mapping key") && message.contains(key),
+            "{text:?}: {message}"
+        );
+    }
+    let error = entity_yaml::from_str("\"7\": a\n7: b\n")
+        .expect_err("not a definition, but not a repeated key either");
+    assert!(
+        !error.to_string().contains("duplicate mapping key"),
+        "{error}"
+    );
+}

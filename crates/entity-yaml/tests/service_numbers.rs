@@ -12,7 +12,7 @@
 //! definition carrying an integer past the `u64` span was therefore refused — with the pre-pass's
 //! own *"expected unambiguous YAML"*, which names nothing the author can act on.
 
-use entity_core::EntityDefinition;
+use entity_core::{create, CoreError, EntityDefinition, ValidatedDefinition};
 use serde_json::Value;
 
 /// A definition whose one invariant compares `big` against an authored integer literal.
@@ -145,16 +145,86 @@ fn the_duplicate_and_merge_key_refusals_still_hold_beside_a_wide_integer() {
     assert!(error.to_string().contains("merge keys"), "{error}");
 }
 
-/// An integer wider than either 128-bit carrier is still resolved to a binary64 by the YAML reader,
-/// which is that reader's own limit and not this seam's. Pinned so the boundary is a measured fact
-/// rather than an assumption: past it, the two front doors are **not** one value.
+/// An integer wider than either 128-bit carrier is resolved to a binary64 by the YAML reader, which
+/// is that reader's own limit. The binary64 does not hold it, so the front door reads the scalar's
+/// own digits again, and past the carriers the two front doors are one value too.
 #[test]
-fn an_integer_past_the_128_bit_carriers_is_still_read_as_a_float_and_says_so() {
+fn an_integer_past_the_128_bit_carriers_is_one_value_from_yaml_and_from_json() {
     let literal = "1701411834604692317316873037158841057270";
     let (yaml_side, json_side) = both_doors(literal);
-    assert_ne!(
+    assert_eq!(
         yaml_side, json_side,
-        "past the carriers the YAML reader resolves the scalar to a binary64"
+        "the digits a binary64 would round are read as written"
     );
-    assert_eq!(literal_of(&json_side), literal);
+    assert_eq!(literal_of(&yaml_side), literal);
+}
+
+/// A `number` field `rate` bounded below by `min`, as YAML text.
+fn bounded_yaml(min: &str) -> String {
+    format!(
+        "entity: quote\nversion: 1\nschema:\n  fields:\n    rate: {{ type: number, required: \
+         true, min: {min} }}\nlifecycle: {{ initial: open, states: [open] }}\n"
+    )
+}
+
+/// The same definition as JSON text, which `entity` reads through this same front door when the
+/// file is called `quote.json`.
+fn bounded_json(min: &str) -> String {
+    format!(
+        r#"{{"entity": "quote", "version": 1,
+  "schema": {{ "fields": {{ "rate": {{ "type": "number", "required": true, "min": {min} }} }} }},
+  "lifecycle": {{ "initial": "open", "states": ["open"] }}}}"#
+    )
+}
+
+/// A bound less than one binary64 step above 1 keeps its digits through the YAML front door,
+/// written as YAML or as JSON, and the kernel enforces the bound the author wrote: 1 is below it.
+#[test]
+fn a_bound_finer_than_a_binary64_keeps_its_digits_and_refuses_the_value_below_it() {
+    const BOUND: &str = "1.0000000000000001";
+    for (format, text) in [("yaml", bounded_yaml(BOUND)), ("json", bounded_json(BOUND))] {
+        let definition = entity_yaml::from_str(&text).expect("the document is a definition");
+        assert_eq!(
+            definition.schema.fields["rate"]
+                .min
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some(BOUND),
+            "{format}: the bound is read as written, not as the binary64 1.0"
+        );
+        let validated = ValidatedDefinition::new(definition).expect("registers");
+        let create_at = |rate: &str| {
+            let fields: Value =
+                serde_json::from_str(&format!(r#"{{"rate": {rate}}}"#)).expect("JSON fields");
+            create(&validated, "q".to_owned(), fields)
+        };
+        let Err(CoreError::Validation(errors)) = create_at("1") else {
+            panic!("{format}: 1 is below the bound 1.0000000000000001");
+        };
+        assert_eq!(errors.len(), 1, "{format}: {errors:?}");
+        assert_eq!(errors[0].path, "fields.rate", "{format}");
+        create_at(BOUND).expect("the bound itself is admitted");
+        create_at("1.0000000000000002").expect("a value above the bound is admitted");
+    }
+}
+
+/// A float a binary64 already holds as written keeps the reading it always had, so a definition
+/// that was read exactly before keeps its bytes, and its digest, through this change.
+#[test]
+fn a_float_a_binary64_holds_keeps_the_reading_it_always_had() {
+    for (written, read) in [
+        ("0.50", 0.5),
+        ("0.1", 0.1),
+        ("1e3", 1000.0),
+        ("-2.5e-3", -0.0025),
+    ] {
+        let definition =
+            entity_yaml::from_str(&bounded_yaml(written)).expect("the document is a definition");
+        assert_eq!(
+            definition.schema.fields["rate"].min,
+            serde_json::Number::from_f64(read),
+            "{written}"
+        );
+    }
 }

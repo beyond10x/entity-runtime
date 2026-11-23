@@ -149,6 +149,21 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `LegacyStoreSnapshot::new`, which the file, SQLite and PostgreSQL legacy readers call, verifies
   the histories it owns in place instead of copying every history and terminal state first (128
   subjects of 64 KiB: extra peak heap from 17.1 MB to 0.1 MB). Refusals are unchanged.
+- `entity validate` and `Registry::validate_all` now check a `ref` declared in a `service/1`
+  `create` argument, as they already checked one in the schema or an operation argument. A set
+  whose creation argument points at an entity type nobody registered is refused with
+  `unknown_relation_target` at a path such as `create.arguments.tracking`; it used to pass.
+- Validating a `service/1` definition builds its set of lifecycle states once instead of once per
+  command, and skips commands with no outcomes. A definition with many states and operations
+  validates faster; the defects reported are unchanged.
+- `entity-yaml` looks up repeated mapping keys in an ordered set instead of comparing each key
+  with every key before it, so a definition with hundreds of fields parses in n log n rather than
+  n² comparisons. Repeated keys and merge keys are refused as before, with the same message.
+- A `service/1` number literal or bound that is zero is read as zero at once, whatever its
+  exponent. `0e100000000` took about 13 seconds in a debug build at registration and again at each value check,
+  and an exponent near the `i64` limit did not finish. A literal such as
+  `0.5e-9223372036854775807` no longer overflows the scale arithmetic; it reads as zero, as a
+  release build already read it. No answer changes.
 
 ### Fixed
 
@@ -265,6 +280,31 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   corrupt history instead of verifying. Gaps are still accepted, and a decision and an observation
   may share a `PerKind` index. The File, SQLite and PostgreSQL legacy readers never produce a
   repeated position, so what they acquire is unchanged.
+- Two versions of one entity that declare the same relation now load together. `entity validate`
+  and `Registry::validate_all` refused, for example, invoice v1 and v2 that both reference
+  `account` through `account_id` with `relation_field_claimed_twice` naming the same relation
+  twice, and two versions of one owner with `relation_second_owner` naming the same entity twice.
+  Both checks now count claims within one version; two relations on one field, or two owners of
+  one entity, inside one version are still refused.
+- Creation, operation arguments and definition defaults now fill item defaults inside each value
+  of a typed `map`, as they already did inside each array element. A required property with a
+  default, left out of a map value, was refused with `required property is missing` at a path such
+  as `fields.routing.east.enabled`; it is now filled. No map entry is invented for a key the caller
+  did not send.
+- A number in a definition that a binary64 cannot hold is read as written. `entity` and
+  `entity_yaml::from_str` read a bound such as `min: 1.0000000000000001`, in a YAML or a `.json`
+  file, as `1.0` and then admitted `rate: 1`; the bound now keeps its digits and `1` is refused.
+  A number a binary64 already holds (`0.5`, `1e3`) reads exactly as before, so existing
+  definitions keep their bytes. Documents with a root `$defs` or `$ref` still round.
+- Typed map keys follow the key grammar of the pinned ESS release (0.97.4). A `key: integer` map
+  now refuses `007`, `+7` and `-0`, which were accepted as further keys beside `7` and `0`, with
+  ``key is not integer text: expected decimal integer text without `+` or leading zeroes``. A
+  `key: bytes` map now accepts the empty key, the padded base64 of no bytes; it was refused.
+- A `key: decimal` map now checks its keys by ESS's decimal pattern
+  `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$`. Keys such as `1e3`, `+1`, `.5` and `01.5`, which any number
+  reader accepted, are refused with
+  ``key is not decimal text: expected exact decimal text without `+`, leading zeroes or an exponent``;
+  an integer with more digits than a binary64 can hold is now accepted.
 
 ## [0.32.0] — 2026-11-22
 
