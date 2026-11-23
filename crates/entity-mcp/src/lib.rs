@@ -544,7 +544,7 @@ fn recording(object: &Map<String, Value>) -> Result<Recording, ShellError> {
 fn create_schema(definitions: Vec<&EntityDefinition>) -> Value {
     let field_schemas: Vec<Value> = definitions
         .iter()
-        .map(|definition| entity_surface::object_schema(&definition.schema))
+        .map(|definition| entity_surface::create_input_schema(definition))
         .collect();
     let fields = if field_schemas.len() == 1 {
         field_schemas
@@ -566,7 +566,7 @@ fn create_schema(definitions: Vec<&EntityDefinition>) -> Value {
         "type": "object", "additionalProperties": false, "required": required,
         "allOf": definitions.iter().map(|definition| json!({
             "if": { "properties": { "version": { "const": definition.version } }, "required": ["version"] },
-            "then": { "properties": { "fields": entity_surface::object_schema(&definition.schema) } }
+            "then": { "properties": { "fields": entity_surface::create_input_schema(definition) } }
         })).collect::<Vec<_>>(),
         "properties": {
             "id": { "type": "string", "minLength": 1 },
@@ -581,7 +581,7 @@ fn execute_schema(definitions: Vec<&EntityDefinition>, operation: &str) -> Value
     let schemas: Vec<Value> = definitions
         .iter()
         .filter_map(|definition| definition.operations.get(operation))
-        .map(|operation| entity_surface::object_schema(&operation.arguments))
+        .map(|operation| entity_surface::input_object_schema(&operation.arguments))
         .collect();
     let arguments = if schemas.len() == 1 {
         schemas.into_iter().next().unwrap_or_else(|| json!({}))
@@ -1075,6 +1075,185 @@ mod tests {
         assert_eq!(
             stale["result"]["structuredContent"]["kind"],
             "revision_conflict"
+        );
+    }
+
+    /// The review's `runtime/parcel.yaml`: a branched `service/1` creation whose input is its
+    /// declared arguments, not the instance fields its branch writes.
+    #[test]
+    fn a_branched_creation_tool_takes_the_creation_arguments_the_kernel_accepts() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "parcel",
+            "version": 1,
+            "semantics": "service/1",
+            "schema": { "fields": { "label": { "type": "string", "required": true } } },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "create": {
+                "arguments": { "fields": { "label_text": { "type": "string", "required": true } } },
+                "outcomes": [{
+                    "name": "opened", "effect": "creates", "set": { "label": "$args.label_text" }
+                }]
+            },
+            "operations": {}
+        }))
+        .expect("definition");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("valid");
+        let schema = create_schema(registry.iter().map(|d| d.as_definition()).collect());
+        let recording =
+            json!({ "record_id": "one", "recorded_at": "2026-11-22T12:00:00Z", "actor": null });
+        let accepted =
+            json!({ "id": "parcel-1", "fields": { "label_text": "Post" }, "recording": recording });
+        assert!(
+            jsonschema::is_valid(&schema, &accepted),
+            "the tool refuses the creation arguments the kernel accepts: {schema}"
+        );
+        let mut fields_instead = accepted.clone();
+        fields_instead["fields"] = json!({ "label": "Post" });
+        assert!(
+            !jsonschema::is_valid(&schema, &fields_instead),
+            "the tool admits instance fields the kernel refuses as arguments: {schema}"
+        );
+
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let created = server
+            .handle(
+                json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                    "name": "parcel.create", "arguments": accepted
+                }}),
+            )
+            .expect("response");
+        assert_eq!(created["result"]["isError"], false, "{created}");
+        assert_eq!(
+            created["result"]["structuredContent"]["instance"]["fields"]["label"], "Post",
+            "{created}"
+        );
+    }
+
+    /// The review's counter: `views` and `spent` are required and declare defaults the kernel
+    /// fills, so a create with `name` alone succeeds and the tool must admit it.
+    #[test]
+    fn a_create_tool_does_not_require_a_field_the_kernel_fills_from_its_default() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "counter",
+            "version": 1,
+            "schema": { "additional_fields": false, "fields": {
+                "name": { "type": "string", "required": true, "min_length": 1 },
+                "views": { "type": "integer", "required": true, "min": 0, "default": 0 },
+                "spent": { "type": "number", "required": true, "default": 0 }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+            "operations": { "close": { "transitions": [{ "from": "open", "to": "closed" }] } }
+        }))
+        .expect("definition");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("valid");
+        let schema = create_schema(registry.iter().map(|d| d.as_definition()).collect());
+        let recording =
+            json!({ "record_id": "one", "recorded_at": "2026-11-23T00:00:00Z", "actor": null });
+        let request = json!({ "id": "c-1", "fields": { "name": "c" }, "recording": recording });
+        assert!(
+            jsonschema::is_valid(&schema, &request),
+            "the tool requires a field the kernel fills from its default: {schema}"
+        );
+        let mut nameless = request.clone();
+        nameless["fields"] = json!({});
+        assert!(!jsonschema::is_valid(&schema, &nameless), "{schema}");
+
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let created = server
+            .handle(
+                json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                    "name": "counter.create", "arguments": request
+                }}),
+            )
+            .expect("response");
+        assert_eq!(created["result"]["isError"], false, "{created}");
+        assert_eq!(
+            created["result"]["structuredContent"]["instance"]["fields"]["views"], 0,
+            "{created}"
+        );
+    }
+
+    /// The kernel fills an operation argument's declared default before it validates, also inside
+    /// an object argument the caller sent, so the operation tool must not require it.
+    #[test]
+    fn an_operation_tool_does_not_require_an_argument_the_kernel_fills_from_its_default() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "counter",
+            "version": 1,
+            "schema": { "fields": {
+                "spent": { "type": "number", "required": true, "default": 0 },
+                "note": { "type": "string" },
+                "tag": { "type": "string" }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "operations": { "charge": {
+                "arguments": { "fields": {
+                    "amount": { "type": "number", "required": true, "min": 0 },
+                    "note": { "type": "string", "required": true, "default": "-" },
+                    "meta": { "type": "object", "required": true, "properties": {
+                        "tag": { "type": "string", "required": true, "default": "none" }
+                    }}
+                }},
+                "transitions": [{ "from": "open", "to": "open" }],
+                "set": {
+                    "spent": { "increment": "$args.amount" },
+                    "note": "$args.note",
+                    "tag": "$args.meta.tag"
+                }
+            }}
+        }))
+        .expect("definition");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("valid");
+        let schema = execute_schema(
+            registry.iter().map(|d| d.as_definition()).collect(),
+            "charge",
+        );
+        let recording =
+            json!({ "record_id": "two", "recorded_at": "2026-11-23T00:01:00Z", "actor": null });
+        let request = json!({
+            "id": "c-1", "expected_revision": 1,
+            "arguments": { "amount": 2, "meta": {} }, "recording": recording
+        });
+        assert!(
+            jsonschema::is_valid(&schema, &request),
+            "the tool requires an argument the kernel fills from its default: {schema}"
+        );
+        let mut without_amount = request.clone();
+        without_amount["arguments"] = json!({ "meta": {} });
+        assert!(!jsonschema::is_valid(&schema, &without_amount), "{schema}");
+        let mut without_meta = request.clone();
+        without_meta["arguments"] = json!({ "amount": 2 });
+        assert!(
+            !jsonschema::is_valid(&schema, &without_meta),
+            "an object argument without a default is still required: {schema}"
+        );
+
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let created = server
+            .handle(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                "name": "counter.create", "arguments": {
+                    "id": "c-1", "fields": {},
+                    "recording": { "record_id": "one", "recorded_at": "2026-11-23T00:00:00Z", "actor": null }
+                }
+            }}))
+            .expect("response");
+        assert_eq!(created["result"]["isError"], false, "{created}");
+        let charged = server
+            .handle(
+                json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+                    "name": "counter.charge", "arguments": request
+                }}),
+            )
+            .expect("response");
+        assert_eq!(charged["result"]["isError"], false, "{charged}");
+        let fields = &charged["result"]["structuredContent"]["instance"]["fields"];
+        assert_eq!(
+            (&fields["note"], &fields["tag"]),
+            (&json!("-"), &json!("none")),
+            "{charged}"
         );
     }
 }

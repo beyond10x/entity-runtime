@@ -8,9 +8,10 @@
 //! produce a valid document in every format here, or the drawing becomes a way to inject syntax
 //! into whatever reads it.
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use crate::graph::{Emphasis, Graph, GraphKind};
+use crate::graph::{Edge, Emphasis, Graph, GraphKind};
 use crate::layout::Layout;
 
 /// Character cell width, in SVG user units. Nothing here measures a font — a proportional font
@@ -113,8 +114,9 @@ fn mermaid_lifecycle(graph: &Graph) -> String {
     {
         let _ = writeln!(out, "  [*] --> n{at}");
     }
+    let index = NodeIndex::of(graph);
     for edge in &graph.edges {
-        let (Some(from), Some(to)) = (find(graph, &edge.from), find(graph, &edge.to)) else {
+        let Some((from, to)) = index.ends(edge) else {
             continue;
         };
         let _ = writeln!(out, "  n{from} --> n{to}: {}", mermaid_label(&edge.label));
@@ -132,8 +134,9 @@ fn mermaid_references(graph: &Graph) -> String {
     for (at, node) in graph.nodes.iter().enumerate() {
         let _ = writeln!(out, "  n{at}[\"{}\"]", mermaid_label(&node.label));
     }
+    let index = NodeIndex::of(graph);
     for edge in &graph.edges {
-        let (Some(from), Some(to)) = (find(graph, &edge.from), find(graph, &edge.to)) else {
+        let Some((from, to)) = index.ends(edge) else {
             continue;
         };
         let _ = writeln!(
@@ -217,8 +220,9 @@ pub fn svg(graph: &Graph, layout: &Layout) -> String {
         r##"  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#666"/></marker></defs>"##
     );
 
+    let index = NodeIndex::of(graph);
     for (at, edge) in graph.edges.iter().enumerate() {
-        let (Some(from), Some(to)) = (find(graph, &edge.from), find(graph, &edge.to)) else {
+        let Some((from, to)) = index.ends(edge) else {
             continue;
         };
         let (start, end) = (&boxes[from], &boxes[to]);
@@ -357,19 +361,71 @@ fn places(graph: &Graph, layout: &Layout) -> Vec<Place> {
     places
 }
 
-/// Which node an edge names.
+/// Which node an edge names, from a map built once per drawing.
 ///
-/// The **last** node with that id, matching how [`Layout`] builds its index — a `BTreeMap`
-/// collected in order, where a later duplicate replaces an earlier one. They disagreed before: the
-/// layout laid out one node and the renderer drew the arrow into another, so a back edge left a box
-/// and re-entered the same box. Duplicate ids are not reachable through the two constructors, but
+/// The **last** node with that id, matching how [`Layout`] builds its index — a map collected in
+/// order, where a later duplicate replaces an earlier one. They disagreed before: the layout laid
+/// out one node and the renderer drew the arrow into another, so a back edge left a box and
+/// re-entered the same box. Duplicate ids are not reachable through the two constructors, but
 /// `Graph`'s fields are public and a caller can build one.
-fn find(graph: &Graph, id: &str) -> Option<usize> {
-    graph.nodes.iter().rposition(|node| {
+///
+/// Built once rather than searched per edge: a backward scan of every node for both ends of every
+/// edge made a 300-state chain cost about 90,000 id comparisons to draw.
+struct NodeIndex<'a> {
+    at: BTreeMap<&'a str, usize>,
+}
+
+impl<'a> NodeIndex<'a> {
+    fn of(graph: &'a Graph) -> Self {
+        #[cfg(test)]
+        probe::visit(graph.nodes.len());
+        #[cfg(feature = "kpi-counters")]
+        crate::kpi_counters::add(
+            &crate::kpi_counters::ENDPOINT_COMPARISONS,
+            graph.nodes.len() as u64,
+        );
+        Self {
+            at: graph
+                .nodes
+                .iter()
+                .enumerate()
+                .map(|(at, node)| (node.id.as_str(), at))
+                .collect(),
+        }
+    }
+
+    fn get(&self, id: &str) -> Option<usize> {
+        #[cfg(test)]
+        probe::visit(1);
         #[cfg(feature = "kpi-counters")]
         crate::kpi_counters::add(&crate::kpi_counters::ENDPOINT_COMPARISONS, 1);
-        node.id == id
-    })
+        self.at.get(id).copied()
+    }
+
+    /// Both ends of an edge, or `None` when either names no node.
+    fn ends(&self, edge: &Edge) -> Option<(usize, usize)> {
+        Some((self.get(&edge.from)?, self.get(&edge.to)?))
+    }
+}
+
+/// Counts the work endpoint resolution does, so a test can hold it linear: one per node indexed
+/// and one per lookup (a scan would count one per node it compares).
+#[cfg(test)]
+mod probe {
+    use std::cell::Cell;
+
+    thread_local! {
+        static VISITS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(super) fn visit(count: usize) {
+        VISITS.with(|visits| visits.set(visits.get() + count));
+    }
+
+    /// The visits made since the last call, on this thread.
+    pub(super) fn take() -> usize {
+        VISITS.with(|visits| visits.replace(0))
+    }
 }
 
 /// A DOT string literal. A name carrying a quote or a backslash must not close the string it is
@@ -422,4 +478,91 @@ fn escape(value: &str) -> String {
 fn is_xml_char(character: char) -> bool {
     matches!(character, '\t' | '\n' | '\r')
         || matches!(character, ' '..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::Node;
+
+    fn node(id: &str, label: &str) -> Node {
+        Node {
+            id: id.into(),
+            label: label.into(),
+            emphasis: Emphasis::Plain,
+        }
+    }
+
+    fn edge(from: &str, to: &str) -> Edge {
+        Edge {
+            from: from.into(),
+            to: to.into(),
+            label: "x".into(),
+        }
+    }
+
+    /// The review's `graph-300.yaml`: 300 states, each transition stepping back to the one before,
+    /// so a backward scan from the end walks most of the list for every endpoint.
+    fn chain(kind: GraphKind) -> Graph {
+        let ids: Vec<String> = (0..300).map(|at| format!("stage{at:03}")).collect();
+        Graph {
+            kind,
+            title: "pipeline v1".into(),
+            nodes: ids.iter().map(|id| node(id, id)).collect(),
+            edges: ids
+                .windows(2)
+                .map(|pair| edge(&pair[1], &pair[0]))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn edge_endpoints_on_a_300_state_chain_resolve_in_linear_work() {
+        for kind in [GraphKind::Lifecycle, GraphKind::References] {
+            let graph = chain(kind);
+            let bound = graph.nodes.len() + 2 * graph.edges.len();
+            probe::take();
+            let drawn = mermaid(&graph);
+            let mermaid_work = probe::take();
+            assert_eq!(
+                drawn.matches("n299 --> n298").count() + drawn.matches("n299 -->|x| n298").count(),
+                1,
+                "the chain is still drawn: {drawn}"
+            );
+            assert!(
+                mermaid_work <= bound,
+                "{kind:?} Mermaid resolved 299 edges with {mermaid_work} node visits, over {bound}"
+            );
+            let layout = Layout::of(&graph);
+            probe::take();
+            let _ = svg(&graph, &layout);
+            let svg_work = probe::take();
+            assert!(
+                svg_work <= bound,
+                "the SVG resolved 299 edges with {svg_work} node visits, over {bound}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_duplicate_node_id_resolves_to_its_last_node_in_mermaid() {
+        for kind in [GraphKind::Lifecycle, GraphKind::References] {
+            let graph = Graph {
+                kind,
+                title: "dup".into(),
+                nodes: vec![node("a", "a"), node("b", "b"), node("a", "a2")],
+                edges: vec![edge("a", "b"), edge("b", "a")],
+            };
+            let drawn = mermaid(&graph);
+            let (out, back) = match kind {
+                GraphKind::Lifecycle => ("  n2 --> n1: x\n", "  n1 --> n2: x\n"),
+                GraphKind::References => ("  n2 -->|x| n1\n", "  n1 -->|x| n2\n"),
+            };
+            assert!(
+                drawn.contains(out) && drawn.contains(back),
+                "{kind:?}: an edge naming `a` is drawn to the last `a` (n2), as the layout reads it: {drawn}"
+            );
+            assert!(!drawn.contains("n0 -->"), "{kind:?}: {drawn}");
+        }
+    }
 }

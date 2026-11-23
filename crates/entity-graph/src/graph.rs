@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use entity_core::{EntityDefinition, FieldDefinition, FieldKind, ObjectSchema};
+use entity_core::{EntityDefinition, FieldDefinition, FieldKind, ObjectSchema, OutcomeEffect};
 
 /// What a graph represents, so a renderer can choose the notation that says it faithfully.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -74,7 +74,9 @@ impl Graph {
     /// The lifecycle of one definition: states as nodes, operations as the edges between them.
     ///
     /// This is what `entity graph` has always drawn. An operation with several `from` states
-    /// produces several edges carrying the same label, because that is what it is.
+    /// produces several edges carrying the same label, because that is what it is. A `service/*`
+    /// operation's edges are its transitions and the `moves` effects of its outcomes, which the
+    /// kernel takes the same way; two outcomes moving between the same states are one edge.
     #[must_use]
     pub fn lifecycle(definition: &EntityDefinition) -> Self {
         let mut edges = Vec::new();
@@ -88,10 +90,23 @@ impl Graph {
                     });
                 }
             }
+            for outcome in &operation.outcomes {
+                if let OutcomeEffect::Moves { to, from } = &outcome.effect {
+                    for from in from.as_slice() {
+                        edges.push(Edge {
+                            from: from.clone(),
+                            to: to.clone(),
+                            label: name.clone(),
+                        });
+                    }
+                }
+            }
         }
         edges.sort_by(|left, right| {
             (&left.from, &left.label, &left.to).cmp(&(&right.from, &right.label, &right.to))
         });
+        // Registration admits one transition per source state, so only outcomes repeat an edge.
+        edges.dedup();
 
         let leaves: BTreeSet<&str> = edges.iter().map(|edge| edge.from.as_str()).collect();
         let nodes = definition

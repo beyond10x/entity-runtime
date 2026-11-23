@@ -206,6 +206,40 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   its revision that are not the source's. It used to append only the source's later events and
   clear the divergence, leaving the replica with the source's state over a history the source
   never produced. The divergence now says the replica's history is not the source's.
+- `entity generate docs` (and `entity_surface::asyncapi`) publishes the events a `service/1`
+  definition declares on its creation and operation outcomes. Before, only `create.emit` and an
+  operation's `emits` reached the AsyncAPI contract, so an event the kernel emitted from an
+  outcome had no channel, message or receive operation. Each payload keeps the schema of the
+  creation's or the operation's arguments it reads.
+- The OpenAPI create request and the MCP `<entity>.create` tool describe the input the kernel
+  validates. A `service/1`, `service/2` or `service/3` definition with creation outcomes takes its
+  declared creation arguments in `fields` (OpenAPI component `<Entity>V<n>CreateArguments`);
+  before, both surfaces required the instance fields and refused the arguments the kernel accepts.
+  A definition without creation outcomes still takes its instance fields.
+- Every `operationId` in the generated OpenAPI document is unique. A domain operation named
+  `list`, `create`, `get` or `events` took the id of the generated method (`list_counter_v1` on
+  both the collection GET and the operation's POST). The generated method keeps its id and the
+  later method in path order takes the lowest free `_2`, `_3`, … suffix; ids that were already
+  unique are unchanged.
+- Drawing a graph as Mermaid or SVG (`entity graph`, `entity generate docs`) looks up each edge's
+  endpoints in an index built once per drawing instead of scanning every node per endpoint; a
+  300-state chain no longer costs about 90,000 id comparisons. The output is byte-identical, and a
+  duplicate node id still resolves to its last node.
+- Input schemas no longer require a field the kernel fills from its declared `default`: the
+  OpenAPI create request (component `<Entity>V<n>CreateFields` where it differs from the stored
+  fields), the creation and operation arguments, and the MCP `<entity>.create` tool. A counter
+  whose `views` and `spent` default to 0 is created with `name` alone, and its schemas required all
+  three. The stored `<Entity>V<n>Fields` and the instance schema still require every required
+  field.
+- The MCP operation tools (`<entity>.<operation>`) no longer require an argument the kernel fills
+  from its declared `default`, at the top level or inside an object argument the caller sends.
+- The lifecycle graph (`entity graph`, the diagrams of `entity generate docs`) draws the state
+  changes a `service/*` operation makes through an outcome's `moves` effect, labelled with the
+  operation. Before, only `transitions` were drawn, so a shipment `dispatch` from `pending` to
+  `shipped` gave two boxes and no edge. Two outcomes moving between the same states are one edge.
+- SVG layering places nodes in one topological pass over the forward edges instead of relaxing
+  them until nothing moves, so its cost no longer depends on how the state names sort. The layers
+  and the drawing are unchanged.
 
 ## [0.32.0] — 2026-11-22
 

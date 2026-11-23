@@ -336,6 +336,78 @@ fn a_duplicate_node_id_is_read_the_same_way_by_the_layout_and_the_renderer() {
     );
 }
 
+/// The review's `round3/runtime/dispatch.yaml`: `dispatch` moves a shipment from `pending` to
+/// `shipped` through an outcome, and its DOT drawing had both states and no edge.
+#[test]
+fn an_outcome_that_moves_the_instance_is_drawn_as_an_edge_of_its_command() {
+    let shipment = definition(json!({
+        "entity": "shipment",
+        "version": 1,
+        "semantics": "service/1",
+        "schema": { "fields": {} },
+        "lifecycle": { "initial": "pending", "states": ["pending", "shipped"] },
+        "operations": {
+            "dispatch": { "outcomes": [{
+                "name": "accepted",
+                "effect": { "moves": { "from": "pending", "to": "shipped" } }
+            }]}
+        }
+    }));
+    let graph = Graph::lifecycle(&shipment);
+    assert_eq!(
+        graph.edges,
+        vec![entity_graph::Edge {
+            from: "pending".into(),
+            to: "shipped".into(),
+            label: "dispatch".into(),
+        }]
+    );
+    assert!(
+        render::dot(&graph).contains("  \"pending\" -> \"shipped\" [label=\"dispatch\"];\n"),
+        "{}",
+        render::dot(&graph)
+    );
+
+    // Every source of a move is an edge, an `updates` branch moves nothing, and two branches
+    // moving between the same states are one edge.
+    let routed = definition(json!({
+        "entity": "parcel",
+        "version": 1,
+        "semantics": "service/1",
+        "schema": { "fields": { "note": { "type": "string" } } },
+        "lifecycle": { "initial": "new", "states": ["new", "held", "sent"] },
+        "operations": {
+            "send": {
+                "arguments": { "fields": { "urgent": { "type": "boolean", "required": true } } },
+                "outcomes": [
+                    {
+                        "name": "fast",
+                        "when": { "eq": ["$args.urgent", true] },
+                        "effect": { "moves": { "from": ["new", "held"], "to": "sent" } }
+                    },
+                    { "name": "slow", "effect": { "moves": { "from": "new", "to": "sent" } } }
+                ]
+            },
+            "annotate": { "outcomes": [{
+                "name": "noted", "effect": "updates", "set": { "note": "seen" }
+            }]}
+        }
+    }));
+    let edges: Vec<(String, String, String)> = Graph::lifecycle(&routed)
+        .edges
+        .into_iter()
+        .map(|edge| (edge.from, edge.label, edge.to))
+        .collect();
+    assert_eq!(
+        edges,
+        [("held", "send", "sent"), ("new", "send", "sent")].map(|(from, label, to)| (
+            from.to_owned(),
+            label.to_owned(),
+            to.to_owned()
+        ))
+    );
+}
+
 #[test]
 fn an_empty_graph_draws_nothing_and_does_not_panic() {
     let graph = Graph::default();
