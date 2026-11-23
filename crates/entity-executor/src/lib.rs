@@ -14,10 +14,11 @@ use entity_core::{
 use entity_store::{
     asynchronous::{
         batch_comparison_bytes, canonical_domain_bytes, original_request_comparison_bytes,
-        request_domain, verify_imported_record, verify_subject_prefix, AppendMember, AppendOutcome,
-        AppendRequest, AsyncRecordedStore, AsyncStoreError, BatchKey, CommitReceipt, MergeBase,
-        RecordLookup, RecordedEntry, RecordedRefusal, RefusalReason, StoredBatch, StoredRecord,
-        Subject, SubjectAssurance, WriteFailure,
+        request_domain, verify_imported_record, verify_subject_history,
+        verify_subject_history_extension, verify_subject_prefix, AppendMember, AppendOutcome,
+        AppendRequest, AsyncRecordedStore, AsyncStoreError, BatchKey, CommitReceipt, HistoryOrigin,
+        MergeBase, RecordLookup, RecordedEntry, RecordedRefusal, RefusalReason, StoredBatch,
+        StoredRecord, Subject, SubjectAssurance, SubjectHistory, WriteFailure,
     },
     Expect, RecordedCommit, RecordedObservation, Recording,
 };
@@ -467,6 +468,7 @@ impl<'a> Executor<'a> {
             BatchAction::Create(request) => {
                 #[cfg(feature = "kpi-counters")]
                 crate::kpi_counters::add(&crate::kpi_counters::KERNEL_CREATES, 1);
+                count_creation_kernel_call();
                 let creation = Runtime::new(self.registry).decide_create(
                     &request.subject.entity,
                     request.definition_version,
@@ -562,7 +564,7 @@ impl<'a> Executor<'a> {
                 .expect("subject was loaded before decision")
                 .as_ref();
             let (expect, entry) = self.decide(action, current, prepared)?;
-            let request_bytes = request_comparison_bytes(action, &entry)?;
+            let request_bytes = fresh_request_comparison_bytes(action, &entry)?;
             let next = match &entry {
                 RecordedEntry::Decision(commit) => Some(commit.instance.clone()),
                 RecordedEntry::Observation(_) => current.cloned(),
@@ -758,6 +760,9 @@ impl<'a> Executor<'a> {
         key: &BatchKey,
         actions: &[BoundAction],
     ) -> Result<Option<AppendOutcome>, ExecutionError> {
+        // One history per subject for the whole recovery: members on one subject are checked
+        // against the same read, and their prefixes are verified incrementally.
+        let mut histories = RecoveredHistories::default();
         if let Some(batch) = self.store.lookup_batch(key).await? {
             validate_stored_batch(key, actions.len(), &batch)?;
             for (action, stored) in actions.iter().zip(&batch.records) {
@@ -772,7 +777,7 @@ impl<'a> Executor<'a> {
                     }
                 }
                 self.match_committed(action, stored)?;
-                self.verify_committed_prefix(stored).await?;
+                self.verify_committed_prefix(&mut histories, stored).await?;
             }
             return Ok(Some(AppendOutcome::Committed {
                 receipt: batch.receipt,
@@ -786,12 +791,12 @@ impl<'a> Executor<'a> {
                 let assurance = match &lookup {
                     RecordLookup::Committed(stored) => {
                         self.match_committed(action, stored)?;
-                        self.verify_committed_prefix(stored).await?;
+                        self.verify_committed_prefix(&mut histories, stored).await?;
                         None
                     }
                     RecordLookup::Imported(evidence) => {
                         self.match_imported(action, evidence)?;
-                        Some(self.verify_imported(evidence).await?)
+                        Some(self.verify_imported(&mut histories, evidence).await?)
                     }
                 };
                 let index = u64::try_from(index).map_err(|_| {
@@ -865,37 +870,144 @@ impl<'a> Executor<'a> {
         Ok(())
     }
 
-    async fn verify_committed_prefix(&self, stored: &StoredRecord) -> Result<(), ExecutionError> {
+    async fn verify_committed_prefix(
+        &self,
+        histories: &mut RecoveredHistories,
+        stored: &StoredRecord,
+    ) -> Result<(), ExecutionError> {
         let subject = stored.entry.subject();
-        let history = self.store.history(&subject).await?;
-        let occurrence = history
+        let recovered = histories.get(self.store, &subject).await?;
+        let index = recovered
+            .history
             .records
             .iter()
-            .find(|record| record.entry.record_id() == stored.entry.record_id())
+            .position(|record| record.entry.record_id() == stored.entry.record_id())
             .ok_or_else(|| {
                 ExecutionError::Store(AsyncStoreError::CorruptHistory {
                     subject: subject.clone(),
                     detail: "global record is absent from its claimed history".to_owned(),
                 })
             })?;
-        if occurrence != stored {
+        if recovered.history.records[index] != *stored {
             return Err(ExecutionError::Store(AsyncStoreError::CorruptHistory {
                 subject,
                 detail: "global record disagrees with its immutable history occurrence".to_owned(),
             }));
         }
-        verify_subject_prefix(&history, stored.entry.record_id())?;
+        recovered.verify_prefix_through(index)?;
         Ok(())
     }
 
     async fn verify_imported(
         &self,
+        histories: &mut RecoveredHistories,
         evidence: &entity_store::asynchronous::ImportedRecordEvidence,
     ) -> Result<SubjectAssurance, ExecutionError> {
         let subject = evidence.entry.subject();
-        let history = self.store.history(&subject).await?;
-        verify_imported_record(&history, evidence).map_err(ExecutionError::Store)
+        let recovered = histories.get(self.store, &subject).await?;
+        verify_imported_record(&recovered.history, evidence).map_err(ExecutionError::Store)
     }
+}
+
+/// The subject histories one recovery read, each read at most once.
+///
+/// A retried batch whose members are the first K decisions of one subject used to read that
+/// history K times and verify K prefixes from genesis, 1 + … + K records in all. Reading it once
+/// and verifying each member's prefix as an extension of the longest prefix already verified
+/// checks every record once, with exactly the checks a prefix verification makes.
+#[derive(Default)]
+struct RecoveredHistories {
+    subjects: BTreeMap<Subject, RecoveredHistory>,
+}
+
+impl RecoveredHistories {
+    async fn get(
+        &mut self,
+        store: &dyn AsyncRecordedStore,
+        subject: &Subject,
+    ) -> Result<&mut RecoveredHistory, ExecutionError> {
+        if !self.subjects.contains_key(subject) {
+            let history = store.history(subject).await?;
+            self.subjects
+                .insert(subject.clone(), RecoveredHistory::new(history));
+        }
+        Ok(self
+            .subjects
+            .get_mut(subject)
+            .expect("the subject's history was read above"))
+    }
+}
+
+/// One subject history and the longest prefix of it verified so far.
+struct RecoveredHistory {
+    history: SubjectHistory,
+    /// `history.records[..prefix.records.len()]`, copied once as it grows: the extension verifier
+    /// reads an owned history, and each record is copied into it at most once.
+    prefix: SubjectHistory,
+    /// The state the verified prefix reached, once a prefix is verified.
+    state: Option<EntityInstance>,
+}
+
+impl RecoveredHistory {
+    fn new(history: SubjectHistory) -> Self {
+        let prefix = SubjectHistory {
+            subject: history.subject.clone(),
+            origin: history.origin.clone(),
+            records: Vec::new(),
+        };
+        Self {
+            history,
+            prefix,
+            state: None,
+        }
+    }
+
+    /// What [`verify_subject_prefix`] verifies for the record at `index`, without repeating the
+    /// checks of a shorter prefix this recovery already verified.
+    fn verify_prefix_through(&mut self, index: usize) -> Result<(), AsyncStoreError> {
+        let verified = self.prefix.records.len();
+        if index < verified {
+            // A member that precedes one already verified: its own terminal still has to be held,
+            // so it is verified on its own, in place.
+            verify_subject_prefix(&self.history, self.history.records[index].entry.record_id())?;
+            return Ok(());
+        }
+        self.prefix
+            .records
+            .extend_from_slice(&self.history.records[verified..=index]);
+        let Some(terminal) = prefix_terminal(&self.prefix) else {
+            // No state to hold the prefix to: the whole verifier names that refusal.
+            verify_subject_prefix(&self.history, self.history.records[index].entry.record_id())?;
+            return Ok(());
+        };
+        match &self.state {
+            // A branched prefix is verified whole by the extension verifier itself.
+            Some(state) if verified > 0 => {
+                verify_subject_history_extension(&self.prefix, verified, state, &terminal)?;
+            }
+            _ => {
+                verify_subject_history(&self.prefix, &terminal)?;
+            }
+        }
+        self.state = Some(terminal);
+        Ok(())
+    }
+}
+
+/// The state a verified prefix must reach: its last decision's, or the import anchor's.
+fn prefix_terminal(prefix: &SubjectHistory) -> Option<EntityInstance> {
+    prefix
+        .records
+        .iter()
+        .rev()
+        .find_map(|record| match &record.entry {
+            RecordedEntry::Decision(commit) => Some(commit.instance.clone()),
+            RecordedEntry::Observation(_) => None,
+        })
+        .or_else(|| match &prefix.origin {
+            HistoryOrigin::Imported(anchor) => Some(anchor.instance.clone()),
+            HistoryOrigin::Genesis => None,
+        })
 }
 
 fn match_saved_version(action: &BoundAction, entry: &RecordedEntry) -> Result<(), ExecutionError> {
@@ -1019,6 +1131,71 @@ fn recording_value(recording: &Recording) -> Value {
     })
 }
 
+/// The comparison bytes of a request whose record `decided` was just decided from it.
+///
+/// A fresh create's record carries the normalized command the creation kernel produced from this
+/// very request, so its bytes are encoded from that record; deciding the creation a second time
+/// only reproduced the same command at the cost of a second kernel run. A retry never comes here:
+/// it is compared through [`request_comparison_bytes`], which decides the request independently.
+fn fresh_request_comparison_bytes(
+    action: &BatchAction,
+    decided: &RecordedEntry,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    if let (BatchAction::Create(request), RecordedEntry::Decision(commit)) = (action, decided) {
+        if let DecisionCommand::Create { fields, arguments } = &commit.envelope.record.command {
+            return create_request_bytes(request, decided, fields, arguments);
+        }
+    }
+    request_comparison_bytes(action, decided)
+}
+
+/// Encodes a create request from its normalized creation fields and arguments.
+fn create_request_bytes(
+    request: &CreateRequest,
+    original: &RecordedEntry,
+    fields: &serde_json::Map<String, Value>,
+    arguments: &serde_json::Map<String, Value>,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    // A `service/1` creation reconstructs the caller's **arguments**; a `kernel/1` one
+    // reconstructs its fields, in the framing and the shape it has always used.
+    let domain = request_domain(original);
+    if matches!(domain, "er.request/2" | "er.request/3" | "er.request/4") {
+        canonical_domain_bytes(
+            domain,
+            serde_json::json!({
+                "kind": "create",
+                "subject": [request.subject.entity, request.subject.id],
+                "definition_version": request.definition_version,
+                "arguments": arguments,
+                "recording": recording_value(&request.recording),
+            }),
+        )
+    } else {
+        canonical_domain_bytes(
+            domain,
+            serde_json::json!({
+                "kind": "create",
+                "subject": [request.subject.entity, request.subject.id],
+                "definition_version": request.definition_version,
+                "fields": fields,
+                "recording": recording_value(&request.recording),
+            }),
+        )
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Creation-kernel runs on this thread, for the tests that hold a fresh create to one.
+    static CREATION_KERNEL_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Counts one creation-kernel run in tests; nothing outside them.
+fn count_creation_kernel_call() {
+    #[cfg(test)]
+    CREATION_KERNEL_CALLS.with(|calls| calls.set(calls.get() + 1));
+}
+
 fn request_comparison_bytes(
     action: &BatchAction,
     original: &RecordedEntry,
@@ -1028,9 +1205,12 @@ fn request_comparison_bytes(
     }
     match (action, original) {
         (BatchAction::Create(request), RecordedEntry::Decision(commit)) => {
+            // A retry is compared independently: the request is decided again under the saved
+            // definition, so a different request cannot borrow the stored record's command.
             let definition = saved_definition(original)?;
             #[cfg(feature = "kpi-counters")]
             crate::kpi_counters::add(&crate::kpi_counters::KERNEL_CREATES, 1);
+            count_creation_kernel_call();
             let decision = decide_create(
                 &definition,
                 request.subject.id.clone(),
@@ -1049,32 +1229,7 @@ fn request_comparison_bytes(
                     record_id: request.recording.record_id.clone(),
                 });
             }
-            // A `service/1` creation reconstructs the caller's **arguments**; a `kernel/1` one
-            // reconstructs its fields, in the framing and the shape it has always used.
-            let domain = request_domain(original);
-            if matches!(domain, "er.request/2" | "er.request/3" | "er.request/4") {
-                canonical_domain_bytes(
-                    domain,
-                    serde_json::json!({
-                        "kind": "create",
-                        "subject": [request.subject.entity, request.subject.id],
-                        "definition_version": request.definition_version,
-                        "arguments": arguments,
-                        "recording": recording_value(&request.recording),
-                    }),
-                )
-            } else {
-                canonical_domain_bytes(
-                    domain,
-                    serde_json::json!({
-                        "kind": "create",
-                        "subject": [request.subject.entity, request.subject.id],
-                        "definition_version": request.definition_version,
-                        "fields": fields,
-                        "recording": recording_value(&request.recording),
-                    }),
-                )
-            }
+            create_request_bytes(request, original, &fields, &arguments)
         }
         (BatchAction::Execute(request), RecordedEntry::Decision(commit)) => {
             let definition = saved_definition(original)?;
@@ -1338,5 +1493,253 @@ pub mod kpi_counters {
 
     pub(crate) fn add(counter: &AtomicU64, amount: u64) {
         counter.fetch_add(amount, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use entity_store::asynchronous::{
+        AsyncRecordedReader, AsyncRecordedWriter, AsyncStateReader, BoxFuture,
+        CompleteStoreSnapshot, MemoryRecordedStore,
+    };
+    use serde_json::json;
+
+    use super::*;
+
+    /// A memory store that counts the subject histories read from it.
+    #[derive(Default)]
+    struct HistoryCountingStore {
+        inner: MemoryRecordedStore,
+        history_reads: AtomicUsize,
+    }
+
+    impl AsyncStateReader for HistoryCountingStore {
+        fn load<'a>(
+            &'a self,
+            subject: &'a Subject,
+        ) -> BoxFuture<'a, Result<Option<EntityInstance>, AsyncStoreError>> {
+            self.inner.load(subject)
+        }
+    }
+
+    impl AsyncRecordedReader for HistoryCountingStore {
+        fn lookup_record<'a>(
+            &'a self,
+            record_id: &'a str,
+        ) -> BoxFuture<'a, Result<Option<RecordLookup>, AsyncStoreError>> {
+            self.inner.lookup_record(record_id)
+        }
+
+        fn lookup_batch<'a>(
+            &'a self,
+            key: &'a BatchKey,
+        ) -> BoxFuture<'a, Result<Option<StoredBatch>, AsyncStoreError>> {
+            self.inner.lookup_batch(key)
+        }
+
+        fn history<'a>(
+            &'a self,
+            subject: &'a Subject,
+        ) -> BoxFuture<'a, Result<SubjectHistory, AsyncStoreError>> {
+            self.history_reads.fetch_add(1, Ordering::SeqCst);
+            self.inner.history(subject)
+        }
+
+        fn complete_snapshot<'a>(
+            &'a self,
+            scope: &'a str,
+        ) -> BoxFuture<'a, Result<CompleteStoreSnapshot, AsyncStoreError>> {
+            self.inner.complete_snapshot(scope)
+        }
+    }
+
+    impl AsyncRecordedWriter for HistoryCountingStore {
+        fn append(
+            &self,
+            request: AppendRequest,
+        ) -> BoxFuture<'_, Result<AppendOutcome, WriteFailure>> {
+            self.inner.append(request)
+        }
+    }
+
+    fn registry() -> Registry {
+        let definition = serde_json::from_value(json!({
+            "entity": "ticket",
+            "version": 1,
+            "schema": {
+                "fields": {
+                    "title": { "type": "string", "required": true },
+                    "count": { "type": "integer", "default": 0 }
+                }
+            },
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "operations": {
+                "touch": {
+                    "transitions": [{ "from": "open", "to": "open" }],
+                    "arguments": { "fields": {} },
+                    "emits": []
+                }
+            }
+        }))
+        .expect("definition parses");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("definition validates");
+        registry
+    }
+
+    fn recording(record_id: &str) -> Recording {
+        Recording {
+            record_id: record_id.to_owned(),
+            recorded_at: "2026-11-22T00:00:00Z".to_owned(),
+            correlation: None,
+            causation: None,
+            actor: None,
+        }
+    }
+
+    fn create(id: &str, title: &str, record_id: &str) -> CreateRequest {
+        CreateRequest {
+            subject: Subject::new("ticket", id).expect("subject"),
+            definition_version: 1,
+            fields: json!({ "title": title }),
+            recording: recording(record_id),
+        }
+    }
+
+    fn touch(id: &str, revision: u64, record_id: &str) -> ExecuteRequest {
+        ExecuteRequest {
+            subject: Subject::new("ticket", id).expect("subject"),
+            expected_revision: revision,
+            operation: "touch".to_owned(),
+            arguments: json!({}),
+            fulfillments: BTreeMap::new(),
+            recording: recording(record_id),
+        }
+    }
+
+    /// The first `decisions` decisions on `id`, then one creation of `other`.
+    fn consecutive_decisions(id: &str, decisions: u64, other: &str) -> Vec<BatchAction> {
+        let mut actions = vec![BatchAction::Create(create(id, id, &format!("{id}-0")))];
+        for revision in 1..decisions {
+            actions.push(BatchAction::Execute(touch(
+                id,
+                revision,
+                &format!("{id}-{revision}"),
+            )));
+        }
+        actions.push(BatchAction::Create(create(
+            other,
+            other,
+            &format!("{other}-0"),
+        )));
+        actions
+    }
+
+    fn creation_kernel_calls() -> usize {
+        CREATION_KERNEL_CALLS.with(std::cell::Cell::get)
+    }
+
+    #[test]
+    fn a_retried_named_batch_reads_each_subject_history_once() {
+        let registry = registry();
+        let store = HistoryCountingStore::default();
+        let executor = Executor::new(&registry, &store);
+        let key = BatchKey::Named("consecutive".to_owned());
+        let first =
+            test_support::block_on(executor.batch(key.clone(), consecutive_decisions("a", 6, "b")))
+                .expect("the batch commits");
+        assert!(matches!(
+            first,
+            AppendOutcome::Committed {
+                replayed: false,
+                ..
+            }
+        ));
+        store.history_reads.store(0, Ordering::SeqCst);
+
+        let retried =
+            test_support::block_on(executor.batch(key, consecutive_decisions("a", 6, "b")))
+                .expect("the lost reply is recovered");
+
+        assert!(matches!(
+            retried,
+            AppendOutcome::Committed { replayed: true, .. }
+        ));
+        // Seven members on two subjects: one read of each subject's history, not one per member.
+        assert_eq!(store.history_reads.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn a_retried_named_batch_still_refuses_a_changed_member_after_sharing_its_history() {
+        let registry = registry();
+        let store = HistoryCountingStore::default();
+        let executor = Executor::new(&registry, &store);
+        let key = BatchKey::Named("consecutive".to_owned());
+        test_support::block_on(executor.batch(key.clone(), consecutive_decisions("a", 4, "b")))
+            .expect("the batch commits");
+        let mut changed = consecutive_decisions("a", 4, "b");
+        changed[4] = BatchAction::Create(create("b", "another title", "b-0"));
+
+        let error = test_support::block_on(executor.batch(key, changed))
+            .expect_err("a changed member is no retry");
+
+        assert!(
+            matches!(
+                error.store_error(),
+                Some(AsyncStoreError::RecordConflict { record_id }) if record_id == "b-0"
+            ),
+            "unexpected refusal: {error:?}"
+        );
+    }
+
+    #[test]
+    fn a_fresh_create_runs_the_creation_kernel_once() {
+        let registry = registry();
+        let store = MemoryRecordedStore::new();
+        let executor = Executor::new(&registry, &store);
+        let before = creation_kernel_calls();
+
+        let outcome = test_support::block_on(executor.create(create("a", "first", "a-create")))
+            .expect("the create commits");
+
+        assert!(matches!(
+            outcome,
+            AppendOutcome::Committed {
+                replayed: false,
+                ..
+            }
+        ));
+        assert_eq!(creation_kernel_calls() - before, 1);
+    }
+
+    #[test]
+    fn a_create_retry_is_compared_by_deciding_the_request_again() {
+        let registry = registry();
+        let store = MemoryRecordedStore::new();
+        let executor = Executor::new(&registry, &store);
+        test_support::block_on(executor.create(create("a", "first", "a-create")))
+            .expect("the create commits");
+        let before = creation_kernel_calls();
+
+        let replayed = test_support::block_on(executor.create(create("a", "first", "a-create")))
+            .expect("the identical retry replays");
+        assert!(matches!(
+            replayed,
+            AppendOutcome::Committed { replayed: true, .. }
+        ));
+        // The retry decides the request again rather than trusting the stored record.
+        assert_eq!(creation_kernel_calls() - before, 1);
+
+        let error = test_support::block_on(executor.create(create("a", "second", "a-create")))
+            .expect_err("a different request under the same record id is refused");
+        assert!(
+            matches!(
+                error.store_error(),
+                Some(AsyncStoreError::RecordConflict { record_id }) if record_id == "a-create"
+            ),
+            "unexpected refusal: {error:?}"
+        );
     }
 }

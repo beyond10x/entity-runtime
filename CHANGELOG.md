@@ -133,6 +133,22 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   over a replica that is already level reads no events.
 - `MemoryStore` lists one entity type's identities by seeking to that type in its ordered map
   instead of filtering every key, so listing a type it does not hold no longer walks the others.
+- `entity-executor` recovers a retried batch with one history read per subject instead of one
+  per member, and verifies each member's history prefix as an extension of the prefix already
+  verified, so a retry of K consecutive decisions on one subject checks each record once instead
+  of 1 + … + K times. `verify_subject_prefix` no longer copies the history it verifies. Refusals
+  and the batch membership checks are unchanged.
+- `entity-executor` runs the creation kernel once for a fresh create: its request-comparison bytes
+  are encoded from the record the kernel just produced instead of deciding the creation again. A
+  retry is still compared by deciding its request again under the saved definition, so a
+  different request under the same record id is still refused.
+- `branch_heads` and the verification of a branched history keep each decision's direct parents
+  instead of its whole ancestor set, so a chain of N decisions holds N − 1 entries instead of
+  N(N − 1)/2 (at 512 decisions the extra peak heap fell from 17.2 MB to 0.55 MB). Ancestry is
+  walked only for a record that follows more than one decision. Heads and refusals are unchanged.
+- `LegacyStoreSnapshot::new`, which the file, SQLite and PostgreSQL legacy readers call, verifies
+  the histories it owns in place instead of copying every history and terminal state first (128
+  subjects of 64 KiB: extra peak heap from 17.1 MB to 0.1 MB). Refusals are unchanged.
 
 ### Fixed
 
@@ -240,6 +256,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - SVG layering places nodes in one topological pass over the forward edges instead of relaxing
   them until nothing moves, so its cost no longer depends on how the state names sort. The layers
   and the drawing are unchanged.
+- `rehydrate` runs `create`'s own rules on a legacy creation event's fields and identity, and
+  refuses a creation event that lacks a declared default or carries a blank identity: `create`
+  never records either, so such a history folded to a genesis no `create` call produced. Every
+  history `create` and `execute` wrote still folds.
+- An imported boundary whose envelopes claim one order position twice — two decisions or two
+  observations at one `PerKind` index, or two records at one `Subject` position — is refused as
+  corrupt history instead of verifying. Gaps are still accepted, and a decision and an observation
+  may share a `PerKind` index. The File, SQLite and PostgreSQL legacy readers never produce a
+  repeated position, so what they acquire is unchanged.
 
 ## [0.32.0] — 2026-11-22
 
