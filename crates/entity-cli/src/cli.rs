@@ -240,7 +240,8 @@ pub enum GenerateCommand {
         /// Retained generated crate. Defaults to build/entity-runtime/NAME.
         #[arg(long)]
         build_dir: Option<PathBuf>,
-        /// Replace only exact generator-owned build and output targets.
+        /// Replace a build directory that carries the generator marker, and an output binary only
+        /// when that marker records it as the one this generator installed there.
         #[arg(long)]
         force: bool,
     },

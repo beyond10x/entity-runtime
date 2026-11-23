@@ -8,7 +8,9 @@
 //! invalid (the typed refusal is printed) · `2` the invocation itself was wrong — a missing file,
 //! unparsable input, two flags reading standard input.
 
+mod generated_output;
 mod primed;
+mod yaml_output;
 
 use clap::Parser;
 #[cfg(feature = "eventlog-providers")]
@@ -312,7 +314,7 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             let mut stdin = StdinOnce::default();
             match (&store, &id) {
                 (Some(root), Some(id)) => {
-                    let (entity, _) = chosen_type(&registry, wanted_entity.as_deref())?;
+                    let entity = chosen_entity(&registry, wanted_entity.as_deref())?;
                     let arguments = read_value(&arguments, "--arguments", &mut stdin)?;
                     let recording = into_recording(recording, true)?
                         .expect("--store requires the recording flags");
@@ -415,7 +417,7 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                     .map(|definition| definition.as_definition().clone())
                     .collect();
                 let bundle = entity_surface::documentation(&definitions).map_err(Failure::Usage)?;
-                install_documentation(&destination, &bundle, force)?;
+                generated_output::install_documentation(&destination, &bundle, force)?;
                 writeln!(
                     out,
                     "generated {} file(s) for {} definition(s) at {}",
@@ -758,97 +760,10 @@ fn provision_eventlog_file(
 
 const ENTITY_SKILL: &str = include_str!("../assets/entity-skill.md");
 
-fn install_documentation(
-    destination: &Path,
-    bundle: &entity_surface::DocumentationBundle,
-    force: bool,
-) -> Result<(), Failure> {
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    let name = destination.file_name().ok_or_else(|| {
-        Failure::Usage("--out must name a directory, not a filesystem root".into())
-    })?;
-    fs::create_dir_all(parent)
-        .map_err(|error| Failure::Usage(format!("cannot create {}: {error}", parent.display())))?;
-    if destination.exists() {
-        if !force {
-            return Err(Failure::Usage(format!(
-                "{} already exists; pass --force to replace a generated directory",
-                destination.display()
-            )));
-        }
-        if !destination.join(entity_surface::DOCS_MARKER).is_file() {
-            return Err(Failure::Usage(format!(
-                "{} is not marked as entity-runtime generated documentation and will not be replaced",
-                destination.display()
-            )));
-        }
-    }
-    let stage = parent.join(format!(
-        ".{}.generating.{}",
-        name.to_string_lossy(),
-        std::process::id()
-    ));
-    if stage.exists() {
-        return Err(Failure::Usage(format!(
-            "staging directory {} already exists",
-            stage.display()
-        )));
-    }
-    for (relative, contents) in bundle {
-        let relative = Path::new(relative);
-        if relative.is_absolute()
-            || relative
-                .components()
-                .any(|part| !matches!(part, std::path::Component::Normal(_)))
-        {
-            return Err(Failure::Usage(format!(
-                "generator produced unsafe relative path {}",
-                relative.display()
-            )));
-        }
-        let path = stage.join(relative);
-        if let Some(directory) = path.parent() {
-            fs::create_dir_all(directory).map_err(|error| {
-                Failure::Usage(format!("cannot create {}: {error}", directory.display()))
-            })?;
-        }
-        fs::write(&path, contents)
-            .map_err(|error| Failure::Usage(format!("cannot write {}: {error}", path.display())))?;
-    }
-    if destination.exists() {
-        let backup = parent.join(format!(
-            ".{}.replaced.{}",
-            name.to_string_lossy(),
-            std::process::id()
-        ));
-        fs::rename(destination, &backup).map_err(|error| {
-            Failure::Usage(format!(
-                "cannot stage replacement of {}: {error}",
-                destination.display()
-            ))
-        })?;
-        if let Err(error) = fs::rename(&stage, destination) {
-            let _ = fs::rename(&backup, destination);
-            return Err(Failure::Usage(format!(
-                "cannot publish {}: {error}",
-                destination.display()
-            )));
-        }
-        fs::remove_dir_all(&backup).map_err(|error| {
-            Failure::Usage(format!(
-                "published {}, but cannot remove generated backup {}: {error}",
-                destination.display(),
-                backup.display()
-            ))
-        })
-    } else {
-        fs::rename(&stage, destination).map_err(|error| {
-            Failure::Usage(format!("cannot publish {}: {error}", destination.display()))
-        })
-    }
-}
-
-const GENERATED_CLI_MARKER: &str = ".entity-runtime-cli.json";
+/// The generated command's YAML writer is this command's own, copied into its crate as
+/// `src/yaml_output.rs`: it needs only `serde`, `serde_json` and `serde_yaml_ng`, which the
+/// generated manifest already lists, and one copy means one writer to keep right.
+const GENERATED_YAML_OUTPUT: &str = include_str!("yaml_output.rs");
 
 #[allow(clippy::too_many_arguments)]
 fn generate_rust_cli(
@@ -921,23 +836,26 @@ fn generate_rust_cli(
             "--build-dir must not be a filesystem root".into(),
         ));
     }
-    if build_dir.exists() {
-        if !force || !build_dir.join(GENERATED_CLI_MARKER).is_file() {
+    let destination = std::path::absolute(destination).map_err(|error| {
+        Failure::Usage(format!(
+            "cannot resolve output path {}: {error}",
+            destination.display()
+        ))
+    })?;
+    let previous = generated_output::previous_installation(&build_dir);
+    if fs::symlink_metadata(&destination).is_ok() {
+        if !force {
             return Err(Failure::Usage(format!(
-                "{} already exists and is not authorised for replacement",
-                build_dir.display()
+                "{} already exists; pass --force to replace that exact binary",
+                destination.display()
             )));
         }
-        fs::remove_dir_all(&build_dir).map_err(|error| {
-            Failure::Usage(format!("cannot replace {}: {error}", build_dir.display()))
-        })?;
+        generated_output::check_output_owned(&destination, previous.as_ref())?;
     }
-    if destination.exists() && !force {
-        return Err(Failure::Usage(format!(
-            "{} already exists; pass --force to replace that exact binary",
-            destination.display()
-        )));
-    }
+    // A forced regeneration replaces the generated sources and keeps Cargo's `target/` and, for
+    // the same runtime version, the lockfile: a change confined to an embedded definition then
+    // recompiles the generated crate alone instead of the whole dependency graph.
+    let lockfile = generated_output::prepare_build_dir(&build_dir, force)?;
     fs::create_dir_all(build_dir.join("src")).map_err(|error| {
         Failure::Usage(format!("cannot create {}: {error}", build_dir.display()))
     })?;
@@ -951,11 +869,9 @@ fn generate_rust_cli(
         })?;
     }
     fs::write(
-        build_dir.join(GENERATED_CLI_MARKER),
-        format!(
-            "{{\"format\":\"entity-runtime-cli/1\",\"runtime\":\"{}\"}}\n",
-            env!("CARGO_PKG_VERSION")
-        ),
+        build_dir.join(generated_output::GENERATED_CLI_MARKER),
+        // Until the new binary is installed, the one installed before is still the one at --out.
+        generated_output::cli_marker_text(previous.clone()),
     )
     .map_err(|error| Failure::Usage(format!("cannot write generator marker: {error}")))?;
 
@@ -967,93 +883,16 @@ fn generate_rust_cli(
         generated_main(name, &definitions),
     )
     .map_err(|error| Failure::Usage(format!("cannot write generated Rust source: {error}")))?;
+    fs::write(build_dir.join("src/yaml_output.rs"), GENERATED_YAML_OUTPUT)
+        .map_err(|error| Failure::Usage(format!("cannot write generated Rust source: {error}")))?;
 
     // The target directory is named rather than inherited so the retained source stays
     // self-contained: a `CARGO_TARGET_DIR` in the environment or a `build.target-dir` in a parent
     // `.cargo/config.toml` would otherwise scatter the build somewhere else.
     let target_dir = build_dir.join("target");
-    run_cargo(&build_dir, &["generate-lockfile", "--offline"])?;
+    run_cargo(&build_dir, lockfile.cargo_arguments())?;
     let built = cargo_build_executable(&build_dir, &target_dir, name)?;
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent)
-        .map_err(|error| Failure::Usage(format!("cannot create {}: {error}", parent.display())))?;
-    let temporary = parent.join(format!(
-        ".{}.installing.{}",
-        destination
-            .file_name()
-            .unwrap_or_else(|| OsStr::new(name))
-            .to_string_lossy(),
-        std::process::id()
-    ));
-    let mut source = fs::File::open(&built).map_err(|error| {
-        Failure::Usage(format!(
-            "cannot open built binary {}: {error}",
-            built.display()
-        ))
-    })?;
-    let mut staged = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .map_err(|error| {
-            Failure::Usage(format!(
-                "cannot reserve installation path {}: {error}",
-                temporary.display()
-            ))
-        })?;
-    io::copy(&mut source, &mut staged)
-        .map_err(|error| Failure::Usage(format!("cannot stage {}: {error}", built.display())))?;
-    drop(source);
-    drop(staged);
-    fs::set_permissions(
-        &temporary,
-        fs::metadata(&built)
-            .map_err(|error| {
-                Failure::Usage(format!("cannot inspect {}: {error}", built.display()))
-            })?
-            .permissions(),
-    )
-    .map_err(|error| Failure::Usage(format!("cannot preserve binary permissions: {error}")))?;
-    if destination.exists() {
-        let backup = parent.join(format!(
-            ".{}.replaced.{}",
-            destination
-                .file_name()
-                .unwrap_or_else(|| OsStr::new(name))
-                .to_string_lossy(),
-            std::process::id()
-        ));
-        if backup.exists() {
-            return Err(Failure::Usage(format!(
-                "replacement backup {} already exists",
-                backup.display()
-            )));
-        }
-        fs::rename(destination, &backup).map_err(|error| {
-            Failure::Usage(format!(
-                "cannot stage replacement of {}: {error}",
-                destination.display()
-            ))
-        })?;
-        if let Err(error) = fs::rename(&temporary, destination) {
-            let _ = fs::rename(&backup, destination);
-            return Err(Failure::Usage(format!(
-                "cannot install {}: {error}",
-                destination.display()
-            )));
-        }
-        fs::remove_file(&backup).map_err(|error| {
-            Failure::Usage(format!(
-                "installed {}, but cannot remove backup {}: {error}",
-                destination.display(),
-                backup.display()
-            ))
-        })?;
-    } else {
-        fs::rename(&temporary, destination).map_err(|error| {
-            Failure::Usage(format!("cannot install {}: {error}", destination.display()))
-        })?;
-    }
+    generated_output::install_binary(&built, &destination, &build_dir, previous.as_ref())?;
     writeln!(
         out,
         "generated {name} at {}; source retained at {}",
@@ -1192,7 +1031,9 @@ fn generated_main(name: &str, definitions: &[EntityDefinition]) -> String {
     }
     let mut source = String::new();
     source.push_str(
-        r#"use std::{fs, path::PathBuf, process::ExitCode};
+        r#"mod yaml_output;
+
+use std::{fs, path::PathBuf, process::ExitCode};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use entity_core::Registry;
 use entity_shell::StoredRuntime;
@@ -1412,7 +1253,7 @@ fn emit<T: Serialize>(value: &T, format: OutputFormat, text: &str) -> Result<(),
     match format {
         OutputFormat::Text => println!("{text}"),
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(value).map_err(|error| error.to_string())?),
-        OutputFormat::Yaml => print!("{}", serde_yaml_ng::to_string(value).map_err(|error| error.to_string())?),
+        OutputFormat::Yaml => print!("{}", yaml_output::to_string(value)?),
     }
     Ok(())
 }
@@ -1576,6 +1417,31 @@ fn chosen_type(registry: &Registry, wanted: Option<&str>) -> Result<(String, u32
     }
 }
 
+/// The type a stored `execute` addresses. Only the name is chosen here: the stored subject carries
+/// its version and the kernel runs the definition of that version, so several registered versions
+/// of one type are one choice — unlike `create` ([`chosen_type`]), which must pick a version.
+fn chosen_entity(registry: &Registry, wanted: Option<&str>) -> Result<String, Failure> {
+    let mut names: Vec<&str> = registry
+        .iter()
+        .map(|definition| definition.entity.as_str())
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    match (wanted, names.as_slice()) {
+        (Some(wanted), _) if names.contains(&wanted) => Ok(wanted.to_owned()),
+        (Some(wanted), _) => Err(Failure::Usage(format!(
+            "no --definition declares entity '{wanted}'; the registry holds: {}",
+            names.join(", ")
+        ))),
+        (None, [only]) => Ok((*only).to_owned()),
+        (None, _) => Err(Failure::Usage(format!(
+            "several types are registered, so which one to execute against is ambiguous — pass \
+             --entity, one of: {}",
+            names.join(", ")
+        ))),
+    }
+}
+
 /// Inline JSON, `@path`, or `-` for stdin. Files and stdin may be JSON or YAML.
 ///
 /// JSON is tried first and YAML second, so a document that is valid JSON is read as JSON —
@@ -1619,20 +1485,38 @@ fn read_instance(source: &str, stdin: &mut StdinOnce) -> Result<EntityInstance, 
 /// Every file is reported, whatever went wrong with the one before it: a syntax slip in the first
 /// example must not hide a broken lifecycle in the third.
 fn validate(paths: &[PathBuf], out: &mut impl Write) -> Result<(), Failure> {
+    validate_loaded_by(paths, out, load_definition)
+}
+
+/// [`validate`] with each file read by `load`, called once per path: the set checks run on the
+/// definitions the file checks validated, never on a second read that could see another file.
+fn validate_loaded_by(
+    paths: &[PathBuf],
+    out: &mut impl Write,
+    mut load: impl FnMut(&Path) -> Result<EntityDefinition, String>,
+) -> Result<(), Failure> {
     let mut invalid = 0usize;
+    let mut validated = Vec::with_capacity(paths.len());
     for path in paths {
-        let outcome = load_definition(path)
+        let outcome = load(path)
             .map_err(|reason| vec![reason])
             .and_then(|definition| {
                 definition
                     .validate()
-                    .map(|()| (definition.entity.clone(), definition.version))
+                    .map(|()| definition)
                     .map_err(|errors| errors.iter().map(ToString::to_string).collect())
             });
         match outcome {
-            Ok((entity, version)) => {
-                writeln!(out, "{}: valid ({entity} v{version})", path.display())
-                    .map_err(io_failure)?;
+            Ok(definition) => {
+                writeln!(
+                    out,
+                    "{}: valid ({} v{})",
+                    path.display(),
+                    definition.entity,
+                    definition.version
+                )
+                .map_err(io_failure)?;
+                validated.push(definition);
             }
             Err(reasons) => {
                 invalid += 1;
@@ -1659,13 +1543,11 @@ fn validate(paths: &[PathBuf], out: &mut impl Write) -> Result<(), Failure> {
     let mut set_defects = 0usize;
     if invalid == 0 {
         let mut registry = Registry::new();
-        for path in paths {
-            if let Ok(definition) = load_definition(path) {
-                if let Err(errors) = registry.register(definition) {
-                    set_defects += errors.len();
-                    for error in &errors {
-                        writeln!(out, "across the set: {error}").map_err(io_failure)?;
-                    }
+        for definition in validated {
+            if let Err(errors) = registry.register(definition) {
+                set_defects += errors.len();
+                for error in &errors {
+                    writeln!(out, "across the set: {error}").map_err(io_failure)?;
                 }
             }
         }
@@ -1810,13 +1692,23 @@ fn graph(drawing: &entity_graph::Graph, format: GraphFormat) -> String {
     // The drawing, the layout and every emitter live in `entity-graph`: this is a shell, and a
     // renderer in it would be one nothing but this binary could use — the library caller who wants
     // the same picture would have to reimplement it.
-    let layout = entity_graph::Layout::of(drawing);
+    graph_laid_out_by(drawing, format, entity_graph::Layout::of)
+}
+
+/// [`graph`] with the layout computed by `layout`, which runs only for the formats that place
+/// nodes (SVG and HTML): text, Mermaid and DOT render from the drawing alone, and a layout of a
+/// long lifecycle costs more than rendering it as text.
+fn graph_laid_out_by(
+    drawing: &entity_graph::Graph,
+    format: GraphFormat,
+    layout: impl FnOnce(&entity_graph::Graph) -> entity_graph::Layout,
+) -> String {
     match format {
         GraphFormat::Text => entity_graph::render::text(drawing),
         GraphFormat::Mermaid => entity_graph::render::mermaid(drawing),
         GraphFormat::Dot => entity_graph::render::dot(drawing),
-        GraphFormat::Svg => entity_graph::render::svg(drawing, &layout),
-        GraphFormat::Html => entity_graph::render::html(drawing, &layout),
+        GraphFormat::Svg => entity_graph::render::svg(drawing, &layout(drawing)),
+        GraphFormat::Html => entity_graph::render::html(drawing, &layout(drawing)),
     }
 }
 
@@ -2030,23 +1922,25 @@ fn to_json<T: serde::Serialize>(value: &T) -> Result<String, Failure> {
         .map_err(|error| Failure::Usage(format!("cannot render JSON: {error}")))
 }
 
+/// Decisions, commits and lists as YAML whose numbers are YAML numbers (see `yaml_output`).
 fn to_yaml<T: serde::Serialize>(value: &T) -> Result<String, Failure> {
-    serde_yaml_ng::to_string(value)
+    yaml_output::to_string(value)
         .map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))
 }
 
 /// A definition as YAML in the spelling `entity_yaml::from_str` reads back. The YAML library writes
 /// a data-carrying variant as a `!moves` tag, which the reader refuses; written as a one-key
-/// mapping, as JSON writes it, `inspect --format yaml` output validates again. A unit variant is a
-/// plain word either way, so a definition without one prints the bytes it printed before.
+/// mapping, as JSON writes it, `inspect --format yaml` output validates again. The value is then
+/// written by `yaml_output`, so a number in a condition, a default or a schema bound is a YAML
+/// number rather than the private map `serde_json` serializes it as.
 fn definition_to_yaml(definition: &EntityDefinition) -> Result<String, Failure> {
-    let mut bytes = Vec::new();
-    serde_yaml_ng::with::singleton_map_recursive::serialize(
+    let value = serde_yaml_ng::with::singleton_map_recursive::serialize(
         definition,
-        &mut serde_yaml_ng::Serializer::new(&mut bytes),
+        serde_yaml_ng::value::Serializer,
     )
     .map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))?;
-    String::from_utf8(bytes).map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))
+    yaml_output::value_to_string(&value)
+        .map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))
 }
 
 fn write_all(out: &mut impl Write, text: &str) -> Result<(), Failure> {
@@ -2055,4 +1949,111 @@ fn write_all(out: &mut impl Write, text: &str) -> Result<(), Failure> {
 
 fn io_failure(error: io::Error) -> Failure {
     Failure::Usage(format!("cannot write output: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn examples(names: &[&str]) -> Vec<PathBuf> {
+        names
+            .iter()
+            .map(|name| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../examples")
+                    .join(name)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn validate_reads_each_definition_file_once() {
+        let paths = examples(&["order.yaml", "refund.yaml"]);
+        let mut reads: BTreeMap<PathBuf, usize> = BTreeMap::new();
+        let mut out = Vec::new();
+        let result = validate_loaded_by(&paths, &mut out, |path| {
+            *reads.entry(path.to_path_buf()).or_default() += 1;
+            load_definition(path)
+        });
+        assert!(result.is_ok(), "{}", String::from_utf8_lossy(&out));
+        for path in &paths {
+            assert_eq!(reads.get(path), Some(&1), "{} is read once", path.display());
+        }
+    }
+
+    #[test]
+    fn definition_files_that_vanish_after_their_first_read_cannot_certify_the_set() {
+        // The same type twice is a defect of the set. Every read after the first two fails, as
+        // it would once the files are gone: set checks that read again would see an empty set
+        // and report no defect.
+        let paths = examples(&["order.yaml", "order.yaml"]);
+        let mut reads = 0;
+        let mut out = Vec::new();
+        let result = validate_loaded_by(&paths, &mut out, |path| {
+            reads += 1;
+            if reads > 2 {
+                return Err("cannot read: No such file or directory (os error 2)".to_owned());
+            }
+            load_definition(path)
+        });
+        let printed = String::from_utf8_lossy(&out);
+        assert!(matches!(result, Err(Failure::Reported)), "{printed}");
+        assert!(printed.contains("across the set: "), "{printed}");
+    }
+
+    #[test]
+    fn an_unreadable_definition_file_is_reported_invalid() {
+        let mut paths = examples(&["order.yaml"]);
+        paths.push(PathBuf::from("missing-definition.yaml"));
+        let mut out = Vec::new();
+        let result = validate_loaded_by(&paths, &mut out, load_definition);
+        let printed = String::from_utf8_lossy(&out);
+        assert!(matches!(result, Err(Failure::Reported)), "{printed}");
+        assert!(
+            printed.contains("missing-definition.yaml: invalid: cannot read"),
+            "{printed}"
+        );
+        assert!(printed.ends_with("2 file(s), 1 invalid\n"), "{printed}");
+    }
+
+    fn refund_lifecycle() -> entity_graph::Graph {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/refund.yaml");
+        let definition =
+            load_validated(&path).unwrap_or_else(|_| panic!("{} validates", path.display()));
+        entity_graph::Graph::lifecycle(&definition)
+    }
+
+    #[test]
+    fn text_mermaid_and_dot_graphs_are_rendered_without_a_layout() {
+        let drawing = refund_lifecycle();
+        for (name, format) in [
+            ("text", GraphFormat::Text),
+            ("mermaid", GraphFormat::Mermaid),
+            ("dot", GraphFormat::Dot),
+        ] {
+            let rendered = graph_laid_out_by(&drawing, format, |_| {
+                panic!("{name} rendering computed a layout it does not use")
+            });
+            assert!(rendered.contains("approved"), "{name} renders the drawing");
+        }
+    }
+
+    #[test]
+    fn svg_and_html_graphs_are_rendered_from_one_layout() {
+        let drawing = refund_lifecycle();
+        for (name, format) in [("svg", GraphFormat::Svg), ("html", GraphFormat::Html)] {
+            let mut layouts = 0;
+            let rendered = graph_laid_out_by(&drawing, format, |drawing| {
+                layouts += 1;
+                entity_graph::Layout::of(drawing)
+            });
+            assert_eq!(layouts, 1, "{name} lays the drawing out once");
+            assert!(
+                rendered.contains("<svg"),
+                "{name} draws the laid-out picture"
+            );
+            assert_eq!(rendered, graph(&drawing, format));
+        }
+    }
 }

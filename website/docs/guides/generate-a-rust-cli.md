@@ -108,6 +108,9 @@ The refusal exits 1. `./bin/refundctl refund approve --help` lists the generated
 
 ## Regenerate
 
-`--force` replaces only the exact output binary and a source directory that carries the
-generator's marker. Editing the YAML beside an existing binary changes nothing: regenerate to
-change the embedded model.
+`--force` replaces a source directory that carries the generator's marker, and the output binary
+only when that marker records it as the binary the generator installed at that path. Any other
+file at `--out` is refused; remove it yourself or choose another path. Regeneration keeps the
+source directory's `target/`, so a changed definition recompiles the generated crate only.
+Editing the YAML beside an existing binary changes nothing: regenerate to change the embedded
+model.

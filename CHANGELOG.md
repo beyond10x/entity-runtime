@@ -80,6 +80,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   store. A dry run of 128 subjects with 256 KiB fields peaked at 41,156 KiB and now at 17,336 KiB
   (one subject: 17,120 and 16,984 KiB, mostly process start-up). The real run validates the source
   first, as before, and then reads it a second time to write it.
+- The gate's test step no longer compiles a generated Rust CLI (about a minute to several on its
+  own). It holds `entity generate rust-cli` to a committed snapshot of the crate it writes, with
+  a stand-in for Cargo; `task test-slow` and the `Slow lane` workflow compile and run that crate
+  when the generator or a crate it builds on changes. `entity-cli` gains a test-only `slow-lane`
+  feature. No behaviour of `entity` changes.
 
 ### Fixed
 
@@ -109,6 +114,40 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   "imported event revision 2 is later than anchor revision 1"), on a dry run too. Before, it
   published that history: event reads served the later event, and acquiring the store for a
   recorded import refused it only afterwards.
+- `entity generate docs` no longer removes a directory another writer creates at `--out` while
+  the documentation is being generated. Publication decides again under a lock file beside the
+  destination (`.<name>.lock`, removed afterwards), moves into place without replacing anything
+  (`renameat2(RENAME_NOREPLACE)` on Linux), and with `--force` replaces only the directory it
+  checked for the generator marker. A leftover lock file from an interrupted run is named in the
+  error; remove it when no generation is running.
+- `entity generate rust-cli --force` keeps the retained crate's `target/` and, when the same
+  runtime version generated it, its `Cargo.lock` (refreshed with `cargo update --offline
+  --workspace` instead of resolved again). A change confined to an embedded definition recompiles
+  the generated crate rather than every dependency.
+- `entity graph` computes the diagram layout only for `--format svg` and `--format html`; text,
+  Mermaid and DOT output no longer pay for a layout they do not use.
+- `entity generate rust-cli --force` no longer replaces an unrelated file at `--out`. The build
+  directory's marker now records the binary the generator installed (path, length and FNV-1a
+  digest), and an existing output is replaced only when it is that binary, checked before the
+  build and again on the file moved aside. A binary installed by 0.32.0 or earlier carries no
+  record: remove it once by hand before regenerating over it.
+- `entity create` and `execute` with `--format yaml` write numbers as YAML numbers
+  (`spent: 3.75`) with their exact digits, instead of one-key mappings
+  (`spent: {$serde_json::private::Number: '3.75'}`) that only this runtime's own reader turned
+  back into numbers. A consumer that matched the mapping form must read plain numbers now.
+- `entity inspect --format yaml` writes the numbers of a definition (a condition operand such as
+  `gt: [$fields.total_cents, 0]`, a default, a schema bound) as YAML numbers too; the printed
+  definition still validates.
+- A command built by `entity generate rust-cli` writes numbers as YAML numbers with `--format
+  yaml` (`amount_cents: 2500`), with the same writer as `entity`; regenerate to get it. The
+  generated crate gains `src/yaml_output.rs` and its `Cargo.toml` is unchanged.
+- `entity validate` with several files reads each file once and runs the cross-file checks on
+  the definitions it validated. It used to read every file again for those checks and skip one
+  that could no longer be read or parsed, so a set could be certified without one of its files.
+- `entity execute --store` runs a stored subject when several versions of its type are given as
+  `--definition` files. It refused with "several versions of 'counter' are registered", the
+  message meant for `create`; the stored subject names its version and the kernel runs that
+  version's definition.
 
 ## [0.32.0] — 2026-11-22
 

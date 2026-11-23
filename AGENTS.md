@@ -198,6 +198,12 @@ separate SQLite tracking/facade contract on Rust 1.91). Every cargo step runs `-
 gate judges the dependency set the repository committed rather than one cargo re-resolved on the
 way past. Each step runs alone as `task <step>`.
 
+Slow lane: `task test-slow` (and the `Slow lane` workflow, which runs when the generator, its
+snapshot under `crates/entity-cli/tests/fixtures/generated-rust-cli/` or a crate the generated
+command builds on changes) compiles and runs the Rust CLI `entity generate rust-cli` writes. It is
+not part of `task check`: the gate's test step holds the generator to the committed snapshot
+instead (`ENTITY_BLESS_SNAPSHOTS=1` rewrites it; then run the slow lane).
+
 Toolchains: there is no `rust-toolchain.toml`. CI's Gate job installs the current stable
 toolchain, the MSRV job 1.85.0 and the Eventlog job 1.91.0; `task check` needs `cargo +1.91.0` as
 well as your default toolchain. The ESS steps build into `checks/ess-conformance/target` unless
