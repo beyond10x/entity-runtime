@@ -13,10 +13,10 @@ rust-version.workspace = true
 kpi-counters = []
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.33.0" }
-entity-shell = { path = "../entity-shell", version = "0.33.0" }
-entity-store = { path = "../entity-store", version = "0.33.0" }
-entity-surface = { path = "../entity-surface", version = "0.33.0" }
+entity-core = { path = "../entity-core", version = "0.33.1" }
+entity-shell = { path = "../entity-shell", version = "0.33.1" }
+entity-store = { path = "../entity-store", version = "0.33.1" }
+entity-surface = { path = "../entity-surface", version = "0.33.1" }
 serde_json.workspace = true
 
 [lints]

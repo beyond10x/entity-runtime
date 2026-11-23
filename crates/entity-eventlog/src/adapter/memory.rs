@@ -46,6 +46,13 @@ const DECODED_PER_BYTE: usize = 3;
 /// subject, record and batch member subject.
 const ENTRY: usize = 256;
 
+#[cfg(test)]
+thread_local! {
+    /// Stored records whose charge this file computed on the current thread when remembering a
+    /// history, rather than reusing the charge remembered for the same bytes.
+    pub(super) static RECORD_CHARGES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 fn decoded_charge(raw: usize) -> usize {
     DECODED_FIXED.saturating_add(raw.saturating_mul(DECODED_PER_BYTE))
 }
@@ -212,6 +219,15 @@ struct VerifiedHistory {
     /// below still counts each in full: once that model is replaced, this is what keeps it alive.
     records: Vec<SharedRecord>,
     terminal: EntityInstance,
+    /// What each of `records` is charged, in the same order.
+    ///
+    /// A record's charge is a function of its record bytes and the length of its request bytes:
+    /// a verified record is the decode of its record bytes, and the definition an `er.record/5`
+    /// record holds is the one its bytes name. Remembering a history again reuses the charge of
+    /// every record whose bytes are unchanged at the same place instead of serializing the
+    /// definition it names once more; that serialization, once per record of every history on
+    /// every read, was most of what a read cost on a store whose definitions are large.
+    record_charges: Vec<usize>,
     /// What this history is charged against the cap, every record it holds included.
     charged: usize,
 }
@@ -391,6 +407,32 @@ impl VerifiedMemory {
             .then(|| (length, verified.terminal.clone()))
     }
 
+    /// What each record of `history` is charged, reusing the charge remembered for the record at
+    /// the same place in this subject's remembered history when both have the same record bytes
+    /// and request length (see [`VerifiedHistory::record_charges`]).
+    fn record_charges(&self, history: &impl RememberedHistory) -> Vec<usize> {
+        let remembered = self.histories.get(history.subject());
+        history
+            .records()
+            .enumerate()
+            .map(|(index, record)| {
+                remembered
+                    .and_then(|remembered| {
+                        let held = remembered.records.get(index)?;
+                        let charge = remembered.record_charges.get(index).copied()?;
+                        (held.record_bytes == record.record_bytes
+                            && held.request_bytes.len() == record.request_bytes.len())
+                        .then_some(charge)
+                    })
+                    .unwrap_or_else(|| {
+                        #[cfg(test)]
+                        RECORD_CHARGES.with(|charged| charged.set(charged.get() + 1));
+                        record_charge(record)
+                    })
+            })
+            .collect()
+    }
+
     /// Remembers a history this handle just verified to reach `terminal`.
     ///
     /// `verified` is the prefix [`Self::verified_prefix`] answered for this history, if any: those
@@ -404,8 +446,9 @@ impl VerifiedMemory {
         terminal: &EntityInstance,
         verified: Option<usize>,
     ) {
-        let charged = history_charge(history, terminal)
-            .saturating_add(history.records().map(record_charge).sum::<usize>());
+        let record_charges = self.record_charges(history);
+        let charged =
+            history_charge(history, terminal).saturating_add(record_charges.iter().sum::<usize>());
         if charged > self.cap {
             // Holding it would pass the cap even with everything else forgotten. What this memory
             // remembered of the subject belongs to an earlier model, so it goes too.
@@ -424,6 +467,7 @@ impl VerifiedMemory {
                 && let Some(remembered) = self.histories.get_mut(history.subject())
             {
                 remembered.records = history.shared();
+                remembered.record_charges = record_charges;
                 remembered.terminal = terminal.clone();
                 remembered.charged = charged;
                 self.held = self.held.saturating_add(growth);
@@ -441,6 +485,7 @@ impl VerifiedMemory {
                 origin: history.origin().clone(),
                 records: history.shared(),
                 terminal: terminal.clone(),
+                record_charges,
                 charged,
             },
         ) {

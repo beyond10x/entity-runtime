@@ -38,10 +38,10 @@ use crate::{
         ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN,
         DEFINITION_BLOB_DOMAIN, ENTRY_BLOB_DOMAIN, EvidenceWire, PhysicalRef, RECORD_BLOB_DOMAIN,
         REQUEST_BLOB_DOMAIN, RecordedEntryWrapper, SubjectWire, anchor_from_history,
-        batch_of_records, decode_anchor, decode_batch, decode_binding, decode_definition,
-        decode_entry, decode_record, encode_anchor, encode_binding, encode_entry,
+        batch_of_records, decode_anchor, decode_batch, decode_binding, decode_entry,
+        decode_held_definition, decode_record, encode_anchor, encode_binding, encode_entry,
         encode_source_anchor, history_from_anchor, key_for_value, mismatched_definition,
-        missing_definition, named_definitions, resolve_from,
+        missing_definition, named_definitions, resolve_from, verify_definition,
     },
     projection::{
         PROJECTOR_NAME, batch_key as physical_batch_key, batch_member_row, batch_row, batch_spec,
@@ -4583,7 +4583,7 @@ impl<'a> BoundBlobs<'a> {
         let bytes = self
             .get(digest, DEFINITION_BLOB_DOMAIN, "referenced blob is missing")
             .map_err(|_| mismatched_definition(digest))?;
-        let definition = decode_definition(bytes)?;
+        let definition = decode_held_definition(digest, bytes)?;
         self.definitions
             .insert(digest.to_owned(), definition.clone());
         Ok(definition)

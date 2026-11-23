@@ -43,6 +43,9 @@ pub mod kpi_counters {
     /// Bytes of those batch blobs.
     pub static BATCH_BLOB_BYTES: AtomicU64 = AtomicU64::new(0);
 
+    /// Definition blobs decoded into a typed definition, by any handle or the inline projector.
+    pub static DEFINITION_DECODES: AtomicU64 = AtomicU64::new(0);
+
     pub(crate) fn add(counter: &AtomicU64, amount: u64) {
         counter.fetch_add(amount, Ordering::Relaxed);
     }

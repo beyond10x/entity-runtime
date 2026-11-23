@@ -15,6 +15,7 @@
     "eventlog.projection.batch_blob_bytes.k8": 68432,
     "eventlog.projection.batch_blob_fetches.k32": 32,
     "eventlog.projection.batch_blob_fetches.k8": 8,
+    "eventlog.warm_batch.definition_decodes.b2": 0,
     "eventlog_file.create.blob_bytes.first": 2677,
     "eventlog_file.create.blob_bytes.second": 2242,
     "eventlog_file.list_empty.blob_read_opens.t64": 606,
