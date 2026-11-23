@@ -17,8 +17,27 @@ env:
   PROSE_PATHS: '^\.engineering/|\.md$'
 
 jobs:
+  # A pull request of planning or prose only (scripts/ci-paths.sh) starts no KPI job. The scope
+  # steps below narrow further: no Markdown file moves a counter.
+  classify:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.paths.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Planning, prose, site or code
+        id: paths
+        run: sh scripts/ci-paths.sh pull-request
+
   counters:
     name: KPI counters
+    needs: classify
+    if: ${{ !cancelled() && needs.classify.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -99,7 +118,8 @@ jobs:
 
   timing:
     name: KPI timing
-    if: github.event_name == 'pull_request'
+    needs: classify
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.classify.outputs.code != 'false' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 60

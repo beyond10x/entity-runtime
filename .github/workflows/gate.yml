@@ -8,6 +8,14 @@ name: Gate
 
 on:
   workflow_call:
+    inputs:
+      code:
+        description: >-
+          False when check.yml found a pull request of planning or prose only
+          (scripts/ci-paths.sh); every job is then skipped, which reports success to its
+          required check. release.yml passes nothing and runs everything.
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -18,6 +26,7 @@ env:
 jobs:
   gate:
     name: Gate
+    if: inputs.code
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The one provider that needs a server gets one here, and nowhere else: `task check` on a
@@ -95,6 +104,7 @@ jobs:
 
   msrv:
     name: MSRV 1.85
+    if: inputs.code
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -117,6 +127,7 @@ jobs:
 
   eventlog-runtime:
     name: Eventlog runtime (Rust 1.91)
+    if: inputs.code
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
