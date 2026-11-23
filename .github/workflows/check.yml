@@ -1,5 +1,7 @@
 # Every push to main and every pull request runs the gate — the same workflow release.yml calls,
-# so the two cannot drift.
+# so the two cannot drift. A pull request of planning or prose only (scripts/ci-paths.sh) calls it
+# with `code: false`: its jobs are skipped, which reports success to the required `gate / Gate` and
+# `gate / MSRV 1.85`. A failed classification runs everything.
 name: CI
 
 on:
@@ -15,5 +17,24 @@ permissions:
   contents: read
 
 jobs:
+  classify:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.paths.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Planning, prose, site or code
+        id: paths
+        run: sh scripts/ci-paths.sh pull-request
+
   gate:
+    needs: classify
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/gate.yml
+    with:
+      code: ${{ needs.classify.outputs.code != 'false' }}

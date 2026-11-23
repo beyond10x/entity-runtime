@@ -16,8 +16,14 @@ tasks:
       - task: postgres-check
       - task: eventlog-runtime-check
       - task: notes-check
+      - task: ci-paths-check
       - task: ess-check
       - task: provider-ess-check
+
+  ci-paths-check:
+    desc: The CI path list sends planning-only changes past the build and code changes through it
+    cmds:
+      - sh scripts/ci-paths-test.sh
 
   provider-ess-check:
     desc: SQLite tracked-provider contract against real facade calls and external SQL mutations
