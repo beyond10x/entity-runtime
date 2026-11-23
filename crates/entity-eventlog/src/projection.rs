@@ -7,11 +7,11 @@ use eventlog_core::{
 use serde_json::{Value, json};
 
 use crate::encoding::{
-    ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN, DEFINITION_BLOB_DOMAIN,
-    ENTRY_BLOB_DOMAIN, PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, RecordedEntryWrapper,
-    SubjectWire, authority_subject_value, decode_anchor, decode_batch, decode_binding,
-    decode_definition, decode_entry, decode_record, framed_key, key_for_value,
-    mismatched_definition, missing_definition, named_definitions, resolve_from, unresolvable,
+    ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN, ENTRY_BLOB_DOMAIN,
+    PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, RecordedEntryWrapper, SubjectWire,
+    authority_subject_value, decode_anchor, decode_batch, decode_binding, decode_entry,
+    decode_record, framed_key, key_for_value, missing_definition, named_definitions, resolve_from,
+    unresolvable, verify_definition,
 };
 use entity_core::EntityDefinition;
 use std::collections::BTreeMap;
@@ -744,10 +744,7 @@ pub(crate) async fn projected_definitions(
             .get_blob(&digest)
             .await?
             .ok_or_else(|| store_error(missing_definition(&digest)))?;
-        if framed_key(DEFINITION_BLOB_DOMAIN, &blob).map_err(store_error)? != digest {
-            return Err(store_error(mismatched_definition(&digest)));
-        }
-        let definition = decode_definition(&blob).map_err(store_error)?;
+        let definition = verify_definition(&digest, &blob).map_err(store_error)?;
         definitions.insert(digest, definition);
     }
     Ok(definitions)

@@ -281,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "entity-core"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -289,7 +289,7 @@ dependencies = [
 
 [[package]]
 name = "entity-eventlog"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "entity-executor",
@@ -307,7 +307,7 @@ dependencies = [
 
 [[package]]
 name = "entity-executor"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -316,14 +316,14 @@ dependencies = [
 
 [[package]]
 name = "entity-graph"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
 ]
 
 [[package]]
 name = "entity-mcp"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "entity-shell",
@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "entity-postgres"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "entity-query",
@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "entity-query"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -356,7 +356,7 @@ dependencies = [
 
 [[package]]
 name = "entity-remote"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "entity-shell"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -375,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "entity-sqlite"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "entity-eventlog",
@@ -390,7 +390,7 @@ dependencies = [
 
 [[package]]
 name = "entity-store"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "fs2",
@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "entity-surface"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "entity-graph",
@@ -410,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "entity-yaml"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "entity-core",
  "serde",

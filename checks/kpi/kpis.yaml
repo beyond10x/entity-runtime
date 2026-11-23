@@ -198,6 +198,13 @@ counters:
     scenario: Eventlog SQLite, one named batch of 32 ticket creates
     tolerance: 0.005
     hooked: true
+  - id: eventlog.warm_batch.definition_decodes.b2
+    finding: I94
+    measures: definition blobs decoded by two single-create batches on a handle that already wrote one, the inline projector included
+    unit: decodes
+    direction: lower
+    scenario: Eventlog SQLite, ticket definition, creates 2 and 3 on one handle
+    hooked: true
   - id: eventlog.append_conflict.attempts
     finding: E19
     measures: physical append attempts for one create while the provider answers every append with Conflict; the injector fails the 64th, so an unbounded retry reads 64

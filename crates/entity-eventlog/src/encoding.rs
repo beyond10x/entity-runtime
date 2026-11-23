@@ -31,6 +31,11 @@ thread_local! {
     /// path that stops decoding a record stops charging and one that still decodes it cannot
     /// avoid the charge.
     pub(crate) static RECORD_DECODES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+
+    /// Definition documents this file has decoded into a typed definition on the current thread.
+    ///
+    /// Charged by [`decode_definition`], the only typed decode of a definition document here.
+    pub(crate) static DEFINITION_DECODES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// This file's only path from stored bytes to a JSON document.
@@ -527,12 +532,113 @@ pub(crate) fn resolve_from(
 /// trip is checked as well as canonicality, because a record re-encoded from the decoded
 /// definition must name the digest it was read under.
 pub(crate) fn decode_definition(bytes: &[u8]) -> Result<EntityDefinition, AsyncStoreError> {
+    #[cfg(test)]
+    DEFINITION_DECODES.with(|charged| charged.set(charged.get().saturating_add(1)));
+    #[cfg(feature = "kpi-counters")]
+    crate::kpi_counters::add(&crate::kpi_counters::DEFINITION_DECODES, 1);
     let definition: EntityDefinition = decode_tagged(DEFINITION_FRAMING, bytes, |value| {
         serde_json::from_value(value).map_err(enc)
     })?;
     if definition_comparison_bytes(&definition)? != bytes {
         return Err(invalid("definition blob does not reproduce its definition"));
     }
+    Ok(definition)
+}
+
+/// The most definition-blob bytes [`DEFINITIONS`] keeps; a blob that would pass it empties the
+/// memo first, and a larger blob is decoded every time and never kept.
+const DEFINITIONS_LIMIT: usize = 4 << 20;
+
+/// Definitions this process has decoded from definition blobs it held to their digests, each kept
+/// with the exact bytes it was decoded from.
+struct DefinitionMemo {
+    held: usize,
+    decoded: BTreeMap<String, (Vec<u8>, std::sync::Arc<EntityDefinition>)>,
+}
+
+/// Holding a definition blob to its digest and decoding it are functions of its bytes alone, and
+/// every record of a kind names the same few definitions, so reading them again with exactly the
+/// bytes verified before reuses that answer — the way the projector's `LAST_BATCH` reuses a batch
+/// blob. Each blob is still read from the store for every record that names it, so a definition
+/// the store does not hold is refused as before, and bytes that differ in one byte from what was
+/// verified are hashed and decoded from nothing. Shared by every handle and the inline projector
+/// of this process: the key is a digest of the content, so the answer is the same for every store.
+///
+/// Decoding the definition again for every record, batch and read, at tens of kilobytes each, was
+/// most of what an append and a read cost on a store whose definitions are large (connectors,
+/// Entity Runtime 0.33.0).
+static DEFINITIONS: std::sync::Mutex<DefinitionMemo> = std::sync::Mutex::new(DefinitionMemo {
+    held: 0,
+    decoded: BTreeMap::new(),
+});
+
+fn remembered_definition(digest: &str, bytes: &[u8]) -> Option<EntityDefinition> {
+    let held = {
+        let memo = DEFINITIONS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        memo.decoded
+            .get(digest)
+            .filter(|(verified, _)| verified.as_slice() == bytes)
+            .map(|(_, definition)| std::sync::Arc::clone(definition))
+    }?;
+    Some((*held).clone())
+}
+
+fn remember_definition(digest: &str, bytes: &[u8], definition: &EntityDefinition) {
+    if bytes.len() > DEFINITIONS_LIMIT {
+        return;
+    }
+    let mut memo = DEFINITIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if memo.held.saturating_add(bytes.len()) > DEFINITIONS_LIMIT {
+        memo.decoded.clear();
+        memo.held = 0;
+    }
+    if let Some((replaced, _)) = memo.decoded.insert(
+        digest.to_owned(),
+        (bytes.to_vec(), std::sync::Arc::new(definition.clone())),
+    ) {
+        memo.held = memo.held.saturating_sub(replaced.len());
+    }
+    memo.held = memo.held.saturating_add(bytes.len());
+}
+
+/// The definition blob `bytes`, which the caller has already held to `digest` in
+/// [`DEFINITION_BLOB_DOMAIN`], decoded ([`decode_definition`]) — or the decode this process made of
+/// exactly these bytes under this digest before.
+pub(crate) fn decode_held_definition(
+    digest: &str,
+    bytes: &[u8],
+) -> Result<EntityDefinition, AsyncStoreError> {
+    if let Some(definition) = remembered_definition(digest, bytes) {
+        return Ok(definition);
+    }
+    let definition = decode_definition(bytes)?;
+    remember_definition(digest, bytes, &definition);
+    Ok(definition)
+}
+
+/// The definition blob `bytes` read under `digest`, held to that digest in
+/// [`DEFINITION_BLOB_DOMAIN`] and decoded — or the answer this process gave for exactly these bytes
+/// under this digest before, which was the same hash of the same input.
+///
+/// # Errors
+///
+/// [`mismatched_definition`] for bytes that do not hash to `digest`; a decode refusal.
+pub(crate) fn verify_definition(
+    digest: &str,
+    bytes: &[u8],
+) -> Result<EntityDefinition, AsyncStoreError> {
+    if let Some(definition) = remembered_definition(digest, bytes) {
+        return Ok(definition);
+    }
+    if framed_key(DEFINITION_BLOB_DOMAIN, bytes)? != digest {
+        return Err(mismatched_definition(digest));
+    }
+    let definition = decode_definition(bytes)?;
+    remember_definition(digest, bytes, &definition);
     Ok(definition)
 }
 

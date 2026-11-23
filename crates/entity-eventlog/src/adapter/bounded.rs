@@ -238,9 +238,7 @@ impl EventlogRecordedStore {
                 .await
                 .map_err(map_read_error)?
                 .ok_or_else(|| missing_definition(&digest))?;
-            verify_digest(DEFINITION_BLOB_DOMAIN, &digest, &bytes)
-                .map_err(|_| mismatched_definition(&digest))?;
-            let definition = decode_definition(&bytes)?;
+            let definition = verify_definition(&digest, &bytes)?;
             definitions.insert(digest, definition);
         }
         Ok(definitions)

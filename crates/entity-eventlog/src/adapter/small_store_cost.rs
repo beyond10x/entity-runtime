@@ -311,6 +311,44 @@ async fn a_warm_handle_decodes_and_replays_only_the_records_a_batch_adds() {
     }
 }
 
+/// A batch on a handle that has already verified the store neither decodes a definition again nor
+/// computes again what a record it already remembers is charged.
+///
+/// Since 0.33.0 a record names its definition by digest, and every read decoded the definition
+/// blob it named again — parsed it and re-encoded it to hold it to its canonical bytes — and every
+/// history a read remembered serialized that definition once more for each of its records, only to
+/// learn its length for the memory's charge. At tens of kilobytes a definition that was most of
+/// what a batch cost (connectors, read invoke on 9 definitions: 0.32.0 to 0.33.0 a third slower).
+/// What the batch adds is charged once, when the read that first meets it remembers its subject.
+#[tokio::test]
+async fn a_warm_handle_decodes_no_definition_and_charges_only_the_records_a_batch_adds() {
+    let registry = registry(8);
+    let directory = tempfile::tempdir().expect("store directory");
+    let (path, authority, mut revisions) = seeded(directory.path(), &registry, 12).await;
+    let store = reopen(&path, &authority).await;
+    run_batch(&store, &registry, &mut revisions, "warm", 1).await;
+    for round in 0..3 {
+        crate::encoding::DEFINITION_DECODES.with(|charged| charged.set(0));
+        super::memory::RECORD_CHARGES.with(|charged| charged.set(0));
+        run_batch(
+            &store,
+            &registry,
+            &mut revisions,
+            &format!("definitions-{round}"),
+            round + 2,
+        )
+        .await;
+        let decoded = crate::encoding::DEFINITION_DECODES.with(std::cell::Cell::get);
+        let charged = super::memory::RECORD_CHARGES.with(std::cell::Cell::get);
+        assert_eq!(
+            (decoded, charged),
+            (0, 2),
+            "batch {round}: a two-action batch on a warm handle decoded {decoded} definitions and \
+             computed the charge of {charged} records"
+        );
+    }
+}
+
 /// A cold open verifies every record, and decodes each exactly once.
 ///
 /// A named batch's blob holds every member record again. It is held to the member records the
