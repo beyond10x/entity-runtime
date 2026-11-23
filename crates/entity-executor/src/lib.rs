@@ -13,12 +13,12 @@ use entity_core::{
 };
 use entity_store::{
     asynchronous::{
-        batch_comparison_bytes, canonical_domain_bytes, original_request_comparison_bytes,
+        batch_comparison_bytes_in, canonical_domain_bytes, original_request_comparison_bytes,
         request_domain, verify_imported_record, verify_subject_history,
         verify_subject_history_extension, verify_subject_prefix, AppendMember, AppendOutcome,
         AppendRequest, AsyncRecordedStore, AsyncStoreError, BatchKey, CommitReceipt, HistoryOrigin,
-        MergeBase, RecordLookup, RecordedEntry, RecordedRefusal, RefusalReason, StoredBatch,
-        StoredRecord, Subject, SubjectAssurance, SubjectHistory, WriteFailure,
+        MergeBase, RecordForm, RecordLookup, RecordedEntry, RecordedRefusal, RefusalReason,
+        StoredBatch, StoredRecord, Subject, SubjectAssurance, SubjectHistory, WriteFailure,
     },
     Expect, RecordedCommit, RecordedObservation, Recording,
 };
@@ -1069,7 +1069,9 @@ fn validate_stored_batch(
             )
         })
         .collect();
-    if batch_comparison_bytes(key, &members)? != batch.comparison_bytes {
+    if batch_comparison_bytes_in(RecordForm::of_batch(&batch.comparison_bytes), key, &members)?
+        != batch.comparison_bytes
+    {
         return Err(corrupt(
             "stored batch comparison bytes differ from its complete records",
         ));

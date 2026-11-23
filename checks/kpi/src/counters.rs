@@ -59,6 +59,9 @@ pub fn run(work: &Path) -> Vec<Value> {
     values.extend(step("eventlog_file_empty_list(work)", || {
         eventlog_file_empty_list(work)
     }));
+    values.extend(step("eventlog_file_record_bytes(work)", || {
+        eventlog_file_record_bytes(work)
+    }));
     values.extend(step("memory_allocations()", memory_allocations));
     values.extend(step("executor_fresh_create()", executor_fresh_create));
     values.extend(step("executor_batch_retry()", executor_batch_retry));
@@ -246,6 +249,61 @@ fn eventlog_file_empty_list(work: &Path) -> Vec<Value> {
             )
             .expect("reopened");
         }
+    }
+    settle(store);
+    values
+}
+
+/// Issue 94: blob bytes one create appends to an Eventlog File store. The first create of a type
+/// also stores its definition once; the second appends only its own record, request, batch and
+/// entry blobs, which since 0.33.0 name the definition by digest instead of repeating it.
+fn eventlog_file_record_bytes(work: &Path) -> Vec<Value> {
+    fn blob_bytes(directory: &Path) -> u64 {
+        let mut total = 0;
+        for entry in std::fs::read_dir(directory).expect("readable store directory") {
+            let entry = entry.expect("directory entry");
+            let path = entry.path();
+            let kind = entry.file_type().expect("file type");
+            if kind.is_dir() {
+                total += blob_bytes(&path);
+            } else if kind.is_file() && path.components().any(|part| part.as_os_str() == "blobs") {
+                total += entry.metadata().expect("metadata").len();
+            }
+        }
+        total
+    }
+    let registry = registry(&[TICKET]);
+    let root = fresh(work, "i94").join("eventlog");
+    let store = EventlogFileStore::provision(
+        &root,
+        registry,
+        crate::stores::authority("i94"),
+        context("provision"),
+        crate::fixture::LIMITS,
+        bridge(),
+    )
+    .expect("provisioned");
+    let mut values = Vec::new();
+    let mut held = blob_bytes(&root);
+    for (at, name) in ["first", "second"].into_iter().enumerate() {
+        let outcome = store.recorded().execute_batch(
+            context(&format!("create-{at}")),
+            BatchKey::Named(format!("create-{at}")),
+            vec![BatchAction::Create(entity_executor::CreateRequest {
+                subject: subject("ticket", &format!("ticket-{at}")),
+                definition_version: 1,
+                fields: json!({ "title": format!("ticket-{at}") }),
+                recording: recording(&format!("create-{at}")),
+            })],
+            CallWait::Forever,
+        );
+        assert!(matches!(outcome, Ok(AppendOutcome::Committed { .. })));
+        let now = blob_bytes(&root);
+        values.push((
+            id(&format!("eventlog_file.create.blob_bytes.{name}")),
+            now - held,
+        ));
+        held = now;
     }
     settle(store);
     values

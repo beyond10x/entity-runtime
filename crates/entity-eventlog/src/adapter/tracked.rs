@@ -708,6 +708,19 @@ fn advance(
             wrapper.batch_blob,
         ]);
     }
+    // The definitions the suffix's records name, retained here since the group that stored
+    // them. One this handle does not hold is refused by name when it is read.
+    let mut named = BTreeSet::new();
+    for digest in &held_by_model {
+        if let Some(bytes) = blobs.get(digest) {
+            named.extend(crate::encoding::named_definitions(bytes)?);
+        }
+    }
+    wanted.extend(
+        named
+            .into_iter()
+            .filter(|digest| blobs.contains_key(digest)),
+    );
     let borrowed: BTreeMap<&str, &[u8]> = wanted
         .iter()
         .map(|digest| {

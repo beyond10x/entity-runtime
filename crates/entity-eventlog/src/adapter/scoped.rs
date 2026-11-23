@@ -33,7 +33,8 @@ use super::{
 };
 use crate::{
     encoding::{
-        EvidenceWire, RecordedEntryWrapper, SubjectWire, decode_anchor, decode_batch, decode_entry,
+        EvidenceWire, RecordedEntryWrapper, SubjectWire, batch_subjects, decode_anchor,
+        decode_entry, named_definitions,
     },
     projection::{
         batch_key as physical_batch_key, batch_spec, binding_spec, record_key, record_spec,
@@ -133,6 +134,8 @@ impl ScopedModel {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Role {
     Leaf,
+    /// A record blob, which may name a definition blob.
+    Record,
     Entry,
     Batch,
     Anchor,
@@ -516,17 +519,10 @@ fn discover(role: Role, bytes: &[u8]) -> (Vec<(String, Role)>, Vec<Subject>) {
             |_| (Vec::new(), Vec::new()),
             |wrapper| (named_by_entry(wrapper), Vec::new()),
         ),
-        Role::Batch => decode_batch(bytes).map_or_else(
-            |_| (Vec::new(), Vec::new()),
-            |(_, members)| {
-                (
-                    Vec::new(),
-                    members
-                        .iter()
-                        .map(|member| member.entry.subject())
-                        .collect(),
-                )
-            },
+        Role::Record => (definitions_named_by(bytes), Vec::new()),
+        Role::Batch => (
+            definitions_named_by(bytes),
+            batch_subjects(bytes).unwrap_or_default(),
         ),
         Role::Anchor => decode_anchor(bytes).map_or_else(
             |_| (Vec::new(), Vec::new()),
@@ -549,10 +545,23 @@ fn discover(role: Role, bytes: &[u8]) -> (Vec<(String, Role)>, Vec<Subject>) {
     }
 }
 
+/// The definition blobs a record or batch document names.
+fn definitions_named_by(bytes: &[u8]) -> Vec<(String, Role)> {
+    named_definitions(bytes).map_or_else(
+        |_| Vec::new(),
+        |named| {
+            named
+                .into_iter()
+                .map(|digest| (digest, Role::Leaf))
+                .collect()
+        },
+    )
+}
+
 /// The blobs an entry wrapper names, and what each of them is.
 fn named_by_entry(wrapper: RecordedEntryWrapper) -> Vec<(String, Role)> {
     vec![
-        (wrapper.record_blob, Role::Leaf),
+        (wrapper.record_blob, Role::Record),
         (wrapper.request_blob, Role::Leaf),
         (wrapper.batch_blob, Role::Batch),
     ]

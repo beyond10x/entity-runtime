@@ -14,10 +14,10 @@ use std::{
 use entity_core::{DecisionCommand, Registry, Runtime};
 use entity_store::{
     asynchronous::{
-        batch_comparison_bytes, original_request_comparison_bytes, read_record_in_domain,
-        record_comparison_bytes, record_domain, record_framing, request_domain,
+        batch_comparison_bytes_in, original_request_comparison_bytes, read_record_in_domain,
+        record_comparison_bytes_in, record_domain, record_framing, request_domain,
         verify_subject_prefix, AppendMember, AppendRequest, AsyncRecordedReader,
-        AsyncRecordedWriter, BatchKey, MemoryRecordedStore, RecordedEntry,
+        AsyncRecordedWriter, BatchKey, MemoryRecordedStore, RecordForm, RecordedEntry,
     },
     Expect, RecordedCommit, Recording,
 };
@@ -121,7 +121,8 @@ fn a_kernel_1_decision_still_frames_as_er_record_1_and_er_request_1() {
     let entry = kernel_entry();
     assert_eq!(record_domain(&entry), "er.record/1");
     assert_eq!(request_domain(&entry), "er.request/1");
-    let bytes = record_comparison_bytes(&entry).expect("encodes");
+    let bytes =
+        record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry).expect("encodes");
     assert_eq!(
         record_framing(&bytes).expect("reads its framing"),
         "er.record/1"
@@ -160,8 +161,10 @@ fn a_derived_identity_keeps_the_existing_record_and_original_request_bytes() {
     let supplied = service_entry();
     let derived = derived_service_entry();
     assert_eq!(
-        record_comparison_bytes(&derived).expect("derived record encodes"),
-        record_comparison_bytes(&supplied).expect("supplied record encodes")
+        record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &derived)
+            .expect("derived record encodes"),
+        record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &supplied)
+            .expect("supplied record encodes")
     );
     assert_eq!(
         original_request_comparison_bytes(&derived).expect("derived request encodes"),
@@ -171,7 +174,8 @@ fn a_derived_identity_keeps_the_existing_record_and_original_request_bytes() {
 
 #[test]
 fn an_er_record_1_reader_refuses_an_er_record_2_document_by_naming_the_framing() {
-    let service = record_comparison_bytes(&service_entry()).expect("encodes");
+    let service = record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &service_entry())
+        .expect("encodes");
     let error = read_record_in_domain("er.record/1", &service)
         .expect_err("a reader that knows only /1 refuses");
     let message = error.to_string();
@@ -187,7 +191,8 @@ fn an_er_record_1_reader_refuses_an_er_record_2_document_by_naming_the_framing()
 
     // The reader that does know the framing reads it.
     assert!(read_record_in_domain("er.record/2", &service).is_ok());
-    let kernel = record_comparison_bytes(&kernel_entry()).expect("encodes");
+    let kernel = record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &kernel_entry())
+        .expect("encodes");
     assert!(read_record_in_domain("er.record/1", &kernel).is_ok());
 }
 
@@ -208,7 +213,12 @@ fn a_batch_of_kernel_1_records_keeps_its_er_batch_1_bytes_while_a_service_member
     );
     let key = entity_store::asynchronous::BatchKey::Named("b".to_owned());
 
-    let all_kernel = batch_comparison_bytes(&key, std::slice::from_ref(&kernel)).expect("encodes");
+    let all_kernel = batch_comparison_bytes_in(
+        RecordForm::DefinitionEmbedded,
+        &key,
+        std::slice::from_ref(&kernel),
+    )
+    .expect("encodes");
     let text = String::from_utf8(all_kernel.clone()).expect("utf-8");
     assert!(
         text.starts_with(r#"["er.batch/1",["named","b"],"#),
@@ -220,7 +230,8 @@ fn a_batch_of_kernel_1_records_keeps_its_er_batch_1_bytes_while_a_service_member
     // A batch carrying a `service/1` member keeps the same batch tag and carries the member's own
     // framing, so a reader walking it meets `er.record/2` and refuses there — by the name of the
     // framing it does not know, and at one tag rather than two.
-    let mixed = batch_comparison_bytes(&key, &[kernel, service]).expect("encodes");
+    let mixed = batch_comparison_bytes_in(RecordForm::DefinitionEmbedded, &key, &[kernel, service])
+        .expect("encodes");
     let text = String::from_utf8(mixed).expect("utf-8");
     assert_eq!(
         record_framing(text.as_bytes()).expect("reads"),

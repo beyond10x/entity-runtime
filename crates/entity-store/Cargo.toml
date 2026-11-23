@@ -13,7 +13,7 @@ repository.workspace = true
 kpi-counters = []
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.32.0" }
+entity-core = { path = "../entity-core", version = "0.33.0" }
 serde.workspace = true
 serde_json.workspace = true
 # Cross-process advisory locks release automatically on process exit; supports the MSRV and Windows.

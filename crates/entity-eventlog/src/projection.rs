@@ -7,11 +7,14 @@ use eventlog_core::{
 use serde_json::{Value, json};
 
 use crate::encoding::{
-    ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN, ENTRY_BLOB_DOMAIN,
-    PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, RecordedEntryWrapper, SubjectWire,
-    authority_subject_value, decode_anchor, decode_batch, decode_binding, decode_entry,
-    decode_record, framed_key, key_for_value,
+    ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN, DEFINITION_BLOB_DOMAIN,
+    ENTRY_BLOB_DOMAIN, PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, RecordedEntryWrapper,
+    SubjectWire, authority_subject_value, decode_anchor, decode_batch, decode_binding,
+    decode_definition, decode_entry, decode_record, framed_key, key_for_value,
+    mismatched_definition, missing_definition, named_definitions, resolve_from, unresolvable,
 };
+use entity_core::EntityDefinition;
+use std::collections::BTreeMap;
 
 pub(crate) const PROJECTOR_NAME: &str = "er_recorded_v1";
 pub(crate) const BINDING_NAME: &str = "er_binding_v1";
@@ -161,7 +164,9 @@ async fn apply_recorded_entry(
         return Err(invalid("record reference is in another subject stream"));
     }
     let record_bytes = required_blob(store, &wrapper.record_blob, RECORD_BLOB_DOMAIN).await?;
-    let entry = decode_record(&record_bytes).map_err(store_error)?;
+    let definitions = projected_definitions(store, &record_bytes).await?;
+    let entry =
+        decode_record(&record_bytes, &mut resolve_from(&definitions)).map_err(store_error)?;
     if entry.subject() != subject {
         return Err(invalid("record wrapper subject differs from its record"));
     }
@@ -275,7 +280,7 @@ async fn apply_import_anchor(
     for (index, evidence) in wrapper.evidence.iter().enumerate() {
         if let crate::encoding::EvidenceWire::Envelope { record_blob, .. } = evidence {
             let record_bytes = required_blob(store, record_blob, RECORD_BLOB_DOMAIN).await?;
-            let entry = decode_record(&record_bytes).map_err(store_error)?;
+            let entry = decode_record(&record_bytes, &mut unresolvable).map_err(store_error)?;
             if entry.subject() != subject {
                 return Err(invalid("imported envelope names another subject"));
             }
@@ -460,7 +465,15 @@ async fn verified_batch(
         crate::kpi_counters::add(&crate::kpi_counters::BATCH_BLOB_FETCHES, 1);
         crate::kpi_counters::add(&crate::kpi_counters::BATCH_BLOB_BYTES, bytes.len() as u64);
     }
-    verify_batch(digest, bytes, LAST_BATCH_LIMIT)
+    let last = LAST_BATCH.with(|last| last.borrow().clone());
+    if let Some(last) = last
+        && last.digest == digest
+        && last.bytes == bytes
+    {
+        return Ok(last);
+    }
+    let definitions = projected_definitions(store, &bytes).await?;
+    verify_batch(digest, bytes, LAST_BATCH_LIMIT, &definitions)
 }
 
 /// Holds `bytes` to `digest` and decodes them, reusing this thread's last answer for exactly
@@ -469,6 +482,7 @@ fn verify_batch(
     digest: &str,
     bytes: Vec<u8>,
     limit: usize,
+    definitions: &BTreeMap<String, EntityDefinition>,
 ) -> Result<std::sync::Arc<VerifiedBatch>, EventLogError> {
     let last = LAST_BATCH.with(|last| last.borrow().clone());
     if let Some(last) = last
@@ -482,7 +496,8 @@ fn verify_batch(
     if framed_key(BATCH_BLOB_DOMAIN, &bytes).map_err(store_error)? != digest {
         return Err(invalid("referenced blob digest uses wrong bytes or domain"));
     }
-    let (key, members) = decode_batch(&bytes).map_err(store_error)?;
+    let (key, members) =
+        decode_batch(&bytes, &mut resolve_from(definitions)).map_err(store_error)?;
     let keep = bytes.len() <= limit;
     let verified = std::sync::Arc::new(VerifiedBatch {
         digest: digest.to_owned(),
@@ -717,13 +732,34 @@ fn validate_er_revision(revision: u64) -> Result<(), EventLogError> {
 fn invalid(detail: impl Into<String>) -> EventLogError {
     EventLogError::Invalid(detail.into())
 }
+/// Every definition a record or batch document names, read from `store`, held to its digest and
+/// decoded.
+pub(crate) async fn projected_definitions(
+    store: &mut dyn ProjectionStore,
+    bytes: &[u8],
+) -> Result<BTreeMap<String, EntityDefinition>, EventLogError> {
+    let mut definitions = BTreeMap::new();
+    for digest in named_definitions(bytes).map_err(store_error)? {
+        let blob = store
+            .get_blob(&digest)
+            .await?
+            .ok_or_else(|| store_error(missing_definition(&digest)))?;
+        if framed_key(DEFINITION_BLOB_DOMAIN, &blob).map_err(store_error)? != digest {
+            return Err(store_error(mismatched_definition(&digest)));
+        }
+        let definition = decode_definition(&blob).map_err(store_error)?;
+        definitions.insert(digest, definition);
+    }
+    Ok(definitions)
+}
+
 fn store_error(error: AsyncStoreError) -> EventLogError {
     EventLogError::Invalid(error.to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{collections::BTreeMap, sync::Arc};
 
     use entity_store::asynchronous::{BatchKey, batch_comparison_bytes};
 
@@ -745,9 +781,11 @@ mod tests {
     #[test]
     fn a_batch_within_the_limit_is_kept_and_reused_for_exactly_its_bytes() {
         let (digest, bytes) = blob("within");
-        let first = verify_batch(&digest, bytes.clone(), LAST_BATCH_LIMIT).expect("verifies");
+        let first = verify_batch(&digest, bytes.clone(), LAST_BATCH_LIMIT, &BTreeMap::new())
+            .expect("verifies");
         assert_eq!(kept(), Some(digest.clone()));
-        let again = verify_batch(&digest, bytes, LAST_BATCH_LIMIT).expect("verifies again");
+        let again = verify_batch(&digest, bytes, LAST_BATCH_LIMIT, &BTreeMap::new())
+            .expect("verifies again");
         assert!(
             Arc::ptr_eq(&first, &again),
             "the same bytes reuse the kept answer"
@@ -757,10 +795,12 @@ mod tests {
     #[test]
     fn a_batch_over_the_limit_still_verifies_and_decodes_but_is_not_kept() {
         let (kept_digest, kept_bytes) = blob("kept");
-        verify_batch(&kept_digest, kept_bytes, LAST_BATCH_LIMIT).expect("verifies");
+        verify_batch(&kept_digest, kept_bytes, LAST_BATCH_LIMIT, &BTreeMap::new())
+            .expect("verifies");
         let (digest, bytes) = blob("over");
         let limit = bytes.len() - 1;
-        let verified = verify_batch(&digest, bytes, limit).expect("an oversized batch verifies");
+        let verified = verify_batch(&digest, bytes, limit, &BTreeMap::new())
+            .expect("an oversized batch verifies");
         assert_eq!(verified.key, BatchKey::Named("over".to_owned()));
         assert!(verified.members.is_empty());
         assert_eq!(kept(), None, "a batch over the limit empties the slot");
@@ -769,9 +809,9 @@ mod tests {
     #[test]
     fn a_batch_that_does_not_verify_empties_the_slot() {
         let (digest, bytes) = blob("kept");
-        verify_batch(&digest, bytes.clone(), LAST_BATCH_LIMIT).expect("verifies");
+        verify_batch(&digest, bytes.clone(), LAST_BATCH_LIMIT, &BTreeMap::new()).expect("verifies");
         let (other, _) = blob("other");
-        let refused = verify_batch(&other, bytes, LAST_BATCH_LIMIT);
+        let refused = verify_batch(&other, bytes, LAST_BATCH_LIMIT, &BTreeMap::new());
         assert!(
             matches!(&refused, Err(eventlog_core::EventLogError::Invalid(detail))
                 if detail == "referenced blob digest uses wrong bytes or domain"),

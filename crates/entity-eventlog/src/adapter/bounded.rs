@@ -225,6 +225,27 @@ impl EventlogRecordedStore {
         Ok(bytes)
     }
 
+    /// Every definition a record or batch document names, read, held to its digest and decoded.
+    async fn definitions(
+        &self,
+        document: &[u8],
+    ) -> Result<BTreeMap<String, entity_core::EntityDefinition>, AsyncStoreError> {
+        let mut definitions = BTreeMap::new();
+        for digest in named_definitions(document)? {
+            let bytes = self
+                .backend
+                .get_blob(&self.tenant, &digest)
+                .await
+                .map_err(map_read_error)?
+                .ok_or_else(|| missing_definition(&digest))?;
+            verify_digest(DEFINITION_BLOB_DOMAIN, &digest, &bytes)
+                .map_err(|_| mismatched_definition(&digest))?;
+            let definition = decode_definition(&bytes)?;
+            definitions.insert(digest, definition);
+        }
+        Ok(definitions)
+    }
+
     /// One index row, read from the provider.
     async fn index_row(
         &self,
@@ -270,7 +291,8 @@ impl EventlogRecordedStore {
                 let bytes = self
                     .bound_blob(text(source, "record_blob")?, RECORD_BLOB_DOMAIN)
                     .await?;
-                match decode_record(&bytes)? {
+                let definitions = self.definitions(&bytes).await?;
+                match decode_record(&bytes, &mut resolve_from(&definitions))? {
                     entity_store::asynchronous::RecordedEntry::Decision(commit) => commit.instance,
                     entity_store::asynchronous::RecordedEntry::Observation(_) => {
                         return Err(integrity("a subject's state source is not a decision"));
@@ -318,10 +340,11 @@ impl EventlogRecordedStore {
 
     /// One committed member as a stored record, from the batch blob that holds it and the row
     /// coordinates that place it. The row's record and request digests must be the digests of
-    /// exactly the member's canonical bytes, so the record blob itself need not be read.
+    /// exactly the member's canonical bytes, in the form of the batch blob that holds it, so the
+    /// record blob itself need not be read.
     fn stored_member(
         &self,
-        key: &BatchKey,
+        (key, form): (&BatchKey, RecordForm),
         member_index: u64,
         member: AppendMember,
         record_blob: &str,
@@ -329,7 +352,7 @@ impl EventlogRecordedStore {
         physical: &PhysicalRef,
     ) -> Result<StoredRecord, AsyncStoreError> {
         let subject = member.entry.subject();
-        let record_bytes = record_comparison_bytes(&member.entry)?;
+        let record_bytes = record_comparison_bytes_in(form, &member.entry)?;
         if framed_key(RECORD_BLOB_DOMAIN, &record_bytes)? != record_blob
             || framed_key(REQUEST_BLOB_DOMAIN, &member.request_bytes)? != request_blob
             || physical.stream_id != subject_stream_id(&self.authority, &subject)?
@@ -369,7 +392,8 @@ impl EventlogRecordedStore {
         key: &BatchKey,
     ) -> Result<(Vec<u8>, Vec<AppendMember>), AsyncStoreError> {
         let bytes = self.bound_blob(digest, BATCH_BLOB_DOMAIN).await?;
-        let (decoded, members) = decode_batch(&bytes)?;
+        let definitions = self.definitions(&bytes).await?;
+        let (decoded, members) = decode_batch(&bytes, &mut resolve_from(&definitions))?;
         if decoded != *key {
             return Err(integrity("a verified index row names another batch's blob"));
         }
@@ -407,9 +431,10 @@ impl EventlogRecordedStore {
         if authority != self.authority || text(entry, "record_id")? != id {
             return Err(integrity("a record row names another authority or record"));
         }
-        let (_, mut members) = self
+        let (batch_bytes, mut members) = self
             .batch_members(text(entry, "batch_blob")?, &batch_key)
             .await?;
+        let form = RecordForm::of_batch(&batch_bytes);
         let index = usize::try_from(member_index)
             .ok()
             .filter(|index| *index < members.len())
@@ -422,7 +447,7 @@ impl EventlogRecordedStore {
             return Err(integrity("a record row and its batch member disagree"));
         }
         Ok(Some(RecordLookup::Committed(self.stored_member(
-            &batch_key,
+            (&batch_key, form),
             member_index,
             member,
             text(entry, "record_blob")?,
@@ -456,6 +481,7 @@ impl EventlogRecordedStore {
         if rows.len() != members.len() || members.is_empty() {
             return Err(integrity("a batch row and its blob have different members"));
         }
+        let form = RecordForm::of_batch(&comparison_bytes);
         let mut records = Vec::with_capacity(members.len());
         let mut prior_position = 0;
         for (index, (member, row)) in members.into_iter().zip(rows).enumerate() {
@@ -475,7 +501,7 @@ impl EventlogRecordedStore {
             }
             prior_position = physical.global_seq;
             records.push(self.stored_member(
-                key,
+                (key, form),
                 member_index,
                 member,
                 text(row, "record_blob")?,
@@ -579,6 +605,17 @@ impl EventlogRecordedStore {
             .cloned()
             .collect();
         self.fetch(&mut blobs, &missing).await?;
+        // The definitions the suffix's records name. One the suffix does not bind was stored by
+        // an earlier group; one the provider does not hold is refused by name when it is read.
+        let mut named = BTreeSet::new();
+        for digest in &wanted {
+            named.extend(named_definitions(&blobs[digest])?);
+        }
+        let missing: Vec<String> = named
+            .into_iter()
+            .filter(|digest| !blobs.contains_key(digest))
+            .collect();
+        self.fetch_present(&mut blobs, &missing).await?;
         let borrowed: BTreeMap<&str, &[u8]> = blobs
             .iter()
             .map(|(digest, bytes)| (digest.as_str(), bytes.as_slice()))
@@ -758,6 +795,20 @@ impl EventlogRecordedStore {
         blobs: &mut BTreeMap<String, Vec<u8>>,
         digests: &[String],
     ) -> Result<(), AsyncStoreError> {
+        let before = blobs.len();
+        self.fetch_present(blobs, digests).await?;
+        if blobs.len() - before != digests.len() {
+            return Err(integrity("capture suffix references a missing blob"));
+        }
+        Ok(())
+    }
+
+    /// Reads the blobs the provider holds of `digests`; one it does not hold is left out.
+    async fn fetch_present(
+        &self,
+        blobs: &mut BTreeMap<String, Vec<u8>>,
+        digests: &[String],
+    ) -> Result<(), AsyncStoreError> {
         if digests.is_empty() {
             return Ok(());
         }
@@ -779,10 +830,13 @@ impl EventlogRecordedStore {
             ));
         }
         for (digest, result) in digests.iter().zip(results) {
-            let ReadResult::Blob(Some(bytes)) = result else {
-                return Err(integrity("capture suffix references a missing blob"));
-            };
-            blobs.insert(digest.clone(), bytes);
+            match result {
+                ReadResult::Blob(Some(bytes)) => {
+                    blobs.insert(digest.clone(), bytes);
+                }
+                ReadResult::Blob(None) => {}
+                _ => return Err(integrity("provider answered a blob read with another kind")),
+            }
         }
         Ok(())
     }

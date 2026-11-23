@@ -1,10 +1,181 @@
 use serde_json::{Map, Value};
 
-use entity_core::DecisionCommand;
+use entity_core::{DecisionCommand, EntityDefinition};
 
 use crate::Recording;
 
-use super::{AppendMember, AsyncStoreError, BatchKey, RecordedEntry};
+use super::{sha256::Sha256, AppendMember, AsyncStoreError, BatchKey, RecordedEntry};
+
+/// The framing of a decision record that names its definition by digest.
+///
+/// Its body is the body the record would have in the framing [`record_domain`] gives it, with one
+/// change: `commit.envelope.record.definition` is the definition's digest
+/// ([`definition_digest`]) as a string instead of the definition. One framing serves every
+/// semantics, because the semantics is read from the definition the digest resolves to. A record
+/// without a definition, and every observation, has nothing to name and keeps its framing.
+pub const RECORD_BY_DIGEST: &str = "er.record/5";
+
+/// The framing of a definition document: `["er.definition/1", <definition>]`, canonical.
+pub const DEFINITION_FRAMING: &str = "er.definition/1";
+
+/// The domain a definition document's digest is framed in.
+///
+/// The framing is Eventlog's blob key — `domain`, a zero byte, the document's length as a
+/// big-endian `u64`, the document — so the digest a record names is the key its definition blob
+/// is stored under.
+pub const DEFINITION_DIGEST_DOMAIN: &str = "er.definition-key/1";
+
+/// How a record spells its definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordForm {
+    /// The definition is inside the record: `er.record/1` to `er.record/4`, every record written
+    /// before 0.33.0. Read and compared in this form so that its bytes and digests never change.
+    DefinitionEmbedded,
+    /// The definition is named by digest ([`RECORD_BY_DIGEST`]); what new records are written in.
+    DefinitionByDigest,
+}
+
+impl RecordForm {
+    /// The form one stored record document is in, read from its framing alone.
+    #[must_use]
+    pub fn of_record(bytes: &[u8]) -> Self {
+        match record_framing(bytes) {
+            Ok(RECORD_BY_DIGEST) => Self::DefinitionByDigest,
+            _ => Self::DefinitionEmbedded,
+        }
+    }
+
+    /// The form one stored `er.batch/1` document's members are in.
+    ///
+    /// A batch is written by one writer at once, so its members share a form. A batch none of whose
+    /// members names a definition is the same bytes in both forms.
+    #[must_use]
+    pub fn of_batch(bytes: &[u8]) -> Self {
+        #[derive(serde::Deserialize)]
+        struct Member {
+            record: (String, serde::de::IgnoredAny),
+        }
+        let scanned: Result<(serde::de::IgnoredAny, serde::de::IgnoredAny, Vec<Member>), _> =
+            serde_json::from_slice(bytes);
+        match scanned {
+            Ok((_, _, members))
+                if members
+                    .iter()
+                    .any(|member| member.record.0 == RECORD_BY_DIGEST) =>
+            {
+                Self::DefinitionByDigest
+            }
+            _ => Self::DefinitionEmbedded,
+        }
+    }
+}
+
+/// The canonical definition document a record's definition digest is the digest of.
+///
+/// # Errors
+///
+/// Serialization failure without numeric coercion.
+pub fn definition_comparison_bytes(
+    definition: &EntityDefinition,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    canonical_domain_bytes(
+        DEFINITION_FRAMING,
+        serde_json::to_value(definition)
+            .map_err(|error| AsyncStoreError::Encoding(error.to_string()))?,
+    )
+}
+
+/// The digest a record names a definition document by: `sha256:` and 64 lowercase hex digits of
+/// SHA-256 over [`DEFINITION_DIGEST_DOMAIN`], a zero byte, the document's length as a big-endian
+/// `u64`, and the document.
+#[must_use]
+pub fn definition_digest(document: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(DEFINITION_DIGEST_DOMAIN.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(&(document.len() as u64).to_be_bytes());
+    hasher.update(document);
+    format!("sha256:{}", super::sha256::hex(&hasher.finalize()))
+}
+
+/// The definition one entry carries, if it is a decision that carries one.
+#[must_use]
+pub fn record_definition(entry: &RecordedEntry) -> Option<&EntityDefinition> {
+    match entry {
+        RecordedEntry::Decision(commit) => commit.envelope.record.definition.as_ref(),
+        RecordedEntry::Observation(_) => None,
+    }
+}
+
+const DEFINITION_POINTER: &str = "/commit/envelope/record/definition";
+
+/// The digests of the definitions one encoding pass has already hashed.
+///
+/// A batch's members usually share one definition, and the batch and each member's record are
+/// encoded together on every write, so a definition is hashed once per pass and recognised by
+/// value after that.
+#[derive(Default)]
+struct DefinitionDigests(Vec<(Value, String)>);
+
+impl DefinitionDigests {
+    fn digest(&mut self, definition: Value) -> Result<String, AsyncStoreError> {
+        if let Some((_, digest)) = self.0.iter().find(|(seen, _)| *seen == definition) {
+            return Ok(digest.clone());
+        }
+        let digest = definition_digest(&canonical_domain_bytes(
+            DEFINITION_FRAMING,
+            definition.clone(),
+        )?);
+        self.0.push((definition, digest.clone()));
+        Ok(digest)
+    }
+}
+
+/// One record's framing and body in `form`.
+fn framed_record(
+    form: RecordForm,
+    entry: &RecordedEntry,
+    digests: &mut DefinitionDigests,
+) -> Result<(&'static str, Value), AsyncStoreError> {
+    let mut body = tagged_record(entry)?;
+    if form == RecordForm::DefinitionByDigest && record_definition(entry).is_some() {
+        let slot = definition_slot(&mut body)?;
+        let definition = std::mem::take(slot);
+        *slot = Value::String(digests.digest(definition)?);
+        return Ok((RECORD_BY_DIGEST, body));
+    }
+    Ok((record_domain(entry), body))
+}
+
+fn definition_slot(body: &mut Value) -> Result<&mut Value, AsyncStoreError> {
+    body.pointer_mut(DEFINITION_POINTER).ok_or_else(|| {
+        AsyncStoreError::Encoding("a decision record body has no definition".to_owned())
+    })
+}
+
+/// Encodes one decision record in [`RECORD_BY_DIGEST`] naming `digest`, without hashing.
+///
+/// For a provider that has just resolved `digest` to a definition blob, held that blob to its
+/// digest, and decoded the entry's definition from it: re-encoding the record to check its stored
+/// bytes then needs neither the definition serialized again nor hashed again. The definition the
+/// entry carries, if any, is not read; the caller vouches that `digest` is its digest.
+///
+/// # Errors
+///
+/// [`AsyncStoreError::Encoding`] for an observation, or serialization failure.
+pub fn record_comparison_bytes_naming(
+    entry: &RecordedEntry,
+    digest: &str,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    if !matches!(entry, RecordedEntry::Decision(_)) {
+        return Err(AsyncStoreError::Encoding(
+            "only a decision record names a definition".to_owned(),
+        ));
+    }
+    let mut body = tagged_record(entry)?;
+    *definition_slot(&mut body)? = Value::String(digest.to_owned());
+    canonical_domain_bytes(RECORD_BY_DIGEST, body)
+}
 
 /// Orders every object's keys, consuming the value rather than cloning it.
 ///
@@ -88,13 +259,15 @@ fn tagged_record(entry: &RecordedEntry) -> Result<Value, AsyncStoreError> {
     Ok(Value::Object(tagged))
 }
 
-/// The record framing one entry is spelled in.
+/// The record framing one entry is spelled in while its definition is embedded
+/// ([`RecordForm::DefinitionEmbedded`]), and the semantic domain its request framing follows.
 ///
 /// A `service/1` decision's record carries keys `er.record/1` has never carried — `outcome`,
 /// `effect`, `response`, and a `create` command with an `arguments` key. The governing rule for
 /// these formats is that a change to their shape, framing or scalar spelling needs a new version
 /// domain, so that is what a `service/1` decision takes. A `kernel/1` decision and every
-/// observation keep the bytes they have.
+/// observation keep the bytes they have. A decision that carries a definition is written in
+/// [`RECORD_BY_DIGEST`] since 0.33.0; this domain still selects its request framing.
 #[must_use]
 pub fn record_domain(entry: &RecordedEntry) -> &'static str {
     match entry {
@@ -119,13 +292,31 @@ pub fn request_domain(entry: &RecordedEntry) -> &'static str {
     }
 }
 
-/// Encodes one complete typed record in its normative domain.
+/// Encodes one complete typed record in the form new records are written in: a decision that
+/// carries a definition names it by digest ([`RECORD_BY_DIGEST`]); every other record in the
+/// framing [`record_domain`] gives it.
 ///
 /// # Errors
 ///
 /// Serialization failure without numeric coercion.
 pub fn record_comparison_bytes(entry: &RecordedEntry) -> Result<Vec<u8>, AsyncStoreError> {
-    canonical_domain_bytes(record_domain(entry), tagged_record(entry)?)
+    record_comparison_bytes_in(RecordForm::DefinitionByDigest, entry)
+}
+
+/// Encodes one complete typed record in `form`.
+///
+/// A record read from a store is compared in the form it was stored in
+/// ([`RecordForm::of_record`]), so a record written before 0.33.0 keeps its bytes and digest.
+///
+/// # Errors
+///
+/// Serialization failure without numeric coercion.
+pub fn record_comparison_bytes_in(
+    form: RecordForm,
+    entry: &RecordedEntry,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    let (domain, body) = framed_record(form, entry, &mut DefinitionDigests::default())?;
+    canonical_domain_bytes(domain, body)
 }
 
 /// The framing a comparison document is written in, read **without parsing its payload**.
@@ -294,7 +485,8 @@ fn key_value(key: &BatchKey) -> Value {
     }
 }
 
-/// Encodes one complete ordered batch in the normative `er.batch/1` domain.
+/// Encodes one complete ordered batch in the normative `er.batch/1` domain, each member in the
+/// form new records are written in (see [`record_comparison_bytes`]).
 ///
 /// # Errors
 ///
@@ -303,7 +495,24 @@ pub fn batch_comparison_bytes(
     key: &BatchKey,
     members: &[AppendMember],
 ) -> Result<Vec<u8>, AsyncStoreError> {
+    batch_comparison_bytes_in(RecordForm::DefinitionByDigest, key, members)
+}
+
+/// Encodes one complete ordered batch with every member record in `form`.
+///
+/// A stored batch is compared in the form it was stored in ([`RecordForm::of_batch`]), so a retry
+/// of a batch written before 0.33.0 still finds it the same batch.
+///
+/// # Errors
+///
+/// Serialization failure without numeric coercion.
+pub fn batch_comparison_bytes_in(
+    form: RecordForm,
+    key: &BatchKey,
+    members: &[AppendMember],
+) -> Result<Vec<u8>, AsyncStoreError> {
     key.validate()?;
+    let mut digests = DefinitionDigests::default();
     let mut encoded = Vec::with_capacity(members.len());
     for member in members {
         let expectation = match member.expect {
@@ -315,9 +524,10 @@ pub fn batch_comparison_bytes(
         // Each member carries its own record framing. The batch tag does **not** move: a reader
         // that walks a batch meets the member's framing and refuses there, by the name of the
         // framing it does not know, and a batch whose members are all `/1` keeps its bytes.
+        let (domain, body) = framed_record(form, &member.entry, &mut digests)?;
         encoded.push(serde_json::json!({
             "expect": expectation,
-            "record": [record_domain(&member.entry), tagged_record(&member.entry)?]
+            "record": [domain, body]
         }));
     }
     let document = serde_json::json!(["er.batch/1", key_value(key), encoded]);
@@ -494,6 +704,145 @@ mod tests {
         assert!(
             maps_are_ordered(),
             "this workspace builds serde_json without preserve_order, so the skip is what it runs"
+        );
+    }
+
+    /// A `service/1` decision and an observation of it, as a store receives them.
+    fn service_entries() -> (RecordedEntry, RecordedEntry) {
+        let definition = serde_json::from_value(serde_json::json!({
+            "entity": "invocation",
+            "version": 1,
+            "semantics": "service/1",
+            "identity": { "field": "invocation_id" },
+            "schema": { "fields": {
+                "invocation_id": { "type": "string", "required": true },
+                "operation": { "type": "string", "required": true }
+            }},
+            "lifecycle": { "initial": "settled", "states": ["settled"] },
+            "create": { "emit": { "type": "Invoked", "payload": { "op": "$fields.operation" } } }
+        }))
+        .expect("definition parses");
+        let mut registry = entity_core::Registry::new();
+        registry.register(definition).expect("registers");
+        let decision = entity_core::Runtime::new(&registry)
+            .create(
+                "invocation",
+                1,
+                "s:inv-1",
+                serde_json::json!({ "invocation_id": "inv-1", "operation": "read" }),
+            )
+            .expect("creates");
+        let recording = |id: &str| crate::Recording {
+            record_id: id.to_owned(),
+            recorded_at: "2026-11-23T00:00:00Z".to_owned(),
+            correlation: None,
+            causation: None,
+            actor: None,
+        };
+        let commit = crate::RecordedCommit::new(decision, &recording("create")).expect("records");
+        let observation = RecordedEntry::Observation(crate::RecordedObservation {
+            entity: commit.instance.entity.clone(),
+            id: commit.instance.id.clone(),
+            revision: 1,
+            envelope: recording("observe")
+                .seal(serde_json::json!({ "seen": true }))
+                .expect("seals"),
+        });
+        (RecordedEntry::Decision(commit), observation)
+    }
+
+    /// The bytes a decision record holds name its definition by the digest of the definition
+    /// document, and are otherwise the embedded record's bytes: the definition is the only thing
+    /// taken out. An observation names nothing and keeps its framing in both forms.
+    #[test]
+    fn a_decision_record_holds_its_definition_digest_and_nothing_else_of_the_definition() {
+        let (decision, observation) = service_entries();
+        let definition = record_definition(&decision).expect("carries a definition");
+        let document = definition_comparison_bytes(definition).expect("definition document");
+        let digest = definition_digest(&document);
+        assert!(
+            digest.starts_with("sha256:") && digest.len() == 71,
+            "{digest}"
+        );
+
+        let embedded =
+            record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &decision).expect("embeds");
+        let named = record_comparison_bytes(&decision).expect("names");
+        assert_eq!(record_framing(&embedded).expect("framed"), "er.record/2");
+        assert_eq!(record_framing(&named).expect("framed"), RECORD_BY_DIGEST);
+        let body = read_record_in_domain(RECORD_BY_DIGEST, &named).expect("reads");
+        assert_eq!(
+            body.pointer(DEFINITION_POINTER),
+            Some(&Value::String(digest.clone()))
+        );
+        // Exactly the definition's own body (the document minus its framing) became the digest.
+        let definition_body = &document[DEFINITION_FRAMING.len() + 4..document.len() - 1];
+        let expected = String::from_utf8(embedded.clone())
+            .expect("utf-8")
+            .replacen("er.record/2", RECORD_BY_DIGEST, 1)
+            .replacen(
+                std::str::from_utf8(definition_body).expect("utf-8"),
+                &format!("\"{digest}\""),
+                1,
+            );
+        assert_eq!(String::from_utf8(named.clone()).expect("utf-8"), expected);
+        assert_eq!(
+            record_comparison_bytes_naming(&decision, &digest).expect("names"),
+            named
+        );
+        assert!(matches!(
+            record_comparison_bytes_naming(&observation, &digest),
+            Err(AsyncStoreError::Encoding(_))
+        ));
+        assert_eq!(
+            record_comparison_bytes(&observation).expect("encodes"),
+            record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &observation)
+                .expect("encodes")
+        );
+        assert_eq!(
+            RecordForm::of_record(&named),
+            RecordForm::DefinitionByDigest
+        );
+        assert_eq!(
+            RecordForm::of_record(&embedded),
+            RecordForm::DefinitionEmbedded
+        );
+
+        let members = vec![
+            AppendMember::new(crate::Expect::Absent, decision.clone(), Vec::new()),
+            AppendMember::new(crate::Expect::Revision(1), observation, Vec::new()),
+        ];
+        let key = BatchKey::Named("pair".to_owned());
+        let batch = batch_comparison_bytes(&key, &members).expect("batch");
+        let old = batch_comparison_bytes_in(RecordForm::DefinitionEmbedded, &key, &members)
+            .expect("batch");
+        assert_eq!(RecordForm::of_batch(&batch), RecordForm::DefinitionByDigest);
+        assert_eq!(RecordForm::of_batch(&old), RecordForm::DefinitionEmbedded);
+        let text = String::from_utf8(batch).expect("utf-8");
+        assert!(text.contains(&String::from_utf8(named).expect("utf-8")));
+        assert!(!text.contains("\"lifecycle\""), "{text}");
+    }
+
+    /// A record written before 0.33.0 is re-encoded to exactly its stored bytes in the embedded
+    /// form, so its digest, and every chain over it, does not move.
+    #[test]
+    fn the_embedded_form_reproduces_a_record_written_before_records_named_their_definitions() {
+        let stored = include_str!("../../tests/fixtures/service_2_record_3.json").trim_end();
+        let document: Value = serde_json::from_str(stored).expect("fixture parses");
+        let commit: crate::RecordedCommit =
+            serde_json::from_value(document[1]["commit"].clone()).expect("decodes");
+        let entry = RecordedEntry::Decision(commit);
+        assert_eq!(
+            record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry).expect("encodes"),
+            stored.as_bytes()
+        );
+        assert_eq!(
+            RecordForm::of_record(stored.as_bytes()),
+            RecordForm::DefinitionEmbedded
+        );
+        assert_eq!(
+            record_framing(&record_comparison_bytes(&entry).expect("encodes")).expect("framed"),
+            RECORD_BY_DIGEST
         );
     }
 }

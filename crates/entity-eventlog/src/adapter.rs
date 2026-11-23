@@ -16,10 +16,11 @@ use entity_store::{
     asynchronous::{
         AppendMember, AppendOutcome, AppendRequest, AsyncRecordedReader, AsyncRecordedWriter,
         AsyncStateReader, AsyncStoreError, BatchKey, BatchReceipt, BoxFuture, CommitReceipt,
-        CompleteStoreSnapshot, HistoryOrigin, RecordLookup, RecordPosition, RecordReceipt,
-        StoreCoverage, StoredBatch, StoredRecord, Subject, SubjectAssurance, SubjectHistory,
-        SubjectSnapshot, WriteFailure, batch_comparison_bytes, branch_tips_of_records,
-        original_request_comparison_bytes, record_comparison_bytes, validate_entry_against_state,
+        CompleteStoreSnapshot, HistoryOrigin, RecordForm, RecordLookup, RecordPosition,
+        RecordReceipt, StoreCoverage, StoredBatch, StoredRecord, Subject, SubjectAssurance,
+        SubjectHistory, SubjectSnapshot, WriteFailure, batch_comparison_bytes_in,
+        branch_tips_of_records, definition_comparison_bytes, original_request_comparison_bytes,
+        record_comparison_bytes_in, record_definition, validate_entry_against_state,
         verify_shared_subject_history_with_checked_bytes, verify_subject_history,
     },
 };
@@ -34,11 +35,13 @@ use time::OffsetDateTime;
 
 use crate::{
     encoding::{
-        ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN, ENTRY_BLOB_DOMAIN,
-        EvidenceWire, PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, RecordedEntryWrapper,
-        SubjectWire, anchor_from_history, batch_of_records, decode_anchor, decode_batch,
-        decode_binding, decode_entry, decode_record, encode_anchor, encode_binding, encode_entry,
-        encode_source_anchor, history_from_anchor, key_for_value,
+        ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN,
+        DEFINITION_BLOB_DOMAIN, ENTRY_BLOB_DOMAIN, EvidenceWire, PhysicalRef, RECORD_BLOB_DOMAIN,
+        REQUEST_BLOB_DOMAIN, RecordedEntryWrapper, SubjectWire, anchor_from_history,
+        batch_of_records, decode_anchor, decode_batch, decode_binding, decode_definition,
+        decode_entry, decode_record, encode_anchor, encode_binding, encode_entry,
+        encode_source_anchor, history_from_anchor, key_for_value, mismatched_definition,
+        missing_definition, named_definitions, resolve_from,
     },
     projection::{
         PROJECTOR_NAME, batch_key as physical_batch_key, batch_member_row, batch_row, batch_spec,
@@ -55,6 +58,8 @@ mod scoped;
 mod shared;
 mod tracked;
 pub use tracked::{CapturePolicy, OpenVerification};
+#[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
+mod definition_digest_tests;
 #[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
 mod payload_tests;
 #[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
@@ -2256,14 +2261,14 @@ impl EventlogOperationStore<'_> {
             .collect();
         // Released before the commit, so the post-commit verification advances the model in place.
         drop(model);
-        let batch_bytes =
-            batch_comparison_bytes(&key, &request.members).map_err(WriteFailure::NotCommitted)?;
+        let batch_bytes = batch_comparison_bytes_in(write_form(), &key, &request.members)
+            .map_err(WriteFailure::NotCommitted)?;
         let batch_digest =
             framed_key(BATCH_BLOB_DOMAIN, &batch_bytes).map_err(WriteFailure::NotCommitted)?;
         let mut wrappers = Vec::with_capacity(request.members.len());
         for (index, member) in request.members.iter().enumerate() {
-            let record_bytes =
-                record_comparison_bytes(&member.entry).map_err(WriteFailure::NotCommitted)?;
+            let record_bytes = record_comparison_bytes_in(write_form(), &member.entry)
+                .map_err(WriteFailure::NotCommitted)?;
             let record_digest = framed_key(RECORD_BLOB_DOMAIN, &record_bytes)
                 .map_err(WriteFailure::NotCommitted)?;
             let request_digest = framed_key(REQUEST_BLOB_DOMAIN, &member.request_bytes)
@@ -2295,7 +2300,15 @@ impl EventlogOperationStore<'_> {
         // One event and one record row per member, one batch row, one subject row per subject the
         // store does not yet hold, and every blob not already bound. Counted before a byte is
         // uploaded, so a refusal costs nothing and leaves nothing.
+        let definitions = if write_form() == RecordForm::DefinitionByDigest {
+            definition_blobs(&request.members).map_err(WriteFailure::NotCommitted)?
+        } else {
+            Vec::new()
+        };
         let mut digests = BTreeMap::new();
+        for (digest, bytes) in &definitions {
+            digests.insert(digest.clone(), bytes.len() as u64);
+        }
         digests.insert(batch_digest.clone(), batch_bytes.len() as u64);
         for ((wrapper, wrapper_bytes, wrapper_digest, record_bytes, _), member) in
             wrappers.iter().zip(&request.members)
@@ -2324,9 +2337,12 @@ impl EventlogOperationStore<'_> {
             .context
             .meta(command_key, batch_digest.clone())
             .map_err(WriteFailure::NotCommitted)?;
-        // Every blob the group binds, in the order this path has always uploaded them: the batch,
-        // then each member's record, request and entry. They travel with the group.
-        let mut blobs = Vec::with_capacity(1 + 3 * wrappers.len());
+        // Every blob the group binds: each definition its records name, then, in the order this
+        // path has always uploaded them, the batch and each member's record, request and entry.
+        // They travel with the group, so a record is never bound without the definition it names;
+        // a definition the tenant already holds is the same content under the same key.
+        let mut blobs = Vec::with_capacity(definitions.len() + 1 + 3 * wrappers.len());
+        blobs.extend(definitions);
         blobs.push((batch_digest.clone(), batch_bytes));
         for (wrapper, wrapper_bytes, wrapper_digest, record_bytes, record_digest) in &wrappers {
             let member = &request.members
@@ -2527,7 +2543,13 @@ fn recover_from(
     request: &AppendRequest,
 ) -> Result<Option<AppendOutcome>, AsyncStoreError> {
     if let Some(batch) = model.batches.get(key) {
-        let expected = batch_comparison_bytes(key, &request.members)?;
+        // In the form the stored batch was written in: a retry of a batch written before records
+        // named their definitions is still the same batch.
+        let expected = batch_comparison_bytes_in(
+            RecordForm::of_batch(&batch.comparison_bytes),
+            key,
+            &request.members,
+        )?;
         if *batch.comparison_bytes == expected {
             return Ok(Some(AppendOutcome::Committed {
                 receipt: batch.receipt.clone(),
@@ -2839,7 +2861,12 @@ async fn resolve_subject_state(
         .await?
         .ok_or_else(|| GuardCheckError::Domain(integrity("state source blob is missing")))?;
     match source.get("kind").and_then(Value::as_str) {
-        Some("decision") => match decode_record(&bytes).map_err(GuardCheckError::Domain)? {
+        Some("decision") => match decode_record(
+            &bytes,
+            &mut resolve_from(&crate::projection::projected_definitions(store, &bytes).await?),
+        )
+        .map_err(GuardCheckError::Domain)?
+        {
             entity_store::asynchronous::RecordedEntry::Decision(commit) => Ok(commit.instance),
             _ => Err(GuardCheckError::Domain(integrity(
                 "state source is not a decision",
@@ -3556,8 +3583,11 @@ impl EventlogOperationStore<'_> {
         let mut uploads = Vec::new();
         for evidence in &anchor.evidence {
             if let entity_store::asynchronous::LegacyEvidence::Envelope(saved) = evidence {
-                let bytes = record_comparison_bytes(&saved.entry)
-                    .map_err(ImportAnchorFailure::NotCommitted)?;
+                // Imported envelopes keep their definitions embedded: an anchor binds its records
+                // and nothing else, so it never names a definition blob.
+                let bytes =
+                    record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &saved.entry)
+                        .map_err(ImportAnchorFailure::NotCommitted)?;
                 let digest = framed_key(RECORD_BLOB_DOMAIN, &bytes)
                     .map_err(ImportAnchorFailure::NotCommitted)?;
                 record_blobs.push(digest.clone());
@@ -4445,6 +4475,8 @@ struct BoundBlobs<'a> {
     /// Batch blobs [`build_model_owning`] took out of its capture, which each batch then shares
     /// rather than copies. `None` for a build that borrows its capture.
     moved_batches: Option<BTreeMap<String, Arc<Vec<u8>>>>,
+    /// Definitions the records of this capture name, each held to its digest and decoded once.
+    definitions: BTreeMap<String, entity_core::EntityDefinition>,
 }
 
 impl<'a> BoundBlobs<'a> {
@@ -4462,6 +4494,7 @@ impl<'a> BoundBlobs<'a> {
             memory,
             copies_record_bytes: true,
             moved_batches: None,
+            definitions: BTreeMap::new(),
         }
     }
 
@@ -4509,18 +4542,51 @@ impl<'a> BoundBlobs<'a> {
         missing: &'static str,
     ) -> Result<(&'a [u8], entity_store::asynchronous::RecordedEntry, bool), AsyncStoreError> {
         let bytes = self.get(digest, RECORD_BLOB_DOMAIN, missing)?;
-        if let Some(Decoded::Record(entry)) = self
+        let remembered = self
             .memory
             .as_deref()
             .and_then(|memory| memory.decoded(digest, bytes))
-        {
-            return Ok((bytes, (**entry).clone(), false));
+            .and_then(|decoded| match decoded {
+                Decoded::Record(entry) => Some((**entry).clone()),
+                _ => None,
+            });
+        if let Some(entry) = remembered {
+            // The remembered decode holds its definition already, but this capture must still
+            // hold the definition blob the record names, unchanged, as a decode from nothing
+            // requires: a damaged definition is refused on every capture, not only the first.
+            if RecordForm::of_record(bytes) == RecordForm::DefinitionByDigest {
+                for named in named_definitions(bytes)? {
+                    self.definition(&named)?;
+                }
+            }
+            return Ok((bytes, entry, false));
         }
-        let entry = decode_record(bytes)?;
+        let entry = decode_record(bytes, &mut |digest| self.definition(digest))?;
         if let Some(memory) = self.memory.as_deref_mut() {
             memory.remember(digest, bytes, Decoded::Record(Box::new(entry.clone())));
         }
         Ok((bytes, entry, true))
+    }
+
+    /// The definition a record names by `digest`: the capture's definition blob under that key,
+    /// held to it and decoded, once per capture however many records name it.
+    fn definition(
+        &mut self,
+        digest: &str,
+    ) -> Result<entity_core::EntityDefinition, AsyncStoreError> {
+        if let Some(definition) = self.definitions.get(digest) {
+            return Ok(definition.clone());
+        }
+        if !self.blobs.contains_key(digest) {
+            return Err(missing_definition(digest));
+        }
+        let bytes = self
+            .get(digest, DEFINITION_BLOB_DOMAIN, "referenced blob is missing")
+            .map_err(|_| mismatched_definition(digest))?;
+        let definition = decode_definition(bytes)?;
+        self.definitions
+            .insert(digest.to_owned(), definition.clone());
+        Ok(definition)
     }
 
     /// The bytes bound under `digest`, verified against `domain` exactly once.
@@ -4739,7 +4805,7 @@ fn build_model_owning(
     capture: &mut TenantCapture,
 ) -> Result<CapturedModel, AsyncStoreError> {
     let rows = projection_rows(capture);
-    let (mut model, mut pending) = {
+    let (mut model, mut pending, definitions) = {
         let blobs = capture_blobs(capture);
         let mut model = CapturedModel {
             held: capture_held(capture, &blobs, rows),
@@ -4756,7 +4822,7 @@ fn build_model_owning(
         if model.binding.is_none() && !capture.events.is_empty() {
             return Err(integrity("authoritative events exist without a binding"));
         }
-        (model, pending)
+        (model, pending, std::mem::take(&mut bound.definitions))
     };
     // `admit_event` admitted every pending record's record blob in the record domain and its batch
     // blob in the batch domain, so no digest is in both sets and every one of them is in the
@@ -4802,8 +4868,10 @@ fn build_model_owning(
         pending[index].record_bytes = Some(bytes);
     }
     let unbound = BTreeMap::new();
+    // The definitions the first pass resolved, for a batch the second pass decodes in full.
     let mut bound = BoundBlobs {
         moved_batches: Some(moved_batches),
+        definitions,
         ..BoundBlobs::new(&unbound)
     };
     build_committed(pending, &mut bound, &mut model)?;
@@ -5141,7 +5209,8 @@ fn insert_committed(
             match batch_of_records(&batch_bytes, &key, &records) {
                 Some(expectations) => (expectations, None),
                 None => {
-                    let (decoded_key, members) = decode_batch(&batch_bytes)?;
+                    let (decoded_key, members) =
+                        decode_batch(&batch_bytes, &mut |digest| bound.definition(digest))?;
                     if decoded_key != key || group.len() != members.len() {
                         return Err(integrity("batch references are incomplete"));
                     }
@@ -5660,6 +5729,47 @@ fn reference_digest(event: &RecordedEvent) -> Result<&str, AsyncStoreError> {
         .and_then(Value::as_str)
         .ok_or_else(|| integrity("reference body has no blob"))
 }
+#[cfg(test)]
+thread_local! {
+    /// Whether this thread's writes spell records as every release before 0.33.0 did, with their
+    /// definitions embedded and no definition blob: how a test writes a store in the old format
+    /// through the real write path.
+    pub(crate) static WRITES_EMBED_DEFINITIONS: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+/// The form a write spells its records in: always by digest, except in a test writing a store in
+/// the format of an earlier release.
+fn write_form() -> RecordForm {
+    #[cfg(test)]
+    if WRITES_EMBED_DEFINITIONS.with(std::cell::Cell::get) {
+        return RecordForm::DefinitionEmbedded;
+    }
+    RecordForm::DefinitionByDigest
+}
+
+/// The definition blobs one group's records name: each distinct definition once, as its canonical
+/// document under the digest the records name it by.
+fn definition_blobs(members: &[AppendMember]) -> Result<Vec<(String, Vec<u8>)>, AsyncStoreError> {
+    let mut blobs: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut seen: Vec<&entity_core::EntityDefinition> = Vec::new();
+    for definition in members
+        .iter()
+        .filter_map(|member| record_definition(&member.entry))
+    {
+        if seen.contains(&definition) {
+            continue;
+        }
+        seen.push(definition);
+        let bytes = definition_comparison_bytes(definition)?;
+        let digest = framed_key(DEFINITION_BLOB_DOMAIN, &bytes)?;
+        if blobs.iter().all(|(held, _)| *held != digest) {
+            blobs.push((digest, bytes));
+        }
+    }
+    Ok(blobs)
+}
+
 fn verify_digest(domain: &str, digest: &str, bytes: &[u8]) -> Result<(), AsyncStoreError> {
     if framed_key(domain, bytes)? == digest {
         Ok(())
@@ -5867,6 +5977,12 @@ mod tests {
 /// against a capture this module builds itself rather than against a provider: a hand-built
 /// [`TenantCapture`] is deterministic to the byte — a file store mints `stream_identity` and every
 /// `event_id` from `new_event_id()` — which is what lets the model be pinned by digest at all.
+///
+/// Every capture here is bound in the format `append_inner` wrote before 0.33.0, records embedding
+/// their definitions (`RecordForm::DefinitionEmbedded`). That keeps the pinned model digests
+/// below where they were, which is itself evidence that a store written before records named
+/// their definitions builds the same model; the by-digest form is covered by
+/// `definition_digest_tests`, which writes through the provider.
 #[cfg(test)]
 mod seeded_open {
     use std::{cell::Cell, time::Instant};
@@ -6039,9 +6155,14 @@ mod seeded_open {
             let request_bytes =
                 original_request_comparison_bytes(&entry).expect("request comparison bytes");
             let member = AppendMember::new(Expect::Absent, entry.clone(), request_bytes.clone());
-            let batch_bytes = batch_comparison_bytes(&key, std::slice::from_ref(&member))
-                .expect("batch comparison bytes");
-            let record_bytes = record_comparison_bytes(&entry).expect("record comparison bytes");
+            let batch_bytes = batch_comparison_bytes_in(
+                RecordForm::DefinitionEmbedded,
+                &key,
+                std::slice::from_ref(&member),
+            )
+            .expect("batch comparison bytes");
+            let record_bytes = record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry)
+                .expect("record comparison bytes");
             let batch_blob = framed_key(BATCH_BLOB_DOMAIN, &batch_bytes).expect("batch digest");
             let record_blob = framed_key(RECORD_BLOB_DOMAIN, &record_bytes).expect("record digest");
             let request_blob =
@@ -6205,7 +6326,9 @@ mod seeded_open {
             };
             for evidence in &anchor.evidence {
                 if let entity_store::asynchronous::LegacyEvidence::Envelope(saved) = evidence {
-                    let bytes = record_comparison_bytes(&saved.entry).expect("record bytes");
+                    let bytes =
+                        record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &saved.entry)
+                            .expect("record bytes");
                     let digest = framed_key(RECORD_BLOB_DOMAIN, &bytes).expect("record digest");
                     record_blobs.push(digest.clone());
                     blobs.push(CapturedBlob { digest, bytes });
@@ -6652,9 +6775,14 @@ mod seeded_open {
         let key = BatchKey::SingleRecord(entry.record_id().to_owned());
         let request_bytes = original_request_comparison_bytes(&entry).expect("request bytes");
         let member = AppendMember::new(expect, entry.clone(), request_bytes.clone());
-        let batch_bytes =
-            batch_comparison_bytes(&key, std::slice::from_ref(&member)).expect("batch bytes");
-        let record_bytes = record_comparison_bytes(&entry).expect("record bytes");
+        let batch_bytes = batch_comparison_bytes_in(
+            RecordForm::DefinitionEmbedded,
+            &key,
+            std::slice::from_ref(&member),
+        )
+        .expect("batch bytes");
+        let record_bytes = record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry)
+            .expect("record bytes");
         let batch_blob = framed_key(BATCH_BLOB_DOMAIN, &batch_bytes).expect("batch digest");
         let record_blob = framed_key(RECORD_BLOB_DOMAIN, &record_bytes).expect("record digest");
         let request_blob = framed_key(REQUEST_BLOB_DOMAIN, &request_bytes).expect("request digest");
@@ -6738,7 +6866,8 @@ mod seeded_open {
             .collect();
         let batch_bytes = forge(
             Bound::Batch,
-            batch_comparison_bytes(key, &appended).expect("batch bytes"),
+            batch_comparison_bytes_in(RecordForm::DefinitionEmbedded, key, &appended)
+                .expect("batch bytes"),
         );
         let batch_blob = framed_key(BATCH_BLOB_DOMAIN, &batch_bytes).expect("batch digest");
         capture.blobs.push(CapturedBlob {
@@ -6750,7 +6879,8 @@ mod seeded_open {
             let subject = entry.subject();
             let record_bytes = forge(
                 Bound::Record(index),
-                record_comparison_bytes(entry).expect("record bytes"),
+                record_comparison_bytes_in(RecordForm::DefinitionEmbedded, entry)
+                    .expect("record bytes"),
             );
             let record_blob = framed_key(RECORD_BLOB_DOMAIN, &record_bytes).expect("record digest");
             let request_bytes = forge(Bound::Request(index), member.request_bytes.clone());
@@ -7253,7 +7383,7 @@ mod seeded_open {
                     .iter()
                     .find(|blob| blob.digest == wrapper.record_blob)
                     .expect("record bound");
-                decode_record(&record.bytes).expect("record")
+                decode_record(&record.bytes, &mut crate::encoding::unresolvable).expect("record")
             }
             _ => panic!("one binding and one record"),
         };
@@ -7467,7 +7597,11 @@ mod seeded_open {
                     ModelLookup::Imported(saved) => {
                         imported += 1;
                         (
-                            record_comparison_bytes(&saved.entry).expect("record bytes"),
+                            record_comparison_bytes_in(
+                                RecordForm::DefinitionEmbedded,
+                                &saved.entry,
+                            )
+                            .expect("record bytes"),
                             None,
                         )
                     }
@@ -7530,8 +7664,12 @@ mod seeded_open {
         let request_bytes =
             original_request_comparison_bytes(&entry).expect("request comparison bytes");
         let member = AppendMember::new(Expect::Absent, entry, request_bytes);
-        let bytes = batch_comparison_bytes(&key, std::slice::from_ref(&member))
-            .expect("batch comparison bytes");
+        let bytes = batch_comparison_bytes_in(
+            RecordForm::DefinitionEmbedded,
+            &key,
+            std::slice::from_ref(&member),
+        )
+        .expect("batch comparison bytes");
         (key, member, bytes)
     }
 
@@ -7549,8 +7687,9 @@ mod seeded_open {
     #[test]
     fn a_batch_is_parsed_once_rather_than_once_for_every_member_as_well() {
         let (key, _, bytes) = one_member_batch();
-        let ((decoded_key, members), read) =
-            parsed(|| decode_batch(&bytes).expect("batch decodes"));
+        let ((decoded_key, members), read) = parsed(|| {
+            decode_batch(&bytes, &mut crate::encoding::unresolvable).expect("batch decodes")
+        });
         assert_eq!(decoded_key, key);
         assert_eq!(members.len(), 1);
         assert_eq!(
@@ -7584,12 +7723,12 @@ mod seeded_open {
             slack.insert(at, b' ');
             assert!(
                 matches!(
-                    decode_batch(&slack),
+                    decode_batch(&slack, &mut crate::encoding::unresolvable),
                     Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
                         if detail == "batch bytes are not canonical"
                 ),
                 "a space in {what} left the batch admitted: {:?}",
-                decode_batch(&slack).err()
+                decode_batch(&slack, &mut crate::encoding::unresolvable).err()
             );
         }
     }
@@ -7625,12 +7764,12 @@ mod seeded_open {
             let restored = serde_json::to_vec(&document).expect("batch re-encodes");
             assert!(
                 matches!(
-                    decode_batch(&restored),
+                    decode_batch(&restored, &mut crate::encoding::unresolvable),
                     Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
                         if detail == "record bytes do not reproduce the complete record"
                 ),
                 "{what} left the batch admitted: {:?}",
-                decode_batch(&restored).err()
+                decode_batch(&restored, &mut crate::encoding::unresolvable).err()
             );
         }
     }
@@ -7657,12 +7796,12 @@ mod seeded_open {
         );
         assert!(
             matches!(
-                decode_batch(&restored),
+                decode_batch(&restored, &mut crate::encoding::unresolvable),
                 Err(AsyncStoreError::ProviderIntegrity { ref detail, .. })
                     if detail == "batch bytes are not canonical"
             ),
             "a surplus field on an expectation left the batch admitted: {:?}",
-            decode_batch(&restored).err()
+            decode_batch(&restored, &mut crate::encoding::unresolvable).err()
         );
     }
 
@@ -7704,9 +7843,12 @@ mod seeded_open {
             mutate(&mut document);
             let restored = serde_json::to_vec(&document).expect("batch re-encodes");
             assert!(
-                matches!(decode_batch(&restored), Err(AsyncStoreError::Encoding(_))),
+                matches!(
+                    decode_batch(&restored, &mut crate::encoding::unresolvable),
+                    Err(AsyncStoreError::Encoding(_))
+                ),
                 "{what} was not refused by the wire type itself: {:?}",
-                decode_batch(&restored).err()
+                decode_batch(&restored, &mut crate::encoding::unresolvable).err()
             );
         }
         // And the one shape each does admit still decodes, so the refusals above are about the
@@ -7714,7 +7856,8 @@ mod seeded_open {
         let mut document: Value = serde_json::from_slice(&bytes).expect("batch parses");
         document[2][0]["expect"] = json!({"kind":"revision","revision":1});
         let restored = serde_json::to_vec(&document).expect("batch re-encodes");
-        let (_, members) = decode_batch(&restored).expect("the admitted shape decodes");
+        let (_, members) = decode_batch(&restored, &mut crate::encoding::unresolvable)
+            .expect("the admitted shape decodes");
         assert_eq!(members[0].expect, Expect::Revision(1));
     }
 

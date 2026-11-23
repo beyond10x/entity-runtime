@@ -36,6 +36,17 @@ unhashed original coordinates in authority; a matching digest never excuses diff
 | Unchanged batch bytes | `er.eventlog.batch-blob-key/1` |
 | Recorded-entry wrapper | `er.eventlog.recorded-entry-blob-key/1` |
 | Import-anchor wrapper | `er.eventlog.import-anchor-blob-key/1` |
+| Definition document (0.33.0) | `er.definition-key/1` |
+
+Since 0.33.0 a decision record names its definition by digest (`er.record/5`, see
+[recorded execution encoding](recorded-execution-encoding-v0.1.md#definition-by-digest-errecord5-0330)).
+The definition document `["er.definition/1", Definition]` is a blob under
+`K("er.definition-key/1", document)`, which is the digest the record names. It is uploaded in the
+same append group as the first record that names it, once per distinct definition of the group,
+and counts toward the write's blob and payload admission only when the tenant does not hold it
+yet; a later group naming it uploads the same content under the same key. Import anchors keep
+their envelopes with the definition embedded and bind no definition blob. A reader that resolves
+a record's digest holds the blob to it and refuses a missing or mismatching definition.
 
 ## Closed reference wrappers
 
