@@ -1186,15 +1186,23 @@ fn missing_evidence_behind_the_destination_keeps_its_divergence_for_repair() {
         .is_empty());
 }
 
-/// A store that counts how often its observation history is read.
+/// A store that counts how often its state, its events and its recorded history are read.
 #[derive(Debug, Default)]
-struct CountingObservations {
+struct Counting {
     inner: MemoryStore,
-    reads: std::cell::Cell<usize>,
+    state_reads: std::cell::Cell<usize>,
+    event_reads: std::cell::Cell<usize>,
+    record_reads: std::cell::Cell<usize>,
+    observation_reads: std::cell::Cell<usize>,
 }
 
-impl StateProvider for CountingObservations {
+fn count(reads: &std::cell::Cell<usize>) {
+    reads.set(reads.get() + 1);
+}
+
+impl StateProvider for Counting {
     fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
+        count(&self.state_reads);
         self.inner.load(entity, id)
     }
     fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
@@ -1202,18 +1210,20 @@ impl StateProvider for CountingObservations {
     }
 }
 
-impl EventProvider for CountingObservations {
+impl EventProvider for Counting {
     fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
+        count(&self.event_reads);
         self.inner.events(entity, id)
     }
 }
 
-impl entity_store::HistoryProvider for CountingObservations {
+impl entity_store::HistoryProvider for Counting {
     fn records(
         &self,
         entity: &str,
         id: &str,
     ) -> Result<Vec<entity_store::Envelope<entity_core::DecisionRecord>>, StoreError> {
+        count(&self.record_reads);
         entity_store::HistoryProvider::records(&self.inner, entity, id)
     }
     fn observations(
@@ -1221,12 +1231,12 @@ impl entity_store::HistoryProvider for CountingObservations {
         entity: &str,
         id: &str,
     ) -> Result<Vec<entity_store::RecordedObservation>, StoreError> {
-        self.reads.set(self.reads.get() + 1);
+        count(&self.observation_reads);
         entity_store::HistoryProvider::observations(&self.inner, entity, id)
     }
 }
 
-impl Store for CountingObservations {
+impl Store for Counting {
     fn history(&self) -> Option<&dyn entity_store::HistoryProvider> {
         Some(self)
     }
@@ -1290,7 +1300,7 @@ fn catch_up_reads_the_replicas_observations_once_however_many_revisions_it_resto
     }
     let mut store = Hybrid::new(
         local,
-        CountingObservations::default(),
+        Counting::default(),
         Policy::new(
             Authority::Local,
             ReadPath::LocalFirst,
@@ -1315,8 +1325,84 @@ fn catch_up_reads_the_replicas_observations_once_however_many_revisions_it_resto
         "every observation arrives, exactly"
     );
     assert_eq!(
-        store.remote().reads.get(),
+        store.remote().observation_reads.get(),
         1,
         "one read of the replica's observations for the whole pass"
+    );
+}
+
+#[test]
+fn catch_up_reads_the_sources_history_once_for_many_offline_writes_to_one_subject() {
+    // Every write made while the replica was down records a divergence, and each divergence read
+    // the source's whole history and event list again: 8 writes read the 8 events 8 times, and a
+    // later pass over the same divergences read them 8 times more although nothing was missing.
+    let registry = renamable();
+    let runtime = Runtime::new(&registry);
+    let mut local = Counting::default();
+    let mut offline = Vec::new();
+    let mut decision = opened(&registry);
+    for revision in 1..=8_u64 {
+        if revision > 1 {
+            decision = runtime
+                .execute(
+                    &decision.instance,
+                    "rename",
+                    json!({ "title": format!("Title {revision}") }),
+                )
+                .expect("permitted");
+        }
+        let expect = if revision == 1 {
+            Expect::Absent
+        } else {
+            Expect::Revision(revision - 1)
+        };
+        local.commit(&decision, expect).expect("accepted");
+        offline.push(Divergence {
+            entity: "ticket".into(),
+            id: "one".into(),
+            local_revision: revision,
+            source: StoreSide::Local,
+            destination: StoreSide::Remote,
+            record_id: None,
+            detail: "the replica was down".into(),
+        });
+    }
+    let mut store = Hybrid::new(
+        local,
+        MemoryStore::new(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    for divergence in offline.iter().cloned() {
+        store.remember(divergence);
+    }
+
+    assert_eq!(store.catch_up(), 0, "{:?}", store.divergences());
+    assert_eq!(
+        store.remote().load("ticket", "one").expect("answers"),
+        Some(decision.instance)
+    );
+    assert_eq!(
+        store.remote().events("ticket", "one").expect("events"),
+        store.local().inner.events("ticket", "one").expect("events"),
+        "every event once"
+    );
+    assert_eq!(store.local().record_reads.get(), 1, "one history read");
+    assert_eq!(store.local().state_reads.get(), 1, "one state read");
+    assert_eq!(store.local().event_reads.get(), 1, "one event read");
+
+    // A later process hands the same divergences back; the replica is already level.
+    for divergence in offline {
+        store.remember(divergence);
+    }
+    assert_eq!(store.catch_up(), 0, "{:?}", store.divergences());
+    assert_eq!(
+        store.local().event_reads.get(),
+        1,
+        "a level replica needs no events"
     );
 }

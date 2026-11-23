@@ -28,6 +28,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `MemoryStore::commit_batch` stages only the subjects a batch touches instead of copying the
   whole store, and still applies every member or none. A one-member batch beside 1,024 subjects
   with a 1 KiB title allocated 2,033,234 bytes; it now allocates 3,727 bytes.
+- `Hybrid::catch_up` reads a source subject's recorded history once per pass and reconciles a
+  subject once per direction, still checking every divergence's own record. 32 writes made while
+  the replica was down read the source's 32 events 32 times; they are now read once, and a pass
+  over a replica that is already level reads no events.
 
 ### Fixed
 
