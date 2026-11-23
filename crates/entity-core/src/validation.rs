@@ -3193,16 +3193,26 @@ fn validate_union(
 }
 
 /// A map key's spelling, because a JSON object's keys are always strings.
+///
+/// The grammar is the pinned ESS release's (`ess-gen` `types.rs` `key`, ESS 0.97.4): one value has
+/// one spelling, so `007`, `+7` and `-0` are not integer keys beside `7` and `0`, and the empty
+/// text is the padded base64 of no bytes.
 fn validate_map_key(key: MapKey, text: &str) -> Result<(), String> {
     match key {
         MapKey::String => Ok(()),
         MapKey::Boolean => (text == "false" || text == "true")
             .then_some(())
             .ok_or_else(|| "expected `false` or `true`".to_owned()),
+        // `^-?(0|[1-9][0-9]*)$` inside the `i64` span, read the way ESS's own key readers read it
+        // (`ess-domain` `primitive_literal`, `ess-conformance` `input.rs`): the text the `i64`
+        // writes back. That also refuses the `-0` the published pattern lets through.
         MapKey::Integer => text
             .parse::<i64>()
-            .map(|_| ())
-            .map_err(|_| "expected decimal integer text".to_owned()),
+            .is_ok_and(|number| number.to_string() == text)
+            .then_some(())
+            .ok_or_else(|| {
+                "expected decimal integer text without `+` or leading zeroes".to_owned()
+            }),
         MapKey::Decimal => Observed::of_literal(text)
             .map(|_| ())
             .ok_or_else(|| "expected exact decimal text".to_owned()),
@@ -3259,8 +3269,11 @@ fn is_uuid(text: &str) -> bool {
 }
 
 /// Padded base64, which is the one spelling the source admits for bytes.
+///
+/// The empty text is admitted: it is the base64 of no bytes, and ESS's `BASE64_PATTERN` and
+/// `ess_primitives::facts::is_padded_base64` both admit it.
 fn is_padded_base64(text: &str) -> bool {
-    if text.is_empty() || text.len() % 4 != 0 {
+    if text.len() % 4 != 0 {
         return false;
     }
     let body = text.trim_end_matches('=');

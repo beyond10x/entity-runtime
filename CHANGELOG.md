@@ -38,6 +38,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   file, as `1.0` and then admitted `rate: 1`; the bound now keeps its digits and `1` is refused.
   A number a binary64 already holds (`0.5`, `1e3`) reads exactly as before, so existing
   definitions keep their bytes. Documents with a root `$defs` or `$ref` still round.
+- Typed map keys follow the key grammar of the pinned ESS release (0.97.4). A `key: integer` map
+  now refuses `007`, `+7` and `-0`, which were accepted as further keys beside `7` and `0`, with
+  ``key is not integer text: expected decimal integer text without `+` or leading zeroes``. A
+  `key: bytes` map now accepts the empty key, the padded base64 of no bytes; it was refused.
 
 ## [0.32.0] — 2026-11-22
 

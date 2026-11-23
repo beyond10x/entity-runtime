@@ -597,7 +597,7 @@ pub enum MapKey {
     String,
     /// Exactly `false` or `true`.
     Boolean,
-    /// Decimal integer text.
+    /// Decimal integer text as an `i64` writes it: no `+`, no leading zero, no `-0`.
     Integer,
     /// Exact decimal text.
     Decimal,
@@ -607,7 +607,7 @@ pub enum MapKey {
     Duration,
     /// A canonical hyphenated UUID.
     Uuid,
-    /// Padded base64.
+    /// Padded base64, the empty text included.
     Bytes,
 }
 

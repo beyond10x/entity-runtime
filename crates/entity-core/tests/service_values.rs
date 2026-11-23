@@ -204,6 +204,79 @@ fn a_map_with_an_integer_key_refuses_a_key_that_is_not_integer_text() {
     assert!(errors[0].message.contains("integer text"));
 }
 
+/// What creating `{ "m": { <key>: "v" } }` answers over a map keyed by `kind`: `Ok`, or the one
+/// message reported at the key's path.
+fn map_key_verdict(kind: &str, key: &str) -> Result<(), String> {
+    let schema = json!({ "fields": { "m": {
+        "type": "map", "key": kind, "items": { "type": "string" }, "required": true
+    }}});
+    let validated = ValidatedDefinition::new(definition(probe(
+        "service/1",
+        schema,
+        json!({}),
+        true.into(),
+    )))
+    .expect("registers");
+    let mut members = serde_json::Map::new();
+    members.insert(key.to_owned(), json!("v"));
+    match create(&validated, "p-1".to_owned(), json!({ "m": members })) {
+        Ok(_) => Ok(()),
+        Err(CoreError::Validation(errors)) => {
+            assert_eq!(
+                errors.len(),
+                1,
+                "one defect for {kind} key {key:?}: {errors:?}"
+            );
+            assert_eq!(errors[0].path, format!("fields.m.{key}"));
+            Err(errors[0].message.clone())
+        }
+        Err(other) => panic!("{kind} key {key:?} refused for another reason: {other}"),
+    }
+}
+
+/// E44: the boundary rows are the answers of `ess specify validate` 0.97.4 to the same key in a
+/// precondition literal over `Map<Integer, _>` and `Map<Bytes, _>`. One value has one spelling, so
+/// `007` and `+7` are not keys beside `7`, and `-0` is not one beside `0`; the empty text is the
+/// padded base64 of no bytes.
+#[test]
+fn integer_and_bytes_map_keys_follow_the_pinned_ess_key_grammar() {
+    let integer = "key is not integer text: expected decimal integer text without `+` or leading \
+                   zeroes";
+    let bytes = "key is not bytes text: expected padded base64";
+    let rows: &[(&str, &str, Option<&str>)] = &[
+        ("integer", "7", None),
+        ("integer", "-2", None),
+        ("integer", "0", None),
+        ("integer", "9223372036854775807", None),
+        ("integer", "-9223372036854775808", None),
+        ("integer", "007", Some(integer)),
+        ("integer", "07", Some(integer)),
+        ("integer", "+7", Some(integer)),
+        ("integer", "-0", Some(integer)),
+        ("integer", " 7", Some(integer)),
+        ("integer", "9223372036854775808", Some(integer)),
+        ("integer", "1e3", Some(integer)),
+        ("integer", "", Some(integer)),
+        ("bytes", "", None),
+        ("bytes", "AA==", None),
+        ("bytes", "AAA=", None),
+        ("bytes", "AAAA", None),
+        ("bytes", "A===", Some(bytes)),
+        ("bytes", "AA=", Some(bytes)),
+        ("bytes", "AA-_", Some(bytes)),
+        ("bytes", "AAAA AAAA", Some(bytes)),
+    ];
+    let wrong: Vec<String> = rows
+        .iter()
+        .filter_map(|(kind, key, refusal)| {
+            let verdict = map_key_verdict(kind, key);
+            (verdict != refusal.map_or(Ok(()), |message| Err(message.to_owned())))
+                .then(|| format!("{kind} key {key:?}: expected {refusal:?}, got {verdict:?}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
 #[test]
 fn a_union_field_accepts_the_adjacent_tagged_form_and_refuses_an_unknown_tag() {
     let validated = payee_probe("kind");
