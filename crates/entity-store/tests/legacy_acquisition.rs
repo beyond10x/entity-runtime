@@ -303,7 +303,10 @@ fn a_destination_inside_the_legacy_source_is_refused_before_anything_is_written(
         legacy.join("converted"),
         legacy.join("ticket").join("converted"),
         // `absent` does not exist; creating it and stepping back out lands in the source.
-        base.join("absent").join("..").join("legacy").join("converted"),
+        base.join("absent")
+            .join("..")
+            .join("legacy")
+            .join("converted"),
     ] {
         for dry_run in [true, false] {
             let error = entity_store::migrate_file_store_v1(&legacy, &destination, dry_run)
@@ -315,14 +318,24 @@ fn a_destination_inside_the_legacy_source_is_refused_before_anything_is_written(
             );
         }
     }
-    assert_eq!(tree(&legacy), before, "the source is left exactly as it was");
-    assert!(!base.join("absent").exists(), "no directory was created on the way");
+    assert_eq!(
+        tree(&legacy),
+        before,
+        "the source is left exactly as it was"
+    );
+    assert!(
+        !base.join("absent").exists(),
+        "no directory was created on the way"
+    );
     let report = entity_store::migrate_file_store_v1(&legacy, base.join("converted"), false)
         .expect("a sibling destination still migrates");
     assert_eq!(report.subjects, 1);
-    assert_eq!(tree(&legacy), before, "the source is left exactly as it was");
+    assert_eq!(
+        tree(&legacy),
+        before,
+        "the source is left exactly as it was"
+    );
 }
-
 
 /// Set by `a_dry_run_holds_one_legacy_subject_at_a_time` for the child process it measures.
 const DRY_RUN_PROBE: &str = "ENTITY_STORE_DRY_RUN_PROBE";
@@ -350,10 +363,15 @@ fn dry_run_memory_probe() {
     // Writing 5 resets the peak to the current resident size, so the peak below is the dry run's.
     let _ = std::fs::write("/proc/self/clear_refs", "5");
     let before = status_kib("VmHWM");
-    let report = entity_store::migrate_file_store_v1(&legacy, legacy.with_file_name("unwritten"), true)
-        .expect("dry run");
+    let report =
+        entity_store::migrate_file_store_v1(&legacy, legacy.with_file_name("unwritten"), true)
+            .expect("dry run");
     let peak = status_kib("VmHWM");
-    println!("dry-run subjects {} grew-kib {}", report.subjects, peak.saturating_sub(before));
+    println!(
+        "dry-run subjects {} grew-kib {}",
+        report.subjects,
+        peak.saturating_sub(before)
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -364,7 +382,12 @@ fn a_dry_run_holds_one_legacy_subject_at_a_time() {
     let legacy = base.join("legacy");
     std::fs::create_dir_all(legacy.join("ticket")).expect("legacy entity directory");
     let created = Runtime::new(&registry())
-        .create("ticket", 1, "0", serde_json::json!({"title": "x".repeat(256 * 1024)}))
+        .create(
+            "ticket",
+            1,
+            "0",
+            serde_json::json!({"title": "x".repeat(256 * 1024)}),
+        )
         .expect("creation");
     let mut instance = created.instance;
     for index in 0..SUBJECTS {
@@ -377,15 +400,27 @@ fn a_dry_run_holds_one_legacy_subject_at_a_time() {
     }
     // Measured in a child running the probe alone, so no other test shares its peak.
     let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
-        .args(["--exact", "dry_run_memory_probe", "--nocapture", "--test-threads=1"])
+        .args([
+            "--exact",
+            "dry_run_memory_probe",
+            "--nocapture",
+            "--test-threads=1",
+        ])
         .env(DRY_RUN_PROBE, &legacy)
         .output()
         .expect("probe runs");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "probe failed: {stdout}{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "probe failed: {stdout}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let line = stdout
         .lines()
-        .find_map(|line| line.split_once("dry-run subjects ").map(|(_, report)| report))
+        .find_map(|line| {
+            line.split_once("dry-run subjects ")
+                .map(|(_, report)| report)
+        })
         .unwrap_or_else(|| panic!("probe reported nothing: {stdout}"));
     let (subjects, grown) = line.split_once(" grew-kib ").expect("probe line");
     assert_eq!(subjects, SUBJECTS.to_string());
@@ -397,4 +432,43 @@ fn a_dry_run_holds_one_legacy_subject_at_a_time() {
         "a dry run over {SUBJECTS} documents of 256 KiB raised peak memory by {grown} KiB; it holds one subject at a time"
     );
     std::fs::remove_dir_all(&base).expect("fixture removed");
+}
+
+#[test]
+fn a_legacy_event_later_than_its_saved_state_is_refused_before_publication() {
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let created = runtime
+        .create("ticket", 1, "one", serde_json::json!({"title":"one"}))
+        .expect("creation");
+    let touched = runtime
+        .execute(&created.instance, "touch", serde_json::json!({}))
+        .expect("touch");
+    assert_eq!(touched.record.events.len(), 1, "the touch emits one event");
+    // A split backup taken mid-write: the log already holds the touch, the state document not yet.
+    let legacy = legacy_store("event-ahead", &created.instance, &touched.record.events);
+    let destination = legacy.parent().expect("scratch base").join("converted");
+    for dry_run in [true, false] {
+        let error = entity_store::migrate_file_store_v1(&legacy, &destination, dry_run)
+            .expect_err("an event ahead of the saved state is refused");
+        assert!(
+            error
+                .to_string()
+                .contains("imported event revision 2 is later than anchor revision 1"),
+            "dry run {dry_run}: {error}"
+        );
+        assert!(!destination.exists(), "nothing is published");
+    }
+    // The same log beside the state it belongs to migrates, and the store is acquirable.
+    std::fs::write(
+        legacy.join("ticket").join("one.json"),
+        serde_json::to_vec(&touched.instance).expect("instance serializes"),
+    )
+    .expect("legacy state");
+    let report =
+        entity_store::migrate_file_store_v1(&legacy, &destination, false).expect("migrated");
+    assert_eq!((report.subjects, report.events), (1, 1));
+    FileStore::open(&destination)
+        .acquire_legacy("file/event-ahead")
+        .expect("the published history passes the importer's boundary");
 }

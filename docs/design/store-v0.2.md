@@ -45,9 +45,11 @@ coordinates cooperating writers and is no defence against anyone else.
 
 An unmarked non-empty directory is never guessed to be v2. `entity store migrate-file --from OLD
 --to NEW` is the only supported v1 transition: it validates every state and complete JSONL record,
-rejects symlinks, nesting, orphan logs and partial trailing records, writes a sibling staging tree,
-and publishes it by rename. The destination must not exist and must not lie inside the source
-(both resolved canonically, dry runs included), and the source is never modified.
+holds each subject to the recorded importer's boundary (a terminal revision in `1..=i64::MAX`, no
+event later than it), rejects symlinks, nesting, orphan logs and partial trailing records, writes
+a sibling staging tree, and publishes it by rename. The destination must not exist and must not
+lie inside the source (both resolved canonically, dry runs included), and the source is never
+modified.
 `--dry-run` performs the validation without creating destination bytes. Validation holds one
 subject at a time and keeps only counts and identities; the real run then reads the source a
 second time and writes each subject as it reads it. Migrated subjects carry a

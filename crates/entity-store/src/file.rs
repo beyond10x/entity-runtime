@@ -18,8 +18,9 @@ use serde_json::Value;
 
 use crate::{
     asynchronous::{
-        HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
-        LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
+        validate_imported_boundary, HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder,
+        LegacyAnchor, LegacyCompleteness, LegacyEvidence, LegacyOrderDeclaration, RecordedEntry,
+        Subject, SubjectHistory,
     },
     check, Envelope, EventProvider, Expect, HistoryProvider, LegacyStoreSnapshot,
     LegacyStoreSource, LoadedSubject, RecordedCommit, RecordedObservation, StateProvider, Store,
@@ -1408,6 +1409,7 @@ fn walk_legacy(
                     )));
                 }
             }
+            let (instance, events) = within_import_boundary(&state_path, instance, events)?;
             if !identities.insert((entity.clone(), id.to_owned())) {
                 return Err(StoreError::Backend(format!(
                     "duplicate legacy subject {entity}/{id}"
@@ -1449,6 +1451,49 @@ fn walk_legacy(
         }
     }
     Ok(report)
+}
+
+/// Holds one legacy subject to the boundary the recorded importer holds it to, before the migration
+/// publishes it: a terminal revision in `1..=i64::MAX`, and no event about another subject or later
+/// than that revision.
+///
+/// A split backup taken while a write was under way can hold an event log newer than its state
+/// document. Published as is, native event reads would serve that later event, and acquiring the
+/// store for a recorded import would refuse the same history only afterwards.
+fn within_import_boundary(
+    state_path: &Path,
+    instance: EntityInstance,
+    events: Vec<DomainEvent>,
+) -> Result<(EntityInstance, Vec<DomainEvent>), StoreError> {
+    let subject = Subject::new(instance.entity.clone(), instance.id.clone())
+        .map_err(|error| backend("validating", state_path, &error))?;
+    let history = SubjectHistory {
+        subject,
+        origin: HistoryOrigin::Imported(LegacyAnchor {
+            instance,
+            completeness: LegacyCompleteness::CompleteSubject,
+            order: LegacyOrderDeclaration::PerKindOnly,
+            evidence: events.into_iter().map(LegacyEvidence::Event).collect(),
+        }),
+        records: Vec::new(),
+    };
+    validate_imported_boundary(&history)
+        .map_err(|error| backend("validating", state_path, &error))?;
+    let HistoryOrigin::Imported(anchor) = history.origin else {
+        return Err(StoreError::Backend(format!(
+            "legacy subject {} lost its imported boundary",
+            state_path.display()
+        )));
+    };
+    let events = anchor
+        .evidence
+        .into_iter()
+        .filter_map(|evidence| match evidence {
+            LegacyEvidence::Event(event) => Some(event),
+            LegacyEvidence::Envelope(_) | LegacyEvidence::Decision(_) => None,
+        })
+        .collect();
+    Ok((anchor.instance, events))
 }
 
 fn parse_legacy_events(path: &Path, text: &str) -> Result<Vec<DomainEvent>, StoreError> {

@@ -34,8 +34,8 @@ valid: 1 subject(s), 1 event(s); no files written
 
 A dry run reads and validates the whole source and creates no destination. It refuses malformed
 state, incomplete event logs, orphan logs, nested directories, symlinks, a subject whose content
-disagrees with its path, an existing destination, a destination inside the source and unsupported
-layouts. Resolve each reported
+disagrees with its path, an event later than its subject's saved revision, an existing destination,
+a destination inside the source and unsupported layouts. Resolve each reported
 problem; do not route around a refusal by deleting a record whose meaning is unclear.
 
 ## Migrate and verify

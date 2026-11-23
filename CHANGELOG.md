@@ -53,6 +53,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   before it creates anything. Both paths are compared canonically, so `..` or a relative path
   cannot hide the nesting. Before, a dry run accepted `--to OLD/converted` and the real run wrote
   the v2 store into the source, which then no longer validated.
+- `entity store migrate-file` refuses a legacy subject whose event log holds an event later than
+  its saved state, or whose saved revision is 0, with the recorded importer's reason (for example
+  "imported event revision 2 is later than anchor revision 1"), on a dry run too. Before, it
+  published that history: event reads served the later event, and acquiring the store for a
+  recorded import refused it only afterwards.
 
 ### Security
 
