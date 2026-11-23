@@ -467,7 +467,7 @@ dependencies = [
 [[package]]
 name = "eventlog-capture-types"
 version = "0.0.0"
-source = "git+https://github.com/beyond10x/eventlog?tag=0.9.4#b8582219f881a7281398b45c534108a01ef151e1"
+source = "git+https://github.com/beyond10x/eventlog?tag=0.10.0#c0f961dc65f519b643ccdadb12621597aaca4754"
 dependencies = [
  "serde",
  "serde_json",
@@ -475,8 +475,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-core"
-version = "0.9.4"
-source = "git+https://github.com/beyond10x/eventlog?tag=0.9.4#b8582219f881a7281398b45c534108a01ef151e1"
+version = "0.10.0"
+source = "git+https://github.com/beyond10x/eventlog?tag=0.10.0#c0f961dc65f519b643ccdadb12621597aaca4754"
 dependencies = [
  "eventlog-capture-types",
  "serde",
@@ -489,8 +489,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-file"
-version = "0.9.4"
-source = "git+https://github.com/beyond10x/eventlog?tag=0.9.4#b8582219f881a7281398b45c534108a01ef151e1"
+version = "0.10.0"
+source = "git+https://github.com/beyond10x/eventlog?tag=0.10.0#c0f961dc65f519b643ccdadb12621597aaca4754"
 dependencies = [
  "eventlog-core",
  "serde",
@@ -502,8 +502,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-sqlite"
-version = "0.9.4"
-source = "git+https://github.com/beyond10x/eventlog?tag=0.9.4#b8582219f881a7281398b45c534108a01ef151e1"
+version = "0.10.0"
+source = "git+https://github.com/beyond10x/eventlog?tag=0.10.0#c0f961dc65f519b643ccdadb12621597aaca4754"
 dependencies = [
  "eventlog-capture-types",
  "eventlog-core",

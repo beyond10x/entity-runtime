@@ -4,6 +4,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Changed
+
+- `entity-eventlog`, and the `eventlog-facade` features of `entity-sqlite` and `entity-postgres`
+  and the `eventlog-providers` feature of `entity-cli`, depend on Eventlog's `0.10.0` tag instead
+  of `0.9.4`. Code that calls an Eventlog provider directly gets that release's changes too: a
+  redaction reason, for one, is now a code such as `subject-request`, and free text is refused.
+  No Entity Runtime API takes a redaction reason.
+
 ## [0.33.1] — 2026-11-23
 
 ### Fixed
