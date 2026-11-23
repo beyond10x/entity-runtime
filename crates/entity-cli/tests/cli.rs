@@ -1989,3 +1989,77 @@ fn decision_and_commit_yaml_write_numbers_as_yaml_numbers() {
         }
     }
 }
+
+/// A stored subject is executed with the definition of its own version, also when a later version
+/// of its type is registered beside it: the subject names its version, so `--entity` (or the only
+/// type) is enough to address it.
+#[test]
+fn a_stored_subject_executes_with_its_own_version_when_several_versions_are_registered() {
+    let v1 = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/counter.yaml");
+    let text = fs::read_to_string(&v1).expect("counter v1");
+    assert!(
+        text.contains("version: 1\n"),
+        "the example declares version 1"
+    );
+    let v2 = scratch(
+        "counter-v2.yaml",
+        &text.replacen("version: 1\n", "version: 2\n", 1),
+    );
+    let store = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("several-versions-store");
+    let _ = fs::remove_dir_all(&store);
+    let created = entity()
+        .args(["create", "--definition"])
+        .arg(&v1)
+        .args(["--id", "c", "--fields", r#"{"name": "City"}"#, "--store"])
+        .arg(&store)
+        .args([
+            "--record-id",
+            "c-create",
+            "--recorded-at",
+            "2026-11-23T10:00:00Z",
+            "--actor",
+            "cli-test",
+        ])
+        .output()
+        .expect("runs");
+    assert_eq!(created.status.code(), Some(0), "{}", stderr(&created));
+    for (record, wanted, revision) in [("c-view", None, 2), ("c-view-again", Some("counter"), 3)] {
+        let mut command = entity();
+        command
+            .args(["execute", "--definition"])
+            .arg(&v1)
+            .arg("--definition")
+            .arg(&v2)
+            .args(["--id", "c", "--operation", "view", "--store"])
+            .arg(&store)
+            .args([
+                "--record-id",
+                record,
+                "--recorded-at",
+                "2026-11-23T10:01:00Z",
+                "--actor",
+                "cli-test",
+            ]);
+        if let Some(wanted) = wanted {
+            command.args(["--entity", wanted]);
+        }
+        let executed = command.output().expect("runs");
+        assert_eq!(
+            executed.status.code(),
+            Some(0),
+            "{record}: {}{}",
+            stdout(&executed),
+            stderr(&executed)
+        );
+        let commit: serde_json::Value =
+            serde_json::from_str(&stdout(&executed)).expect("a JSON commit");
+        assert_eq!(
+            (
+                &commit["instance"]["version"],
+                &commit["instance"]["revision"]
+            ),
+            (&serde_json::json!(1), &serde_json::json!(revision)),
+            "{record}: the v1 subject moved on under v1"
+        );
+    }
+}

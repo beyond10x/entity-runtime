@@ -37,6 +37,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `entity validate` with several files reads each file once and runs the cross-file checks on
   the definitions it validated. It used to read every file again for those checks and skip one
   that could no longer be read or parsed, so a set could be certified without one of its files.
+- `entity execute --store` runs a stored subject when several versions of its type are given as
+  `--definition` files. It refused with "several versions of 'counter' are registered", the
+  message meant for `create`; the stored subject names its version and the kernel runs that
+  version's definition.
 
 ## [0.32.0] — 2026-11-22
 

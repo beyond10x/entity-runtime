@@ -313,7 +313,7 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
             let mut stdin = StdinOnce::default();
             match (&store, &id) {
                 (Some(root), Some(id)) => {
-                    let (entity, _) = chosen_type(&registry, wanted_entity.as_deref())?;
+                    let entity = chosen_entity(&registry, wanted_entity.as_deref())?;
                     let arguments = read_value(&arguments, "--arguments", &mut stdin)?;
                     let recording = into_recording(recording, true)?
                         .expect("--store requires the recording flags");
@@ -1398,6 +1398,31 @@ fn chosen_type(registry: &Registry, wanted: Option<&str>) -> Result<(String, u32
         (_, Some(wanted)) => Err(Failure::Usage(format!(
             "several versions of '{wanted}' are registered; create the version you mean by \
              passing only its definition"
+        ))),
+    }
+}
+
+/// The type a stored `execute` addresses. Only the name is chosen here: the stored subject carries
+/// its version and the kernel runs the definition of that version, so several registered versions
+/// of one type are one choice — unlike `create` ([`chosen_type`]), which must pick a version.
+fn chosen_entity(registry: &Registry, wanted: Option<&str>) -> Result<String, Failure> {
+    let mut names: Vec<&str> = registry
+        .iter()
+        .map(|definition| definition.entity.as_str())
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    match (wanted, names.as_slice()) {
+        (Some(wanted), _) if names.contains(&wanted) => Ok(wanted.to_owned()),
+        (Some(wanted), _) => Err(Failure::Usage(format!(
+            "no --definition declares entity '{wanted}'; the registry holds: {}",
+            names.join(", ")
+        ))),
+        (None, [only]) => Ok((*only).to_owned()),
+        (None, _) => Err(Failure::Usage(format!(
+            "several types are registered, so which one to execute against is ambiguous — pass \
+             --entity, one of: {}",
+            names.join(", ")
         ))),
     }
 }
