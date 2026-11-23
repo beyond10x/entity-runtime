@@ -264,9 +264,13 @@ A change that moves a counter re-records in the same commit: `task kpi-record`, 
 written back by itself). Record on an idle machine: `baseline.json` keeps the host, CPU, load
 average and rustc with the numbers. PostgreSQL KPIs run only with `ENTITY_POSTGRES_URL` and say
 so when skipped. Run the KPI tasks without the `slot` prefix: they measure, and their `cargo`
-calls take a slot through the shim. CI's `KPI / KPI gate` job (`.github/workflows/kpi.yml`)
-runs the counters and, on a pull request, the A/B against the merge base; it is not a required
-check.
+calls take a slot through the shim. CI runs two jobs from `.github/workflows/kpi.yml`.
+`KPI / KPI counters` runs the counters with a PostgreSQL service on every pull request and push
+to `main`; it is meant to become a required check (not yet in the ruleset). `KPI / KPI timing`
+runs the A/B against the merge base on a pull request; it is informational
+(`continue-on-error`) and never a required check. A change of only `.engineering/` or Markdown
+(the one path list, `PROSE_PATHS` in the workflow, tested on both sides at the start of the
+counters job) skips the measuring steps and both jobs pass.
 
 ## Branch protection
 

@@ -14,10 +14,93 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  PROSE_PATHS: '^\.engineering/|\.md$'
 
 jobs:
-  kpi:
-    name: KPI gate
+  counters:
+    name: KPI counters
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: entity
+          POSTGRES_PASSWORD: entity
+          POSTGRES_DB: entity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U entity"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ENTITY_POSTGRES_URL: postgres://entity:entity@127.0.0.1:5432/entity
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Planning or prose only
+        id: scope
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          is_code() { grep -qvE "$PROSE_PATHS"; }
+          if printf '%s\n' .engineering/planning/stories/kpi.md AGENTS.md docs/kpi.md | is_code; then
+            echo "path list: a planning and prose only change was taken for code" >&2
+            exit 1
+          fi
+          if ! printf '%s\n' AGENTS.md crates/entity-core/src/lib.rs | is_code; then
+            echo "path list: a change with a code file was taken for prose" >&2
+            exit 1
+          fi
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="$(git merge-base "origin/$BASE_REF" HEAD)"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          if git diff --name-only "$base" HEAD | is_code; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only planning or prose files changed; the KPI counters have nothing to measure."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: dtolnay/rust-toolchain@8d8cc9a8e0d47b64af669de71110e76860d6afbd # 1.91.0
+        if: steps.scope.outputs.code == 'true'
+        with:
+          toolchain: 1.91.0
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        if: steps.scope.outputs.code == 'true'
+        with:
+          workspaces: ". -> target"
+          shared-key: kpi
+
+      - name: Harness format and Clippy
+        if: steps.scope.outputs.code == 'true'
+        run: |
+          cargo +1.91.0 fmt --manifest-path checks/kpi/Cargo.toml -- --check
+          cargo +1.91.0 clippy --manifest-path checks/kpi/Cargo.toml --all-targets --locked -- -D warnings
+
+      - name: Counters against the committed baseline
+        if: steps.scope.outputs.code == 'true'
+        run: |
+          cargo +1.91.0 build --release --locked -p entity-cli --features eventlog-providers
+          cargo +1.91.0 build --release --locked --manifest-path checks/kpi/Cargo.toml
+          target/release/er-kpi check --entity target/release/entity
+
+  timing:
+    name: KPI timing
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -48,16 +131,12 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           base="$(git merge-base "origin/$BASE_REF" HEAD)"
           echo "base=$base" >> "$GITHUB_OUTPUT"
-          if git diff --name-only "$base" HEAD | grep -qvE '^\.engineering/|\.md$'; then
+          if git diff --name-only "$base" HEAD | grep -qvE "$PROSE_PATHS"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Only planning or prose files changed; the KPI gate has nothing to measure."
+            echo "Only planning or prose files changed; the timing A/B has nothing to measure."
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -65,26 +144,18 @@ jobs:
         if: steps.scope.outputs.code == 'true'
         with:
           toolchain: 1.91.0
-          components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         if: steps.scope.outputs.code == 'true'
         with:
           workspaces: ". -> target"
-
-      - name: Harness format and Clippy
-        if: steps.scope.outputs.code == 'true'
-        run: |
-          cargo +1.91.0 fmt --manifest-path checks/kpi/Cargo.toml -- --check
-          cargo +1.91.0 clippy --manifest-path checks/kpi/Cargo.toml --all-targets --locked -- -D warnings
-
-      - name: Counters against the committed baseline
-        if: steps.scope.outputs.code == 'true'
-        run: |
-          cargo +1.91.0 build --release --locked -p entity-cli --features eventlog-providers
-          cargo +1.91.0 build --release --locked --manifest-path checks/kpi/Cargo.toml
-          target/release/er-kpi check --entity target/release/entity
+          shared-key: kpi
+          save-if: false
 
       - name: Timing A/B against the pull request base
-        if: steps.scope.outputs.code == 'true' && github.event_name == 'pull_request'
-        run: target/release/er-kpi ab --base "${{ steps.scope.outputs.base }}" --head HEAD --rounds 3
+        if: steps.scope.outputs.code == 'true'
+        env:
+          BASE: ${{ steps.scope.outputs.base }}
+        run: |
+          cargo +1.91.0 build --release --locked --manifest-path checks/kpi/Cargo.toml
+          target/release/er-kpi ab --base "$BASE" --head HEAD --rounds 3

@@ -15,6 +15,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `entity-store`, `entity-executor`, `entity-eventlog`, `entity-graph` and `entity-mcp` have a
   non-default `kpi-counters` feature. It exists for the repository's KPI gate (`checks/kpi`),
   adds a counter per measured event and is not a supported API; builds without it are unchanged.
+  CI runs the gate as two jobs: `KPI / KPI counters` (meant to become a required check) and
+  `KPI / KPI timing` (the A/B on pull requests, informational only).
 
 ## [0.32.0] — 2026-11-22
 
