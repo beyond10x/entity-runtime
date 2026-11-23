@@ -32,6 +32,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   subject once per direction, still checking every divergence's own record. 32 writes made while
   the replica was down read the source's 32 events 32 times; they are now read once, and a pass
   over a replica that is already level reads no events.
+- `MemoryStore` lists one entity type's identities by seeking to that type in its ordered map
+  instead of filtering every key, so listing a type it does not hold no longer walks the others.
 
 ### Fixed
 

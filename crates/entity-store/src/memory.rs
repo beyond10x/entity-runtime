@@ -91,12 +91,14 @@ impl StateProvider for MemoryStore {
 
     fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
         // The map is ordered by `(entity, id)`, so the ids of one entity come out sorted already;
-        // sorting is what the trait promises, and a `BTreeMap` is how this provider keeps it.
+        // sorting is what the trait promises, and a `BTreeMap` is how this provider keeps it. The
+        // listing seeks to the entity's first key and stops at the next entity, so it never walks
+        // the keys of other types, not even for a type the store does not hold.
         Ok(self
             .instances
-            .keys()
-            .filter(|(held, _)| held == entity)
-            .map(|(_, id)| id.clone())
+            .range((entity.to_owned(), String::new())..)
+            .take_while(|((held, _), _)| held == entity)
+            .map(|((_, id), _)| id.clone())
             .collect())
     }
 }
@@ -393,6 +395,37 @@ mod tests {
             store.load("ticket", "untouched"),
             Ok(Some(untouched.instance))
         );
+    }
+
+    #[test]
+    fn ids_lists_exactly_one_entity_type_and_nothing_for_a_type_it_does_not_hold() {
+        let mut store = MemoryStore::new();
+        for (entity, id) in [
+            ("a", "1"),
+            ("ticket", ""),
+            ("ticket", "1"),
+            ("ticketz", "0"),
+        ] {
+            let instance = EntityInstance {
+                id: id.into(),
+                entity: entity.into(),
+                version: 1,
+                revision: 1,
+                lifecycle_state: "open".into(),
+                fields: Default::default(),
+            };
+            store
+                .commit(
+                    &Decision::legacy_import(instance, Vec::new()),
+                    Expect::Absent,
+                )
+                .expect("accepted");
+        }
+        assert_eq!(store.ids("ticket"), Ok(vec![String::new(), "1".to_owned()]));
+        assert_eq!(store.ids("ticketz"), Ok(vec!["0".to_owned()]));
+        assert_eq!(store.ids("tick"), Ok(Vec::new()));
+        assert_eq!(store.ids("absent"), Ok(Vec::new()));
+        assert_eq!(store.ids(""), Ok(Vec::new()));
     }
 
     #[test]
