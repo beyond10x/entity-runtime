@@ -226,6 +226,34 @@ pub fn validate_entry_against_state(
     }
 }
 
+/// The ordering scope an imported envelope's known position is counted in.
+#[derive(Clone, Copy)]
+enum OrderScope {
+    /// `PerKind`: decisions and observations each count from their own start.
+    Kind(RecordKind),
+    /// `Subject`: one mixed sequence for the whole subject.
+    Subject,
+}
+
+impl OrderScope {
+    /// A sortable key for the scope; `RecordKind` itself is not ordered.
+    fn rank(self) -> u8 {
+        match self {
+            Self::Kind(RecordKind::Decision) => 0,
+            Self::Kind(RecordKind::Observation) => 1,
+            Self::Subject => 2,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Kind(RecordKind::Decision) => "decision",
+            Self::Kind(RecordKind::Observation) => "observation",
+            Self::Subject => "subject",
+        }
+    }
+}
+
 pub(crate) fn validate_imported_boundary(history: &SubjectHistory) -> Result<(), AsyncStoreError> {
     validate_imported_boundary_of(&history.subject, &history.origin)
 }
@@ -245,6 +273,7 @@ fn validate_imported_boundary_of(
     }
     validate_revision(subject, anchor.instance.revision)?;
     let mut ids = BTreeSet::new();
+    let mut positions = BTreeSet::new();
     for evidence in &anchor.evidence {
         match evidence {
             LegacyEvidence::Envelope(envelope) => {
@@ -294,6 +323,25 @@ fn validate_imported_boundary_of(
                     return Err(corrupt(
                         subject,
                         "an imported record identity appears more than once",
+                    ));
+                }
+                // A known position orders its record against every other record of the same
+                // scope, so two records claiming one position leave that pair unordered. Only
+                // reuse is refused: a source with partial evidence keeps its gaps, and a decision
+                // and an observation may share a per-kind index because they count separately.
+                let (scope, position) = match envelope.known_order {
+                    KnownLegacyOrder::PerKind(index) => {
+                        (OrderScope::Kind(envelope.entry.kind()), index)
+                    }
+                    KnownLegacyOrder::Subject(position) => (OrderScope::Subject, position),
+                };
+                if !positions.insert((scope.rank(), position)) {
+                    return Err(corrupt(
+                        subject,
+                        format!(
+                            "two imported records claim {} position {position}",
+                            scope.name()
+                        ),
                     ));
                 }
             }
@@ -1247,9 +1295,158 @@ mod tests {
 
     use super::*;
     use crate::{
-        asynchronous::{BatchKey, Lineage, RecordPosition, RecordReceipt},
-        RecordedCommit, Recording,
+        asynchronous::{
+            BatchKey, ImportedRecordEvidence, LegacyAnchor, LegacyCompleteness, Lineage,
+            RecordPosition, RecordReceipt,
+        },
+        RecordedCommit, RecordedObservation, Recording,
     };
+
+    fn recording(record_id: &str) -> Recording {
+        Recording {
+            record_id: record_id.to_owned(),
+            recorded_at: "2026-11-22T00:00:00Z".to_owned(),
+            actor: None,
+            correlation: None,
+            causation: None,
+        }
+    }
+
+    /// A created and a touched ticket, each as a complete recorded decision, and the touched state.
+    fn two_decisions() -> (RecordedEntry, RecordedEntry, EntityInstance) {
+        let registry = runtime_registry();
+        let runtime = Runtime::new(&registry);
+        let created = runtime
+            .create("ticket", 1, "one", json!({}))
+            .expect("create decides");
+        let touched = runtime
+            .execute(&created.instance, "touch", json!({}))
+            .expect("touch decides");
+        let anchor = touched.instance.clone();
+        let entry = |decision: Decision, record_id: &str| {
+            RecordedEntry::Decision(
+                RecordedCommit::new(decision, &recording(record_id)).expect("recording is valid"),
+            )
+        };
+        (
+            entry(created, "record-created"),
+            entry(touched, "record-touched"),
+            anchor,
+        )
+    }
+
+    fn observed(record_id: &str) -> RecordedEntry {
+        RecordedEntry::Observation(RecordedObservation {
+            entity: "ticket".to_owned(),
+            id: "one".to_owned(),
+            revision: 1,
+            envelope: recording(record_id)
+                .seal(json!({ "seen": true }))
+                .expect("recording is valid"),
+        })
+    }
+
+    fn imported_boundary(
+        order: LegacyOrderDeclaration,
+        anchor: EntityInstance,
+        evidence: Vec<(RecordedEntry, KnownLegacyOrder)>,
+    ) -> SubjectHistory {
+        SubjectHistory {
+            subject: Subject::new("ticket", "one").expect("subject"),
+            origin: HistoryOrigin::Imported(LegacyAnchor {
+                instance: anchor,
+                completeness: LegacyCompleteness::AvailableEvidenceOnly,
+                order,
+                evidence: evidence
+                    .into_iter()
+                    .enumerate()
+                    .map(|(at, (entry, known_order))| {
+                        LegacyEvidence::Envelope(
+                            ImportedRecordEvidence::new(
+                                entry,
+                                "source",
+                                format!("records/{at}"),
+                                known_order,
+                            )
+                            .expect("complete imported envelope"),
+                        )
+                    })
+                    .collect(),
+            }),
+            records: Vec::new(),
+        }
+    }
+
+    fn refusal_detail(history: &SubjectHistory) -> String {
+        match validate_imported_boundary(history) {
+            Err(AsyncStoreError::CorruptHistory { detail, .. }) => detail,
+            other => panic!("expected a corrupt-history refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn two_imported_decisions_claiming_one_per_kind_index_are_refused() {
+        let (created, touched, anchor) = two_decisions();
+        let history = imported_boundary(
+            LegacyOrderDeclaration::PerKindOnly,
+            anchor,
+            vec![
+                (created, KnownLegacyOrder::PerKind(0)),
+                (touched, KnownLegacyOrder::PerKind(0)),
+            ],
+        );
+
+        assert_eq!(
+            refusal_detail(&history),
+            "two imported records claim decision position 0"
+        );
+    }
+
+    #[test]
+    fn two_imported_records_claiming_one_subject_position_are_refused() {
+        let (created, touched, anchor) = two_decisions();
+        let history = imported_boundary(
+            LegacyOrderDeclaration::Subject,
+            anchor,
+            vec![
+                (created, KnownLegacyOrder::Subject(0)),
+                (observed("record-seen"), KnownLegacyOrder::Subject(3)),
+                (touched, KnownLegacyOrder::Subject(3)),
+            ],
+        );
+
+        assert_eq!(
+            refusal_detail(&history),
+            "two imported records claim subject position 3"
+        );
+    }
+
+    #[test]
+    fn imported_positions_keep_their_gaps_and_kinds_count_separately() {
+        let (created, touched, anchor) = two_decisions();
+        let per_kind = imported_boundary(
+            LegacyOrderDeclaration::PerKindOnly,
+            anchor.clone(),
+            vec![
+                (created.clone(), KnownLegacyOrder::PerKind(0)),
+                (observed("record-seen"), KnownLegacyOrder::PerKind(0)),
+                (touched.clone(), KnownLegacyOrder::PerKind(7)),
+            ],
+        );
+        validate_imported_boundary(&per_kind)
+            .expect("a decision and an observation share index 0, and 1 to 6 are simply unknown");
+
+        let subject = imported_boundary(
+            LegacyOrderDeclaration::Subject,
+            anchor,
+            vec![
+                (created, KnownLegacyOrder::Subject(2)),
+                (observed("record-seen"), KnownLegacyOrder::Subject(5)),
+                (touched, KnownLegacyOrder::Subject(9)),
+            ],
+        );
+        validate_imported_boundary(&subject).expect("subject positions with gaps are unique");
+    }
 
     fn runtime_registry() -> Registry {
         let definition = serde_json::from_value(json!({

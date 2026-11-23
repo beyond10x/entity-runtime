@@ -32,6 +32,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   refuses a creation event that lacks a declared default or carries a blank identity: `create`
   never records either, so such a history folded to a genesis no `create` call produced. Every
   history `create` and `execute` wrote still folds.
+- An imported boundary whose envelopes claim one order position twice — two decisions or two
+  observations at one `PerKind` index, or two records at one `Subject` position — is refused as
+  corrupt history instead of verifying. Gaps are still accepted, and a decision and an observation
+  may share a `PerKind` index. The File, SQLite and PostgreSQL legacy readers never produce a
+  repeated position, so what they acquire is unchanged.
 
 ## [0.32.0] — 2026-11-22
 

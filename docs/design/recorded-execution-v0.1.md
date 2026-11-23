@@ -123,6 +123,9 @@ declaration and available typed legacy evidence. No normal executor action creat
 Available enveloped legacy records use a separate `ImportedRecordEvidence`, never StoredRecord or
 RecordReceipt. It retains the complete existing typed decision/observation envelope, source/import
 identity and original locator, and an explicit known-order value: PerKind(index) or Subject(position).
+Within one anchor no two envelopes claim the same position in one scope: a Subject position is
+unique across the subject, a PerKind index unique within its kind, and a decision and an
+observation may share an index. Gaps stay, since a source may offer partial evidence.
 Store-global order and original batch/receipt coordinates are explicitly unavailable; they are not
 filled with zero, source iteration order or newly minted receipt values. Available bare decisions
 and events without record IDs remain separate typed anchor evidence and gain no invented envelope.
