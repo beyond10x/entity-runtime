@@ -1,0 +1,60 @@
+{
+  "format": "entity.file-subject/2",
+  "origin": "current",
+  "instance": {
+    "entity": "counter",
+    "version": 1,
+    "id": "p1",
+    "lifecycle_state": "open",
+    "revision": 2,
+    "fields": {
+      "name": "plain",
+      "spent": 0,
+      "views": 1
+    }
+  },
+  "records": [],
+  "observations": [],
+  "events": [
+    {
+      "entity": "counter",
+      "version": 1,
+      "id": "p1",
+      "revision": 1,
+      "type": "CounterOpened",
+      "from_state": null,
+      "to_state": "open",
+      "changed": {
+        "name": "plain",
+        "spent": 0,
+        "views": 0
+      },
+      "args": {
+        "name": "plain",
+        "spent": 0,
+        "views": 0
+      },
+      "payload": {
+        "name": "plain",
+        "views": 0
+      }
+    },
+    {
+      "entity": "counter",
+      "version": 1,
+      "id": "p1",
+      "revision": 2,
+      "type": "Viewed",
+      "from_state": "open",
+      "to_state": "open",
+      "changed": {
+        "views": 1
+      },
+      "args": {},
+      "payload": {
+        "after": 1,
+        "before": 0
+      }
+    }
+  ]
+}

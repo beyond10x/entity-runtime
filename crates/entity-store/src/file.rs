@@ -1,8 +1,17 @@
 //! A confined, crash-safe directory store.
 //!
-//! File Store v2 writes one document per subject. Entity names and identities are hexadecimal
-//! UTF-8 path components, so data can never become `..`, an absolute path or a separator. State
-//! and history are replaced together through a synced temporary file and rename.
+//! Entity names and identities are hexadecimal UTF-8 path components, so data can never become
+//! `..`, an absolute path or a separator. A root is one of two editions, named by its
+//! `.entity-store-format` marker, and every handle reads and writes both:
+//!
+//! * **v3** (`entity.file-store/3`, every root a handle creates): a subject's current state apart
+//!   from its append-only history, and each entity definition once per store under its digest.
+//!   One write appends its entry and replaces a small state document; see `file/v3.rs`.
+//! * **v2** (`entity.file-store/2`): one document per subject; state and history are replaced
+//!   together through a synced temporary file and rename. A v2 root stays v2 until
+//!   [`migrate_file_store_v2`] copies it, out of place, into v3.
+
+mod v3;
 
 use fs2::FileExt;
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,7 +21,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
+use entity_core::{Decision, DecisionRecord, DomainEvent, EntityDefinition, EntityInstance};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -27,7 +36,8 @@ use crate::{
     StoreError,
 };
 
-const FORMAT: &str = "entity.file-store/2";
+const FORMAT_V2: &str = "entity.file-store/2";
+const FORMAT_V3: &str = "entity.file-store/3";
 const FORMAT_FILE: &str = ".entity-store-format";
 const SUBJECT_FORMAT: &str = "entity.file-subject/2";
 
@@ -45,6 +55,8 @@ pub struct FileStore {
     root: PathBuf,
     records: Mutex<Option<RecordIndex>>,
     epoch: AtomicU64,
+    /// v3 definition documents this handle has held to their digest or written, by digest.
+    definitions: Mutex<BTreeMap<String, EntityDefinition>>,
 }
 
 impl Clone for FileStore {
@@ -53,6 +65,7 @@ impl Clone for FileStore {
             root: self.root.clone(),
             records: Mutex::new(lock(&self.records).clone()),
             epoch: AtomicU64::new(self.epoch.load(Ordering::Relaxed)),
+            definitions: Mutex::new(lock(&self.definitions).clone()),
         }
     }
 }
@@ -87,12 +100,13 @@ enum Target {
     Scanned(Option<Box<StoredSubject>>),
 }
 
-fn lock(records: &Mutex<Option<RecordIndex>>) -> std::sync::MutexGuard<'_, Option<RecordIndex>> {
-    records
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// One subject: the v2 document, or what a v3 history folds to.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoredSubject {
@@ -105,9 +119,35 @@ struct StoredSubject {
     observations: Vec<RecordedObservation>,
     #[serde(default)]
     events: Vec<DomainEvent>,
+    /// Where a v3 history read ended, so a write continues from there. `None` for v2 and for a
+    /// subject not stored yet.
+    #[serde(skip)]
+    history: Option<v3::HistoryEnd>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+impl StoredSubject {
+    /// A subject not stored yet, at `instance`.
+    fn new(instance: EntityInstance) -> Self {
+        Self {
+            format: SUBJECT_FORMAT.to_owned(),
+            origin: SubjectOrigin::Current,
+            instance,
+            records: Vec::new(),
+            observations: Vec::new(),
+            events: Vec::new(),
+            history: None,
+        }
+    }
+}
+
+/// The on-disk edition of a root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Edition {
+    V2,
+    V3,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum SubjectOrigin {
     Current,
@@ -119,7 +159,7 @@ enum SubjectOrigin {
 pub struct FileMigrationReport {
     /// Number of subject documents validated.
     pub subjects: usize,
-    /// Number of legacy events preserved.
+    /// Number of events kept outside decision records (legacy events, plain commits) preserved.
     pub events: usize,
     /// Whether no destination bytes were written.
     pub dry_run: bool,
@@ -132,6 +172,7 @@ impl FileStore {
             root: root.into(),
             records: Mutex::new(None),
             epoch: AtomicU64::new(u64::MAX),
+            definitions: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -194,7 +235,7 @@ impl FileStore {
     fn read_guard(&self) -> Result<Option<fs::File>, StoreError> {
         match self.root_state()? {
             RootState::Missing | RootState::Empty => return Ok(None),
-            RootState::V2 => {}
+            RootState::Ready(_) => {}
         }
         let path = self.root.join(".entity-store-lock");
         reject_symlink_components(&path)?;
@@ -252,7 +293,8 @@ impl FileStore {
         let marker = self.format_path();
         reject_symlink_components(&marker)?;
         match fs::read_to_string(&marker) {
-            Ok(value) if value.trim() == FORMAT => Ok(RootState::V2),
+            Ok(value) if value.trim() == FORMAT_V3 => Ok(RootState::Ready(Edition::V3)),
+            Ok(value) if value.trim() == FORMAT_V2 => Ok(RootState::Ready(Edition::V2)),
             Ok(value) => Err(StoreError::Backend(format!(
                 "File Store root {} declares unsupported format {:?}",
                 self.root.display(),
@@ -270,7 +312,7 @@ impl FileStore {
                     Ok(RootState::Empty)
                 } else {
                     Err(StoreError::Backend(format!(
-                        "File Store root {} has no v2 marker; migrate the legacy store with `entity store migrate-file`",
+                        "File Store root {} has no format marker; migrate the legacy store with `entity store migrate-file`",
                         self.root.display()
                     )))
                 }
@@ -279,11 +321,28 @@ impl FileStore {
         }
     }
 
+    /// The edition a write goes into: the root's, or v3 for a root not initialized yet.
+    fn write_edition(&self) -> Result<Edition, StoreError> {
+        Ok(match self.root_state()? {
+            RootState::Ready(edition) => edition,
+            RootState::Missing | RootState::Empty => Edition::V3,
+        })
+    }
+
+    /// Initializes a missing or empty root as v3; an initialized root is left as it is.
     fn prepare(&self) -> Result<(), StoreError> {
+        self.prepare_as(Edition::V3)
+    }
+
+    fn prepare_as(&self, edition: Edition) -> Result<(), StoreError> {
         match self.root_state()? {
-            RootState::V2 => return Ok(()),
+            RootState::Ready(_) => return Ok(()),
             RootState::Missing | RootState::Empty => {}
         }
+        let format = match edition {
+            Edition::V2 => FORMAT_V2,
+            Edition::V3 => FORMAT_V3,
+        };
         create_directory_durably(&self.root)?;
         reject_symlink_components(&self.root)?;
         let marker = self.format_path();
@@ -295,7 +354,7 @@ impl FileStore {
             .truncate(true)
             .open(&temporary)
             .map_err(|error| backend("creating", &marker, &error))?;
-        file.write_all(format!("{FORMAT}\n").as_bytes())
+        file.write_all(format!("{format}\n").as_bytes())
             .map_err(|error| backend("writing", &marker, &error))?;
         #[cfg(feature = "kpi-counters")]
         crate::kpi_counters::add(&crate::kpi_counters::FILE_SYNCS, 1);
@@ -309,14 +368,26 @@ impl FileStore {
 
     fn read_subject(&self, entity: &str, id: &str) -> Result<Option<StoredSubject>, StoreError> {
         match self.root_state()? {
-            RootState::Missing | RootState::Empty => return Ok(None),
-            RootState::V2 => {}
+            RootState::Missing | RootState::Empty => Ok(None),
+            RootState::Ready(edition) => self.parse_subject(edition, entity, id),
         }
-        self.parse_subject(entity, id)
+    }
+
+    /// Reads one subject of a root already known to be of `edition`.
+    fn parse_subject(
+        &self,
+        edition: Edition,
+        entity: &str,
+        id: &str,
+    ) -> Result<Option<StoredSubject>, StoreError> {
+        match edition {
+            Edition::V2 => self.parse_v2(entity, id),
+            Edition::V3 => self.read_v3(entity, id),
+        }
     }
 
     /// Reads and validates one subject document of a root already known to be v2.
-    fn parse_subject(&self, entity: &str, id: &str) -> Result<Option<StoredSubject>, StoreError> {
+    fn parse_v2(&self, entity: &str, id: &str) -> Result<Option<StoredSubject>, StoreError> {
         let path = self.subject_path(entity, id);
         reject_symlink_components(&path)?;
         #[cfg(test)]
@@ -344,6 +415,20 @@ impl FileStore {
             )));
         }
         Ok(Some(subject))
+    }
+
+    /// Makes a guarded write durable: `stored` is the subject after the change, `entry` the change.
+    /// v2 replaces the whole document; v3 appends `entry` and replaces the state document.
+    fn persist(
+        &self,
+        edition: Edition,
+        stored: &StoredSubject,
+        entry: &v3::Entry<'_>,
+    ) -> Result<(), StoreError> {
+        match edition {
+            Edition::V2 => self.write_subject(stored),
+            Edition::V3 => self.append_v3(stored, entry),
+        }
     }
 
     fn write_subject(&self, subject: &StoredSubject) -> Result<(), StoreError> {
@@ -391,15 +476,15 @@ impl FileStore {
         entity: &str,
         id: &str,
     ) -> Result<(Option<Value>, Target), StoreError> {
-        match self.root_state()? {
+        let edition = match self.root_state()? {
             RootState::Missing | RootState::Empty => return Ok((None, Target::Scanned(None))),
-            RootState::V2 => {}
-        }
+            RootState::Ready(edition) => edition,
+        };
         let mut target = Target::Unread;
         let location = {
             let mut records = lock(&self.records);
             if records.is_none() {
-                let (index, scanned) = self.scan_records((entity, id))?;
+                let (index, scanned) = self.scan_records(edition, (entity, id))?;
                 *records = Some(index);
                 target = Target::Scanned(scanned.map(Box::new));
             }
@@ -463,6 +548,7 @@ impl FileStore {
     /// subject.
     fn scan_records(
         &self,
+        edition: Edition,
         target: (&str, &str),
     ) -> Result<(RecordIndex, Option<StoredSubject>), StoreError> {
         let mut index = RecordIndex::default();
@@ -504,8 +590,8 @@ impl FileStore {
             })?;
             // One read per subject: parsing it is the validation `ids` would have done, so the
             // listing reads names only and the document read here is the only one.
-            for id in self.listed_ids(&entity)? {
-                let Some(subject) = self.parse_subject(&entity, &id)? else {
+            for id in self.listed_ids(edition, &entity)? {
+                let Some(subject) = self.parse_subject(edition, &entity, &id)? else {
                     continue;
                 };
                 for envelope in &subject.records {
@@ -556,6 +642,7 @@ impl LegacyStoreSource for FileStore {
         let Some(_guard) = self.read_guard()? else {
             return LegacyStoreSnapshot::new(source_id, Vec::new());
         };
+        let edition = self.write_edition()?;
         let subjects_root = self.root.join("subjects");
         reject_symlink_components(&subjects_root)?;
         let entities = match fs::read_dir(&subjects_root) {
@@ -620,7 +707,13 @@ impl LegacyStoreSource for FileStore {
                         path.display()
                     )));
                 }
-                let encoded_id = name.strip_suffix(".json").ok_or_else(|| {
+                let encoded_id = match edition {
+                    Edition::V2 => name.strip_suffix(".json"),
+                    // A v3 state document is a cache of the history beside it.
+                    Edition::V3 if name.ends_with(".json") => continue,
+                    Edition::V3 => name.strip_suffix(".log"),
+                }
+                .ok_or_else(|| {
                     StoreError::Backend(format!("unexpected File Store file {}", path.display()))
                 })?;
                 let id = unhex(encoded_id).map_err(|detail| {
@@ -629,12 +722,22 @@ impl LegacyStoreSource for FileStore {
                         path.display()
                     ))
                 })?;
-                let stored = self.read_subject(&entity, &id)?.ok_or_else(|| {
+                let stored = self.parse_subject(edition, &entity, &id)?.ok_or_else(|| {
                     StoreError::Backend(format!(
-                        "File Store subject vanished at {}",
+                        "File Store subject vanished, or its first write never completed, at {}",
                         path.display()
                     ))
                 })?;
+                if v3::torn(&stored) {
+                    return Err(StoreError::Backend(format!(
+                        "interrupted File Store history append in {}",
+                        path.display()
+                    )));
+                }
+                // The subject's locator in both editions: the name of its v2 document, which is
+                // its v3 state document's, so an import's source locators do not depend on the
+                // edition the store was in when it was acquired.
+                let name = format!("{encoded_id}.json");
                 let mut evidence = Vec::new();
                 for (position, envelope) in stored.records.iter().enumerate() {
                     let entry = RecordedEntry::Decision(RecordedCommit {
@@ -692,7 +795,7 @@ impl LegacyStoreSource for FileStore {
 enum RootState {
     Missing,
     Empty,
-    V2,
+    Ready(Edition),
 }
 
 fn backend(operation: &str, path: &Path, error: &impl std::fmt::Display) -> StoreError {
@@ -897,18 +1000,32 @@ fn is_temporary_subject(name: &str) -> bool {
 }
 
 impl StateProvider for FileStore {
+    /// On v3 the state document alone, unless the history has moved past it.
     fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
-        Ok(self.read_subject(entity, id)?.map(|stored| stored.instance))
+        match self.root_state()? {
+            RootState::Missing | RootState::Empty => Ok(None),
+            RootState::Ready(Edition::V3) => self.load_v3(entity, id),
+            RootState::Ready(Edition::V2) => {
+                Ok(self.parse_v2(entity, id)?.map(|stored| stored.instance))
+            }
+        }
     }
 
     fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
-        match self.root_state()? {
+        let edition = match self.root_state()? {
             RootState::Missing | RootState::Empty => return Ok(Vec::new()),
-            RootState::V2 => {}
-        }
-        let mut ids = self.listed_ids(entity)?;
-        for id in &ids {
-            self.parse_subject(entity, id)?;
+            RootState::Ready(edition) => edition,
+        };
+        let mut ids = Vec::new();
+        for id in self.listed_ids(edition, entity)? {
+            let stored = match edition {
+                Edition::V2 => self.parse_v2(entity, &id)?.is_some(),
+                // A history whose first write never completed holds no subject.
+                Edition::V3 => self.load_v3(entity, &id)?.is_some(),
+            };
+            if stored {
+                ids.push(id);
+            }
         }
         ids.sort();
         Ok(ids)
@@ -916,9 +1033,10 @@ impl StateProvider for FileStore {
 }
 
 impl FileStore {
-    /// The identities stored for `entity` in a v2 root, from file names alone: no document is read,
-    /// abandoned temporary files are skipped, and any other unexpected entry is refused.
-    fn listed_ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+    /// The identities stored for `entity` in a root of `edition`, from file names alone: no
+    /// document is read, abandoned temporary files (and v3 state documents) are skipped, and any
+    /// other unexpected entry is refused.
+    fn listed_ids(&self, edition: Edition, entity: &str) -> Result<Vec<String>, StoreError> {
         let directory = self.entity_directory(entity);
         reject_symlink_components(&directory)?;
         let entries = match fs::read_dir(&directory) {
@@ -948,7 +1066,12 @@ impl FileStore {
             if is_temporary_subject(name) {
                 continue;
             }
-            let encoded = name.strip_suffix(".json").ok_or_else(|| {
+            let encoded = match edition {
+                Edition::V2 => name.strip_suffix(".json"),
+                Edition::V3 if name.ends_with(".json") => continue,
+                Edition::V3 => name.strip_suffix(".log"),
+            }
+            .ok_or_else(|| {
                 StoreError::Backend(format!("unexpected File Store file {}", path.display()))
             })?;
             let id = unhex(encoded).map_err(|detail| {
@@ -998,7 +1121,8 @@ impl Store for FileStore {
     fn history(&self) -> Option<&dyn HistoryProvider> {
         Some(self)
     }
-    /// State and history live in one subject document, so both come from one read of it.
+    /// Both come from one read: of the v2 subject document, or of the v3 history, whose fold is
+    /// the state.
     fn load_with_history(
         &self,
         entity: &str,
@@ -1025,20 +1149,21 @@ impl Store for FileStore {
             expect,
             held.as_ref().map(|stored| stored.instance.revision),
         )?;
-        let mut stored = held.unwrap_or_else(|| StoredSubject {
-            format: SUBJECT_FORMAT.to_owned(),
-            origin: SubjectOrigin::Current,
-            instance: instance.clone(),
-            records: Vec::new(),
-            observations: Vec::new(),
-            events: Vec::new(),
-        });
+        let edition = self.write_edition()?;
+        let mut stored = held.unwrap_or_else(|| StoredSubject::new(instance.clone()));
         for event in &decision.record.events {
             stored.events.push(event.clone());
         }
         stored.instance = instance.clone();
         self.advance_epoch(&mut guard)?;
-        self.write_subject(&stored)
+        self.persist(
+            edition,
+            &stored,
+            &v3::Entry::State {
+                instance,
+                events: &decision.record.events,
+            },
+        )
     }
 
     fn commit_recorded(
@@ -1101,18 +1226,14 @@ impl Store for FileStore {
             expect,
             held.as_ref().map(|stored| stored.instance.revision),
         )?;
-        let mut stored = held.take().unwrap_or_else(|| StoredSubject {
-            format: SUBJECT_FORMAT.to_owned(),
-            origin: SubjectOrigin::Current,
-            instance: commit.instance.clone(),
-            records: Vec::new(),
-            observations: Vec::new(),
-            events: Vec::new(),
-        });
+        let edition = self.write_edition()?;
+        let mut stored = held
+            .take()
+            .unwrap_or_else(|| StoredSubject::new(commit.instance.clone()));
         stored.instance = commit.instance.clone();
         stored.records.push(commit.envelope.clone());
         self.advance_epoch(&mut guard)?;
-        self.write_subject(&stored)?;
+        self.persist(edition, &stored, &v3::Entry::Record(&commit.envelope))?;
         self.remember(&commit.envelope.record_id, entity, id, false);
         Ok(())
     }
@@ -1174,9 +1295,10 @@ impl Store for FileStore {
             Expect::Revision(observation.revision),
             Some(stored.instance.revision),
         )?;
+        let edition = self.write_edition()?;
         stored.observations.push(observation.clone());
         self.advance_epoch(&mut guard)?;
-        self.write_subject(&stored)?;
+        self.persist(edition, &stored, &v3::Entry::Observation(observation))?;
         self.remember(
             &observation.envelope.record_id,
             &observation.entity,
@@ -1223,7 +1345,163 @@ pub fn migrate_file_store_v1(
     if dry_run {
         return Ok(validated);
     }
+    // A second pass writes each subject as it reads it, so the real run does not hold the whole
+    // store either; it validates again and reports what it wrote.
+    publish_out_of_place(destination, Edition::V2, |store| {
+        walk_legacy(source, false, |subject| store.write_subject(&subject))
+    })
+}
 
+/// Copies a File Store v2 root into a new File Store v3 root, out of place.
+///
+/// Every subject keeps its state, its decision records and their order, its observations and its
+/// events; `history()` returns the same records, so their bytes and digests in either record form
+/// are unchanged. Each record names its definition by digest, and each definition is stored once.
+/// Every subject is encoded and decoded again before anything is written, and a subject that would
+/// not come back exactly is refused. The source is read under the shared lock every writer's
+/// exclusive lock excludes, so no write lands half-way through; it is never modified. `dry_run`
+/// performs all of it without creating the destination.
+///
+/// # Errors
+///
+/// [`StoreError::Backend`] for a source that is not a v2 root, unreadable or inconsistent source
+/// data, an existing destination, a destination inside the source (dry runs included), or an IO
+/// failure.
+pub fn migrate_file_store_v2(
+    source: impl AsRef<Path>,
+    destination: impl AsRef<Path>,
+    dry_run: bool,
+) -> Result<FileMigrationReport, StoreError> {
+    let source = source.as_ref();
+    let destination = destination.as_ref();
+    reject_symlink_components(source)?;
+    reject_symlink_components(destination)?;
+    let from = FileStore::open(source);
+    match from.root_state()? {
+        RootState::Ready(Edition::V2) => {}
+        RootState::Ready(Edition::V3) => {
+            return Err(StoreError::Backend(format!(
+                "File Store {} is already v3; there is nothing to migrate",
+                source.display()
+            )))
+        }
+        RootState::Missing | RootState::Empty => {
+            return Err(StoreError::Backend(format!(
+                "{} is not a File Store v2 root",
+                source.display()
+            )))
+        }
+    }
+    if fs::symlink_metadata(destination).is_ok() {
+        return Err(StoreError::Backend(format!(
+            "migration destination {} already exists",
+            destination.display()
+        )));
+    }
+    refuse_destination_inside_source(source, destination)?;
+    let _writers_wait = from.shared_lock_if_present()?;
+    let validated = from.walk_v2(dry_run, |_| Ok(()))?;
+    if dry_run {
+        return Ok(validated);
+    }
+    publish_out_of_place(destination, Edition::V3, |store| {
+        from.walk_v2(false, |subject| store.install_v3(&subject))
+    })
+}
+
+impl FileStore {
+    /// The shared acquisition lock, when the root has a lock file; never creates one, so a
+    /// migration source is not modified.
+    fn shared_lock_if_present(&self) -> Result<Option<fs::File>, StoreError> {
+        let path = self.root.join(".entity-store-lock");
+        reject_symlink_components(&path)?;
+        let file = match fs::OpenOptions::new().read(true).open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(backend("opening lock", &path, &error)),
+        };
+        FileExt::lock_shared(&file).map_err(|error| backend("locking", &path, &error))?;
+        Ok(Some(file))
+    }
+
+    /// Reads every subject of a v2 root one at a time, checks that its v3 encoding decodes back to
+    /// exactly the same subject, and hands it to `visit`.
+    fn walk_v2(
+        &self,
+        dry_run: bool,
+        mut visit: impl FnMut(StoredSubject) -> Result<(), StoreError>,
+    ) -> Result<FileMigrationReport, StoreError> {
+        let mut report = FileMigrationReport {
+            subjects: 0,
+            events: 0,
+            dry_run,
+        };
+        let subjects = self.root.join("subjects");
+        reject_symlink_components(&subjects)?;
+        let entities = match fs::read_dir(&subjects) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(report),
+            Err(error) => return Err(backend("listing", &subjects, &error)),
+        };
+        for entity_entry in entities {
+            let entity_entry =
+                entity_entry.map_err(|error| backend("listing", &subjects, &error))?;
+            let entity_path = entity_entry.path();
+            reject_symlink(&entity_path)?;
+            let entity = entity_entry
+                .file_name()
+                .to_str()
+                .and_then(|name| unhex(name).ok())
+                .filter(|_| entity_path.is_dir())
+                .ok_or_else(|| {
+                    StoreError::Backend(format!(
+                        "unexpected entry in File Store subjects {}",
+                        entity_path.display()
+                    ))
+                })?;
+            for id in self.listed_ids(Edition::V2, &entity)? {
+                let Some(subject) = self.parse_v2(&entity, &id)? else {
+                    continue;
+                };
+                let (bytes, definitions) = v3::migrated_history(&subject)?;
+                let path = self.subject_path(&entity, &id);
+                let back = v3::fold(&path, &bytes, &entity, &id, &mut |digest: &str| {
+                    definitions
+                        .get(digest)
+                        .map(|(_, definition)| definition.clone())
+                        .ok_or_else(|| {
+                            StoreError::Backend(format!("no definition encoded for {digest}"))
+                        })
+                })?;
+                let same = back.is_some_and(|back| {
+                    back.origin == subject.origin
+                        && back.instance == subject.instance
+                        && back.records == subject.records
+                        && back.observations == subject.observations
+                        && back.events == subject.events
+                });
+                if !same {
+                    return Err(StoreError::Backend(format!(
+                        "subject {} does not come back unchanged from the v3 encoding",
+                        path.display()
+                    )));
+                }
+                report.subjects += 1;
+                report.events += subject.events.len();
+                visit(subject)?;
+            }
+        }
+        Ok(report)
+    }
+}
+
+/// Builds a store in a sibling staging directory, initialized as `edition` with its lock file,
+/// lets `fill` write it, and publishes it at `destination` with one rename.
+fn publish_out_of_place(
+    destination: &Path,
+    edition: Edition,
+    fill: impl FnOnce(&FileStore) -> Result<FileMigrationReport, StoreError>,
+) -> Result<FileMigrationReport, StoreError> {
     // A bare relative destination (`converted`) has an empty parent, which no directory call
     // accepts: syncing it after the publishing rename failed and reported an installed store as a
     // failure. It is the current directory.
@@ -1250,7 +1528,7 @@ pub fn migrate_file_store_v1(
 
     let result = (|| {
         let store = FileStore::open(&staging);
-        store.prepare()?;
+        store.prepare_as(edition)?;
         // The coordination file every writer and acquisition locks, published with the store so
         // the migrated root is complete the moment it appears.
         let lock = staging.join(".entity-store-lock");
@@ -1260,9 +1538,7 @@ pub fn migrate_file_store_v1(
             .open(&lock)
             .and_then(|file| file.sync_all())
             .map_err(|error| backend("creating lock", &lock, &error))?;
-        // A second pass writes each subject as it reads it, so the real run does not hold the
-        // whole store either; it validates again and reports what it wrote.
-        let report = walk_legacy(source, false, |subject| store.write_subject(&subject))?;
+        let report = fill(&store)?;
         sync_directory(&staging)?;
         fs::rename(&staging, destination)
             .map_err(|error| backend("publishing", destination, &error))?;
@@ -1432,6 +1708,7 @@ fn walk_legacy(
                 records: Vec::new(),
                 observations: Vec::new(),
                 events,
+                history: None,
             })?;
         }
         for event_entry in
@@ -1540,7 +1817,7 @@ mod tests {
         static DIRECTORIES: RefCell<Vec<(&'static str, PathBuf)>> = const { RefCell::new(Vec::new()) };
     }
 
-    /// Called by `parse_subject` before it opens a document.
+    /// Called before a v2 subject document or a v3 history is opened.
     pub(super) fn count_subject_read(path: &Path) {
         READS.with(|reads| reads.borrow_mut().push(path.to_owned()));
     }
@@ -1680,7 +1957,7 @@ mod tests {
                     Expect::Absent,
                 )
                 .expect("created");
-            paths.push(writer.subject_path(entity, id));
+            paths.push(writer.history_path(entity, id));
         }
         (root, paths)
     }

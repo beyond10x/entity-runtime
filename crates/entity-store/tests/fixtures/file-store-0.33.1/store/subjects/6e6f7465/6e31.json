@@ -1,0 +1,127 @@
+{
+  "format": "entity.file-subject/2",
+  "origin": "current",
+  "instance": {
+    "entity": "note",
+    "version": 1,
+    "id": "n1",
+    "lifecycle_state": "final",
+    "revision": 2,
+    "fields": {
+      "text": "hello"
+    }
+  },
+  "records": [
+    {
+      "record_id": "n1-create",
+      "recorded_at": "2026-11-23T10:13:00Z",
+      "correlation": "fixture-flow",
+      "causation": null,
+      "actor": "fixture",
+      "record": {
+        "definition": {
+          "entity": "note",
+          "version": 1,
+          "schema": {
+            "fields": {
+              "text": {
+                "type": "string",
+                "required": true,
+                "min_length": null,
+                "max_length": null,
+                "min": null,
+                "max": null,
+                "values": [],
+                "items": null,
+                "properties": {},
+                "additional_properties": false,
+                "entity": null,
+                "inverse": null,
+                "acyclic": null
+              }
+            },
+            "additional_fields": false
+          },
+          "lifecycle": {
+            "initial": "draft",
+            "states": [
+              "draft",
+              "final"
+            ]
+          },
+          "invariants": [],
+          "create": {
+            "emit": null
+          },
+          "operations": {
+            "finish": {
+              "arguments": {
+                "fields": {},
+                "additional_fields": false
+              },
+              "transitions": [
+                {
+                  "from": "draft",
+                  "to": "final"
+                }
+              ],
+              "preconditions": [],
+              "set": {},
+              "emits": [
+                {
+                  "type": "NoteFinished",
+                  "payload": {
+                    "text": "$fields.text"
+                  }
+                }
+              ]
+            }
+          },
+          "projections": {}
+        },
+        "command": {
+          "command": "create",
+          "fields": {
+            "text": "hello"
+          }
+        },
+        "entity": "note",
+        "id": "n1",
+        "revision": 1,
+        "from_state": null,
+        "to_state": "draft",
+        "result": {
+          "entity": "note",
+          "version": 1,
+          "id": "n1",
+          "lifecycle_state": "draft",
+          "revision": 1,
+          "fields": {
+            "text": "hello"
+          }
+        },
+        "changed": {
+          "text": "hello"
+        },
+        "events": []
+      }
+    }
+  ],
+  "observations": [],
+  "events": [
+    {
+      "entity": "note",
+      "version": 1,
+      "id": "n1",
+      "revision": 2,
+      "type": "NoteFinished",
+      "from_state": "draft",
+      "to_state": "final",
+      "changed": {},
+      "args": {},
+      "payload": {
+        "text": "hello"
+      }
+    }
+  ]
+}

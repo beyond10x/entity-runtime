@@ -187,7 +187,7 @@ pub enum Command {
         /// The definition files to register.
         #[command(flatten)]
         definition: DefinitionArg,
-        /// File Store v2 root used by every tool call.
+        /// File Store root (v2 or v3) used by every tool call.
         #[arg(long)]
         store: PathBuf,
     },
@@ -257,6 +257,18 @@ pub enum StoreCommand {
         from: PathBuf,
         /// A destination path that does not exist.
         #[arg(long, value_name = "V2_ROOT")]
+        to: PathBuf,
+        /// Validate the complete migration without writing destination bytes.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Migrate a File Store v2 into v3, out of place: state apart from append-only history.
+    MigrateFileV3 {
+        /// The v2 File Store root. It is never modified.
+        #[arg(long, value_name = "V2_ROOT")]
+        from: PathBuf,
+        /// A destination path that does not exist.
+        #[arg(long, value_name = "V3_ROOT")]
         to: PathBuf,
         /// Validate the complete migration without writing destination bytes.
         #[arg(long)]

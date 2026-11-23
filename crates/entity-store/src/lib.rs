@@ -58,7 +58,7 @@ pub mod memory;
 pub mod projection;
 
 pub use envelope::{Envelope, EnvelopeError, Recording};
-pub use file::{migrate_file_store_v1, FileMigrationReport, FileStore};
+pub use file::{migrate_file_store_v1, migrate_file_store_v2, FileMigrationReport, FileStore};
 pub use legacy::{LegacyStoreSnapshot, LegacyStoreSource};
 pub use memory::MemoryStore;
 pub use projection::{project, Grouping, Projections};

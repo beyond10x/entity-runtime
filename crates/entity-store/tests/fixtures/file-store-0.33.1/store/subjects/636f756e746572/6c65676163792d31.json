@@ -1,0 +1,258 @@
+{
+  "format": "entity.file-subject/2",
+  "origin": "legacy_snapshot",
+  "instance": {
+    "entity": "counter",
+    "version": 1,
+    "id": "legacy-1",
+    "lifecycle_state": "open",
+    "revision": 2,
+    "fields": {
+      "name": "legacy",
+      "spent": 0,
+      "views": 1
+    }
+  },
+  "records": [
+    {
+      "record_id": "legacy-1-view",
+      "recorded_at": "2026-11-23T10:14:00Z",
+      "correlation": "fixture-flow",
+      "causation": null,
+      "actor": "fixture",
+      "record": {
+        "definition": {
+          "entity": "counter",
+          "version": 1,
+          "schema": {
+            "fields": {
+              "name": {
+                "type": "string",
+                "required": true,
+                "min_length": 1,
+                "max_length": null,
+                "min": null,
+                "max": null,
+                "values": [],
+                "items": null,
+                "properties": {},
+                "additional_properties": false,
+                "entity": null,
+                "inverse": null,
+                "acyclic": null
+              },
+              "spent": {
+                "type": "number",
+                "required": true,
+                "default": 0,
+                "min_length": null,
+                "max_length": null,
+                "min": null,
+                "max": null,
+                "values": [],
+                "items": null,
+                "properties": {},
+                "additional_properties": false,
+                "entity": null,
+                "inverse": null,
+                "acyclic": null
+              },
+              "views": {
+                "type": "integer",
+                "required": true,
+                "default": 0,
+                "min_length": null,
+                "max_length": null,
+                "min": 0,
+                "max": null,
+                "values": [],
+                "items": null,
+                "properties": {},
+                "additional_properties": false,
+                "entity": null,
+                "inverse": null,
+                "acyclic": null
+              }
+            },
+            "additional_fields": false
+          },
+          "lifecycle": {
+            "initial": "open",
+            "states": [
+              "open",
+              "closed"
+            ]
+          },
+          "invariants": [],
+          "create": {
+            "emit": {
+              "type": "CounterOpened",
+              "payload": {
+                "name": "$fields.name",
+                "views": "$fields.views"
+              }
+            }
+          },
+          "operations": {
+            "charge": {
+              "arguments": {
+                "fields": {
+                  "amount": {
+                    "type": "number",
+                    "required": true,
+                    "min_length": null,
+                    "max_length": null,
+                    "min": 0,
+                    "max": null,
+                    "values": [],
+                    "items": null,
+                    "properties": {},
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "acyclic": null
+                  }
+                },
+                "additional_fields": false
+              },
+              "transitions": [
+                {
+                  "from": "open",
+                  "to": "open"
+                }
+              ],
+              "preconditions": [],
+              "set": {
+                "spent": {
+                  "increment": "$args.amount"
+                }
+              },
+              "emits": [
+                {
+                  "type": "Charged",
+                  "payload": {
+                    "amount": "$args.amount",
+                    "spent": "$fields.spent"
+                  }
+                }
+              ]
+            },
+            "close": {
+              "arguments": {
+                "fields": {},
+                "additional_fields": false
+              },
+              "transitions": [
+                {
+                  "from": "open",
+                  "to": "closed"
+                }
+              ],
+              "preconditions": [],
+              "set": {},
+              "emits": []
+            },
+            "view": {
+              "arguments": {
+                "fields": {},
+                "additional_fields": false
+              },
+              "transitions": [
+                {
+                  "from": "open",
+                  "to": "open"
+                }
+              ],
+              "preconditions": [],
+              "set": {
+                "views": {
+                  "increment": 1
+                }
+              },
+              "emits": [
+                {
+                  "type": "Viewed",
+                  "payload": {
+                    "after": "$fields.views",
+                    "before": "$old_fields.views"
+                  }
+                }
+              ]
+            }
+          },
+          "projections": {}
+        },
+        "command": {
+          "command": "execute",
+          "operation": "view",
+          "arguments": {}
+        },
+        "entity": "counter",
+        "id": "legacy-1",
+        "revision": 2,
+        "from_state": "open",
+        "to_state": "open",
+        "result": {
+          "entity": "counter",
+          "version": 1,
+          "id": "legacy-1",
+          "lifecycle_state": "open",
+          "revision": 2,
+          "fields": {
+            "name": "legacy",
+            "spent": 0,
+            "views": 1
+          }
+        },
+        "changed": {
+          "views": 1
+        },
+        "events": [
+          {
+            "entity": "counter",
+            "version": 1,
+            "id": "legacy-1",
+            "revision": 2,
+            "type": "Viewed",
+            "from_state": "open",
+            "to_state": "open",
+            "changed": {
+              "views": 1
+            },
+            "args": {},
+            "payload": {
+              "after": 1,
+              "before": 0
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "observations": [],
+  "events": [
+    {
+      "entity": "counter",
+      "version": 1,
+      "id": "legacy-1",
+      "revision": 1,
+      "type": "CounterOpened",
+      "from_state": null,
+      "to_state": "open",
+      "changed": {
+        "name": "legacy",
+        "spent": 0,
+        "views": 0
+      },
+      "args": {
+        "name": "legacy",
+        "spent": 0,
+        "views": 0
+      },
+      "payload": {
+        "name": "legacy",
+        "views": 0
+      }
+    }
+  ]
+}
