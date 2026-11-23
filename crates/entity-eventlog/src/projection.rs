@@ -5,6 +5,7 @@ use eventlog_core::{
     BoxFuture, EventLogError, ProjectionSpec, ProjectionStore, Projector, RecordedEvent, TenantId,
 };
 use serde_json::{Value, json};
+use sha2::{Digest as _, Sha256};
 
 use crate::encoding::{
     ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN, ENTRY_BLOB_DOMAIN,
@@ -90,6 +91,28 @@ pub(crate) fn subject_stream_id(
     )
 }
 
+/// The version of the rows [`ErRecordedProjector`] writes for a given history. Raise it in the
+/// change that makes the projector write different rows for the same events, so a kept fold of the
+/// earlier rows is replayed rather than served.
+const PROJECTOR_ROWS_VERSION: u32 = 1;
+
+/// SHA-256 over the projector's name, its tables and [`PROJECTOR_ROWS_VERSION`].
+fn projector_fingerprint() -> String {
+    let tables: Vec<Value> = projection_specs()
+        .iter()
+        .map(|spec| json!([spec.name, spec.indexed]))
+        .collect();
+    let described = json!({
+        "format": "er.eventlog.recorded-projector-fingerprint/1",
+        "name": PROJECTOR_NAME,
+        "tables": tables,
+        "rows": PROJECTOR_ROWS_VERSION,
+    });
+    let mut hasher = Sha256::new();
+    hasher.update(described.to_string().as_bytes());
+    format!("sha256:{:x}", hasher.finalize())
+}
+
 /// Deterministic inline projector for binding, records, batches, and current subjects.
 #[derive(Debug, Default)]
 pub struct ErRecordedProjector;
@@ -108,6 +131,17 @@ impl Projector for ErRecordedProjector {
     }
     fn projections(&self) -> &'static [ProjectionSpec] {
         projection_specs()
+    }
+
+    /// The projector has no configuration: what it writes is decided by the tables it owns and
+    /// the row formats it folds to, and the digest covers both. A store that keeps a folded state
+    /// across opens (the Eventlog tree store) reuses it only while this is unchanged, so a new
+    /// row format replays once instead of serving rows the earlier one wrote. A rebuilt program
+    /// with the same formats is covered by that store too: it keys a kept state by the running
+    /// executable as well.
+    fn fingerprint(&self) -> Option<String> {
+        static FINGERPRINT: OnceLock<String> = OnceLock::new();
+        Some(FINGERPRINT.get_or_init(projector_fingerprint).clone())
     }
 
     fn apply<'a>(

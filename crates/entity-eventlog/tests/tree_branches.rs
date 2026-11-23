@@ -1,8 +1,19 @@
 //! A recorded store kept as a tree of files merges the way its files do: two branches that
 //! recorded decisions for different subjects merge into one store that opens and holds both.
+//!
+//! It also holds the state the tree store keeps between opens to the recorded projector's
+//! fingerprint: an unchanged store reopens without a replay, another configuration replays.
 #![cfg(feature = "tree")]
 
-use std::{fs, path::Path, sync::Arc};
+use std::{
+    fs,
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use entity_core::Registry;
 use entity_eventlog::{
@@ -14,7 +25,10 @@ use entity_store::{
     Recording,
     asynchronous::{AppendOutcome, AsyncRecordedReader, BatchKey, Subject},
 };
-use eventlog_core::{CaptureLimits, EventStore, InlineProjectionAdmin, TenantId};
+use eventlog_core::{
+    BoxFuture, CaptureLimits, EventLogError, EventStore, InlineProjectionAdmin, ProjectionSpec,
+    ProjectionStore, Projector, RecordedEvent, TenantId,
+};
 use eventlog_tree::TreeEventStore;
 use serde_json::json;
 use time::OffsetDateTime;
@@ -821,6 +835,142 @@ fn a_fork_whose_observation_replays_after_the_other_branch_still_opens_as_forked
         assert!(
             ids.iter().any(|id| id == "ours-seen-3"),
             "the observation was lost: {ids:?}"
+        );
+    });
+}
+
+/// The recorded projector under its own name and tables, reporting another configuration, and
+/// counting the events folded through it.
+struct Reconfigured {
+    inner: ErRecordedProjector,
+    applied: AtomicUsize,
+}
+
+impl Projector for Reconfigured {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+    fn projections(&self) -> &'static [ProjectionSpec] {
+        self.inner.projections()
+    }
+    fn fingerprint(&self) -> Option<String> {
+        self.inner
+            .fingerprint()
+            .map(|fingerprint| format!("{fingerprint}+reconfigured"))
+    }
+    fn apply<'a>(
+        &'a self,
+        event: &'a RecordedEvent,
+        store: &'a mut dyn ProjectionStore,
+    ) -> BoxFuture<'a, Result<(), EventLogError>> {
+        self.applied.fetch_add(1, Ordering::SeqCst);
+        self.inner.apply(event, store)
+    }
+}
+
+/// How `EventlogRecordedStoreOwner` opens an existing tree: the recorded projector registered
+/// before the replay.
+async fn open_recorded(root: &Path) -> TreeEventStore {
+    TreeEventStore::open_with_inline(root, vec![Arc::new(ErRecordedProjector::new())])
+        .await
+        .expect("the tree store opens")
+}
+
+/// The tree store keeps the state a replay folded under `.cache/` and reuses it only while every
+/// projector vouches for its output with an unchanged `Projector::fingerprint`. The recorded
+/// projector supplies one, so an unchanged store reopens without a replay; a projector of the same
+/// name reporting another configuration replays, and is then served from its own kept state, so
+/// the replay was the fingerprint's doing alone, not a change of the files.
+///
+/// The tree store keeps no state while a history file is under 2 s old, so the case waits that
+/// long once.
+#[test]
+fn a_warm_tree_reopen_is_served_from_its_kept_state_and_a_changed_configuration_replays() {
+    block_on(async {
+        let directory = tempfile::tempdir().expect("directory");
+        let root = directory.path();
+        let tenant = TenantId::new("tree-kept-state").expect("tenant");
+        let authority = {
+            let backend = backend(root).await;
+            let stream_identity = backend.stream_identity(&tenant).await.expect("identity");
+            let authority = Authority {
+                logical_scope: "scope-tree-kept-state".into(),
+                tenant: tenant.as_str().to_owned(),
+                stream_identity,
+            };
+            let erased: Arc<dyn EventlogBackend> = backend;
+            EventlogBindingProvisioner::new(erased, LIMITS)
+                .provision_binding(authority.clone(), context("provision"))
+                .await
+                .expect("binding provisioned");
+            authority
+        };
+        record(root, &authority, "kept").await;
+        std::thread::sleep(Duration::from_millis(2_100));
+
+        assert!(
+            open_recorded(root).await.replayed().await,
+            "the first open after the writes replays"
+        );
+        let warm = open_recorded(root).await;
+        assert!(
+            !warm.replayed().await,
+            "an unchanged store reopens from the state kept for the recorded projector"
+        );
+        drop(warm);
+
+        let reconfigured = Arc::new(Reconfigured {
+            inner: ErRecordedProjector::new(),
+            applied: AtomicUsize::new(0),
+        });
+        let changed = TreeEventStore::open_with_inline(root, vec![reconfigured.clone()])
+            .await
+            .expect("the tree store opens under another configuration");
+        assert!(
+            changed.replayed().await,
+            "another configuration is not served the rows the first one wrote"
+        );
+        assert!(
+            reconfigured.applied.load(Ordering::SeqCst) > 0,
+            "the history was folded through the reconfigured projector"
+        );
+        drop(changed);
+
+        let unchanged = Arc::new(Reconfigured {
+            inner: ErRecordedProjector::new(),
+            applied: AtomicUsize::new(0),
+        });
+        let again = TreeEventStore::open_with_inline(root, vec![unchanged.clone()])
+            .await
+            .expect("the tree store opens under the other configuration again");
+        assert!(
+            !again.replayed().await && unchanged.applied.load(Ordering::SeqCst) == 0,
+            "the files did not change, so only the fingerprint made the other open replay"
+        );
+        drop(again);
+
+        // The store keeps only the newest state, so going back replays once more, then serves.
+        assert!(
+            open_recorded(root).await.replayed().await,
+            "the recorded projector's configuration is not served the other one's rows"
+        );
+        let warm = open_recorded(root).await;
+        assert!(
+            !warm.replayed().await,
+            "the recorded projector's configuration is served from its kept state again"
+        );
+        let backend: Arc<dyn EventlogBackend> = Arc::new(warm);
+        let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
+            .await
+            .expect("a store opened from the kept state");
+        let snapshot = store
+            .complete_snapshot(&authority.logical_scope)
+            .await
+            .expect("a complete snapshot from the kept state");
+        assert_eq!(
+            snapshot.histories.len(),
+            1,
+            "the recorded subject is served"
         );
     });
 }

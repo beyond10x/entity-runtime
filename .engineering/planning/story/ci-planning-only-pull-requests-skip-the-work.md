@@ -2,11 +2,17 @@
 format: aep.planning-md/3
 id: story:ci-planning-only-pull-requests-skip-the-work
 kind: story
-status: draft
+status: implemented
 title: A planning-only pull request runs no build or test job and its required checks still pass
 summary: 'Rule 3 of 2026-11-21; PR #96 (only .engineering/) ran 6 workflows per round'
 owner: entity-runtime
-revision: 1
+relations:
+- serves: vision:O2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-23T14:35:02Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-23T14:35:03Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-23T14:35:03Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

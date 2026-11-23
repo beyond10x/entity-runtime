@@ -1,18 +1,21 @@
 //! The guarded writes other than the batch import hand their blobs to the provider with the group.
 //!
 //! `AtomicEventStore::append_group_guarded_with_blobs` commits a group and the blobs it references
-//! in one transaction on a provider that overrides it — `eventlog-file` and, since Eventlog 0.5.0,
-//! `eventlog-sqlite` — so a guard refusal binds no blob, and the whole write costs one durability
-//! barrier. The batch import used it first. These cases hold the three other guarded writes to the
-//! same contract: a recorded append, a binding and a singular import.
+//! in one transaction on a provider that overrides it — `eventlog-file`, `eventlog-sqlite` since
+//! Eventlog 0.5.0, `eventlog-tree`, and `eventlog-postgres` since Eventlog 0.10.0 — so a guard
+//! refusal binds no blob, and the whole write costs one durability barrier. The batch import used
+//! it first. These cases hold the three other guarded writes to the same contract: a recorded
+//! append, a binding and a singular import.
 //!
-//! [`Interposed`] forwards every call to a real provider and adds four knobs. It can run a rival
+//! [`Interposed`] forwards every call to a real provider and adds five knobs. It can run a rival
 //! write immediately before this handle's first write reaches the provider, which is how a refusal
 //! the adapter's own pre-read cannot see is reached deterministically. It can take the port's
-//! default — refuse the blob-bearing group with `UNAVAILABLE` — which is what a provider without the
-//! override (PostgreSQL) offers, so the adapter's fallback is exercised without a server. It can
-//! submit every blob-bearing group twice, which is the retry the port describes as admitted again.
-//! And it can fail the next `put_blob`, which is how the fallback's own error mapping is held.
+//! default — refuse the blob-bearing group with `UNAVAILABLE` — which is what a caller's own
+//! backend without the override offers (PostgreSQL did before Eventlog 0.10.0), so the adapter's
+//! fallback is exercised. It can submit every blob-bearing group twice, which is the retry the port
+//! describes as admitted again. It can fail the next `put_blob`, which is how the fallback's own
+//! error mapping is held. And it can commit a group and then answer it as a commit whose cleanup
+//! failed (`EventLogError::Committed`).
 //!
 //! The refusal recorder is not here: it appends with `EventStore::append`, unguarded, to a stream
 //! named by the digest of the one blob it writes, so nothing can refuse it after that blob is bound
@@ -35,9 +38,10 @@ use entity_executor::{BatchAction, CreateRequest, Executor};
 use entity_store::{
     Recording,
     asynchronous::{
-        AppendOutcome, AsyncStateReader, AsyncStoreError, BatchKey, HistoryOrigin,
-        ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness, LegacyEvidence,
-        LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory, WriteFailure,
+        AppendOutcome, AsyncRefusalRecorder, AsyncStateReader, AsyncStoreError, BatchKey,
+        HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
+        LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
+        WriteFailure,
     },
 };
 use eventlog_core::{
@@ -84,6 +88,9 @@ struct Interposed {
     contended: bool,
     /// Groups answered with that conflict.
     conflicts: AtomicUsize,
+    /// Commits every blob-bearing group, then answers it as Eventlog answers a commit whose
+    /// cleanup failed: `EventLogError::Committed`.
+    cleanup_fails: bool,
 }
 
 impl Interposed {
@@ -99,6 +106,14 @@ impl Interposed {
             submissions: Mutex::new(Vec::new()),
             contended: false,
             conflicts: AtomicUsize::new(0),
+            cleanup_fails: false,
+        }
+    }
+
+    fn cleanup_failing(inner: Arc<dyn EventlogBackend>, offer: Offer) -> Self {
+        Self {
+            cleanup_fails: true,
+            ..Self::new(inner, offer)
         }
     }
 
@@ -139,6 +154,19 @@ impl Interposed {
         }
     }
 
+    /// What the provider answers for a write it committed: its result, or, with `cleanup_fails`,
+    /// the error Eventlog returns when the cleanup after a published commit failed.
+    fn after_commit<T>(&self, committed: T) -> Result<T, EventLogError> {
+        if self.cleanup_fails {
+            return Err(EventLogError::Committed {
+                cleanup: Box::new(EventLogError::Backend(
+                    "unreferenced object was not removed".into(),
+                )),
+            });
+        }
+        Ok(committed)
+    }
+
     fn after_rival(&self) -> BTreeSet<String> {
         self.after_rival
             .lock()
@@ -159,7 +187,8 @@ impl AtomicEventStore for Interposed {
                 return Err(conflict);
             }
             self.run_rival(&group.tenant).await;
-            self.inner.append_group_guarded(group, admission).await
+            let committed = self.inner.append_group_guarded(group, admission).await?;
+            self.after_commit(committed)
         })
     }
 
@@ -182,6 +211,9 @@ impl AtomicEventStore for Interposed {
                 .append_group_guarded_with_blobs(group, admission.clone(), blobs)
                 .await?;
             self.record(&first);
+            if self.cleanup_fails {
+                return self.after_commit(first);
+            }
             if !self.replay {
                 return Ok(first);
             }
@@ -242,7 +274,10 @@ impl EventStore for Interposed {
         events: &'a [NewEvent],
         meta: &'a CommandMeta,
     ) -> BoxFuture<'a, Result<AppendResult, EventLogError>> {
-        self.inner.append(stream, expected, events, meta)
+        Box::pin(async move {
+            let appended = self.inner.append(stream, expected, events, meta).await?;
+            self.after_commit(appended)
+        })
     }
     fn recorded_claim<'a>(
         &'a self,
@@ -397,7 +432,8 @@ impl EventStore for Interposed {
             if let Some(error) = self.fail_next_put.lock().expect("put failure").take() {
                 return Err(error);
             }
-            self.inner.put_blob(tenant, digest, bytes).await
+            self.inner.put_blob(tenant, digest, bytes).await?;
+            self.after_commit(())
         })
     }
     fn get_blob<'a>(
@@ -921,6 +957,96 @@ fn every_guarded_write_binds_its_blobs_with_its_group_on_sqlite_and_file() {
                     .expect("state read")
                     .is_some(),
                 "{provider:?}: the appended subject reads back"
+            );
+        }
+    });
+}
+
+/// Eventlog 0.10.0 answers a commit it published but could not clean up after (an unreferenced
+/// object left behind) with `EventLogError::Committed`, where it used to answer `UnknownCommit` or a
+/// backend error. The write happened and must not be reported as failed: the binding, an append, a
+/// named batch, an import, a batch import and a recorded refusal each settle, through the
+/// provider's own blob-bearing groups and through the fallback's separate blob uploads alike, and
+/// the subjects and the refusal read back.
+#[test]
+fn a_commit_whose_cleanup_failed_is_answered_as_committed_by_each_write() {
+    block_on(async {
+        for (provider, offer) in PROVIDERS
+            .into_iter()
+            .flat_map(|provider| [(provider, Offer::Override), (provider, Offer::DefaultOnly)])
+        {
+            let label = format!("cleanup-{provider:?}-{offer:?}").to_lowercase();
+            let destination = destination(provider, &label).await;
+            let interposed = Arc::new(Interposed::cleanup_failing(
+                destination.inner.clone(),
+                offer,
+            ));
+            let erased: Arc<dyn EventlogBackend> = interposed.clone();
+            EventlogBindingProvisioner::new(erased.clone(), LIMITS)
+                .provision_binding(destination.authority.clone(), context(&label))
+                .await
+                .expect("a binding whose cleanup failed is provisioned");
+            let store = EventlogRecordedStore::open(erased, destination.authority.clone(), LIMITS)
+                .await
+                .expect("bound store");
+            let operation = store.operation(context(&label));
+            let registry = registry();
+            let appended = Executor::new(&registry, &operation)
+                .create(create("cleaned", "cleaned-create"))
+                .await
+                .expect("an append whose cleanup failed settles");
+            assert!(
+                matches!(appended, AppendOutcome::Committed { .. }),
+                "{provider:?}: {appended:?}"
+            );
+            let named = Executor::new(&registry, &operation)
+                .batch(
+                    BatchKey::Named(format!("{label}-named")),
+                    vec![BatchAction::Create(create("named", "named-create"))],
+                )
+                .await
+                .expect("a named batch whose cleanup failed settles");
+            assert!(
+                matches!(named, AppendOutcome::Committed { .. }),
+                "{provider:?} {offer:?}: {named:?}"
+            );
+            operation
+                .import_anchor(imported("imported", "imported-create"))
+                .await
+                .expect("an import whose cleanup failed settles");
+            operation
+                .import_anchors(vec![imported("batched", "batched-create")])
+                .await
+                .expect("a batch import whose cleanup failed settles");
+            let untitled = CreateRequest {
+                fields: json!({}),
+                ..create("untitled", "untitled-create")
+            };
+            Executor::recording_refusals(&registry, &operation, &operation)
+                .create(untitled)
+                .await
+                .expect_err("a ticket without a title is refused");
+            if offer == Offer::Override {
+                assert_eq!(
+                    interposed.submissions.lock().expect("submissions").len(),
+                    5,
+                    "{provider:?}: each write sent its group once and was not retried as failed"
+                );
+            }
+            for id in ["cleaned", "named", "imported", "batched"] {
+                assert!(
+                    store
+                        .load(&Subject::new("ticket", id).expect("subject"))
+                        .await
+                        .expect("state read")
+                        .is_some(),
+                    "{provider:?} {offer:?}: {id} reads back"
+                );
+            }
+            assert_eq!(
+                operation.refusals().await.expect("refusals read").len(),
+                1,
+                "{provider:?} {offer:?}: the refusal is recorded"
             );
         }
     });

@@ -83,7 +83,7 @@ power loss. A store written before 0.15 must be migrated first:
 the result, the response and the events — on an
 [Eventlog](https://beyond10x.github.io/ecosystem/eventlog/)
 ([GitHub](https://github.com/beyond10x/eventlog)) provider. It and `entity-sqlite` need Rust 1.91;
-the rest of the workspace builds on 1.85. The workspace pins Eventlog at its 0.9.4 tag. Every provider is an
+the rest of the workspace builds on 1.85. The workspace pins Eventlog at its 0.10.0 tag. Every provider is an
 explicit Cargo feature:
 
 | Feature | Provider | Boundary |
@@ -119,6 +119,19 @@ explicit Cargo feature:
   each long text once under its SHA-256. An `eventlog-tree/1` store opens and records as before, and
   `eventlog_tree::migrate` moves one explicitly. A build older than 0.25.0 recognizes the new
   format by its name and refuses it.
+- **Tree reopens from its kept state.** Eventlog keeps the state a tree replay folded under
+  `.cache/state/`, which is never committed. `ErRecordedProjector` reports a fingerprint, so a
+  reopen of an unchanged tree by the same program loads that state instead of replaying every
+  file. A changed file, another program or another projector configuration replays once.
+- **Hosted PostgreSQL schema and roles.** Run `eventlog_postgres::PostgresEventStore::migrate`
+  with the migration role, and `entity_eventlog::projection_specs()` as its projections, before an
+  application-role open; provisioning does this itself. A hosted open refuses a schema an earlier
+  Eventlog release migrated, and a history restored from a logical backup, until `migrate` has run
+  on it. The application role needs `SELECT, INSERT, UPDATE, DELETE` on the other tables
+  (`<prefix>_group_batches` among them) but only `SELECT` on `<prefix>_schema_version`,
+  `<prefix>_projection_registry` and `<prefix>_settlement_floor`: a hosted open refuses a role
+  that can change those three. A refused guarded write binds none of its blobs, as on the other
+  providers.
 
 On SQLite, `RecordedProviderFacade::start_with_read_policy` with `CapturePolicy::ProviderTracked`
 reuses a verified observation when SQLite proves nothing changed, or verifies only a proven append

@@ -43,8 +43,8 @@ entity-postgres = { path = "../../crates/entity-postgres" }
 entity-eventlog = { path = "../../crates/entity-eventlog", features = ["file", "sqlite", "sync-bridge"] }
 # The same Eventlog tag the adapter pins: the conflict-injecting backend (E19) wraps a native
 # provider through the eventlog-core traits, exactly as the adapter's own test doubles do.
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.9.4" }
-eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.9.4" }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.10.0" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.10.0" }
 # The PostgreSQL plan counters (E18) run EXPLAIN on the provider's own query; the same client
 # entity-postgres uses, so no second PostgreSQL stack enters the lock.
 postgres = { version = "0.19", features = ["with-serde_json-1"] }

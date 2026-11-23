@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T14:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:entity-runtime-builds-against-eventlog-0-10-0",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "er bump: entity-eventlog 256 passed, entity-postgres 24, postgres-check 23, ESS 456/456, provider ESS 31/31, docs 24, clippy -D warnings and fmt green; er-kpi check 0 regressed, 27 improved"
+  }
+}

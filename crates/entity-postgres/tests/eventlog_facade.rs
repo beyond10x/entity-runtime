@@ -25,7 +25,7 @@ use entity_store::{
 use eventlog_core::{BoxFuture, CaptureLimits, EventLogError};
 use eventlog_postgres::{
     AuthorizedConnection, PoolOptions, PostgresConfig, PostgresConnectionAuthority,
-    PostgresTransportAssurance,
+    PostgresEventStore, PostgresTransportAssurance,
 };
 use rustls::pki_types::pem::PemObject;
 use serde_json::json;
@@ -173,11 +173,16 @@ fn config(schema: &str, prefix: &str, authority: Arc<VerifiedTlsAuthority>) -> P
     PostgresConfig::caller_owned(schema, prefix, authority).expect("caller-owned config")
 }
 
+/// An isolated, migrated schema the application role may write, except the migration metadata,
+/// which it may only read: since Eventlog 0.10.0 hosted `open` refuses a role that can change
+/// `<prefix>_schema_version`, `<prefix>_projection_registry` or `<prefix>_settlement_floor`.
 fn prepare_schema(
     migration_url: &str,
     application_url: &str,
     tls: &rustls::ClientConfig,
     schema: &str,
+    prefix: &str,
+    eventlog_migration: PostgresConfig,
 ) {
     runtime(async {
         let mut migration_config: tokio_postgres::Config =
@@ -240,6 +245,24 @@ fn prepare_schema(
             ))
             .await
             .expect("isolated schema and application grants");
+        PostgresEventStore::migrate(
+            eventlog_migration,
+            PoolOptions::default(),
+            entity_eventlog::projection_specs(),
+        )
+        .await
+        .expect("the Eventlog schema is migrated");
+        let metadata: Vec<String> = ["schema_version", "projection_registry", "settlement_floor"]
+            .into_iter()
+            .map(|table| format!("{quoted_schema}.{prefix}_{table}"))
+            .collect();
+        migration
+            .batch_execute(&format!(
+                "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON {} FROM {quoted_application}",
+                metadata.join(", ")
+            ))
+            .await
+            .expect("the application role only reads the migration metadata");
         drop(application);
         drop(migration);
         application_driver
@@ -286,10 +309,16 @@ fn postgres_eventlog_facade_preserves_caller_owned_transport_and_complete_receip
     };
     let schema = format!("entity_facade_{}", std::process::id());
     let prefix = "recorded";
-    prepare_schema(&migration_url, &application_url, &tls, &schema);
-
     let migration_authority = authority(&migration_url, &tls);
     let application_authority = authority(&application_url, &tls);
+    prepare_schema(
+        &migration_url,
+        &application_url,
+        &tls,
+        &schema,
+        prefix,
+        config(&schema, prefix, migration_authority.clone()),
+    );
     let mut store = EventlogPostgresStore::provision(
         registry(),
         config(&schema, prefix, migration_authority.clone()),

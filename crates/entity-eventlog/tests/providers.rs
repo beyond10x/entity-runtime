@@ -684,7 +684,7 @@ fn synchronous_bridge_startup_refuses_missing_drifted_and_dirty_projection_admis
             .redact(
                 &stream,
                 binding_event.version,
-                "controlled projection dirtying",
+                "controlled-projection-dirtying",
             )
             .await
             .expect("redaction dirtied attached projections");

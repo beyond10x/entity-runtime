@@ -305,6 +305,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Recorded execution",
+        "Tree stores reopen from their kept state",
+        "ErRecordedProjector reports a fingerprint, so an unchanged tree reopens without a replay; another projector configuration replays.",
+        "crates/entity-eventlog/tests/tree_branches.rs::a_warm_tree_reopen_is_served_from_its_kept_state_and_a_changed_configuration_replays",
+        "/docs/concepts/storage",
+    ),
+    shipped(
+        "Recorded execution",
         "Provider-tracked reads on SQLite",
         "CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract.",
         "Taskfile.yml::provider-ess-check",

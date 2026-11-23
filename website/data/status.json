@@ -235,6 +235,13 @@
     },
     {
       "area": "Recorded execution",
+      "detail": "ErRecordedProjector reports a fingerprint, so an unchanged tree reopens without a replay; another projector configuration replays.",
+      "href": "/docs/concepts/storage",
+      "label": "Tree stores reopen from their kept state",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
       "detail": "CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract.",
       "href": "/docs/concepts/storage",
       "label": "Provider-tracked reads on SQLite",
