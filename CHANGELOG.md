@@ -11,6 +11,19 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   of `0.9.4`. Code that calls an Eventlog provider directly gets that release's changes too: a
   redaction reason, for one, is now a code such as `subject-request`, and free text is refused.
   No Entity Runtime API takes a redaction reason.
+- Hosted PostgreSQL: Eventlog 0.10.0 is a new schema edition. Before an application-role open
+  (`EventlogRecordedStoreOwner`, `EventlogPostgresStore::open`) of a store an earlier release
+  migrated, run `eventlog_postgres::PostgresEventStore::migrate` with the migration role and
+  `entity_eventlog::projection_specs()`; provisioning runs it itself. Until then the open is
+  refused. Grant the application role `SELECT, INSERT, UPDATE, DELETE` on the new
+  `<prefix>_group_batches` and `SELECT` on the new `<prefix>_settlement_floor`, and revoke
+  `INSERT, UPDATE, DELETE, TRUNCATE` on `<prefix>_schema_version`, `<prefix>_projection_registry`
+  and `<prefix>_settlement_floor`: a hosted open now refuses an application role that can change
+  them. A history restored from a logical backup (`pg_restore`) opens only after `migrate` ran on
+  it.
+- PostgreSQL commits a guarded write with its blobs in one transaction, as File, SQLite and Tree
+  already did: a refused append, binding or import leaves no blob of its own behind, and a write
+  carrying blobs costs one commit instead of one per blob.
 
 ### Performance
 

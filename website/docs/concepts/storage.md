@@ -123,6 +123,15 @@ explicit Cargo feature:
   `.cache/state/`, which is never committed. `ErRecordedProjector` reports a fingerprint, so a
   reopen of an unchanged tree by the same program loads that state instead of replaying every
   file. A changed file, another program or another projector configuration replays once.
+- **Hosted PostgreSQL schema and roles.** Run `eventlog_postgres::PostgresEventStore::migrate`
+  with the migration role, and `entity_eventlog::projection_specs()` as its projections, before an
+  application-role open; provisioning does this itself. A hosted open refuses a schema an earlier
+  Eventlog release migrated, and a history restored from a logical backup, until `migrate` has run
+  on it. The application role needs `SELECT, INSERT, UPDATE, DELETE` on the other tables
+  (`<prefix>_group_batches` among them) but only `SELECT` on `<prefix>_schema_version`,
+  `<prefix>_projection_registry` and `<prefix>_settlement_floor`: a hosted open refuses a role
+  that can change those three. A refused guarded write binds none of its blobs, as on the other
+  providers.
 
 On SQLite, `RecordedProviderFacade::start_with_read_policy` with `CapturePolicy::ProviderTracked`
 reuses a verified observation when SQLite proves nothing changed, or verifies only a proven append
