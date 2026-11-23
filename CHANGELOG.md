@@ -4,6 +4,23 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Added
+
+- File Store v3 (`entity.file-store/3`) keeps a subject's current state apart from its
+  append-only history, and each entity definition once per store. One recorded command appends
+  its record to `subjects/<type>/<id>.log`, syncs it, and replaces a small state document,
+  instead of rewriting the whole subject: one `entity execute` on a counter writes
+  917 bytes with 8 prior records and 928 with 32 (v2: 57,107 and 207,967). A record
+  names its definition by digest (`definitions/<digest>.json`, written once), and `history()`
+  returns it with the definition, so its bytes and digests are the same as on v2. A state
+  document lost or left behind by a crash is rebuilt from the history; a history line cut short by
+  a crash is ignored and removed by the next write.
+- `entity store migrate-file-v3 --from V2_ROOT --to V3_ROOT [--dry-run]` and
+  `entity_store::migrate_file_store_v2` copy a v2 File Store into v3, out of place, under the v2
+  store's lock. Every subject keeps its state, records, observations and events; each is
+  encoded and read back before anything is written, the destination is published by one rename,
+  and the source is never modified.
+
 ### Changed
 
 - `entity-eventlog`, and the `eventlog-facade` features of `entity-sqlite` and `entity-postgres`
@@ -24,6 +41,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - PostgreSQL commits a guarded write with its blobs in one transaction, as File, SQLite and Tree
   already did: a refused append, binding or import leaves no blob of its own behind, and a write
   carrying blobs costs one commit instead of one per blob.
+- A File Store root that does not exist yet, or is empty, is now created as v3. **Entity 0.33.1
+  and earlier refuse a v3 root** (`declares unsupported format "entity.file-store/3"`): do not
+  point an older release at a store this release created. An existing v2 store is read and
+  written as v2, unchanged, until it is migrated. To migrate one, stop every writer, then run
+  `entity store migrate-file-v3 --from <v2 root> --to <new root> --dry-run`, the same command
+  without `--dry-run`, check `entity list --store <new root> --entity <type>`, and point the
+  writers at the new root; keep the v2 root to roll back to with the older release.
 
 ### Performance
 

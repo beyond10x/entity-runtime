@@ -1,0 +1,259 @@
+{
+  "format": "entity.file-subject/2",
+  "origin": "current",
+  "instance": {
+    "entity": "counter",
+    "version": 1,
+    "id": "c2",
+    "lifecycle_state": "open",
+    "revision": 1,
+    "fields": {
+      "name": "second",
+      "spent": 0,
+      "views": 4
+    }
+  },
+  "records": [
+    {
+      "record_id": "c2-create",
+      "recorded_at": "2026-11-23T10:11:00Z",
+      "correlation": "fixture-flow",
+      "causation": null,
+      "actor": "fixture",
+      "record": {
+        "definition": {
+          "entity": "counter",
+          "version": 1,
+          "schema": {
+            "fields": {
+              "name": {
+                "type": "string",
+                "required": true,
+                "min_length": 1,
+                "max_length": null,
+                "min": null,
+                "max": null,
+                "values": [],
+                "items": null,
+                "properties": {},
+                "additional_properties": false,
+                "entity": null,
+                "inverse": null,
+                "acyclic": null
+              },
+              "spent": {
+                "type": "number",
+                "required": true,
+                "default": 0,
+                "min_length": null,
+                "max_length": null,
+                "min": null,
+                "max": null,
+                "values": [],
+                "items": null,
+                "properties": {},
+                "additional_properties": false,
+                "entity": null,
+                "inverse": null,
+                "acyclic": null
+              },
+              "views": {
+                "type": "integer",
+                "required": true,
+                "default": 0,
+                "min_length": null,
+                "max_length": null,
+                "min": 0,
+                "max": null,
+                "values": [],
+                "items": null,
+                "properties": {},
+                "additional_properties": false,
+                "entity": null,
+                "inverse": null,
+                "acyclic": null
+              }
+            },
+            "additional_fields": false
+          },
+          "lifecycle": {
+            "initial": "open",
+            "states": [
+              "open",
+              "closed"
+            ]
+          },
+          "invariants": [],
+          "create": {
+            "emit": {
+              "type": "CounterOpened",
+              "payload": {
+                "name": "$fields.name",
+                "views": "$fields.views"
+              }
+            }
+          },
+          "operations": {
+            "charge": {
+              "arguments": {
+                "fields": {
+                  "amount": {
+                    "type": "number",
+                    "required": true,
+                    "min_length": null,
+                    "max_length": null,
+                    "min": 0,
+                    "max": null,
+                    "values": [],
+                    "items": null,
+                    "properties": {},
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "acyclic": null
+                  }
+                },
+                "additional_fields": false
+              },
+              "transitions": [
+                {
+                  "from": "open",
+                  "to": "open"
+                }
+              ],
+              "preconditions": [],
+              "set": {
+                "spent": {
+                  "increment": "$args.amount"
+                }
+              },
+              "emits": [
+                {
+                  "type": "Charged",
+                  "payload": {
+                    "amount": "$args.amount",
+                    "spent": "$fields.spent"
+                  }
+                }
+              ]
+            },
+            "close": {
+              "arguments": {
+                "fields": {},
+                "additional_fields": false
+              },
+              "transitions": [
+                {
+                  "from": "open",
+                  "to": "closed"
+                }
+              ],
+              "preconditions": [],
+              "set": {},
+              "emits": []
+            },
+            "view": {
+              "arguments": {
+                "fields": {},
+                "additional_fields": false
+              },
+              "transitions": [
+                {
+                  "from": "open",
+                  "to": "open"
+                }
+              ],
+              "preconditions": [],
+              "set": {
+                "views": {
+                  "increment": 1
+                }
+              },
+              "emits": [
+                {
+                  "type": "Viewed",
+                  "payload": {
+                    "after": "$fields.views",
+                    "before": "$old_fields.views"
+                  }
+                }
+              ]
+            }
+          },
+          "projections": {}
+        },
+        "command": {
+          "command": "create",
+          "fields": {
+            "name": "second",
+            "spent": 0,
+            "views": 4
+          }
+        },
+        "entity": "counter",
+        "id": "c2",
+        "revision": 1,
+        "from_state": null,
+        "to_state": "open",
+        "result": {
+          "entity": "counter",
+          "version": 1,
+          "id": "c2",
+          "lifecycle_state": "open",
+          "revision": 1,
+          "fields": {
+            "name": "second",
+            "spent": 0,
+            "views": 4
+          }
+        },
+        "changed": {
+          "name": "second",
+          "spent": 0,
+          "views": 4
+        },
+        "events": [
+          {
+            "entity": "counter",
+            "version": 1,
+            "id": "c2",
+            "revision": 1,
+            "type": "CounterOpened",
+            "from_state": null,
+            "to_state": "open",
+            "changed": {
+              "name": "second",
+              "spent": 0,
+              "views": 4
+            },
+            "args": {
+              "name": "second",
+              "spent": 0,
+              "views": 4
+            },
+            "payload": {
+              "name": "second",
+              "views": 4
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "observations": [
+    {
+      "entity": "counter",
+      "id": "c2",
+      "revision": 1,
+      "envelope": {
+        "record_id": "c2-seen",
+        "recorded_at": "2026-11-23T10:12:00Z",
+        "correlation": "fixture-flow",
+        "causation": null,
+        "actor": "fixture",
+        "record": null
+      }
+    }
+  ],
+  "events": []
+}

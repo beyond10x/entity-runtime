@@ -1,0 +1,3050 @@
+{
+  "definitions": [
+    {
+      "create": {
+        "emit": {
+          "payload": {
+            "name": "$fields.name",
+            "views": "$fields.views"
+          },
+          "type": "CounterOpened"
+        }
+      },
+      "entity": "counter",
+      "lifecycle": {
+        "initial": "open",
+        "states": [
+          "open",
+          "closed"
+        ]
+      },
+      "operations": {
+        "charge": {
+          "arguments": {
+            "fields": {
+              "amount": {
+                "min": 0,
+                "required": true,
+                "type": "number"
+              }
+            }
+          },
+          "emits": [
+            {
+              "payload": {
+                "amount": "$args.amount",
+                "spent": "$fields.spent"
+              },
+              "type": "Charged"
+            }
+          ],
+          "set": {
+            "spent": {
+              "increment": "$args.amount"
+            }
+          },
+          "transitions": [
+            {
+              "from": "open",
+              "to": "open"
+            }
+          ]
+        },
+        "close": {
+          "transitions": [
+            {
+              "from": "open",
+              "to": "closed"
+            }
+          ]
+        },
+        "view": {
+          "emits": [
+            {
+              "payload": {
+                "after": "$fields.views",
+                "before": "$old_fields.views"
+              },
+              "type": "Viewed"
+            }
+          ],
+          "set": {
+            "views": {
+              "increment": 1
+            }
+          },
+          "transitions": [
+            {
+              "from": "open",
+              "to": "open"
+            }
+          ]
+        }
+      },
+      "schema": {
+        "additional_fields": false,
+        "fields": {
+          "name": {
+            "min_length": 1,
+            "required": true,
+            "type": "string"
+          },
+          "spent": {
+            "default": 0,
+            "required": true,
+            "type": "number"
+          },
+          "views": {
+            "default": 0,
+            "min": 0,
+            "required": true,
+            "type": "integer"
+          }
+        }
+      },
+      "version": 1
+    },
+    {
+      "entity": "note",
+      "lifecycle": {
+        "initial": "draft",
+        "states": [
+          "draft",
+          "final"
+        ]
+      },
+      "operations": {
+        "finish": {
+          "emits": [
+            {
+              "payload": {
+                "text": "$fields.text"
+              },
+              "type": "NoteFinished"
+            }
+          ],
+          "transitions": [
+            {
+              "from": "draft",
+              "to": "final"
+            }
+          ]
+        }
+      },
+      "schema": {
+        "fields": {
+          "text": {
+            "required": true,
+            "type": "string"
+          }
+        }
+      },
+      "version": 1
+    }
+  ],
+  "subjects": [
+    {
+      "entity": "counter",
+      "events": [
+        {
+          "args": {
+            "name": "first",
+            "spent": 0,
+            "views": 0
+          },
+          "changed": {
+            "name": "first",
+            "spent": 0,
+            "views": 0
+          },
+          "entity": "counter",
+          "from_state": null,
+          "id": "c1",
+          "payload": {
+            "name": "first",
+            "views": 0
+          },
+          "revision": 1,
+          "to_state": "open",
+          "type": "CounterOpened",
+          "version": 1
+        },
+        {
+          "args": {},
+          "changed": {
+            "views": 1
+          },
+          "entity": "counter",
+          "from_state": "open",
+          "id": "c1",
+          "payload": {
+            "after": 1,
+            "before": 0
+          },
+          "revision": 2,
+          "to_state": "open",
+          "type": "Viewed",
+          "version": 1
+        },
+        {
+          "args": {},
+          "changed": {
+            "views": 2
+          },
+          "entity": "counter",
+          "from_state": "open",
+          "id": "c1",
+          "payload": {
+            "after": 2,
+            "before": 1
+          },
+          "revision": 3,
+          "to_state": "open",
+          "type": "Viewed",
+          "version": 1
+        },
+        {
+          "args": {
+            "amount": 0.1
+          },
+          "changed": {
+            "spent": 0.1
+          },
+          "entity": "counter",
+          "from_state": "open",
+          "id": "c1",
+          "payload": {
+            "amount": 0.1,
+            "spent": 0.1
+          },
+          "revision": 4,
+          "to_state": "open",
+          "type": "Charged",
+          "version": 1
+        },
+        {
+          "args": {},
+          "changed": {
+            "views": 3
+          },
+          "entity": "counter",
+          "from_state": "open",
+          "id": "c1",
+          "payload": {
+            "after": 3,
+            "before": 2
+          },
+          "revision": 5,
+          "to_state": "open",
+          "type": "Viewed",
+          "version": 1
+        },
+        {
+          "args": {
+            "amount": 2.5
+          },
+          "changed": {
+            "spent": 2.6
+          },
+          "entity": "counter",
+          "from_state": "open",
+          "id": "c1",
+          "payload": {
+            "amount": 2.5,
+            "spent": 2.6
+          },
+          "revision": 6,
+          "to_state": "open",
+          "type": "Charged",
+          "version": 1
+        },
+        {
+          "args": {
+            "amount": 0.2
+          },
+          "changed": {
+            "spent": 2.8
+          },
+          "entity": "counter",
+          "from_state": "open",
+          "id": "c1",
+          "payload": {
+            "amount": 0.2,
+            "spent": 2.8
+          },
+          "revision": 7,
+          "to_state": "open",
+          "type": "Charged",
+          "version": 1
+        },
+        {
+          "args": {},
+          "changed": {
+            "views": 4
+          },
+          "entity": "counter",
+          "from_state": "open",
+          "id": "c1",
+          "payload": {
+            "after": 4,
+            "before": 3
+          },
+          "revision": 8,
+          "to_state": "open",
+          "type": "Viewed",
+          "version": 1
+        }
+      ],
+      "id": "c1",
+      "instance": {
+        "entity": "counter",
+        "fields": {
+          "name": "first",
+          "spent": 2.8,
+          "views": 4
+        },
+        "id": "c1",
+        "lifecycle_state": "closed",
+        "revision": 9,
+        "version": 1
+      },
+      "observations": [
+        {
+          "entity": "counter",
+          "envelope": {
+            "actor": "fixture",
+            "causation": null,
+            "correlation": "fixture-flow",
+            "record": {
+              "ratio": 0.5,
+              "seen_by": "auditor"
+            },
+            "record_id": "c1-seen",
+            "recorded_at": "2026-11-23T10:04:00Z"
+          },
+          "id": "c1",
+          "revision": 3
+        }
+      ],
+      "record_bytes_by_digest": [
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"command\":{\"command\":\"create\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":0}},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"changed\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"entity\":\"counter\",\"from_state\":null,\"id\":\"c1\",\"payload\":{\"name\":\"first\",\"views\":0},\"revision\":1,\"to_state\":\"open\",\"type\":\"CounterOpened\",\"version\":1}],\"from_state\":null,\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1},\"revision\":1,\"to_state\":\"open\"},\"record_id\":\"c1-create\",\"recorded_at\":\"2026-11-23T10:01:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":1},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":1},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"after\":1,\"before\":0},\"revision\":2,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":1},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":2,\"version\":1},\"revision\":2,\"to_state\":\"open\"},\"record_id\":\"c1-0-view\",\"recorded_at\":\"2026-11-23T10:02:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":1},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":2,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":2},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":2},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"after\":2,\"before\":1},\"revision\":3,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":2},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":3,\"version\":1},\"revision\":3,\"to_state\":\"open\"},\"record_id\":\"c1-1-view\",\"recorded_at\":\"2026-11-23T10:03:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":2},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":3,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"spent\":0.1},\"command\":{\"arguments\":{\"amount\":0.1},\"command\":\"execute\",\"operation\":\"charge\"},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{\"amount\":0.1},\"changed\":{\"spent\":0.1},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"amount\":0.1,\"spent\":0.1},\"revision\":4,\"to_state\":\"open\",\"type\":\"Charged\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0.1,\"views\":2},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":4,\"version\":1},\"revision\":4,\"to_state\":\"open\"},\"record_id\":\"c1-2-charge\",\"recorded_at\":\"2026-11-23T10:05:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0.1,\"views\":2},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":4,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":3},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":3},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"after\":3,\"before\":2},\"revision\":5,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0.1,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":5,\"version\":1},\"revision\":5,\"to_state\":\"open\"},\"record_id\":\"c1-3-view\",\"recorded_at\":\"2026-11-23T10:06:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0.1,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":5,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"spent\":2.6},\"command\":{\"arguments\":{\"amount\":2.5},\"command\":\"execute\",\"operation\":\"charge\"},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{\"amount\":2.5},\"changed\":{\"spent\":2.6},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"amount\":2.5,\"spent\":2.6},\"revision\":6,\"to_state\":\"open\",\"type\":\"Charged\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.6,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":6,\"version\":1},\"revision\":6,\"to_state\":\"open\"},\"record_id\":\"c1-4-charge\",\"recorded_at\":\"2026-11-23T10:07:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.6,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":6,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"spent\":2.8},\"command\":{\"arguments\":{\"amount\":0.2},\"command\":\"execute\",\"operation\":\"charge\"},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{\"amount\":0.2},\"changed\":{\"spent\":2.8},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"amount\":0.2,\"spent\":2.8},\"revision\":7,\"to_state\":\"open\",\"type\":\"Charged\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":7,\"version\":1},\"revision\":7,\"to_state\":\"open\"},\"record_id\":\"c1-5-charge\",\"recorded_at\":\"2026-11-23T10:08:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":7,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":4},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":4},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"after\":4,\"before\":3},\"revision\":8,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":4},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":8,\"version\":1},\"revision\":8,\"to_state\":\"open\"},\"record_id\":\"c1-6-view\",\"recorded_at\":\"2026-11-23T10:09:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":4},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":8,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"close\"},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":4},\"id\":\"c1\",\"lifecycle_state\":\"closed\",\"revision\":9,\"version\":1},\"revision\":9,\"to_state\":\"closed\"},\"record_id\":\"c1-7-close\",\"recorded_at\":\"2026-11-23T10:10:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":4},\"id\":\"c1\",\"lifecycle_state\":\"closed\",\"revision\":9,\"version\":1}},\"kind\":\"decision\"}]"
+      ],
+      "record_bytes_embedded": [
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"command\":{\"command\":\"create\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":0}},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"changed\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"entity\":\"counter\",\"from_state\":null,\"id\":\"c1\",\"payload\":{\"name\":\"first\",\"views\":0},\"revision\":1,\"to_state\":\"open\",\"type\":\"CounterOpened\",\"version\":1}],\"from_state\":null,\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1},\"revision\":1,\"to_state\":\"open\"},\"record_id\":\"c1-create\",\"recorded_at\":\"2026-11-23T10:01:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":0},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":1},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":1},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"after\":1,\"before\":0},\"revision\":2,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":1},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":2,\"version\":1},\"revision\":2,\"to_state\":\"open\"},\"record_id\":\"c1-0-view\",\"recorded_at\":\"2026-11-23T10:02:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":1},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":2,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":2},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":2},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"after\":2,\"before\":1},\"revision\":3,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":2},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":3,\"version\":1},\"revision\":3,\"to_state\":\"open\"},\"record_id\":\"c1-1-view\",\"recorded_at\":\"2026-11-23T10:03:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0,\"views\":2},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":3,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"spent\":0.1},\"command\":{\"arguments\":{\"amount\":0.1},\"command\":\"execute\",\"operation\":\"charge\"},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{\"amount\":0.1},\"changed\":{\"spent\":0.1},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"amount\":0.1,\"spent\":0.1},\"revision\":4,\"to_state\":\"open\",\"type\":\"Charged\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0.1,\"views\":2},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":4,\"version\":1},\"revision\":4,\"to_state\":\"open\"},\"record_id\":\"c1-2-charge\",\"recorded_at\":\"2026-11-23T10:05:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0.1,\"views\":2},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":4,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":3},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":3},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"after\":3,\"before\":2},\"revision\":5,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0.1,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":5,\"version\":1},\"revision\":5,\"to_state\":\"open\"},\"record_id\":\"c1-3-view\",\"recorded_at\":\"2026-11-23T10:06:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":0.1,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":5,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"spent\":2.6},\"command\":{\"arguments\":{\"amount\":2.5},\"command\":\"execute\",\"operation\":\"charge\"},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{\"amount\":2.5},\"changed\":{\"spent\":2.6},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"amount\":2.5,\"spent\":2.6},\"revision\":6,\"to_state\":\"open\",\"type\":\"Charged\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.6,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":6,\"version\":1},\"revision\":6,\"to_state\":\"open\"},\"record_id\":\"c1-4-charge\",\"recorded_at\":\"2026-11-23T10:07:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.6,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":6,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"spent\":2.8},\"command\":{\"arguments\":{\"amount\":0.2},\"command\":\"execute\",\"operation\":\"charge\"},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{\"amount\":0.2},\"changed\":{\"spent\":2.8},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"amount\":0.2,\"spent\":2.8},\"revision\":7,\"to_state\":\"open\",\"type\":\"Charged\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":7,\"version\":1},\"revision\":7,\"to_state\":\"open\"},\"record_id\":\"c1-5-charge\",\"recorded_at\":\"2026-11-23T10:08:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":3},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":7,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":4},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":4},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"c1\",\"payload\":{\"after\":4,\"before\":3},\"revision\":8,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":4},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":8,\"version\":1},\"revision\":8,\"to_state\":\"open\"},\"record_id\":\"c1-6-view\",\"recorded_at\":\"2026-11-23T10:09:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":4},\"id\":\"c1\",\"lifecycle_state\":\"open\",\"revision\":8,\"version\":1}},\"kind\":\"decision\"}]",
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"close\"},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[],\"from_state\":\"open\",\"id\":\"c1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":4},\"id\":\"c1\",\"lifecycle_state\":\"closed\",\"revision\":9,\"version\":1},\"revision\":9,\"to_state\":\"closed\"},\"record_id\":\"c1-7-close\",\"recorded_at\":\"2026-11-23T10:10:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"first\",\"spent\":2.8,\"views\":4},\"id\":\"c1\",\"lifecycle_state\":\"closed\",\"revision\":9,\"version\":1}},\"kind\":\"decision\"}]"
+      ],
+      "records": [
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "name": "first",
+              "spent": 0,
+              "views": 0
+            },
+            "command": {
+              "command": "create",
+              "fields": {
+                "name": "first",
+                "spent": 0,
+                "views": 0
+              }
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {
+                  "name": "first",
+                  "spent": 0,
+                  "views": 0
+                },
+                "changed": {
+                  "name": "first",
+                  "spent": 0,
+                  "views": 0
+                },
+                "entity": "counter",
+                "from_state": null,
+                "id": "c1",
+                "payload": {
+                  "name": "first",
+                  "views": 0
+                },
+                "revision": 1,
+                "to_state": "open",
+                "type": "CounterOpened",
+                "version": 1
+              }
+            ],
+            "from_state": null,
+            "id": "c1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "first",
+                "spent": 0,
+                "views": 0
+              },
+              "id": "c1",
+              "lifecycle_state": "open",
+              "revision": 1,
+              "version": 1
+            },
+            "revision": 1,
+            "to_state": "open"
+          },
+          "record_id": "c1-create",
+          "recorded_at": "2026-11-23T10:01:00Z"
+        },
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "views": 1
+            },
+            "command": {
+              "arguments": {},
+              "command": "execute",
+              "operation": "view"
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {},
+                "changed": {
+                  "views": 1
+                },
+                "entity": "counter",
+                "from_state": "open",
+                "id": "c1",
+                "payload": {
+                  "after": 1,
+                  "before": 0
+                },
+                "revision": 2,
+                "to_state": "open",
+                "type": "Viewed",
+                "version": 1
+              }
+            ],
+            "from_state": "open",
+            "id": "c1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "first",
+                "spent": 0,
+                "views": 1
+              },
+              "id": "c1",
+              "lifecycle_state": "open",
+              "revision": 2,
+              "version": 1
+            },
+            "revision": 2,
+            "to_state": "open"
+          },
+          "record_id": "c1-0-view",
+          "recorded_at": "2026-11-23T10:02:00Z"
+        },
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "views": 2
+            },
+            "command": {
+              "arguments": {},
+              "command": "execute",
+              "operation": "view"
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {},
+                "changed": {
+                  "views": 2
+                },
+                "entity": "counter",
+                "from_state": "open",
+                "id": "c1",
+                "payload": {
+                  "after": 2,
+                  "before": 1
+                },
+                "revision": 3,
+                "to_state": "open",
+                "type": "Viewed",
+                "version": 1
+              }
+            ],
+            "from_state": "open",
+            "id": "c1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "first",
+                "spent": 0,
+                "views": 2
+              },
+              "id": "c1",
+              "lifecycle_state": "open",
+              "revision": 3,
+              "version": 1
+            },
+            "revision": 3,
+            "to_state": "open"
+          },
+          "record_id": "c1-1-view",
+          "recorded_at": "2026-11-23T10:03:00Z"
+        },
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "spent": 0.1
+            },
+            "command": {
+              "arguments": {
+                "amount": 0.1
+              },
+              "command": "execute",
+              "operation": "charge"
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {
+                  "amount": 0.1
+                },
+                "changed": {
+                  "spent": 0.1
+                },
+                "entity": "counter",
+                "from_state": "open",
+                "id": "c1",
+                "payload": {
+                  "amount": 0.1,
+                  "spent": 0.1
+                },
+                "revision": 4,
+                "to_state": "open",
+                "type": "Charged",
+                "version": 1
+              }
+            ],
+            "from_state": "open",
+            "id": "c1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "first",
+                "spent": 0.1,
+                "views": 2
+              },
+              "id": "c1",
+              "lifecycle_state": "open",
+              "revision": 4,
+              "version": 1
+            },
+            "revision": 4,
+            "to_state": "open"
+          },
+          "record_id": "c1-2-charge",
+          "recorded_at": "2026-11-23T10:05:00Z"
+        },
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "views": 3
+            },
+            "command": {
+              "arguments": {},
+              "command": "execute",
+              "operation": "view"
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {},
+                "changed": {
+                  "views": 3
+                },
+                "entity": "counter",
+                "from_state": "open",
+                "id": "c1",
+                "payload": {
+                  "after": 3,
+                  "before": 2
+                },
+                "revision": 5,
+                "to_state": "open",
+                "type": "Viewed",
+                "version": 1
+              }
+            ],
+            "from_state": "open",
+            "id": "c1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "first",
+                "spent": 0.1,
+                "views": 3
+              },
+              "id": "c1",
+              "lifecycle_state": "open",
+              "revision": 5,
+              "version": 1
+            },
+            "revision": 5,
+            "to_state": "open"
+          },
+          "record_id": "c1-3-view",
+          "recorded_at": "2026-11-23T10:06:00Z"
+        },
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "spent": 2.6
+            },
+            "command": {
+              "arguments": {
+                "amount": 2.5
+              },
+              "command": "execute",
+              "operation": "charge"
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {
+                  "amount": 2.5
+                },
+                "changed": {
+                  "spent": 2.6
+                },
+                "entity": "counter",
+                "from_state": "open",
+                "id": "c1",
+                "payload": {
+                  "amount": 2.5,
+                  "spent": 2.6
+                },
+                "revision": 6,
+                "to_state": "open",
+                "type": "Charged",
+                "version": 1
+              }
+            ],
+            "from_state": "open",
+            "id": "c1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "first",
+                "spent": 2.6,
+                "views": 3
+              },
+              "id": "c1",
+              "lifecycle_state": "open",
+              "revision": 6,
+              "version": 1
+            },
+            "revision": 6,
+            "to_state": "open"
+          },
+          "record_id": "c1-4-charge",
+          "recorded_at": "2026-11-23T10:07:00Z"
+        },
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "spent": 2.8
+            },
+            "command": {
+              "arguments": {
+                "amount": 0.2
+              },
+              "command": "execute",
+              "operation": "charge"
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {
+                  "amount": 0.2
+                },
+                "changed": {
+                  "spent": 2.8
+                },
+                "entity": "counter",
+                "from_state": "open",
+                "id": "c1",
+                "payload": {
+                  "amount": 0.2,
+                  "spent": 2.8
+                },
+                "revision": 7,
+                "to_state": "open",
+                "type": "Charged",
+                "version": 1
+              }
+            ],
+            "from_state": "open",
+            "id": "c1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "first",
+                "spent": 2.8,
+                "views": 3
+              },
+              "id": "c1",
+              "lifecycle_state": "open",
+              "revision": 7,
+              "version": 1
+            },
+            "revision": 7,
+            "to_state": "open"
+          },
+          "record_id": "c1-5-charge",
+          "recorded_at": "2026-11-23T10:08:00Z"
+        },
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "views": 4
+            },
+            "command": {
+              "arguments": {},
+              "command": "execute",
+              "operation": "view"
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {},
+                "changed": {
+                  "views": 4
+                },
+                "entity": "counter",
+                "from_state": "open",
+                "id": "c1",
+                "payload": {
+                  "after": 4,
+                  "before": 3
+                },
+                "revision": 8,
+                "to_state": "open",
+                "type": "Viewed",
+                "version": 1
+              }
+            ],
+            "from_state": "open",
+            "id": "c1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "first",
+                "spent": 2.8,
+                "views": 4
+              },
+              "id": "c1",
+              "lifecycle_state": "open",
+              "revision": 8,
+              "version": 1
+            },
+            "revision": 8,
+            "to_state": "open"
+          },
+          "record_id": "c1-6-view",
+          "recorded_at": "2026-11-23T10:09:00Z"
+        },
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {},
+            "command": {
+              "arguments": {},
+              "command": "execute",
+              "operation": "close"
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [],
+            "from_state": "open",
+            "id": "c1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "first",
+                "spent": 2.8,
+                "views": 4
+              },
+              "id": "c1",
+              "lifecycle_state": "closed",
+              "revision": 9,
+              "version": 1
+            },
+            "revision": 9,
+            "to_state": "closed"
+          },
+          "record_id": "c1-7-close",
+          "recorded_at": "2026-11-23T10:10:00Z"
+        }
+      ]
+    },
+    {
+      "entity": "counter",
+      "events": [
+        {
+          "args": {
+            "name": "second",
+            "spent": 0,
+            "views": 4
+          },
+          "changed": {
+            "name": "second",
+            "spent": 0,
+            "views": 4
+          },
+          "entity": "counter",
+          "from_state": null,
+          "id": "c2",
+          "payload": {
+            "name": "second",
+            "views": 4
+          },
+          "revision": 1,
+          "to_state": "open",
+          "type": "CounterOpened",
+          "version": 1
+        }
+      ],
+      "id": "c2",
+      "instance": {
+        "entity": "counter",
+        "fields": {
+          "name": "second",
+          "spent": 0,
+          "views": 4
+        },
+        "id": "c2",
+        "lifecycle_state": "open",
+        "revision": 1,
+        "version": 1
+      },
+      "observations": [
+        {
+          "entity": "counter",
+          "envelope": {
+            "actor": "fixture",
+            "causation": null,
+            "correlation": "fixture-flow",
+            "record": null,
+            "record_id": "c2-seen",
+            "recorded_at": "2026-11-23T10:12:00Z"
+          },
+          "id": "c2",
+          "revision": 1
+        }
+      ],
+      "record_bytes_by_digest": [
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"command\":{\"command\":\"create\",\"fields\":{\"name\":\"second\",\"spent\":0,\"views\":4}},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"changed\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"entity\":\"counter\",\"from_state\":null,\"id\":\"c2\",\"payload\":{\"name\":\"second\",\"views\":4},\"revision\":1,\"to_state\":\"open\",\"type\":\"CounterOpened\",\"version\":1}],\"from_state\":null,\"id\":\"c2\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"id\":\"c2\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1},\"revision\":1,\"to_state\":\"open\"},\"record_id\":\"c2-create\",\"recorded_at\":\"2026-11-23T10:11:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"id\":\"c2\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1}},\"kind\":\"decision\"}]"
+      ],
+      "record_bytes_embedded": [
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"command\":{\"command\":\"create\",\"fields\":{\"name\":\"second\",\"spent\":0,\"views\":4}},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"changed\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"entity\":\"counter\",\"from_state\":null,\"id\":\"c2\",\"payload\":{\"name\":\"second\",\"views\":4},\"revision\":1,\"to_state\":\"open\",\"type\":\"CounterOpened\",\"version\":1}],\"from_state\":null,\"id\":\"c2\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"id\":\"c2\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1},\"revision\":1,\"to_state\":\"open\"},\"record_id\":\"c2-create\",\"recorded_at\":\"2026-11-23T10:11:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"second\",\"spent\":0,\"views\":4},\"id\":\"c2\",\"lifecycle_state\":\"open\",\"revision\":1,\"version\":1}},\"kind\":\"decision\"}]"
+      ],
+      "records": [
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "name": "second",
+              "spent": 0,
+              "views": 4
+            },
+            "command": {
+              "command": "create",
+              "fields": {
+                "name": "second",
+                "spent": 0,
+                "views": 4
+              }
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {
+                  "name": "second",
+                  "spent": 0,
+                  "views": 4
+                },
+                "changed": {
+                  "name": "second",
+                  "spent": 0,
+                  "views": 4
+                },
+                "entity": "counter",
+                "from_state": null,
+                "id": "c2",
+                "payload": {
+                  "name": "second",
+                  "views": 4
+                },
+                "revision": 1,
+                "to_state": "open",
+                "type": "CounterOpened",
+                "version": 1
+              }
+            ],
+            "from_state": null,
+            "id": "c2",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "second",
+                "spent": 0,
+                "views": 4
+              },
+              "id": "c2",
+              "lifecycle_state": "open",
+              "revision": 1,
+              "version": 1
+            },
+            "revision": 1,
+            "to_state": "open"
+          },
+          "record_id": "c2-create",
+          "recorded_at": "2026-11-23T10:11:00Z"
+        }
+      ]
+    },
+    {
+      "entity": "counter",
+      "events": [
+        {
+          "args": {
+            "name": "legacy",
+            "spent": 0,
+            "views": 0
+          },
+          "changed": {
+            "name": "legacy",
+            "spent": 0,
+            "views": 0
+          },
+          "entity": "counter",
+          "from_state": null,
+          "id": "legacy-1",
+          "payload": {
+            "name": "legacy",
+            "views": 0
+          },
+          "revision": 1,
+          "to_state": "open",
+          "type": "CounterOpened",
+          "version": 1
+        },
+        {
+          "args": {},
+          "changed": {
+            "views": 1
+          },
+          "entity": "counter",
+          "from_state": "open",
+          "id": "legacy-1",
+          "payload": {
+            "after": 1,
+            "before": 0
+          },
+          "revision": 2,
+          "to_state": "open",
+          "type": "Viewed",
+          "version": 1
+        }
+      ],
+      "id": "legacy-1",
+      "instance": {
+        "entity": "counter",
+        "fields": {
+          "name": "legacy",
+          "spent": 0,
+          "views": 1
+        },
+        "id": "legacy-1",
+        "lifecycle_state": "open",
+        "revision": 2,
+        "version": 1
+      },
+      "observations": [],
+      "record_bytes_by_digest": [
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":1},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":\"sha256:1ee3bdfb857ed54157088acb1f9bcf3118f2bbb13ab030110c8800732053e131\",\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":1},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"legacy-1\",\"payload\":{\"after\":1,\"before\":0},\"revision\":2,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"legacy-1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"legacy\",\"spent\":0,\"views\":1},\"id\":\"legacy-1\",\"lifecycle_state\":\"open\",\"revision\":2,\"version\":1},\"revision\":2,\"to_state\":\"open\"},\"record_id\":\"legacy-1-view\",\"recorded_at\":\"2026-11-23T10:14:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"legacy\",\"spent\":0,\"views\":1},\"id\":\"legacy-1\",\"lifecycle_state\":\"open\",\"revision\":2,\"version\":1}},\"kind\":\"decision\"}]"
+      ],
+      "record_bytes_embedded": [
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"views\":1},\"command\":{\"arguments\":{},\"command\":\"execute\",\"operation\":\"view\"},\"definition\":{\"create\":{\"emit\":{\"payload\":{\"name\":\"$fields.name\",\"views\":\"$fields.views\"},\"type\":\"CounterOpened\"}},\"entity\":\"counter\",\"invariants\":[],\"lifecycle\":{\"initial\":\"open\",\"states\":[\"open\",\"closed\"]},\"operations\":{\"charge\":{\"arguments\":{\"additional_fields\":false,\"fields\":{\"amount\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]}}},\"emits\":[{\"payload\":{\"amount\":\"$args.amount\",\"spent\":\"$fields.spent\"},\"type\":\"Charged\"}],\"preconditions\":[],\"set\":{\"spent\":{\"increment\":\"$args.amount\"}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]},\"close\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"open\",\"to\":\"closed\"}]},\"view\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"after\":\"$fields.views\",\"before\":\"$old_fields.views\"},\"type\":\"Viewed\"}],\"preconditions\":[],\"set\":{\"views\":{\"increment\":1}},\"transitions\":[{\"from\":\"open\",\"to\":\"open\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"name\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":1,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]},\"spent\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"number\",\"values\":[]},\"views\":{\"acyclic\":null,\"additional_properties\":false,\"default\":0,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":0,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"integer\",\"values\":[]}}},\"version\":1},\"entity\":\"counter\",\"events\":[{\"args\":{},\"changed\":{\"views\":1},\"entity\":\"counter\",\"from_state\":\"open\",\"id\":\"legacy-1\",\"payload\":{\"after\":1,\"before\":0},\"revision\":2,\"to_state\":\"open\",\"type\":\"Viewed\",\"version\":1}],\"from_state\":\"open\",\"id\":\"legacy-1\",\"result\":{\"entity\":\"counter\",\"fields\":{\"name\":\"legacy\",\"spent\":0,\"views\":1},\"id\":\"legacy-1\",\"lifecycle_state\":\"open\",\"revision\":2,\"version\":1},\"revision\":2,\"to_state\":\"open\"},\"record_id\":\"legacy-1-view\",\"recorded_at\":\"2026-11-23T10:14:00Z\"},\"instance\":{\"entity\":\"counter\",\"fields\":{\"name\":\"legacy\",\"spent\":0,\"views\":1},\"id\":\"legacy-1\",\"lifecycle_state\":\"open\",\"revision\":2,\"version\":1}},\"kind\":\"decision\"}]"
+      ],
+      "records": [
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "views": 1
+            },
+            "command": {
+              "arguments": {},
+              "command": "execute",
+              "operation": "view"
+            },
+            "definition": {
+              "create": {
+                "emit": {
+                  "payload": {
+                    "name": "$fields.name",
+                    "views": "$fields.views"
+                  },
+                  "type": "CounterOpened"
+                }
+              },
+              "entity": "counter",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "open",
+                "states": [
+                  "open",
+                  "closed"
+                ]
+              },
+              "operations": {
+                "charge": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {
+                      "amount": {
+                        "acyclic": null,
+                        "additional_properties": false,
+                        "entity": null,
+                        "inverse": null,
+                        "items": null,
+                        "max": null,
+                        "max_length": null,
+                        "min": 0,
+                        "min_length": null,
+                        "properties": {},
+                        "required": true,
+                        "type": "number",
+                        "values": []
+                      }
+                    }
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "amount": "$args.amount",
+                        "spent": "$fields.spent"
+                      },
+                      "type": "Charged"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "spent": {
+                      "increment": "$args.amount"
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                },
+                "close": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "closed"
+                    }
+                  ]
+                },
+                "view": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "after": "$fields.views",
+                        "before": "$old_fields.views"
+                      },
+                      "type": "Viewed"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {
+                    "views": {
+                      "increment": 1
+                    }
+                  },
+                  "transitions": [
+                    {
+                      "from": "open",
+                      "to": "open"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "name": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": 1,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  },
+                  "spent": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "number",
+                    "values": []
+                  },
+                  "views": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "default": 0,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": 0,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "integer",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "counter",
+            "events": [
+              {
+                "args": {},
+                "changed": {
+                  "views": 1
+                },
+                "entity": "counter",
+                "from_state": "open",
+                "id": "legacy-1",
+                "payload": {
+                  "after": 1,
+                  "before": 0
+                },
+                "revision": 2,
+                "to_state": "open",
+                "type": "Viewed",
+                "version": 1
+              }
+            ],
+            "from_state": "open",
+            "id": "legacy-1",
+            "result": {
+              "entity": "counter",
+              "fields": {
+                "name": "legacy",
+                "spent": 0,
+                "views": 1
+              },
+              "id": "legacy-1",
+              "lifecycle_state": "open",
+              "revision": 2,
+              "version": 1
+            },
+            "revision": 2,
+            "to_state": "open"
+          },
+          "record_id": "legacy-1-view",
+          "recorded_at": "2026-11-23T10:14:00Z"
+        }
+      ]
+    },
+    {
+      "entity": "counter",
+      "events": [
+        {
+          "args": {
+            "name": "plain",
+            "spent": 0,
+            "views": 0
+          },
+          "changed": {
+            "name": "plain",
+            "spent": 0,
+            "views": 0
+          },
+          "entity": "counter",
+          "from_state": null,
+          "id": "p1",
+          "payload": {
+            "name": "plain",
+            "views": 0
+          },
+          "revision": 1,
+          "to_state": "open",
+          "type": "CounterOpened",
+          "version": 1
+        },
+        {
+          "args": {},
+          "changed": {
+            "views": 1
+          },
+          "entity": "counter",
+          "from_state": "open",
+          "id": "p1",
+          "payload": {
+            "after": 1,
+            "before": 0
+          },
+          "revision": 2,
+          "to_state": "open",
+          "type": "Viewed",
+          "version": 1
+        }
+      ],
+      "id": "p1",
+      "instance": {
+        "entity": "counter",
+        "fields": {
+          "name": "plain",
+          "spent": 0,
+          "views": 1
+        },
+        "id": "p1",
+        "lifecycle_state": "open",
+        "revision": 2,
+        "version": 1
+      },
+      "observations": [],
+      "record_bytes_by_digest": [],
+      "record_bytes_embedded": [],
+      "records": []
+    },
+    {
+      "entity": "note",
+      "events": [
+        {
+          "args": {},
+          "changed": {},
+          "entity": "note",
+          "from_state": "draft",
+          "id": "n1",
+          "payload": {
+            "text": "hello"
+          },
+          "revision": 2,
+          "to_state": "final",
+          "type": "NoteFinished",
+          "version": 1
+        }
+      ],
+      "id": "n1",
+      "instance": {
+        "entity": "note",
+        "fields": {
+          "text": "hello"
+        },
+        "id": "n1",
+        "lifecycle_state": "final",
+        "revision": 2,
+        "version": 1
+      },
+      "observations": [],
+      "record_bytes_by_digest": [
+        "[\"er.record/5\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"text\":\"hello\"},\"command\":{\"command\":\"create\",\"fields\":{\"text\":\"hello\"}},\"definition\":\"sha256:aafa9ee1a7ee4e9dbb5404e84759b79ae942ccb010eca48cca92b1ed5bcac904\",\"entity\":\"note\",\"events\":[],\"from_state\":null,\"id\":\"n1\",\"result\":{\"entity\":\"note\",\"fields\":{\"text\":\"hello\"},\"id\":\"n1\",\"lifecycle_state\":\"draft\",\"revision\":1,\"version\":1},\"revision\":1,\"to_state\":\"draft\"},\"record_id\":\"n1-create\",\"recorded_at\":\"2026-11-23T10:13:00Z\"},\"instance\":{\"entity\":\"note\",\"fields\":{\"text\":\"hello\"},\"id\":\"n1\",\"lifecycle_state\":\"draft\",\"revision\":1,\"version\":1}},\"kind\":\"decision\"}]"
+      ],
+      "record_bytes_embedded": [
+        "[\"er.record/1\",{\"commit\":{\"envelope\":{\"actor\":\"fixture\",\"causation\":null,\"correlation\":\"fixture-flow\",\"record\":{\"changed\":{\"text\":\"hello\"},\"command\":{\"command\":\"create\",\"fields\":{\"text\":\"hello\"}},\"definition\":{\"create\":{\"emit\":null},\"entity\":\"note\",\"invariants\":[],\"lifecycle\":{\"initial\":\"draft\",\"states\":[\"draft\",\"final\"]},\"operations\":{\"finish\":{\"arguments\":{\"additional_fields\":false,\"fields\":{}},\"emits\":[{\"payload\":{\"text\":\"$fields.text\"},\"type\":\"NoteFinished\"}],\"preconditions\":[],\"set\":{},\"transitions\":[{\"from\":\"draft\",\"to\":\"final\"}]}},\"projections\":{},\"schema\":{\"additional_fields\":false,\"fields\":{\"text\":{\"acyclic\":null,\"additional_properties\":false,\"entity\":null,\"inverse\":null,\"items\":null,\"max\":null,\"max_length\":null,\"min\":null,\"min_length\":null,\"properties\":{},\"required\":true,\"type\":\"string\",\"values\":[]}}},\"version\":1},\"entity\":\"note\",\"events\":[],\"from_state\":null,\"id\":\"n1\",\"result\":{\"entity\":\"note\",\"fields\":{\"text\":\"hello\"},\"id\":\"n1\",\"lifecycle_state\":\"draft\",\"revision\":1,\"version\":1},\"revision\":1,\"to_state\":\"draft\"},\"record_id\":\"n1-create\",\"recorded_at\":\"2026-11-23T10:13:00Z\"},\"instance\":{\"entity\":\"note\",\"fields\":{\"text\":\"hello\"},\"id\":\"n1\",\"lifecycle_state\":\"draft\",\"revision\":1,\"version\":1}},\"kind\":\"decision\"}]"
+      ],
+      "records": [
+        {
+          "actor": "fixture",
+          "causation": null,
+          "correlation": "fixture-flow",
+          "record": {
+            "changed": {
+              "text": "hello"
+            },
+            "command": {
+              "command": "create",
+              "fields": {
+                "text": "hello"
+              }
+            },
+            "definition": {
+              "create": {
+                "emit": null
+              },
+              "entity": "note",
+              "invariants": [],
+              "lifecycle": {
+                "initial": "draft",
+                "states": [
+                  "draft",
+                  "final"
+                ]
+              },
+              "operations": {
+                "finish": {
+                  "arguments": {
+                    "additional_fields": false,
+                    "fields": {}
+                  },
+                  "emits": [
+                    {
+                      "payload": {
+                        "text": "$fields.text"
+                      },
+                      "type": "NoteFinished"
+                    }
+                  ],
+                  "preconditions": [],
+                  "set": {},
+                  "transitions": [
+                    {
+                      "from": "draft",
+                      "to": "final"
+                    }
+                  ]
+                }
+              },
+              "projections": {},
+              "schema": {
+                "additional_fields": false,
+                "fields": {
+                  "text": {
+                    "acyclic": null,
+                    "additional_properties": false,
+                    "entity": null,
+                    "inverse": null,
+                    "items": null,
+                    "max": null,
+                    "max_length": null,
+                    "min": null,
+                    "min_length": null,
+                    "properties": {},
+                    "required": true,
+                    "type": "string",
+                    "values": []
+                  }
+                }
+              },
+              "version": 1
+            },
+            "entity": "note",
+            "events": [],
+            "from_state": null,
+            "id": "n1",
+            "result": {
+              "entity": "note",
+              "fields": {
+                "text": "hello"
+              },
+              "id": "n1",
+              "lifecycle_state": "draft",
+              "revision": 1,
+              "version": 1
+            },
+            "revision": 1,
+            "to_state": "draft"
+          },
+          "record_id": "n1-create",
+          "recorded_at": "2026-11-23T10:13:00Z"
+        }
+      ]
+    }
+  ],
+  "written_by": "entity-store 0.33.1"
+}

@@ -44,6 +44,7 @@ Exit codes: 0 decided · 1 refused (or a definition is invalid) · 2 invalid inv
 | [`entity mcp`](#entity-mcp) | Mount stored entities as model-controlled MCP tools over standard input/output |
 | [`entity store`](#entity-store) | Work with persistent stores |
 | [`entity store migrate-file`](#entity-store-migrate-file) | Migrate a pre-0.15 File Store into the confined v2 format, out of place |
+| [`entity store migrate-file-v3`](#entity-store-migrate-file-v3) | Migrate a File Store v2 into v3, out of place: state apart from append-only history |
 | [`entity skill`](#entity-skill) | Render a compact Agent Skills document that teaches this installed CLI |
 
 ## `entity validate`
@@ -198,7 +199,7 @@ Usage: entity mcp --definition <DEFINITIONS> --store <STORE>
 | Argument | Required | Repeats | Default | Meaning |
 |---|---|---|---|---|
 | `--definition <DEFINITIONS>` | yes | yes | none | The definition file, YAML. Repeat to register several types or versions at once. |
-| `--store <STORE>` | yes | no | none | File Store v2 root used by every tool call. |
+| `--store <STORE>` | yes | no | none | File Store root (v2 or v3) used by every tool call. |
 
 ## `entity store`
 
@@ -220,6 +221,20 @@ Usage: entity store migrate-file [OPTIONS] --from <V1_ROOT> --to <V2_ROOT>
 |---|---|---|---|---|
 | `--from <V1_ROOT>` | yes | no | none | The legacy File Store directory. It is never modified. |
 | `--to <V2_ROOT>` | yes | no | none | A destination path that does not exist. |
+| `--dry-run` | no | no | none | Validate the complete migration without writing destination bytes. |
+
+## `entity store migrate-file-v3`
+
+Migrate a File Store v2 into v3, out of place: state apart from append-only history
+
+```text
+Usage: entity store migrate-file-v3 [OPTIONS] --from <V2_ROOT> --to <V3_ROOT>
+```
+
+| Argument | Required | Repeats | Default | Meaning |
+|---|---|---|---|---|
+| `--from <V2_ROOT>` | yes | no | none | The v2 File Store root. It is never modified. |
+| `--to <V3_ROOT>` | yes | no | none | A destination path that does not exist. |
 | `--dry-run` | no | no | none | Validate the complete migration without writing destination bytes. |
 
 ## `entity skill`

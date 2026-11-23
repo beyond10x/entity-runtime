@@ -3,6 +3,10 @@
 //!
 //! `CARGO_TARGET_TMPDIR` rather than `/tmp`, for the reason `both_providers.rs` gives.
 
+// File Store v3 lives in this binary rather than one of its own: test binaries stay few.
+#[path = "file_store_v3/mod.rs"]
+mod file_store_v3;
+
 use std::path::{Path, PathBuf};
 
 use entity_core::{Decision, Registry, Runtime};
@@ -49,6 +53,16 @@ fn scratch(name: &str) -> PathBuf {
         .join("file-record-index")
         .join(name);
     let _ = std::fs::remove_dir_all(&root);
+    root
+}
+
+/// An empty root marked File Store v2, which a handle keeps writing as v2: a new root is v3, and
+/// the v2 document layout these tests pin is still the one every v2 store is written in.
+#[cfg(unix)]
+fn v2_root(name: &str) -> PathBuf {
+    let root = scratch(name);
+    std::fs::create_dir_all(&root).expect("root");
+    std::fs::write(root.join(".entity-store-format"), "entity.file-store/2\n").expect("v2 marker");
     root
 }
 
@@ -394,7 +408,7 @@ fn mode_of(path: &Path) -> u32 {
 #[test]
 fn a_new_subject_document_is_readable_by_its_owner_alone() {
     let registry = registry();
-    let root = scratch("private-new-subject");
+    let root = v2_root("private-new-subject");
     let mut store = FileStore::open(&root);
     store
         .commit_recorded(&recorded(opening(&registry, "one"), "r-1"), Expect::Absent)
@@ -411,7 +425,7 @@ fn a_new_subject_document_is_readable_by_its_owner_alone() {
 fn replacing_a_restricted_subject_document_keeps_its_restriction() {
     use std::os::unix::fs::PermissionsExt;
     let registry = registry();
-    let root = scratch("restricted-replacement");
+    let root = v2_root("restricted-replacement");
     let mut store = FileStore::open(&root);
     let created = opening(&registry, "one");
     store

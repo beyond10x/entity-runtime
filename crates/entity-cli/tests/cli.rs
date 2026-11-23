@@ -1602,6 +1602,143 @@ fn file_store_migration_to_a_bare_relative_destination_succeeds_once() {
 }
 
 #[test]
+fn a_0_33_1_file_store_migrates_to_v3_out_of_place_and_keeps_taking_commands() {
+    fn copy_tree(from: &Path, to: &Path) {
+        fs::create_dir_all(to).expect("copy destination");
+        for entry in fs::read_dir(from).expect("listed") {
+            let entry = entry.expect("entry");
+            if entry.file_type().expect("type").is_dir() {
+                copy_tree(&entry.path(), &to.join(entry.file_name()));
+            } else {
+                fs::copy(entry.path(), to.join(entry.file_name())).expect("copied");
+            }
+        }
+    }
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../entity-store/tests/fixtures/file-store-0.33.1");
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-file-migration-v3");
+    let _ = fs::remove_dir_all(&root);
+    let source = root.join("v2");
+    let destination = root.join("v3");
+    copy_tree(&fixture.join("store"), &source);
+    let expected: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixture.join("expected.json")).expect("expected.json"))
+            .expect("parses");
+    let counter = root.join("counter.json");
+    fs::write(
+        &counter,
+        serde_json::to_vec(&expected["definitions"][0]).expect("definition"),
+    )
+    .expect("definition file");
+    let (source_arg, destination_arg) = (
+        source.to_str().expect("UTF-8"),
+        destination.to_str().expect("UTF-8"),
+    );
+
+    let dry = run(
+        &[
+            "store",
+            "migrate-file-v3",
+            "--from",
+            source_arg,
+            "--to",
+            destination_arg,
+            "--dry-run",
+        ],
+        None,
+    );
+    assert!(
+        dry.status.success(),
+        "{}",
+        String::from_utf8_lossy(&dry.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&dry.stdout),
+        "valid: 5 subject(s), 4 event(s); no files written\n"
+    );
+    assert!(!destination.exists(), "a dry run writes no destination");
+
+    let migrated = run(
+        &[
+            "store",
+            "migrate-file-v3",
+            "--from",
+            source_arg,
+            "--to",
+            destination_arg,
+        ],
+        None,
+    );
+    assert!(
+        migrated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&migrated.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(destination.join(".entity-store-format")).expect("marker"),
+        "entity.file-store/3\n"
+    );
+    assert_eq!(
+        fs::read_to_string(source.join(".entity-store-format")).expect("source marker"),
+        "entity.file-store/2\n",
+        "the source stays v2"
+    );
+    let listed = run(
+        &["list", "--store", destination_arg, "--entity", "counter"],
+        None,
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&listed.stdout),
+        "c1\nc2\nlegacy-1\np1\n"
+    );
+    let viewed = run(
+        &[
+            "execute",
+            "--definition",
+            counter.to_str().expect("UTF-8"),
+            "--store",
+            destination_arg,
+            "--id",
+            "c2",
+            "--operation",
+            "view",
+            "--record-id",
+            "c2-view-after-migration",
+            "--recorded-at",
+            "2026-11-23T12:00:00Z",
+            "--no-actor",
+        ],
+        None,
+    );
+    assert!(
+        viewed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&viewed.stderr)
+    );
+    let decision: serde_json::Value = serde_json::from_slice(&viewed.stdout).expect("decision");
+    assert_eq!(decision["instance"]["revision"], 2);
+    assert_eq!(decision["instance"]["fields"]["views"], 5);
+
+    let again = run(
+        &[
+            "store",
+            "migrate-file-v3",
+            "--from",
+            destination_arg,
+            "--to",
+            root.join("again").to_str().expect("UTF-8"),
+        ],
+        None,
+    );
+    assert_eq!(again.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&again.stderr).contains("is already v3"),
+        "{}",
+        String::from_utf8_lossy(&again.stderr)
+    );
+}
+
+#[test]
 fn generated_documentation_is_complete_and_replaces_only_generator_owned_output() {
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-docs");
     let _ = fs::remove_dir_all(&root);

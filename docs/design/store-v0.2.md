@@ -98,6 +98,51 @@ event history: revision order and repeated equal emissions are both preserved.
 After the change the same 9,085-call import completes in 34 s and reads 0.7 GB — the one scan plus
 one subject read per lookup.
 
+### 2.2 File Store v3: state apart from append-only history
+
+A v2 subject document holds the state and the whole history, so every recorded write rewrote all
+of it: with 8 prior records one `entity execute` wrote 57,107 bytes, with 32 it wrote 207,967 (KPI
+`file.execute.write_bytes.prior8` / `.prior32`, review finding P14), and every record embedded its
+entity definition again.
+
+A v3 root (`.entity-store-format` = `entity.file-store/3`) is what a handle creates for a missing
+or empty root. Per subject it holds:
+
+| file | what | how it is written |
+|---|---|---|
+| `subjects/<hex entity>/<hex id>.log` | the history: a header line naming the subject and its origin, then one JSON line per decision record, observation, or state written without a record (a plain commit) | appended, then synced; never rewritten |
+| `subjects/<hex entity>/<hex id>.json` | the current instance and the history length it reflects | replaced by rename; not synced |
+| `definitions/<64 hex>.json` | `["er.definition/1", definition]`, canonical, once per store | created and synced before the first line that names it |
+
+A record line spells `record.definition` as the digest `definition_digest` gives the definition
+document (the `er.record/5` rule of the Eventlog adapter) or `null`; `history()` returns the record
+with the definition resolved, so its bytes and digests are the same in either record form. A
+definition document is held to its file name on every read; a mismatch is `StoreError::Backend`.
+
+The history is the authority and its sync is the commit point. A reader trusts the state document
+only when the history still has exactly the length it names, and folds the history otherwise, so a
+state document lost, torn or left behind by a crash is rebuilt rather than served. A history line
+without its newline is an interrupted write: readers ignore it, the next writer cuts it before
+appending, and an acquisition refuses it as it refuses a stale v2 temporary document. Every
+complete line must parse; a corrupt one is refused with its line number. A subject's files are
+created `0600` on Unix; the replaced state document takes the bits of the one it replaces, and the
+history keeps its inode and so its bits.
+
+One recorded write on an existing subject syncs the epoch and the history (v2: epoch, document
+and directory); a new subject adds one directory sync, a new definition one file and one directory
+sync. Reads of a whole subject still read its whole history (the record-id scan of a cold handle
+reads every subject), but the history no longer repeats the definition.
+
+A v2 root stays v2 and is read and written as before. `entity store migrate-file-v3 --from V2
+--to V3 [--dry-run]` (`migrate_file_store_v2`) copies it out of place under the v2 store's shared
+lock: records and observations in their order, then one state line holding the v2 instance and its
+events, so the fold ends where the v2 document did. Each subject is encoded and decoded before
+anything is written and must come back identical. The destination is staged beside it and published
+by one rename; the source is never modified. Entity 0.33.1 and earlier refuse a v3 root as
+`declares unsupported format "entity.file-store/3"`, so roll back by pointing the old release at the
+retained v2 root. The migration is pinned against a v2 store written by the 0.33.1 library
+(`crates/entity-store/tests/fixtures/file-store-0.33.1/`).
+
 ## 3. Hybrid truthfulness
 
 Freshness is relative to the declared authority, not merely to whether a network request returned.

@@ -36,6 +36,16 @@ the new store with `entity list --store NEW --entity <type>` before cutover, and
 directory for rollback. Migrated legacy history begins at an unverified snapshot boundary; do not
 claim it was replay-verified from genesis.
 
+A new File Store is v3: each command appends one record to the subject's history instead of
+rewriting it. A v2 store keeps working as v2. To move one to v3, stop writers and run:
+
+```console
+entity store migrate-file-v3 --from V2 --to V3 --dry-run
+entity store migrate-file-v3 --from V2 --to V3
+```
+
+The same out-of-place rules apply. Entity 0.33.1 and earlier cannot open a v3 store.
+
 Use `entity skill --out .agents/skills/entity/SKILL.md` to install a fresh copy of this document.
 
 ## Generated surfaces

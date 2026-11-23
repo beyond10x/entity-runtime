@@ -32,7 +32,10 @@ use entity_executor::{CreateRequest, ExecuteRequest};
 use entity_shell::{ShellError, StoredRuntime};
 #[cfg(feature = "eventlog-providers")]
 use entity_store::asynchronous::{AppendOutcome, RecordLookup, RecordedEntry, Subject};
-use entity_store::{migrate_file_store_v1, FileStore, RecordedCommit, Recording, StateProvider};
+use entity_store::{
+    migrate_file_store_v1, migrate_file_store_v2, FileMigrationReport, FileStore, RecordedCommit,
+    Recording, StateProvider,
+};
 use serde_json::{json, Value};
 use std::{
     ffi::OsStr,
@@ -457,26 +460,12 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
         }
         Command::Store { command } => match command {
             StoreCommand::MigrateFile { from, to, dry_run } => {
-                let report = migrate_file_store_v1(&from, &to, dry_run)
-                    .map_err(|error| Failure::Usage(error.to_string()))?;
-                if report.dry_run {
-                    writeln!(
-                        out,
-                        "valid: {} subject(s), {} event(s); no files written",
-                        report.subjects, report.events
-                    )
-                    .map_err(io_failure)
-                } else {
-                    writeln!(
-                        out,
-                        "migrated {} subject(s), {} event(s) from {} to {}",
-                        report.subjects,
-                        report.events,
-                        from.display(),
-                        to.display()
-                    )
-                    .map_err(io_failure)
-                }
+                let report = migrate_file_store_v1(&from, &to, dry_run);
+                report_migration(out, &from, &to, report)
+            }
+            StoreCommand::MigrateFileV3 { from, to, dry_run } => {
+                let report = migrate_file_store_v2(&from, &to, dry_run);
+                report_migration(out, &from, &to, report)
             }
             #[cfg(feature = "eventlog-providers")]
             StoreCommand::ProvisionEventlogFile {
@@ -1949,6 +1938,34 @@ fn write_all(out: &mut impl Write, text: &str) -> Result<(), Failure> {
 
 fn io_failure(error: io::Error) -> Failure {
     Failure::Usage(format!("cannot write output: {error}"))
+}
+
+/// The one line `entity store migrate-file` and `migrate-file-v3` print.
+fn report_migration(
+    out: &mut impl Write,
+    from: &Path,
+    to: &Path,
+    report: Result<FileMigrationReport, entity_store::StoreError>,
+) -> Result<(), Failure> {
+    let report = report.map_err(|error| Failure::Usage(error.to_string()))?;
+    if report.dry_run {
+        writeln!(
+            out,
+            "valid: {} subject(s), {} event(s); no files written",
+            report.subjects, report.events
+        )
+        .map_err(io_failure)
+    } else {
+        writeln!(
+            out,
+            "migrated {} subject(s), {} event(s) from {} to {}",
+            report.subjects,
+            report.events,
+            from.display(),
+            to.display()
+        )
+        .map_err(io_failure)
+    }
 }
 
 #[cfg(test)]
