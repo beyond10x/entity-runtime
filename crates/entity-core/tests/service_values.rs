@@ -277,6 +277,47 @@ fn integer_and_bytes_map_keys_follow_the_pinned_ess_key_grammar() {
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
 
+/// E44: a decimal key is spelt by ESS's published `DECIMAL_PATTERN`
+/// `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$`, not by whatever a number reader parses: `1e3`, `+1` and `.5`
+/// were keys beside `1000`, `1` and `0.5`.
+#[test]
+fn decimal_map_keys_follow_the_pinned_ess_decimal_pattern() {
+    let decimal = "key is not decimal text: expected exact decimal text without `+`, leading \
+                   zeroes or an exponent";
+    let long = format!("1{}", "0".repeat(400));
+    let rows: &[(&str, Option<&str>)] = &[
+        ("0", None),
+        ("7", None),
+        ("-2.5", None),
+        ("1.50", None),
+        ("0.0", None),
+        ("-0.0", None),
+        ("0.1000000000000000000001", None),
+        (&long, None),
+        ("1e3", Some(decimal)),
+        ("+1", Some(decimal)),
+        ("01.5", Some(decimal)),
+        ("007", Some(decimal)),
+        (".5", Some(decimal)),
+        ("1.", Some(decimal)),
+        ("-", Some(decimal)),
+        ("", Some(decimal)),
+        (" 1", Some(decimal)),
+        ("1.5.0", Some(decimal)),
+        ("inf", Some(decimal)),
+        ("0e9223372036854775807", Some(decimal)),
+    ];
+    let wrong: Vec<String> = rows
+        .iter()
+        .filter_map(|(key, refusal)| {
+            let verdict = map_key_verdict("decimal", key);
+            (verdict != refusal.map_or(Ok(()), |message| Err(message.to_owned())))
+                .then(|| format!("decimal key {key:?}: expected {refusal:?}, got {verdict:?}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
 /// E52: a zero is zero at every exponent and is read without one step per place of it. Before,
 /// the exact reader scaled the zero first, so `0e100000000` took about 13 s and an exponent near
 /// `i64::MAX` would not end; a `service/1` bound is read that way at registration and at every

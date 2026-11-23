@@ -47,6 +47,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   now refuses `007`, `+7` and `-0`, which were accepted as further keys beside `7` and `0`, with
   ``key is not integer text: expected decimal integer text without `+` or leading zeroes``. A
   `key: bytes` map now accepts the empty key, the padded base64 of no bytes; it was refused.
+- A `key: decimal` map now checks its keys by ESS's decimal pattern
+  `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$`. Keys such as `1e3`, `+1`, `.5` and `01.5`, which any number
+  reader accepted, are refused with
+  ``key is not decimal text: expected exact decimal text without `+`, leading zeroes or an exponent``;
+  an integer with more digits than a binary64 can hold is now accepted.
 
 ## [0.32.0] — 2026-11-22
 

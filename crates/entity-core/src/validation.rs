@@ -3213,9 +3213,9 @@ fn validate_map_key(key: MapKey, text: &str) -> Result<(), String> {
             .ok_or_else(|| {
                 "expected decimal integer text without `+` or leading zeroes".to_owned()
             }),
-        MapKey::Decimal => Observed::of_literal(text)
-            .map(|_| ())
-            .ok_or_else(|| "expected exact decimal text".to_owned()),
+        MapKey::Decimal => is_decimal_text(text).then_some(()).ok_or_else(|| {
+            "expected exact decimal text without `+`, leading zeroes or an exponent".to_owned()
+        }),
         MapKey::Timestamp => crate::timestamp::parse(text)
             .map(|_| ())
             .ok_or_else(|| format!("expected an instant written {INSTANT_FORMS}")),
@@ -3266,6 +3266,18 @@ fn is_uuid(text: &str) -> bool {
         && [8, 4, 4, 4, 12].iter().zip(&groups).all(|(width, group)| {
             group.len() == *width && group.bytes().all(|byte| byte.is_ascii_hexdigit())
         })
+}
+
+/// Exact decimal text, ESS's `DECIMAL_PATTERN` `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$` (`ess-gen`
+/// `types.rs`, ESS 0.97.4): no `+`, no leading zero, no exponent, no bare point.
+fn is_decimal_text(text: &str) -> bool {
+    let unsigned = text.strip_prefix('-').unwrap_or(text);
+    let (whole, fraction) = match unsigned.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (unsigned, None),
+    };
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    digits(whole) && (whole == "0" || !whole.starts_with('0')) && fraction.is_none_or(digits)
 }
 
 /// Padded base64, which is the one spelling the source admits for bytes.
