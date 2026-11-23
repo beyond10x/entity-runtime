@@ -38,6 +38,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   newer store writing the same record id in one schema take different locks: the unique
   `record_id` still refuses the duplicate, as a backend error instead of a retry or a record
   conflict. Upgrade every writer of one schema together.
+- `SqliteStore` and `PostgresStore` read the next event position once per revision when they
+  append a decision's events, instead of once per event (128 reads for 128 events), and
+  PostgreSQL appends the events in one statement. Stored positions are unchanged.
 
 ## [0.32.0] — 2026-11-22
 

@@ -48,7 +48,10 @@
 //! authentication beyond the URL are the deployment's, not this crate's — choosing a TLS backend
 //! here would choose it for every adopter.
 
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::{btree_map::Entry, BTreeMap, HashMap},
+    sync::Mutex,
+};
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 #[cfg(feature = "eventlog-facade")]
@@ -766,27 +769,53 @@ fn write_decision(
             &[&entity, &id, &revision],
         )
         .map_err(|error| database("marking the legacy snapshot boundary", &error))?;
-    for event in &decision.record.events {
+    // One position read per revision under the instance lock taken above, then one insert for
+    // every event: positions continue from what each revision already holds, consecutively and
+    // in the order the decision emitted them.
+    let events = &decision.record.events;
+    let mut next_positions: BTreeMap<i64, i64> = BTreeMap::new();
+    let (mut revisions, mut positions, mut documents) = (
+        Vec::with_capacity(events.len()),
+        Vec::with_capacity(events.len()),
+        Vec::with_capacity(events.len()),
+    );
+    for event in events {
         let document = serde_json::to_string(event)
             .map_err(|error| backend("serialising an event", &error))?;
         let at_revision = i64::try_from(event.revision)
             .map_err(|_| StoreError::Backend("the revision does not fit a BIGINT".to_owned()))?;
-        let position: i64 = transaction
-            .query_one(
-                "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
-                 WHERE entity = $1 AND id = $2 AND revision = $3",
-                &[&entity, &id, &at_revision],
-            )
-            .map_err(|error| database("reading the event position", &error))?
-            .get(0);
-        transaction
-            .execute(
-                "INSERT INTO events (entity, id, revision, position, document) \
-                 VALUES ($1, $2, $3, $4, $5)",
-                &[&entity, &id, &at_revision, &position, &document],
-            )
-            .map_err(|error| database("appending an event", &error))?;
+        let next = match next_positions.entry(at_revision) {
+            Entry::Occupied(next) => next.into_mut(),
+            Entry::Vacant(vacant) => vacant.insert(
+                transaction
+                    .query_one(
+                        "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
+                         WHERE entity = $1 AND id = $2 AND revision = $3",
+                        &[&entity, &id, &at_revision],
+                    )
+                    .map_err(|error| database("reading the event position", &error))?
+                    .get(0),
+            ),
+        };
+        positions.push(*next);
+        *next = next.checked_add(1).ok_or_else(|| {
+            StoreError::Backend("the event position does not fit a BIGINT".to_owned())
+        })?;
+        revisions.push(at_revision);
+        documents.push(document);
     }
+    if documents.is_empty() {
+        return Ok(());
+    }
+    transaction
+        .execute(
+            "INSERT INTO events (entity, id, revision, position, document) \
+             SELECT $1, $2, appended.revision, appended.position, appended.document \
+             FROM UNNEST($3::BIGINT[], $4::BIGINT[], $5::TEXT[]) \
+                 AS appended (revision, position, document)",
+            &[&entity, &id, &revisions, &positions, &documents],
+        )
+        .map_err(|error| database("appending the events", &error))?;
     Ok(())
 }
 

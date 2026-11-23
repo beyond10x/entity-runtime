@@ -33,7 +33,10 @@
 //! behaviour depends on the host's library version is a store two machines can disagree about,
 //! which is the one thing a provider must not be.
 
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{btree_map::Entry, BTreeMap, HashMap},
+    path::Path,
+};
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 #[cfg(feature = "eventlog-facade")]
@@ -475,24 +478,39 @@ fn write_decision(
             params![entity, id, revision],
         )
         .map_err(|error| backend("marking the legacy snapshot boundary", &error))?;
+    // One position read per revision inside this transaction, then one prepared insert reused for
+    // every event: positions continue from what each revision already holds, consecutively and in
+    // the order the decision emitted them.
+    let mut next_positions: BTreeMap<i64, i64> = BTreeMap::new();
+    let mut append = transaction
+        .prepare_cached(
+            "INSERT INTO events (entity, id, revision, position, document) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )
+        .map_err(|error| backend("preparing the event append", &error))?;
     for event in &decision.record.events {
         let event_revision = revision_to_sql(event.revision)?;
         let document = serde_json::to_string(event)
             .map_err(|error| backend("serialising an event", &error))?;
-        let position: i64 = transaction
-            .query_row(
-                "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
-                 WHERE entity = ?1 AND id = ?2 AND revision = ?3",
-                params![entity, id, event_revision],
-                |row| row.get(0),
-            )
-            .map_err(|error| backend("reading the event position", &error))?;
-        transaction
-            .execute(
-                "INSERT INTO events (entity, id, revision, position, document) \
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![entity, id, event_revision, position, document],
-            )
+        let next = match next_positions.entry(event_revision) {
+            Entry::Occupied(next) => next.into_mut(),
+            Entry::Vacant(vacant) => vacant.insert(
+                transaction
+                    .query_row(
+                        "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
+                         WHERE entity = ?1 AND id = ?2 AND revision = ?3",
+                        params![entity, id, event_revision],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| backend("reading the event position", &error))?,
+            ),
+        };
+        let position = *next;
+        *next = position.checked_add(1).ok_or_else(|| {
+            StoreError::Backend("the event position exceeds what SQLite can store".to_owned())
+        })?;
+        append
+            .execute(params![entity, id, event_revision, position, document])
             .map_err(|error| backend("appending an event", &error))?;
     }
     Ok(())
@@ -913,6 +931,82 @@ mod tests {
             selects.load(Ordering::Relaxed),
             4,
             "coordinates, origins, events and history: one statement each, not one per subject"
+        );
+    }
+
+    #[test]
+    fn a_commit_reads_one_base_position_per_revision_however_many_events_it_appends() {
+        let mut registry = Registry::new();
+        registry
+            .register(
+                serde_json::from_value(serde_json::json!({
+                    "entity": "ticket",
+                    "version": 1,
+                    "schema": { "fields": { "title": { "type": "string", "required": true } } },
+                    "lifecycle": { "initial": "open", "states": ["open"] },
+                    "create": { "emit": { "type": "TicketOpened", "payload": { "ticket": "$id" } } }
+                }))
+                .expect("definition parses"),
+            )
+            .expect("definition validates");
+        let mut decision = Runtime::new(&registry)
+            .create("ticket", 1, "many", serde_json::json!({"title": "T"}))
+            .expect("creation");
+        let first = decision.record.events[0].clone();
+        decision.record.events = (0..128_u64)
+            .map(|n| {
+                let mut event = first.clone();
+                event.changed.insert("n".to_owned(), serde_json::json!(n));
+                event
+            })
+            .collect();
+        let mut store = SqliteStore::in_memory().expect("store");
+
+        let position_reads = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&position_reads);
+        store
+            .connection
+            .trace_v2(
+                TraceEventCodes::SQLITE_TRACE_STMT,
+                Some(move |event: TraceEvent<'_>| {
+                    if let TraceEvent::Stmt(_, sql) = event {
+                        if sql.trim_start().starts_with("SELECT") && sql.contains("FROM events") {
+                            counter.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                }),
+            )
+            .expect("trace installed");
+        store.commit(&decision, Expect::Absent).expect("commit");
+        let reads = position_reads.load(Ordering::Relaxed);
+
+        let mut statement = store
+            .connection
+            .prepare(
+                "SELECT position, document FROM events \
+                 WHERE entity = 'ticket' AND id = 'many' AND revision = 1 ORDER BY position",
+            )
+            .expect("prepared");
+        let numbered: Vec<(i64, u64)> = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .expect("events answer")
+            .map(|row| {
+                let (position, document) = row.expect("a row");
+                let event: entity_core::DomainEvent =
+                    serde_json::from_str(&document).expect("an event");
+                (position, event.changed["n"].as_u64().expect("numbered"))
+            })
+            .collect();
+        let expected: Vec<(i64, u64)> = (0..128_i64).map(|n| (n, n.unsigned_abs())).collect();
+        assert_eq!(
+            numbered, expected,
+            "positions are consecutive from 0 in the order the decision emitted the events"
+        );
+        assert_eq!(
+            reads, 1,
+            "the base position is read once for the revision, not once per event"
         );
     }
 }

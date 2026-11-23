@@ -966,3 +966,95 @@ fn a_record_lock_serializes_one_record_id_within_a_schema_and_not_across_schemas
     west.drop_schema(&west_schema).expect("dropped");
     east.drop_schema(&east_schema).expect("dropped");
 }
+
+/// A creation of `id` whose record carries `count` events at revision 1, each numbered in its
+/// `changed` map so their stored order can be read back.
+fn creation_with_events(id: &str, count: usize) -> entity_core::Decision {
+    let mut decision = Runtime::new(&registry())
+        .create("ticket", 1, id, json!({"title": "Many"}))
+        .expect("permitted");
+    let first = decision.record.events[0].clone();
+    decision.record.events = (0..count)
+        .map(|n| {
+            let mut event = first.clone();
+            event.changed.insert("n".to_owned(), json!(n));
+            event
+        })
+        .collect();
+    decision
+}
+
+#[test]
+fn a_commit_reads_one_base_position_per_revision_however_many_events_it_appends() {
+    // The server counts every scan of a table to the backend that ran it and adds the counts
+    // when that backend closes. A first writer leaves one event and a baseline; the second
+    // writer's scans of `events` are what appending 128 events cost.
+    let Some(url) = url() else { return };
+    let (mut first, schema) = fresh(&url, "event_positions");
+    first
+        .commit(&creation_with_events("first", 1), Expect::Absent)
+        .expect("accepted");
+    drop(first);
+    let mut observer = postgres::Client::connect(&url, postgres::NoTls).expect("observer");
+    let mut counts_after = |inserted: i64| -> i64 {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let row = observer
+                .query_one(
+                    "SELECT COALESCE(n_tup_ins, 0), \
+                            COALESCE(seq_scan, 0) + COALESCE(idx_scan, 0) \
+                     FROM pg_stat_user_tables WHERE schemaname = $1 AND relname = 'events'",
+                    &[&schema],
+                )
+                .expect("statistics answer");
+            if row.get::<_, i64>(0) >= inserted {
+                return row.get(1);
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "a closed backend's statistics never arrived"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    let baseline = counts_after(1);
+
+    let mut writer = PostgresStore::connect_in_schema(&url, &schema).expect("writer");
+    writer
+        .commit(&creation_with_events("many", 128), Expect::Absent)
+        .expect("accepted");
+    drop(writer);
+    let scans = counts_after(129) - baseline;
+
+    let mut raw = postgres::Client::connect(&url, postgres::NoTls).expect("raw connection");
+    let stored: Vec<(i64, String)> = raw
+        .query(
+            &format!(
+                "SELECT position, document FROM \"{schema}\".events \
+                 WHERE entity = 'ticket' AND id = 'many' AND revision = 1 ORDER BY position"
+            ),
+            &[],
+        )
+        .expect("events answer")
+        .into_iter()
+        .map(|row| (row.get(0), row.get(1)))
+        .collect();
+    let numbered: Vec<(i64, u64)> = stored
+        .iter()
+        .map(|(position, document)| {
+            let event: entity_core::DomainEvent = serde_json::from_str(document).expect("an event");
+            (*position, event.changed["n"].as_u64().expect("numbered"))
+        })
+        .collect();
+    let expected: Vec<(i64, u64)> = (0..128_i64).map(|n| (n, n.unsigned_abs())).collect();
+    assert_eq!(
+        numbered, expected,
+        "positions are consecutive from 0 in the order the decision emitted the events"
+    );
+    assert_eq!(
+        scans, 1,
+        "the base position is read once for the revision, not once per event"
+    );
+    raw.batch_execute(&format!("DROP SCHEMA \"{schema}\" CASCADE"))
+        .expect("dropped");
+}
