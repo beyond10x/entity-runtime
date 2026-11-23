@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T23:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:payload-admission-exact-for-any-id-and-own-writes",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "r1-eventlog-adapter: 163-char event ids refused past the cap; held payload fresh after 32 own writes under both capture policies; mutations (UUID id length, unsettled charge) red"
+  }
+}

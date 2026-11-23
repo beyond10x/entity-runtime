@@ -2,11 +2,17 @@
 format: aep.planning-md/3
 id: story:record-encoding-skips-definition-serialization
 kind: story
-status: draft
+status: implemented
 title: Encoding a decision record does not serialize the whole definition to discard it
 summary: About 12 % of read-invoke CPU after the 0.33.1 fix
 owner: entity-runtime
-revision: 1
+relations:
+- serves: vision:O2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-23T23:19:52Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-23T23:19:53Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-23T23:19:53Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

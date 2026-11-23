@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T23:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:eventlog-append-contention-is-a-typed-error",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "r1-eventlog-adapter: an_append_that_meets_physical_conflicts_on_every_attempt_refuses_after_its_budget matches Contended{eventlog,8}; last-attempt commit ok; sync caller sees Unreachable; mutation (old Unreachable) red"
+  }
+}

@@ -2,10 +2,16 @@
 format: aep.planning-md/3
 id: story:read-invoke-cpu-at-or-under-0-32-0
 kind: story
-status: draft
+status: implemented
 title: A connectors read invoke costs no more CPU on Entity Runtime than on 0.32.0
 summary: 0.33.1 read invoke 171-177 CPU ms vs 0.32.0 138-143 (connectors, 2026-11-23)
-revision: 1
+relations:
+- serves: vision:O2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-23T23:19:56Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-23T23:19:56Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-23T23:19:56Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

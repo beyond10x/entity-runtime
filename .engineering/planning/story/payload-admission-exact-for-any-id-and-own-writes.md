@@ -2,11 +2,17 @@
 format: aep.planning-md/3
 id: story:payload-admission-exact-for-any-id-and-own-writes
 kind: story
-status: draft
+status: implemented
 title: Payload admission holds for any event-id length and after own writes
 summary: 'A2 follow-up: the bound assumes 36-character event ids; the held estimate grows after own writes until the next capture'
 owner: entity-runtime
-revision: 1
+relations:
+- serves: vision:O2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-23T23:19:49Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-23T23:19:50Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-23T23:19:51Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 
