@@ -296,20 +296,44 @@ impl PostgresStore {
     /// For a test that needs a store of its own on a shared server, and for a deployment that
     /// keeps several plans in one database. The schema name is quoted as an identifier.
     ///
+    /// PostgreSQL silently truncates an identifier longer than its `max_identifier_length` (63
+    /// bytes by default), so two long names with the same first 63 bytes would name one schema.
+    /// A name longer than the server's limit is therefore refused before anything is created, and
+    /// the schema the session then resolves must be exactly `schema`; if it is not, the creation
+    /// is rolled back and the name refused.
+    ///
     /// # Errors
     ///
-    /// As [`Self::connect_no_tls`].
+    /// As [`Self::connect_no_tls`], and [`StoreError::Backend`] when `schema` is longer than the
+    /// server's identifier limit or does not resolve to itself.
     pub fn connect_in_schema(url: &str, schema: &str) -> Result<Self, StoreError> {
         let mut client = Client::connect(url, NoTls).map_err(|error| StoreError::Unreachable {
             provider: "postgres".to_owned(),
             detail: error.to_string(),
         })?;
+        check_identifier_length(&mut client, schema)?;
         let quoted = quote_identifier(schema);
-        client
+        let mut selecting = client
+            .transaction()
+            .map_err(|error| database("beginning schema selection", &error))?;
+        selecting
             .batch_execute(&format!(
                 "CREATE SCHEMA IF NOT EXISTS {quoted}; SET search_path TO {quoted};"
             ))
             .map_err(|error| database("selecting the schema", &error))?;
+        let resolved: Option<String> = selecting
+            .query_one("SELECT current_schema()", &[])
+            .map_err(|error| database("resolving the schema", &error))?
+            .get(0);
+        if resolved.as_deref() != Some(schema) {
+            // Dropping the transaction rolls back the creation and the `SET` with it.
+            return Err(StoreError::Backend(format!(
+                "schema {schema:?} resolves to {resolved:?} on this server, not to itself"
+            )));
+        }
+        selecting
+            .commit()
+            .map_err(|error| database("committing schema selection", &error))?;
         let mut store = Self {
             client: Mutex::new(client),
         };
@@ -382,11 +406,17 @@ impl PostgresStore {
     /// Drops everything under `schema`. For a test cleaning up after itself; a deployment does not
     /// call this.
     ///
+    /// A name longer than the server's identifier limit is refused rather than truncated, so it
+    /// can never drop the schema that a different, shorter name owns.
+    ///
     /// # Errors
     ///
-    /// [`StoreError::Backend`] when the server refuses.
+    /// [`StoreError::Backend`] when the server refuses, or when `schema` is longer than the
+    /// server's identifier limit.
     pub fn drop_schema(&mut self, schema: &str) -> Result<(), StoreError> {
-        self.client()?
+        let mut client = self.client()?;
+        check_identifier_length(&mut client, schema)?;
+        client
             .batch_execute(&format!(
                 "DROP SCHEMA IF EXISTS {} CASCADE;",
                 quote_identifier(schema)
@@ -543,6 +573,28 @@ impl PostgresStore {
 /// have.
 fn quote_identifier(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+/// Refuses an identifier the server would truncate: PostgreSQL keeps only the first
+/// `max_identifier_length` bytes of a name, so a longer one would silently name another object.
+fn check_identifier_length(client: &mut Client, name: &str) -> Result<(), StoreError> {
+    let limit: String = client
+        .query_one("SELECT current_setting('max_identifier_length')", &[])
+        .map_err(|error| database("reading the identifier limit", &error))?
+        .get(0);
+    let limit: usize = limit.parse().map_err(|_| {
+        StoreError::Backend(format!(
+            "the server reports identifier limit {limit:?}, which is not a byte count"
+        ))
+    })?;
+    if name.len() > limit {
+        return Err(StoreError::Backend(format!(
+            "schema name {name:?} is {} bytes; this server truncates identifiers to {limit} bytes, \
+             so it would name a different schema",
+            name.len()
+        )));
+    }
+    Ok(())
 }
 
 impl StateProvider for PostgresStore {

@@ -26,6 +26,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   many subjects it holds. Before, it ran four statements per subject (4,097 for 1,024 subjects on
   SQLite). The snapshot it returns is unchanged, and evidence without a terminal instance is still
   refused.
+- `PostgresStore::connect_in_schema` and `PostgresStore::drop_schema` refuse a schema name longer
+  than the server's `max_identifier_length` (63 bytes by default). Before, PostgreSQL truncated it,
+  so two long names with the same first 63 bytes opened the same tables, and `drop_schema` with
+  the longer name dropped the other's schema. `connect_in_schema` also refuses a name the session
+  resolves to another schema (such as `$user`) and leaves nothing created. A deployment that used
+  a longer name was working in the truncated schema; pass the truncated name to keep its data.
 
 ## [0.32.0] — 2026-11-22
 

@@ -769,3 +769,91 @@ fn legacy_acquisition_refuses_evidence_without_its_terminal_instance() {
     );
     store.drop_schema(&schema).expect("dropped");
 }
+
+/// The server's identifier limit in bytes (`max_identifier_length`, 63 unless rebuilt).
+fn identifier_limit(raw: &mut postgres::Client) -> usize {
+    let limit: String = raw
+        .query_one("SELECT current_setting('max_identifier_length')", &[])
+        .expect("the server reports its identifier limit")
+        .get(0);
+    limit.parse().expect("a byte count")
+}
+
+#[test]
+fn a_schema_name_longer_than_the_server_limit_is_refused_rather_than_truncated() {
+    let Some(url) = url() else { return };
+    let mut raw = postgres::Client::connect(&url, postgres::NoTls).expect("raw connection");
+    let limit = identifier_limit(&mut raw);
+    // A name exactly at the limit is kept whole; a longer one sharing its first `limit` bytes is
+    // the name PostgreSQL would truncate to it.
+    let mut kept = format!("entity_test_{}_long_", std::process::id());
+    while kept.len() < limit {
+        kept.push('x');
+    }
+    let longer = format!("{kept}_another_plan");
+    let mut store =
+        PostgresStore::connect_in_schema(&url, &kept).expect("a name at the limit is kept whole");
+    let created = Runtime::new(&registry())
+        .create("ticket", 1, "kept", json!({"title": "Kept"}))
+        .expect("permitted");
+    store.commit(&created, Expect::Absent).expect("accepted");
+    let says_truncated = |refusal: &StoreError, bytes: usize| {
+        let expected =
+            format!("is {bytes} bytes; this server truncates identifiers to {limit} bytes");
+        matches!(refusal, StoreError::Backend(message) if message.contains(&expected))
+    };
+
+    let refusal = PostgresStore::connect_in_schema(&url, &longer)
+        .expect_err("a longer name must not open the schema of its truncation");
+    assert!(
+        says_truncated(&refusal, longer.len()),
+        "the refusal names the byte length and the server's limit: {refusal}"
+    );
+    let refusal = store
+        .drop_schema(&longer)
+        .expect_err("a longer name must not drop the schema of its truncation");
+    assert!(
+        says_truncated(&refusal, longer.len()),
+        "the refusal names the byte length and the server's limit: {refusal}"
+    );
+    assert_eq!(
+        store
+            .load("ticket", "kept")
+            .expect("the kept schema answers"),
+        Some(created.instance),
+        "the schema a longer name truncates to keeps its data"
+    );
+
+    // Bytes, not characters: two-byte characters reach the limit at half as many characters.
+    let multibyte = "é".repeat(limit / 2 + 1);
+    let refusal = PostgresStore::connect_in_schema(&url, &multibyte)
+        .expect_err("a name over the limit in bytes is refused whatever its character count");
+    assert!(
+        says_truncated(&refusal, multibyte.len()),
+        "the refusal counts bytes: {refusal}"
+    );
+    store.drop_schema(&kept).expect("dropped");
+}
+
+#[test]
+fn a_schema_name_that_resolves_to_another_schema_is_refused_and_leaves_nothing_behind() {
+    let Some(url) = url() else { return };
+    // In a search path, `$user` names the session user's schema, never a schema called `$user`:
+    // the session would work in whatever schema the user's name selects, or in none.
+    let refusal = PostgresStore::connect_in_schema(&url, "$user")
+        .expect_err("a name the search path resolves elsewhere must not be used");
+    assert!(
+        matches!(&refusal, StoreError::Backend(message)
+            if message.contains("schema \"$user\" resolves to") && message.contains("not to itself")),
+        "the refusal says the name resolved to another schema: {refusal}"
+    );
+    let mut raw = postgres::Client::connect(&url, postgres::NoTls).expect("raw connection");
+    let left: i64 = raw
+        .query_one(
+            "SELECT count(*) FROM pg_namespace WHERE nspname = '$user'",
+            &[],
+        )
+        .expect("catalog answers")
+        .get(0);
+    assert_eq!(left, 0, "the refused schema's creation is rolled back");
+}
