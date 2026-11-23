@@ -34,7 +34,7 @@
 //! which is the one thing a provider must not be.
 
 use std::{
-    collections::{btree_map::Entry, BTreeMap, HashMap},
+    collections::{btree_map::Entry, BTreeMap},
     path::Path,
 };
 
@@ -849,7 +849,7 @@ fn grouped<T>(
     sql: &str,
     operation: &str,
     value: impl Fn(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
-) -> Result<HashMap<(String, String), Vec<T>>, StoreError> {
+) -> Result<BTreeMap<(String, String), Vec<T>>, StoreError> {
     let mut statement = transaction
         .prepare(sql)
         .map_err(|error| backend(operation, &error))?;
@@ -861,7 +861,7 @@ fn grouped<T>(
             ))
         })
         .map_err(|error| backend(operation, &error))?;
-    let mut grouped: HashMap<(String, String), Vec<T>> = HashMap::new();
+    let mut grouped: BTreeMap<(String, String), Vec<T>> = BTreeMap::new();
     for row in rows {
         let (subject, value) = row.map_err(|error| backend(operation, &error))?;
         grouped.entry(subject).or_default().push(value);

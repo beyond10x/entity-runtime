@@ -49,7 +49,7 @@
 //! here would choose it for every adopter.
 
 use std::{
-    collections::{btree_map::Entry, BTreeMap, HashMap},
+    collections::{btree_map::Entry, BTreeMap},
     sync::Mutex,
 };
 
@@ -1171,8 +1171,8 @@ fn grouped(
     transaction: &mut postgres::Transaction<'_>,
     sql: &str,
     operation: &str,
-) -> Result<HashMap<(String, String), Vec<postgres::Row>>, StoreError> {
-    let mut grouped: HashMap<(String, String), Vec<postgres::Row>> = HashMap::new();
+) -> Result<BTreeMap<(String, String), Vec<postgres::Row>>, StoreError> {
+    let mut grouped: BTreeMap<(String, String), Vec<postgres::Row>> = BTreeMap::new();
     for row in transaction
         .query(sql, &[])
         .map_err(|error| database(operation, &error))?
