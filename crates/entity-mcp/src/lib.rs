@@ -124,15 +124,15 @@ where
         for definition in registry.iter() {
             validate_component("entity", &definition.entity)?;
             for reserved in RESERVED {
-                tools
-                    .entry(format!("{}.{}", definition.entity, reserved))
-                    .or_insert_with(|| match reserved {
-                        "create" => ToolTarget::Create(definition.entity.clone()),
-                        "get" => ToolTarget::Get(definition.entity.clone()),
-                        "list" => ToolTarget::List(definition.entity.clone()),
-                        "events" => ToolTarget::Events(definition.entity.clone()),
-                        _ => unreachable!(),
-                    });
+                let name = format!("{}.{}", definition.entity, reserved);
+                validate_tool_name(&name)?;
+                tools.entry(name).or_insert_with(|| match reserved {
+                    "create" => ToolTarget::Create(definition.entity.clone()),
+                    "get" => ToolTarget::Get(definition.entity.clone()),
+                    "list" => ToolTarget::List(definition.entity.clone()),
+                    "events" => ToolTarget::Events(definition.entity.clone()),
+                    _ => unreachable!(),
+                });
             }
             for operation in definition.operations.keys() {
                 validate_component("operation", operation)?;
@@ -143,9 +143,7 @@ where
                     ));
                 }
                 let name = format!("{}.{}", definition.entity, operation);
-                if name.len() > 128 {
-                    return Err(format!("MCP tool name {name:?} exceeds 128 characters"));
-                }
+                validate_tool_name(&name)?;
                 tools.entry(name).or_insert_with(|| ToolTarget::Execute {
                     entity: definition.entity.clone(),
                     operation: operation.clone(),
@@ -464,6 +462,20 @@ fn removes_fields(definitions: &[&EntityDefinition], operation: &str) -> bool {
         })
 }
 
+/// The longest tool name MCP hosts are known to accept.
+const MAX_TOOL_NAME: usize = 128;
+
+/// Refuses an assembled tool name a host could not register. Applied to every name the server
+/// lists, the built-in `create`/`get`/`list`/`events` tools included.
+fn validate_tool_name(name: &str) -> Result<(), String> {
+    if name.len() > MAX_TOOL_NAME {
+        return Err(format!(
+            "MCP tool name {name:?} exceeds {MAX_TOOL_NAME} characters"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_component(kind: &str, value: &str) -> Result<(), String> {
     if value.is_empty()
         || !value
@@ -678,6 +690,31 @@ mod tests {
         let mut server = Server::new(&registry, MemoryStore::new()).unwrap();
         let result = server.handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "refund.create", "arguments": input}})).unwrap();
         assert_eq!(result["result"]["isError"], false);
+    }
+
+    #[test]
+    fn a_built_in_tool_name_over_the_portability_limit_is_refused() {
+        let server_for = |entity: String| {
+            let definition: EntityDefinition = serde_json::from_value(json!({
+                "entity": entity,
+                "schema": {},
+                "lifecycle": { "initial": "new", "states": ["new"] },
+                "operations": {}
+            }))
+            .expect("definition");
+            let mut registry = Registry::new();
+            registry.register(definition).expect("valid");
+            Server::new(&registry, MemoryStore::new()).map(|server| server.tools.len())
+        };
+        // `<entity>.create` and `<entity>.events` are the longest built-in names: seven characters
+        // past the entity. The entity has no operations, so only built-in names can be refused.
+        assert_eq!(server_for("e".repeat(121)), Ok(4), "128 characters fit");
+        let refused = server_for("e".repeat(122)).expect_err("129 characters do not");
+        assert!(
+            refused.contains(&format!("\"{}.create\"", "e".repeat(122)))
+                && refused.contains("exceeds 128 characters"),
+            "the refusal names the built-in tool and the limit: {refused}"
+        );
     }
 
     #[test]

@@ -29,6 +29,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   every decision reuses it, instead of serializing, canonicalizing and reading back the definition
   per decision. Records keep the same bytes. Validating a definition costs that computation once,
   whether or not it ever decides.
+- `entity mcp` refuses to start when a built-in tool name (`<entity>.create`, `.get`, `.list`,
+  `.events`) is longer than 128 characters, as it already did for operation tools. Before, a long
+  entity name produced built-in names a host enforcing the limit could not register.
+- A `for_all` or `for_any` guard decided before the subject is loaded stops at the first element
+  that settles it, as the guard after loading already did. The answer is unchanged; an outcome
+  refused as unobservable no longer names addresses read only past that element.
+- `exists:` on a reference reads the value through a borrowed path instead of copying it, so
+  checking that a long list is present no longer copies the list. The answer is unchanged.
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.

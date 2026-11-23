@@ -10,6 +10,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -2150,6 +2151,17 @@ fn quantify_before_load(
             Quantification::All => result.and(answer),
             Quantification::Any => result.or(answer),
         };
+        // A known `False` under `for_all` or `True` under `for_any` absorbs every later element,
+        // `NeedsSubject` included, so the answer is settled; the post-load `quantify` stops at the
+        // same point. `Unknown` and `NeedsSubject` settle nothing and the walk goes on.
+        let settled = matches!(
+            (mode, result),
+            (Quantification::All, PartialTruth::Known(Truth::False))
+                | (Quantification::Any, PartialTruth::Known(Truth::True))
+        );
+        if settled {
+            break;
+        }
     }
     Ok(result)
 }
@@ -2272,9 +2284,9 @@ fn evaluate_condition(
             // observation, and in `any: [{exists: $fields.a}, {eq: [$fields.b, 1]}]` naming
             // `$fields.a` beside the genuinely unreadable `$fields.b` would send whoever reads the
             // refusal after the wrong one.
-            let mut answered = Unobserved::new();
-            let resolved = resolve_operand(exists, context, bindings, &mut answered)?;
-            Ok(Truth::from_bool(resolved.is_some()))
+            Ok(Truth::from_bool(operand_present(
+                exists, context, bindings,
+            )?))
         }
         Condition::Before { before } => {
             compare_instants(before, context, bindings, unobserved, |left, right| {
@@ -2792,6 +2804,35 @@ fn resolve_pair(
     Ok((left, right))
 }
 
+/// Whether an operand resolves to something to observe: exactly `resolve_operand(..).is_some()`,
+/// without copying what a reference finds.
+///
+/// A `$` reference is answered through a borrowed path, so `exists: $fields.inventory` on a long
+/// list reads no element of it; a computed answer (a `service/1` count) is the only value made.
+/// Every other operand — a `$$` escape, a literal, a list or mapping — goes through
+/// [`resolve_operand`] unchanged, since a list or mapping operand is present only when every
+/// reference inside it is. Nothing is recorded as unobserved, as `exists` requires.
+fn operand_present(
+    value: &Value,
+    context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
+) -> Result<bool, CoreError> {
+    match value {
+        Value::String(expression)
+            if expression.starts_with('$') && !expression.starts_with("$$") =>
+        {
+            Ok(!matches!(
+                resolve_expression_ref(expression, context, bindings)?.as_deref(),
+                None | Some(Value::Null)
+            ))
+        }
+        _ => {
+            let mut answered = Unobserved::new();
+            Ok(resolve_operand(value, context, bindings, &mut answered)?.is_some())
+        }
+    }
+}
+
 /// Resolves an operand, where nothing to observe is `None` rather than an error — which is what
 /// makes a comparison against it [`Truth::Unknown`].
 ///
@@ -3122,6 +3163,16 @@ fn resolve_expression_optional(
     context: &TemplateContext<'_>,
     bindings: Option<&Bindings<'_>>,
 ) -> Result<Option<Value>, CoreError> {
+    Ok(resolve_expression_ref(expression, context, bindings)?.map(Cow::into_owned))
+}
+
+/// [`resolve_expression_optional`] without copying a stored value: a path into the arguments, the
+/// fields or a binder's element is borrowed, and every other answer is owned exactly as before.
+fn resolve_expression_ref<'v>(
+    expression: &str,
+    context: &TemplateContext<'v>,
+    bindings: Option<&Bindings<'v>>,
+) -> Result<Option<Cow<'v, Value>>, CoreError> {
     // A binder extends whichever scope encloses it, for the duration of its body only: `$<bind>` is
     // the element and `$<bind>.<path>` is a path into it, while every address whose first segment is
     // not a binder passes through untouched. An inner binder wins over an outer one of the same
@@ -3135,8 +3186,8 @@ fn resolve_expression_optional(
             // Registration reached the element's declaration through declared fields only, so it
             // is as checked as a schema root's field.
             return Ok(match path {
-                None => Some(element.clone()),
-                Some(path) => walk(
+                None => Some(Cow::Borrowed(element)),
+                Some(path) => walk_ref(
                     element,
                     path,
                     declared,
@@ -3148,20 +3199,21 @@ fn resolve_expression_optional(
         }
     }
 
+    let owned = |value: Value| Ok(Some(Cow::Owned(value)));
     match expression {
         "$id" => context
             .id
-            .map(|id| Some(Value::String(id.to_owned())))
+            .map(|id| Some(Cow::Owned(Value::String(id.to_owned()))))
             .ok_or_else(pre_address_identity_error),
-        "$entity" => Ok(Some(Value::String(context.definition.entity.clone()))),
-        "$version" => Ok(Some(Value::from(context.definition.version))),
+        "$entity" => owned(Value::String(context.definition.entity.clone())),
+        "$version" => owned(Value::from(context.definition.version)),
         "$from_state" => Ok(context
             .from_state
-            .map(|state| Value::String(state.to_owned()))),
-        "$to_state" | "$state" => Ok(Some(Value::String(context.to_state.to_owned()))),
-        "$args" => Ok(Some(Value::Object(context.args.clone()))),
-        "$fields" => Ok(Some(Value::Object(context.new_fields.clone()))),
-        "$old_fields" => Ok(Some(Value::Object(context.old_fields.clone()))),
+            .map(|state| Cow::Owned(Value::String(state.to_owned())))),
+        "$to_state" | "$state" => owned(Value::String(context.to_state.to_owned())),
+        "$args" => owned(Value::Object(context.args.clone())),
+        "$fields" => owned(Value::Object(context.new_fields.clone())),
+        "$old_fields" => owned(Value::Object(context.old_fields.clone())),
         _ => {
             let service = context.service();
             for (prefix, map, schema) in [
@@ -3178,9 +3230,10 @@ fn resolve_expression_optional(
                 ),
             ] {
                 if let Some(path) = expression.strip_prefix(prefix) {
-                    // Walk by reference and clone the leaf: a `$fields.x` reference used to copy
-                    // every field of the instance to read one of them.
-                    return Ok(lookup(map, path, schema, service));
+                    // Walk by reference and hand back the leaf borrowed: a `$fields.x` reference
+                    // used to copy every field of the instance to read one of them, and a presence
+                    // question copied the leaf it only had to find.
+                    return Ok(lookup_ref(map, path, schema, service));
                 }
             }
 
@@ -3203,12 +3256,15 @@ impl TemplateContext<'_> {
 /// only `count` a map has is its size, so `{metadata: {count: "7"}}` cannot be read as its own
 /// `count` key. Each form answers only for the kind its declaration names, so a stored value of
 /// another kind answers nothing rather than another kind's size.
-fn lookup(
-    root: &Map<String, Value>,
+///
+/// A stored value is borrowed, and only a computed one (a `service/1` count) is owned, so a
+/// presence question copies nothing and a value question copies only the leaf it reads.
+fn lookup_ref<'v>(
+    root: &'v Map<String, Value>,
     path: &str,
     schema: Option<&ObjectSchema>,
     service: bool,
-) -> Option<Value> {
+) -> Option<Cow<'v, Value>> {
     let mut segments = path.splitn(2, '.');
     let first = segments.next()?;
     if first.is_empty() {
@@ -3217,12 +3273,12 @@ fn lookup(
     let value = root.get(first)?;
     let field = schema.and_then(|schema| schema.fields.get(first));
     match segments.next() {
-        None => Some(value.clone()),
-        Some(rest) => walk(value, rest, field, field.is_some(), service, Start::Root),
+        None => Some(Cow::Borrowed(value)),
+        Some(rest) => walk_ref(value, rest, field, field.is_some(), service, Start::Root),
     }
 }
 
-/// Where a [`walk`] started, which decides how it reads a declared `map`.
+/// Where a [`walk_ref`] started, which decides how it reads a declared `map`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Start {
     /// A schema root — `$fields`, `$old_fields`, `$args`: a declared map's `count` is its size and
@@ -3250,6 +3306,7 @@ enum Start {
 /// admits untyped, and a text's length is read only from a checked `string` field. Keyed on the value
 /// instead, every path registration admits untyped would turn from nothing into a number, and a
 /// recorded decision over one would replay differently (R-97).
+#[cfg(test)]
 fn walk(
     value: &Value,
     path: &str,
@@ -3258,6 +3315,18 @@ fn walk(
     service: bool,
     start: Start,
 ) -> Option<Value> {
+    walk_ref(value, path, field, checked, service, start).map(Cow::into_owned)
+}
+
+/// The walk itself, without copying the leaf: a stored value is borrowed, a computed one owned.
+fn walk_ref<'v>(
+    value: &'v Value,
+    path: &str,
+    field: Option<&crate::FieldDefinition>,
+    checked: bool,
+    service: bool,
+    start: Start,
+) -> Option<Cow<'v, Value>> {
     let mut segments = path.splitn(2, '.');
     let segment = segments.next()?;
     let rest = segments.next();
@@ -3273,15 +3342,21 @@ fn walk(
         if checked && field.is_some_and(|field| field.kind == FieldKind::String) {
             return match (value, rest) {
                 (Value::String(text), None) if segment == "count" => {
-                    Some(Value::from(text.chars().count()))
+                    Some(Cow::Owned(Value::from(text.chars().count())))
                 }
                 _ => None,
             };
         }
         if let Some((next, next_field)) = collection_address(value, field, segment) {
-            return match rest {
-                None => Some(next),
-                Some(rest) => walk(&next, rest, next_field, checked, service, start),
+            return match (rest, next) {
+                (None, next) => Some(next),
+                (Some(rest), Cow::Borrowed(next)) => {
+                    walk_ref(next, rest, next_field, checked, service, start)
+                }
+                (Some(rest), Cow::Owned(next)) => {
+                    walk_ref(&next, rest, next_field, checked, service, start)
+                        .map(|found| Cow::Owned(found.into_owned()))
+                }
             };
         }
         // A declared map's keys and a declared array's members are not addressable, so nothing
@@ -3301,8 +3376,8 @@ fn walk(
     });
     let checked = checked && !field.is_some_and(|field| field.kind == FieldKind::Union);
     match rest {
-        None => Some(next.clone()),
-        Some(rest) => walk(next, rest, next_field, checked, service, start),
+        None => Some(Cow::Borrowed(next)),
+        Some(rest) => walk_ref(next, rest, next_field, checked, service, start),
     }
 }
 
@@ -3338,20 +3413,20 @@ fn selected_variant<'a>(
 /// the value (no declaration, or `json`). A stored value whose kind disagrees with its declaration
 /// — no store validates an instance on load — answers what the declaration says it has, so a
 /// declared map holding an array has no size and a declared object holding one has no length.
-fn collection_address<'a>(
-    value: &Value,
+fn collection_address<'v, 'a>(
+    value: &'v Value,
     field: Option<&'a crate::FieldDefinition>,
     segment: &str,
-) -> Option<(Value, Option<&'a crate::FieldDefinition>)> {
+) -> Option<(Cow<'v, Value>, Option<&'a crate::FieldDefinition>)> {
     let declared = field.map(|field| field.kind);
     let array = matches!(declared, None | Some(FieldKind::Array | FieldKind::Json));
     match value {
         // A declared map's size, and nothing else it holds.
         Value::Object(members) if declared == Some(FieldKind::Map) && segment == "count" => {
-            Some((Value::from(members.len()), None))
+            Some((Cow::Owned(Value::from(members.len())), None))
         }
         Value::Array(values) if array && segment == "count" => {
-            Some((Value::from(values.len()), None))
+            Some((Cow::Owned(Value::from(values.len())), None))
         }
         // `0`, or a digit string with no leading zero.
         Value::Array(values) if array => {
@@ -3359,8 +3434,11 @@ fn collection_address<'a>(
                 return None;
             }
             let index: usize = segment.parse().ok()?;
-            let element = values.get(index)?.clone();
-            Some((element, field.and_then(|field| field.items.as_deref())))
+            let element = values.get(index)?;
+            Some((
+                Cow::Borrowed(element),
+                field.and_then(|field| field.items.as_deref()),
+            ))
         }
         _ => None,
     }
@@ -3656,6 +3734,87 @@ mod tests {
         let validated = ValidatedDefinition::new(definition.clone()).expect("valid");
         assert_eq!(validated.as_definition(), &definition);
         assert!(format!("{validated:?}").starts_with("ValidatedDefinition(EntityDefinition {"));
+    }
+
+    #[test]
+    fn a_borrowed_presence_answer_agrees_with_resolving_the_operand() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "cart", "version": 1, "semantics": "service/1",
+            "schema": { "fields": {
+                "lines": { "type": "array", "items": { "type": "string" } },
+                "note": { "type": "string" },
+                "owner": { "type": "object", "properties": { "name": { "type": "string" } } }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open"] }
+        }))
+        .expect("definition");
+        let fields = json!({
+            "lines": ["a", "b"], "note": null, "owner": { "name": "x", "nick": null }
+        });
+        let fields = fields.as_object().expect("object");
+        let args = json!({ "limit": 3, "unset": null });
+        let args = args.as_object().expect("object");
+        let context = super::TemplateContext {
+            definition: &definition,
+            id: Some("c-1"),
+            args,
+            arguments_schema: None,
+            old_fields: fields,
+            new_fields: fields,
+            from_state: Some("open"),
+            to_state: "open",
+        };
+        let element = json!({ "k": 1, "n": null });
+        let binder = super::Bindings {
+            name: "item",
+            value: &element,
+            declared: None,
+            outer: None,
+        };
+        let operands = [
+            json!("$fields.lines"),
+            json!("$fields.lines.count"),
+            json!("$fields.lines.0"),
+            json!("$fields.lines.7"),
+            json!("$fields.note"),
+            json!("$fields.owner.name"),
+            json!("$fields.owner.nick"),
+            json!("$fields.absent"),
+            json!("$old_fields.lines"),
+            json!("$args.limit"),
+            json!("$args.unset"),
+            json!("$args"),
+            json!("$fields"),
+            json!("$id"),
+            json!("$from_state"),
+            json!("$item"),
+            json!("$item.k"),
+            json!("$item.n"),
+            json!("$item.absent"),
+            json!("$$literal"),
+            json!(["$fields.lines", "$fields.note"]),
+            json!({ "a": "$fields.lines" }),
+            json!(1),
+            Value::Null,
+        ];
+        let mut present = 0;
+        for operand in &operands {
+            for bindings in [None, Some(&binder)] {
+                let mut unobserved = super::Unobserved::new();
+                let expected = super::resolve_operand(operand, &context, bindings, &mut unobserved)
+                    .map(|resolved| resolved.is_some());
+                let answered = super::operand_present(operand, &context, bindings);
+                assert_eq!(
+                    answered,
+                    expected,
+                    "{operand} with binder {}",
+                    bindings.is_some()
+                );
+                present += usize::from(expected == Ok(true));
+            }
+        }
+        // Both answers occur, so the comparison is not vacuous.
+        assert!(present > 10 && present < operands.len() * 2, "{present}");
     }
 
     #[test]
