@@ -4,8 +4,45 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Security
+
+- `RemoteStore::load` refuses an answer whose instance names another entity type or id than the
+  one asked for, as `StoreError::Backend` naming both subjects. Before, a misrouted reply was
+  returned as the requested subject, and `StoredRuntime::execute` committed to the returned
+  instance's coordinates, so a routing bug on the far side could redirect a write.
+- `entity mcp` (`entity_mcp::Server::serve`) reads at most 4 MiB of one request line. A longer
+  line is discarded without being buffered and answered with a JSON-RPC `-32600` error with a
+  `null` id; the session goes on with the next line. `Server::with_frame_limit` sets another
+  limit. Before, a peer could make the server buffer an unbounded line and keep that allocation.
+  A line that is not UTF-8 is now answered with a `-32700` parse error instead of ending the
+  session with an I/O error.
+- `entity mcp` advertises `destructiveHint: true` on an operation tool that can overwrite or
+  remove a field value in any registered version: any assignment in the operation's `set` or in
+  an outcome's `set` or `set_if_present` (a template, an increment or a clear), or any
+  fulfillment target, whose `Set` replaces the field and whose optional form admits `Remove`.
+  MCP defines `false` as "only additive updates"; an operation that writes no field keeps it.
+  Before, every tool claimed `destructiveHint: false`.
+
 ### Changed
 
+- `entity mcp` builds its `tools/list` catalogue once per server instead of on every request; the
+  reply is unchanged.
+- `ValidatedDefinition::new` computes the definition snapshot a decision record carries once, and
+  every decision reuses it, instead of serializing, canonicalizing and reading back the definition
+  per decision. Records keep the same bytes. Validating a definition costs that computation once,
+  whether or not it ever decides.
+- `entity mcp` refuses to start when a built-in tool name (`<entity>.create`, `.get`, `.list`,
+  `.events`) is longer than 128 characters, as it already did for operation tools. Before, a long
+  entity name produced built-in names a host enforcing the limit could not register.
+- A `for_all` or `for_any` guard decided before the subject is loaded stops at the first element
+  that settles it, as the guard after loading already did. The answer is unchanged; an outcome
+  refused as unobservable no longer names addresses read only past that element.
+- `exists:` on a reference reads the value through a borrowed path instead of copying it, so
+  checking that a long list is present no longer copies the list. The answer is unchanged.
+- `PreparedOutcome::complete` resumes where `PreparedOperation::select_with` stopped, at the
+  host-fulfillment boundary, instead of evaluating the operation again from its first step: each
+  `set` assignment of a host-fulfilled operation, replay included, is evaluated once instead of
+  twice. Decisions, records and refusals are unchanged.
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.

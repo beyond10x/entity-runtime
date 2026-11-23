@@ -77,7 +77,9 @@ requests fulfillment. An accepted branch with an empty map follows the existing 
 returns the opaque selected continuation. `complete` requires exactly the advertised field keys,
 applies actions to the loaded field map, validates the resulting schema, checks the identity mirror
 and invariants, materializes events and response from that one resulting field map, and builds one
-decision. The continuation owns the selected branch; the SDK cannot substitute an outcome. The
+decision. The continuation owns the selected branch and the fields its `set` and `set_if_present`
+produced, so `complete` resumes at the fulfillment boundary and evaluates no assignment a second
+time; the SDK cannot substitute an outcome. The
 existing `continue_with` delegates to this flow and returns a typed `FulfillmentRequired` error only
 when called on a `service/3` branch that actually needs actions.
 

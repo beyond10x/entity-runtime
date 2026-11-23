@@ -1298,3 +1298,82 @@ fn a_replayed_history_with_an_operation_set_if_present_yields_the_bytes_execute_
         );
     }
 }
+
+/// Once the first element settles a quantifier, the pre-load guard reads no later element, as the
+/// post-load guard does: the second element's missing `flag` is not named as unresolved in either.
+#[test]
+fn a_preload_quantifier_stops_at_the_element_that_settles_it_as_the_post_load_one_does() {
+    let definition = validated(json!({
+        "entity": "probe", "version": 1, "semantics": "service/1",
+        "schema": { "fields": {} },
+        "lifecycle": { "initial": "Held", "states": ["Held"] },
+        "operations": { "Check": {
+            "arguments": { "fields": {
+                "items": { "type": "array", "required": true, "items": {
+                    "type": "object", "properties": { "flag": { "type": "boolean" } } } },
+                "absent": { "type": "integer" }
+            }},
+            "outcomes": [
+                { "name": "guarded", "when": { "any": [
+                    { "for_all": { "in": "$args.items", "as": "item",
+                        "that": { "eq": ["$item.flag", true] } } },
+                    { "for_any": { "in": "$args.items", "as": "item",
+                        "that": { "ne": ["$item.flag", true] } } },
+                    { "eq": ["$args.absent", 1] }
+                ]}, "refuses": { "error": "Guarded" } },
+                { "name": "later", "refuses": { "error": "Later" } }
+            ]
+        }}
+    }));
+    // `for_all` is settled false by the first element and `for_any` true by it, so neither reads
+    // the second element, whose `flag` is missing.
+    let arguments = json!({ "items": [{ "flag": false }, {}] });
+    assert_eq!(
+        refusal(decide_before_load(&definition, "p-1", "Check", arguments.clone()).unwrap())
+            .outcome,
+        "guarded"
+    );
+
+    // With `for_any` settled false by neither element, the guard is unknown through `$args.absent`
+    // alone; the `for_all` settled by the first element contributes no address.
+    let only_all = validated(json!({
+        "entity": "probe", "version": 1, "semantics": "service/1",
+        "schema": { "fields": {} },
+        "lifecycle": { "initial": "Held", "states": ["Held"] },
+        "operations": { "Check": {
+            "arguments": { "fields": {
+                "items": { "type": "array", "required": true, "items": {
+                    "type": "object", "properties": { "flag": { "type": "boolean" } } } },
+                "absent": { "type": "integer" }
+            }},
+            "outcomes": [
+                { "name": "guarded", "when": { "any": [
+                    { "for_all": { "in": "$args.items", "as": "item",
+                        "that": { "eq": ["$item.flag", true] } } },
+                    { "eq": ["$args.absent", 1] }
+                ]}, "refuses": { "error": "Guarded" } },
+                { "name": "later", "refuses": { "error": "Later" } }
+            ]
+        }}
+    }));
+    let preload = decide_before_load(&only_all, "p-1", "Check", arguments.clone());
+    let direct = decide(
+        &only_all,
+        &instance("probe", "p-1", "Held"),
+        "Check",
+        arguments,
+    );
+    for (path, answer) in [
+        ("pre-load", preload.map(|_| ())),
+        ("post-load", direct.map(|_| ())),
+    ] {
+        assert!(
+            matches!(
+                &answer,
+                Err(CoreError::OutcomeUnobservable { outcome, unresolved, .. })
+                    if outcome == "guarded" && unresolved == &["$args.absent".to_owned()]
+            ),
+            "{path}: {answer:?}"
+        );
+    }
+}

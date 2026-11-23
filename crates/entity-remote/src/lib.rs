@@ -357,7 +357,23 @@ impl<T: Transport> StateProvider for RemoteStore<T> {
             entity: entity.to_owned(),
             id: id.to_owned(),
         })? {
-            Answer::Instance { instance } => instance.map(WireDocument::decode).transpose(),
+            Answer::Instance { instance } => {
+                let instance: Option<EntityInstance> =
+                    instance.map(WireDocument::decode).transpose()?;
+                match instance {
+                    Some(found) if found.entity != entity || found.id != id => {
+                        // A misrouted reply must not stand in for the subject asked about: the
+                        // shell commits to the returned instance's coordinates, so accepting it
+                        // would let a routing bug redirect a write. `FileStore` refuses a subject
+                        // stored under the wrong path the same way.
+                        Err(StoreError::Backend(format!(
+                            "the remote was asked for {entity}/{id} but answered with {}/{}",
+                            found.entity, found.id
+                        )))
+                    }
+                    other => Ok(other),
+                }
+            }
             other => Err(common(other)),
         }
     }
