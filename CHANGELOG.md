@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.33.1] — 2026-11-23
+
 ### Fixed
 
 - An Eventlog store whose records name their definitions by digest (written by 0.33.0) no longer
