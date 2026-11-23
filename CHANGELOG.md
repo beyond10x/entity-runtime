@@ -45,6 +45,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - A refused File Store write (a revision or record conflict) and an idempotent retry no longer
   grow and sync `.entity-store-lock`. The invalidation epoch advances only right before a write
   changes the store, so other handles keep their record-id index after a conflict.
+- `entity store migrate-file` refuses a destination inside the legacy source, on a dry run too,
+  before it creates anything. Both paths are compared canonically, so `..` or a relative path
+  cannot hide the nesting. Before, a dry run accepted `--to OLD/converted` and the real run wrote
+  the v2 store into the source, which then no longer validated.
 
 ### Security
 

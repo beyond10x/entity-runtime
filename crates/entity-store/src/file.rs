@@ -1183,7 +1183,8 @@ impl Store for FileStore {
 /// # Errors
 ///
 /// [`StoreError::Backend`] for malformed, partial, symlinked or ambiguous source data, an existing
-/// destination, or an IO failure. The source is never modified.
+/// destination, a destination inside the source (dry runs included), or an IO failure. The source
+/// is never modified.
 pub fn migrate_file_store_v1(
     source: impl AsRef<Path>,
     destination: impl AsRef<Path>,
@@ -1206,6 +1207,7 @@ pub fn migrate_file_store_v1(
         )));
     }
 
+    refuse_destination_inside_source(source, destination)?;
     let subjects = read_legacy(source)?;
     let report = FileMigrationReport {
         subjects: subjects.len(),
@@ -1264,6 +1266,55 @@ pub fn migrate_file_store_v1(
         let _ = fs::remove_dir_all(&staging);
     }
     result.map(|()| report)
+}
+
+/// Refuses a migration destination inside the legacy source, dry runs included.
+///
+/// The migration promises to leave its source unchanged, but a destination beneath it puts the
+/// staging tree and then the published store into the source, which no longer validates afterwards
+/// (it holds a nested directory). Both paths are compared canonically, so `..` and a relative path
+/// cannot hide the nesting.
+fn refuse_destination_inside_source(source: &Path, destination: &Path) -> Result<(), StoreError> {
+    let source_resolved =
+        fs::canonicalize(source).map_err(|error| backend("resolving", source, &error))?;
+    if resolve_absent(destination)?.starts_with(&source_resolved) {
+        return Err(StoreError::Backend(format!(
+            "migration destination {} lies inside the legacy source {}, which a migration never \
+             modifies; choose a destination outside it",
+            destination.display(),
+            source.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Resolves a path that does not exist yet: its longest existing prefix canonically, the rest
+/// lexically, as creating the missing directories one by one would resolve it.
+fn resolve_absent(path: &Path) -> Result<PathBuf, StoreError> {
+    let components: Vec<Component<'_>> = path.components().collect();
+    let mut split = components.len();
+    let existing = loop {
+        if split == 0 {
+            break PathBuf::from(".");
+        }
+        let prefix: PathBuf = components[..split].iter().collect();
+        if fs::symlink_metadata(&prefix).is_ok() {
+            break prefix;
+        }
+        split -= 1;
+    };
+    let mut resolved =
+        fs::canonicalize(&existing).map_err(|error| backend("resolving", &existing, &error))?;
+    for component in &components[split..] {
+        match component {
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            Component::Normal(name) => resolved.push(name),
+            Component::CurDir | Component::RootDir | Component::Prefix(_) => {}
+        }
+    }
+    Ok(resolved)
 }
 
 fn read_legacy(root: &Path) -> Result<BTreeMap<(String, String), StoredSubject>, StoreError> {

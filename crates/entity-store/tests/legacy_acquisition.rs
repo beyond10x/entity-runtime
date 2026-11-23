@@ -246,3 +246,80 @@ fn acquiring_a_v2_store_without_a_lock_file_creates_the_lock_writers_use() {
         "acquisition creates the lock without advancing the writers' epoch"
     );
 }
+
+/// A pre-0.15 split-file store at `<name>/legacy` whose ticket `one` is saved as `state` and whose
+/// event log holds `events`.
+fn legacy_store(
+    name: &str,
+    state: &entity_core::EntityInstance,
+    events: &[entity_core::DomainEvent],
+) -> PathBuf {
+    let legacy = scratch(name).join("legacy");
+    std::fs::create_dir_all(legacy.join("ticket")).expect("legacy entity directory");
+    std::fs::write(
+        legacy.join("ticket").join("one.json"),
+        serde_json::to_vec(state).expect("instance serializes"),
+    )
+    .expect("legacy state");
+    if !events.is_empty() {
+        let log: String = events
+            .iter()
+            .map(|event| serde_json::to_string(event).expect("event serializes") + "\n")
+            .collect();
+        std::fs::write(legacy.join("ticket").join("one.events.jsonl"), log).expect("legacy log");
+    }
+    legacy
+}
+
+/// Every path under `root` with its bytes, sorted: what a migration must leave as it found it.
+fn tree(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory).expect("listing") {
+            let path = entry.expect("entry").path();
+            if path.is_dir() {
+                found.push((path.clone(), Vec::new()));
+                pending.push(path);
+            } else {
+                let bytes = std::fs::read(&path).expect("reading");
+                found.push((path, bytes));
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+#[test]
+fn a_destination_inside_the_legacy_source_is_refused_before_anything_is_written() {
+    let created = Runtime::new(&registry())
+        .create("ticket", 1, "one", serde_json::json!({"title":"one"}))
+        .expect("creation");
+    let legacy = legacy_store("nested-destination", &created.instance, &[]);
+    let base = legacy.parent().expect("scratch base").to_path_buf();
+    let before = tree(&legacy);
+    for destination in [
+        legacy.join("converted"),
+        legacy.join("ticket").join("converted"),
+        // `absent` does not exist; creating it and stepping back out lands in the source.
+        base.join("absent").join("..").join("legacy").join("converted"),
+    ] {
+        for dry_run in [true, false] {
+            let error = entity_store::migrate_file_store_v1(&legacy, &destination, dry_run)
+                .expect_err("a destination inside the source is refused");
+            assert!(
+                error.to_string().contains("lies inside the legacy source"),
+                "{} (dry run {dry_run}): {error}",
+                destination.display()
+            );
+        }
+    }
+    assert_eq!(tree(&legacy), before, "the source is left exactly as it was");
+    assert!(!base.join("absent").exists(), "no directory was created on the way");
+    let report = entity_store::migrate_file_store_v1(&legacy, base.join("converted"), false)
+        .expect("a sibling destination still migrates");
+    assert_eq!(report.subjects, 1);
+    assert_eq!(tree(&legacy), before, "the source is left exactly as it was");
+}
+
