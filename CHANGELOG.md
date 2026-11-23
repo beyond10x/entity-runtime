@@ -27,6 +27,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   detail starts `physical stream contention`; nothing was committed and the request can be
   retried. Before, it retried without a bound, holding one more future per attempt.
 
+### Fixed
+
+- An Eventlog store handle's memory of what it verified (64 MiB) charges an imported subject for
+  the anchor and terminal state it keeps a copy of, as what they encode to, instead of a fixed
+  16 KiB for the anchor and nothing for the state of a subject with no record after its anchor:
+  a 1 MiB field charged 33,024 bytes and now about 6.3 MB. A blob, decode or history that could
+  not fit even in an empty memory is no longer remembered, and no longer makes the memory forget
+  everything else first.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security
