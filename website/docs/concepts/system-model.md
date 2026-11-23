@@ -10,15 +10,15 @@ source: "Cargo workspace (cargo metadata), crates/entity-core, crates/entity-sto
 
 Entity Runtime is a workspace of Rust libraries and one command around a deterministic kernel. It
 executes an adopter's entity definitions and derives interfaces from them. The
-[crate list](../reference/crates.md) names every package; this page shows how they fit.
+[crate list](../reference/crates.md) lists every package.
 
 An entity's `version: 1` is its *definition* version. It is independent of the runtime release
 (0.27.0) and of any storage format.
 
 ## Subsystems and boundaries
 
-Arrows show inputs and calls. Storage IO stays in the selected provider; authentication, trusted
-time and external effects belong to the application.
+Arrows show inputs and calls. Storage IO stays in the selected provider, and authentication,
+trusted time and external effects belong to the application.
 
 ```mermaid
 flowchart TB
@@ -60,7 +60,7 @@ No provider, command surface or generated contract starts a hosted service by it
 | Queries | Containment queries with continuation cursors | No general search service, SQL interface or background projection worker |
 
 "The entity is modelled" means its declared fields, operations, rules and events are checked. It
-does not mean every surrounding service has a definition; an adopter decides which parts of a
+does not mean every surrounding service has a definition. An adopter decides which parts of a
 system cross this boundary.
 
 ## Commands, decisions, events and observations
@@ -76,7 +76,7 @@ system cross this boundary.
 
 A decision record keeps the normalized command and the definition snapshot even when an operation
 emits no event, so reading events is not reading the full history. `HistoryProvider` returns
-recorded decisions and observations; `replay` re-executes complete decisions.
+recorded decisions and observations, and `replay` re-executes complete decisions.
 [Storage and replay](./storage.md) has the details.
 
 For example, the getting-started refund is created at revision 1, submitted at revision 2 and
@@ -131,21 +131,20 @@ flowchart TB
 
 ## Which parts are specified in ESS
 
-Five libraries — `entity-core`, `entity-store`, `entity-executor`, `entity-shell` and
-`entity-query` — are held to an executable specification written for
-[ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)). The
+Five libraries are held to an executable specification written for
+[ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)): `entity-core`,
+`entity-store`, `entity-executor`, `entity-shell` and `entity-query`. The
 composition is [`ess/ess-inputs.yaml`](https://github.com/beyond10x/entity-runtime/blob/main/ess/ess-inputs.yaml).
 `task check` runs a standalone Rust checker that executes every scenario against the real libraries
 and refuses an unreviewed change to a scenario's assertions. A separate contract,
 `ess/provider-tracking`, covers the SQLite read-verification policy and runs on Rust 1.91.
 
-The libraries are hand-written Rust held to those contracts; they are not generated from them.
-The other crates — the providers, the command, MCP, the graph and surface projections — are held
-by their own tests. The checker is isolated from production dependencies: no shipped crate depends
-on ESS.
+The five libraries are hand-written Rust, held to those contracts and not generated from them.
+The providers, the command, MCP and the graph and surface projections are held by their own
+tests. The checker is isolated from production dependencies: no shipped crate depends on ESS.
 
 Entity definitions are a different format from ESS documents. An Entity Runtime definition is
-headed by `entity:` and `version:`; an ESS specification describes systems, domains, commands and
+headed by `entity:` and `version:`. An ESS specification describes systems, domains, commands and
 components. ESS's own `ess-entity-runtime` lowering turns one component of a specification into
 Entity Runtime definitions, and ESS documents which constructs it can lower. This repository ships
 no ESS importer.

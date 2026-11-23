@@ -8,9 +8,8 @@ source: "crates/entity-core (runtime, validation), crates/entity-shell (StoredRu
 
 # The decision boundary
 
-An agent can read a customer message, gather evidence and propose a refund. Those are useful
-probabilistic tasks. Whether the refund is *allowed* is a different kind of question, and Entity
-Runtime answers only that one.
+An agent can read a customer message, gather evidence and propose a refund, but whether the
+refund is *allowed* is a different question, and Entity Runtime answers only that one.
 
 If policy lives in a prompt or a tool description, every call asks a model to interpret it again.
 If a tool accepts arbitrary updates, one mistaken call can skip a lifecycle, overwrite newer work,
@@ -33,23 +32,17 @@ or change state without a record of why. Entity Runtime separates the two jobs:
 In the [getting-started](../getting-started.md) refund, the agent may propose `approve`. The shell
 supplies `actor_role: agent` from its own knowledge of the caller, and the rule
 `large_refunds_need_a_human` refuses a refund above 5000 cents. The model cannot become a human
-approver by saying it is one, because it never sets `actor_role`.
+approver by saying it is one, because it does not set `actor_role`.
 
-## Why this holds better than prompt instructions
+## Compared with prompt instructions
 
-- **The actions are discoverable.** `entity inspect` and `entity graph` show the states,
-  operations, arguments and references a definition actually declares, and `entity skill` renders
-  usage guidance for the installed version.
-- **Policy is evaluated, not interpreted.** Conditions are a closed data language. There are no
-  callbacks, lookups, clocks or loops in a rule. The same inputs give the same decision and the
-  same serialized bytes.
-- **Missing evidence is not silently false.** A comparison over a value nobody observed answers
-  `unknown`; the refusal is `precondition_unobservable` and names every missing path, so the caller
-  can gather evidence instead of treating absence as a no.
-- **Refusals are part of the tool contract.** A refusal is data with a `kind` and the rule, state
-  or path that caused it, so an agent can revise its proposal without scraping prose.
-- **Accepted changes carry their record.** A decision keeps what was asked, which definition
-  decided it, what changed and which events resulted. Actor and time enter at the shell.
+| Property | How |
+|---|---|
+| Discoverable actions | `entity inspect` and `entity graph` show the states, operations, arguments and references a definition declares, and `entity skill` renders usage guidance for the installed version. |
+| Evaluated policy | Conditions are a closed data language with no callbacks, lookups, clocks or loops in a rule. The same inputs give the same decision and the same serialized bytes. |
+| Missing evidence | A comparison over a value that was not observed answers `unknown`. The refusal is `precondition_unobservable` and lists every missing path, so the caller can gather evidence instead of treating absence as a no. |
+| Refusals in the tool contract | A refusal is data with a `kind` and the rule, state or path that caused it, so an agent can revise its proposal without scraping prose. |
+| Accepted changes carry their record | A decision keeps what was asked, which definition decided it, what changed and which events resulted. Actor and time enter at the shell. |
 
 ## A safe agent loop
 
@@ -57,7 +50,7 @@ approver by saying it is one, because it never sets `actor_role`.
 2. Expose a tool whose input is an allowed operation name and its domain arguments.
 3. Inject identity, authority and provenance outside the model-controlled payload.
 4. Execute the operation.
-5. On a refusal, return its structured fields to the agent; nothing changed.
+5. On a refusal, which changed nothing, return its structured fields to the agent.
 6. On a decision, commit it at the expected revision before doing anything downstream.
 7. Treat emitted events as facts to act on, not as proof that a side effect already happened.
 
@@ -66,6 +59,6 @@ approver by saying it is one, because it never sets `actor_role`.
 ## What this does not solve
 
 Entity Runtime does not make model output true, secure a transport, authorize a user or perform an
-external action. Authentication decides who the caller is; the shell turns that into trusted
-arguments and recording metadata; the kernel evaluates the policy; another component performs
+external action. Authentication decides who the caller is, and the shell turns that into trusted
+arguments and recording metadata. The kernel evaluates the policy, and another component performs
 authorized side effects after the commit.

@@ -9,10 +9,10 @@ source: "AGENTS.md invariants and their tests: crates/entity-core/tests/purity.r
 # Guarantees and limits
 
 These are the guarantees of the 0.27.0 runtime. Its API is still in development. Definition
-versions, runtime releases and storage formats are separate compatibility boundaries: a store
-written by a newer record format must not be opened by an older build (each format names itself,
-and an older reader refuses it by name). The [status page](../status.md) names the test that holds
-each shipped capability.
+versions, runtime releases and storage formats are separate compatibility boundaries. A store
+written in a newer record format must not be opened by an older build: each format carries its
+name, and an older reader refuses a name it does not know. The [status page](../status.md) lists
+the test that holds each shipped capability.
 
 ## Kernel guarantees
 
@@ -37,12 +37,12 @@ transition, rule, validation, invariant or template produces no partial instance
 A host may ask for refusals to be recorded: an executor built with `Executor::recording_refusals`
 records each kernel refusal, expectation conflict and write to a forked subject before returning
 it. On an Eventlog store that is one `er.refused_request` event per distinct refusal on its own
-`er.refusal` stream; no subject's revision moves.
+`er.refusal` stream, and no subject's revision moves.
 
 ### Lifecycle through operations only
 
 Creation enters the declared initial state. Every later state comes from a named operation and a
-declared transition; there is no status setter. `EntityInstance` has public, serializable fields
+declared transition, and there is no status setter. `EntityInstance` has public, serializable fields
 because stores round-trip it, so the host still chooses which instance is canonical. The kernel
 refuses an instance that claims a state its definition does not declare.
 
@@ -65,32 +65,32 @@ distinct from an absent entity.
 - A record id is idempotent only for identical bytes.
 - `replay` re-executes complete decisions and compares the recorded result and events.
 - Memory, SQLite and PostgreSQL stores commit an ordered multi-subject batch completely or not at
-  all; an Eventlog store publishes each append, one decision or a batch, as one append group. The
+  all. An Eventlog store publishes each append, one decision or a batch, as one append group. The
   File Store commits one subject document at a time.
-- A hybrid store's authority and failure policy have no default anybody forgot to choose.
+- A hybrid store's authority and failure policy have no defaults.
 
 ## What the trusted shell must do
 
-- load canonical definitions and instances;
-- authenticate callers and derive their authority;
-- supply ids, times, actor, correlation and causation;
-- enforce that referenced instances exist, and graph-wide constraints;
-- commit an accepted decision before publishing or acting on its events;
-- secure transports, credentials, database connections and filesystems; and
-- decide retry, escalation and offline behaviour.
+- load canonical definitions and instances
+- authenticate callers and derive their authority
+- supply ids, times, actor, correlation and causation
+- enforce that referenced instances exist, and graph-wide constraints
+- commit an accepted decision before publishing or acting on its events
+- secure transports, credentials, database connections and filesystems
+- decide retry, escalation and offline behaviour
 
 ## What Entity Runtime is not
 
-- an LLM client, planner, memory system or tool-calling framework;
-- an authorization or identity provider;
-- a scripting or expression runtime;
-- a database server, message bus, search index or blob store;
-- a scheduler, a clock or an id generator;
-- a side-effect executor; or
-- a guarantee that model-supplied facts are true.
+- an LLM client, planner, memory system or tool-calling framework
+- an authorization or identity provider
+- a scripting or expression runtime
+- a database server, message bus, search index or blob store
+- a scheduler, a clock or an id generator
+- a side-effect executor
+- a guarantee that model-supplied facts are true
 
 `entity-remote` defines a transport-neutral protocol, not an HTTP stack. The `entity` command
-stores into a File Store; a build with the `eventlog-providers` feature can also use an Eventlog
+stores into a File Store. A build with the `eventlog-providers` feature can also use an Eventlog
 File store. SQLite, PostgreSQL, remote, hybrid and the other Eventlog providers are library
 integrations. `entity-query` offers containment queries over the Memory and PostgreSQL stores and
 the Eventlog facades, not a search service.
