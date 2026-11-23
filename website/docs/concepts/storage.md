@@ -119,6 +119,10 @@ explicit Cargo feature:
   each long text once under its SHA-256. An `eventlog-tree/1` store opens and records as before, and
   `eventlog_tree::migrate` moves one explicitly. A build older than 0.25.0 recognizes the new
   format by its name and refuses it.
+- **Tree reopens from its kept state.** Eventlog keeps the state a tree replay folded under
+  `.cache/state/`, which is never committed. `ErRecordedProjector` reports a fingerprint, so a
+  reopen of an unchanged tree by the same program loads that state instead of replaying every
+  file. A changed file, another program or another projector configuration replays once.
 
 On SQLite, `RecordedProviderFacade::start_with_read_policy` with `CapturePolicy::ProviderTracked`
 reuses a verified observation when SQLite proves nothing changed, or verifies only a proven append

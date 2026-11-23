@@ -12,6 +12,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   redaction reason, for one, is now a code such as `subject-request`, and free text is refused.
   No Entity Runtime API takes a redaction reason.
 
+### Performance
+
+- A Tree store that nothing changed since its last open is reopened from the state Eventlog keeps
+  under `.cache/state/` instead of replaying every file: `ErRecordedProjector` now reports a
+  `Projector::fingerprint`. Another program, a changed file or a projector reporting another
+  configuration replays once.
+
 ## [0.33.1] — 2026-11-23
 
 ### Fixed
