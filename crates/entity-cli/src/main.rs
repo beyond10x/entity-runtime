@@ -1915,16 +1915,17 @@ fn to_yaml<T: serde::Serialize>(value: &T) -> Result<String, Failure> {
 
 /// A definition as YAML in the spelling `entity_yaml::from_str` reads back. The YAML library writes
 /// a data-carrying variant as a `!moves` tag, which the reader refuses; written as a one-key
-/// mapping, as JSON writes it, `inspect --format yaml` output validates again. A unit variant is a
-/// plain word either way, so a definition without one prints the bytes it printed before.
+/// mapping, as JSON writes it, `inspect --format yaml` output validates again. The value is then
+/// written by `yaml_output`, so a number in a condition, a default or a schema bound is a YAML
+/// number rather than the private map `serde_json` serializes it as.
 fn definition_to_yaml(definition: &EntityDefinition) -> Result<String, Failure> {
-    let mut bytes = Vec::new();
-    serde_yaml_ng::with::singleton_map_recursive::serialize(
+    let value = serde_yaml_ng::with::singleton_map_recursive::serialize(
         definition,
-        &mut serde_yaml_ng::Serializer::new(&mut bytes),
+        serde_yaml_ng::value::Serializer,
     )
     .map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))?;
-    String::from_utf8(bytes).map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))
+    yaml_output::value_to_string(&value)
+        .map_err(|error| Failure::Usage(format!("cannot render YAML: {error}")))
 }
 
 fn write_all(out: &mut impl Write, text: &str) -> Result<(), Failure> {

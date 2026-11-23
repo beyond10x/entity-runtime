@@ -163,18 +163,36 @@ fn inspect_as_yaml_prints_a_definition_that_validates_again() {
         stderr(&output)
     );
 
-    // A definition with no data-carrying variant prints the bytes the YAML library writes for it.
+    // A number in the definition — the order's `gt: [$fields.total_cents, 0]` — is a YAML number a
+    // plain YAML reader decodes as one, not the private map `serde_json` serializes it as, and the
+    // printed definition still validates.
     let order = order_yaml();
     let printed = run(
         &["inspect", order.to_str().unwrap(), "--format", "yaml"],
         None,
     );
     assert_eq!(printed.status.code(), Some(0), "{}", stderr(&printed));
-    let definition =
-        entity_yaml::from_str(&fs::read_to_string(&order).expect("readable")).expect("loads");
+    let text = stdout(&printed);
+    assert!(!text.contains("$serde_json::private::Number"), "{text}");
+    let read: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("plain YAML");
+    let mut greater = Vec::new();
+    values_named(&read, "gt", &mut greater);
     assert_eq!(
-        stdout(&printed),
-        serde_yaml_ng::to_string(&definition).expect("serializes")
+        greater,
+        [&serde_yaml_ng::Value::Sequence(vec![
+            "$fields.total_cents".into(),
+            serde_yaml_ng::Value::Number(0.into()),
+        ])],
+        "{text}"
+    );
+    let reread = scratch("inspected-order.yaml", &text);
+    let output = run(&["validate", reread.to_str().unwrap()], None);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
     );
 }
 

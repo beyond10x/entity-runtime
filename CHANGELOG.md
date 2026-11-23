@@ -33,7 +33,9 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   (`spent: 3.75`) with their exact digits, instead of one-key mappings
   (`spent: {$serde_json::private::Number: '3.75'}`) that only this runtime's own reader turned
   back into numbers. A consumer that matched the mapping form must read plain numbers now.
-  `inspect --format yaml` is unchanged.
+- `entity inspect --format yaml` writes the numbers of a definition (a condition operand such as
+  `gt: [$fields.total_cents, 0]`, a default, a schema bound) as YAML numbers too; the printed
+  definition still validates.
 - `entity validate` with several files reads each file once and runs the cross-file checks on
   the definitions it validated. It used to read every file again for those checks and skip one
   that could no longer be read or parsed, so a set could be certified without one of its files.
