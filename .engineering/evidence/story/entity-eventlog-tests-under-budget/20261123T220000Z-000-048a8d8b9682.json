@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T22:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:entity-eventlog-tests-under-budget",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "r2-budget: nextest -p entity-eventlog --all-features 256 executed, 0 red, slowest four 1.9-2.7 s (were 11.7-16.6 s), 60 s kill proven with a 70 s stand-in (TIMEOUT at 60.1 s, exit 100), test-step-test 19 checks"
+  }
+}

@@ -161,12 +161,35 @@ jobs:
           components: clippy
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: |
+            . -> target
+            checks/ess-conformance -> target
 
       - name: Install the sqlite3 shell the foreign-writer tests use
         run: command -v sqlite3 || (sudo apt-get update && sudo apt-get install -y sqlite3)
 
+      - name: Install cargo-nextest
+        env:
+          NEXTEST_VERSION: "0.9.143"
+          NEXTEST_SHA256: 66786b9abe23920d022a182d1416b1bbc8130dd4872a9553d76985a1708dcd1e
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/nextest.tar.gz" \
+            "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-$NEXTEST_VERSION/cargo-nextest-$NEXTEST_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$NEXTEST_SHA256  $RUNNER_TEMP/nextest.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/nextest.tar.gz" -C "$HOME/.cargo/bin" cargo-nextest
+          cargo nextest --version
+
+      - name: The bounded test step holds its promises
+        run: sh scripts/test-step-test.sh
+
+      - name: Build every Eventlog provider and bridge test
+        run: cargo nextest run -p entity-eventlog --all-features --locked --no-run
+
       - name: Test every Eventlog provider and bridge
-        run: cargo test -p entity-eventlog --all-features --locked
+        timeout-minutes: 2
+        run: sh scripts/test-step.sh -- nextest run -p entity-eventlog --all-features --locked
 
       - name: Lint every Eventlog provider and bridge
         run: cargo clippy -p entity-eventlog --all-targets --all-features --no-deps --locked -- -D warnings
@@ -175,10 +198,14 @@ jobs:
       - name: Build the SQLite provider on its declared rust-version
         run: cargo build -p entity-sqlite --all-features --locked
 
-      - name: Executable SQLite provider contracts
+      - name: Lint and build the SQLite provider contract checker
         run: |
           cargo clippy --manifest-path checks/ess-conformance/Cargo.toml --features eventlog --all-targets --locked -- -D warnings
-          cargo run --manifest-path checks/ess-conformance/Cargo.toml --features eventlog --locked -- --spec-root ess/provider-tracking check --reports target/provider-ess-conformance
+          cargo build --manifest-path checks/ess-conformance/Cargo.toml --features eventlog --locked
+
+      - name: Executable SQLite provider contracts
+        timeout-minutes: 2
+        run: cargo run --manifest-path checks/ess-conformance/Cargo.toml --features eventlog --locked -- --spec-root ess/provider-tracking check --reports target/provider-ess-conformance
 
       - name: Retain exact provider conformance evidence
         if: always()

@@ -193,11 +193,29 @@ against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they 
 `eventlog-runtime-check` (`entity-eventlog`'s tests and Clippy with `--all-features` on the
 `+1.91.0` toolchain, and an all-features build of `entity-sqlite`, whose `rust-version` is 1.91
 because rusqlite 0.41 needs Rust 1.89) · `notes-check` · `ci-paths-check` (the CI path list, below)
-· `ess-check` (canonical regeneration, reviewed scenario
-contracts and complete execution against the selected libraries) · `provider-ess-check` (the
-separate SQLite tracking/facade contract on Rust 1.91). Every cargo step runs `--locked`, so the
-gate judges the dependency set the repository committed rather than one cargo re-resolved on the
-way past. Each step runs alone as `task <step>`.
+· `test-step-check` (the bounded test step, below) · `ess-check` (canonical regeneration, reviewed
+scenario contracts and complete execution against the selected libraries) · `provider-ess-check`
+(the separate SQLite tracking/facade contract on Rust 1.91). Every cargo step runs `--locked`, so
+the gate judges the dependency set the repository committed rather than one cargo re-resolved on
+the way past. Each step runs alone as `task <step>`.
+
+**`entity-eventlog`'s tests run under `cargo-nextest` 0.9.143 or later, inside the folder's test
+budget.** `.config/nextest.toml` ends any test that runs 60 s. `scripts/test-step.sh` builds the
+tests first, then fails the step when the tests run over 120 s, and prints the run's ten slowest
+tests from nextest's JUnit report either way. Nextest runs every test in a process of its own: a
+`static` in a test binary is not shared between its tests, and `CARGO_MANIFEST_PATH` is unset. Run
+the step as a gate, under one pool job (`slot task eventlog-runtime-check`): started bare, its
+`cargo` waits in the pool's queue inside the 120 s. `.cargo/config.toml` sets the `dev` profile,
+test builds included, for CI and every local build: no debug information (a cargo config file wins
+over the manifest, and this host's own config turns it on), dependencies at `opt-level` 2, and
+`entity-core`, `entity-store` and `entity-eventlog` at 1. Debug assertions and overflow checks stay
+on. Unoptimised, `sha2` alone was half of `entity-eventlog`'s slowest unit test, and four of its
+tests ran 7 to 17 s (load 35-65); optimised they run 1 to 4 s.
+
+CI's Eventlog job runs the same script, with `timeout-minutes: 2` on that step and on the SQLite
+provider contract run, which the Taskfile bounds with `timeout 120`. Each is built in a step of
+its own before it, and the job caches the conformance checker's own `target/` beside the
+workspace's; it compiled the checker from nothing on every run before.
 
 Slow lane: `task test-slow` (and the `Slow lane` workflow, which runs when the generator, its
 snapshot under `crates/entity-cli/tests/fixtures/generated-rust-cli/` or a crate the generated

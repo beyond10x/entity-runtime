@@ -807,6 +807,12 @@ fn file_facade_groups_are_process_atomic_and_survive_a_publication_crash() {
     const AUTHORITY: &str = "ENTITY_EVENTLOG_FACADE_PROCESS_AUTHORITY";
     const MODE: &str = "ENTITY_EVENTLOG_FACADE_PROCESS_MODE";
     const TEST: &str = "file_facade_groups_are_process_atomic_and_survive_a_publication_crash";
+    // Members of the group the child is killed in. Since a group's blobs travel with it, the
+    // publication intent appears only after every member is admitted and its blobs are synced,
+    // and the kill lands in the one publication that follows: the group commits whole or not at
+    // all, whatever its size. Each member costs about three `fsync`s before the intent, so 192
+    // members spent 10 to 60 s waiting on the disk (648 `fsync`s at 15 ms each, load 45).
+    const MEMBERS: usize = 16;
 
     if let (Ok(root), Ok(authority), Ok(mode)) = (
         std::env::var(ROOT),
@@ -847,7 +853,7 @@ fn file_facade_groups_are_process_atomic_and_survive_a_publication_crash() {
             return;
         }
         assert_eq!(mode, "crash-group");
-        let actions = (0..192)
+        let actions = (0..MEMBERS)
             .map(|index| {
                 BatchAction::Create(create(
                     &format!("crash-{index:03}"),
@@ -950,9 +956,9 @@ fn file_facade_groups_are_process_atomic_and_survive_a_publication_crash() {
         );
         thread::sleep(Duration::from_millis(2));
     }
-    // The group now reaches its publication intent only after admitting and appending all 192
-    // members; before the blobs travelled with it, the first per-blob upload wrote an intent too.
-    let deadline = Instant::now() + Duration::from_secs(300);
+    // The group reaches its publication intent only after admitting and appending every member;
+    // before the blobs travelled with it, the first per-blob upload wrote an intent too.
+    let deadline = Instant::now() + Duration::from_secs(30);
     while !directory.path().join("append.json").exists() {
         if let Some(status) = crashing.try_wait().expect("crash child status") {
             panic!("crash child completed before the publication intent was observed: {status}");
@@ -972,8 +978,8 @@ fn file_facade_groups_are_process_atomic_and_survive_a_publication_crash() {
     let ids = reopened.ids("ticket").expect("complete recovered ids");
     let crash_ids = ids.iter().filter(|id| id.starts_with("crash-")).count();
     assert!(
-        crash_ids == 0 || crash_ids == 192,
-        "a killed named group is wholly absent or wholly committed, found {crash_ids}/192"
+        crash_ids == 0 || crash_ids == MEMBERS,
+        "a killed named group is wholly absent or wholly committed, found {crash_ids}/{MEMBERS}"
     );
     let batch = reopened
         .recorded()
@@ -982,9 +988,9 @@ fn file_facade_groups_are_process_atomic_and_survive_a_publication_crash() {
             CallWait::Forever,
         )
         .expect("batch lookup");
-    assert_eq!(batch.is_some(), crash_ids == 192);
+    assert_eq!(batch.is_some(), crash_ids == MEMBERS);
     if let Some(batch) = batch {
-        assert_eq!(batch.records.len(), 192);
+        assert_eq!(batch.records.len(), MEMBERS);
     }
     assert_eq!(
         reopened.shutdown(ShutdownMode::Drain, CallWait::Forever),
