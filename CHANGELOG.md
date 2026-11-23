@@ -37,6 +37,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   refused as unobservable no longer names addresses read only past that element.
 - `exists:` on a reference reads the value through a borrowed path instead of copying it, so
   checking that a long list is present no longer copies the list. The answer is unchanged.
+- `PreparedOutcome::complete` resumes where `PreparedOperation::select_with` stopped, at the
+  host-fulfillment boundary, instead of evaluating the operation again from its first step: each
+  `set` assignment of a host-fulfilled operation, replay included, is evaluated once instead of
+  twice. Decisions, records and refusals are unchanged.
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.

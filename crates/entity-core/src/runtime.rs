@@ -349,14 +349,18 @@ pub enum LoadedDecision<'definition> {
 }
 
 /// An opaque continuation bound to one loaded subject and one selected outcome.
+///
+/// It holds the evaluation up to the host-fulfillment boundary — the normalized arguments, the
+/// selected branch and the fields its `set` and `set_if_present` produced — so
+/// [`complete`](Self::complete) resumes there and evaluates no assignment a second time.
 #[derive(Debug)]
 pub struct PreparedOutcome<'definition> {
     definition: &'definition ValidatedDefinition,
     operation: String,
     instance: EntityInstance,
-    arguments: Map<String, Value>,
     outcome: String,
     response_check: ResponseCheck,
+    settled: Settled<'definition>,
 }
 
 impl PreparedOutcome<'_> {
@@ -391,11 +395,13 @@ impl PreparedOutcome<'_> {
         self,
         actions: BTreeMap<String, OperationFieldAction>,
     ) -> Result<Evaluation, CoreError> {
-        decide_with_fulfillments(
+        // Steps 0 to 8 ran in `select_with` against this same instance and arguments; the actions
+        // are the only new input, and they enter at step 8's fulfillment.
+        resume(
             self.definition,
             &self.instance,
             &self.operation,
-            Value::Object(self.arguments),
+            self.settled,
             Some(&actions),
             self.response_check,
         )
@@ -455,26 +461,36 @@ impl<'definition> PreparedOperation<'definition> {
             });
         }
         ensure_state_known(self.definition, instance)?;
-        match decide_with_fulfillments(
+        let settled = match settle(
             self.definition,
             instance,
             &self.operation,
-            Value::Object(self.arguments.clone()),
+            Value::Object(self.arguments),
+        )? {
+            Settlement::Refused(refusal) => {
+                return Ok(LoadedDecision::Complete(Evaluation::Refused(refusal)))
+            }
+            Settlement::Settled(settled) => settled,
+        };
+        if settled.requires_fulfillment() {
+            return Ok(LoadedDecision::NeedsFulfillment(PreparedOutcome {
+                definition: self.definition,
+                outcome: settled.selected.name.unwrap_or_default().to_owned(),
+                operation: self.operation,
+                instance: instance.clone(),
+                response_check: self.response_check,
+                settled,
+            }));
+        }
+        resume(
+            self.definition,
+            instance,
+            &self.operation,
+            settled,
             None,
             self.response_check,
-        ) {
-            Err(CoreError::FulfillmentRequired { outcome, .. }) => {
-                Ok(LoadedDecision::NeedsFulfillment(PreparedOutcome {
-                    definition: self.definition,
-                    operation: self.operation,
-                    instance: instance.clone(),
-                    arguments: self.arguments,
-                    outcome,
-                    response_check: self.response_check,
-                }))
-            }
-            result => result.map(LoadedDecision::Complete),
-        }
+        )
+        .map(LoadedDecision::Complete)
     }
 }
 
@@ -1277,6 +1293,8 @@ pub fn decide(
     )
 }
 
+/// The whole step table in one call: [`settle`] runs steps 0 to 8 up to the host's fulfillment,
+/// [`resume`] runs the rest.
 fn decide_with_fulfillments(
     definition: &ValidatedDefinition,
     instance: &EntityInstance,
@@ -1285,6 +1303,59 @@ fn decide_with_fulfillments(
     fulfillments: Option<&BTreeMap<String, OperationFieldAction>>,
     response_check: ResponseCheck,
 ) -> Result<Evaluation, CoreError> {
+    match settle(definition, instance, operation_name, arguments)? {
+        Settlement::Refused(refusal) => Ok(Evaluation::Refused(refusal)),
+        Settlement::Settled(settled) => resume(
+            definition,
+            instance,
+            operation_name,
+            settled,
+            fulfillments,
+            response_check,
+        ),
+    }
+}
+
+/// One operation evaluated through step 8's `set` and `set_if_present`, stopped where the host's
+/// fulfillment actions enter.
+///
+/// Everything here is a function of the definition, the loaded instance and the arguments, none of
+/// which the actions change, so [`PreparedOutcome`] keeps it and [`resume`] continues from it
+/// rather than evaluating steps 0 to 8 again.
+#[derive(Debug)]
+struct Settled<'definition> {
+    operation: &'definition OperationDefinition,
+    /// The arguments as step 3 normalized them.
+    args: Map<String, Value>,
+    selected: Branch<'definition>,
+    /// The pre-operation fields after the branch's `set` and `set_if_present`.
+    new_fields: Map<String, Value>,
+    /// The fields the branch's `set` cleared.
+    removed: BTreeSet<String>,
+}
+
+impl Settled<'_> {
+    /// Whether the selected branch requires host field actions before step 9.
+    fn requires_fulfillment(&self) -> bool {
+        self.selected
+            .fulfills
+            .is_some_and(|requirements| !requirements.is_empty())
+    }
+}
+
+/// What [`settle`] reached: a refusing branch (step 6) or the fulfillment boundary.
+enum Settlement<'definition> {
+    Refused(Refusal),
+    Settled(Settled<'definition>),
+}
+
+/// Steps 0 to 8, short of the host's fulfillment actions.
+fn settle<'definition>(
+    definition: &'definition ValidatedDefinition,
+    instance: &EntityInstance,
+    operation_name: &str,
+    arguments: Value,
+) -> Result<Settlement<'definition>, CoreError> {
     // Steps 0 and 1, in the order the code has always checked them.
     ensure_instance_matches(definition, instance)?;
 
@@ -1354,7 +1425,7 @@ fn decide_with_fulfillments(
 
     // Step 6.
     if let Some((name, refusal)) = selected.refusal() {
-        return Ok(Evaluation::Refused(Refusal {
+        return Ok(Settlement::Refused(Refusal {
             outcome: name.to_owned(),
             error: refusal.error.clone(),
             message: refusal.message.clone(),
@@ -1383,6 +1454,8 @@ fn decide_with_fulfillments(
     let mut new_fields = canonical_object(old_fields.clone());
     let mut removed = BTreeSet::new();
     for (field, value) in selected.set {
+        #[cfg(test)]
+        definition.count_assignment_evaluation();
         match assigned_value(operation_name, field, value, &context)? {
             Some(value) => {
                 new_fields.insert(field.clone(), value);
@@ -1394,6 +1467,33 @@ fn decide_with_fulfillments(
         }
     }
     insert_present_arguments(&mut new_fields, selected.set_if_present, &args);
+    Ok(Settlement::Settled(Settled {
+        operation,
+        args,
+        selected,
+        new_fields,
+        removed,
+    }))
+}
+
+/// Step 8's host fulfillment, then steps 9 to 15, continuing what [`settle`] produced for the same
+/// definition, instance and operation.
+fn resume(
+    definition: &ValidatedDefinition,
+    instance: &EntityInstance,
+    operation_name: &str,
+    settled: Settled<'_>,
+    fulfillments: Option<&BTreeMap<String, OperationFieldAction>>,
+    response_check: ResponseCheck,
+) -> Result<Evaluation, CoreError> {
+    let Settled {
+        operation,
+        args,
+        selected,
+        mut new_fields,
+        mut removed,
+    } = settled;
+    let old_fields = &instance.fields;
     let requirements = selected.fulfills.unwrap_or(&EMPTY_FULFILLMENTS);
     if !requirements.is_empty() {
         let Some(actions) = fulfillments else {
@@ -1577,6 +1677,7 @@ static EMPTY_PRESENT_ARGUMENTS: BTreeMap<String, PresentArgument> = BTreeMap::ne
 /// needs.
 ///
 /// `kernel/1` is `service/1` with one implicit branch, so there is one evaluation path and not two.
+#[derive(Debug)]
 struct Branch<'a> {
     name: Option<&'a str>,
     to_state: String,
@@ -3833,5 +3934,287 @@ mod tests {
                 .collect();
             assert_eq!(keys, ["m", "z"]);
         }
+    }
+}
+
+/// Review E54: a host-fulfilled operation resumes at the fulfillment boundary instead of
+/// evaluating steps 0 to 8 a second time, and nothing it answers changes.
+#[cfg(test)]
+mod fulfillment_resume {
+    use std::collections::BTreeMap;
+
+    use serde_json::{json, Value};
+
+    use super::{
+        decide_before_load, decide_with_fulfillments, LoadedDecision, PreloadDecision,
+        ResponseCheck,
+    };
+    use crate::{
+        create, replay, CoreError, EntityDefinition, EntityInstance, Evaluation,
+        OperationFieldAction, ValidatedDefinition,
+    };
+
+    /// A `service/3` invoice whose accepting branch increments a total, needs one required and
+    /// one optional fulfillment, emits, responds and is held to an invariant; one refusing branch
+    /// is decided before load and one after it.
+    fn invoice() -> ValidatedDefinition {
+        let document = json!({
+            "entity": "invoice", "version": 1, "semantics": "service/3",
+            "identity": { "field": "invoice_id" },
+            "schema": { "fields": {
+                "invoice_id": { "type": "string", "required": true },
+                "issued_at": { "type": "string", "required": true },
+                "note": { "type": "string" },
+                "total": { "type": "integer", "required": true, "default": 0 }
+            }},
+            "invariants": [{ "name": "issued_at_is_admitted",
+                "assert": { "ne": ["$fields.issued_at", "forbidden"] } }],
+            "lifecycle": { "initial": "Draft", "states": ["Draft", "Issued"] },
+            "operations": { "Issue": {
+                "arguments": { "fields": { "accept": { "type": "boolean", "required": true } } },
+                "response": { "fields": { "issued_at": { "type": "string", "required": true } } },
+                "outcomes": [
+                    { "name": "rejected", "when": { "eq": ["$args.accept", false] },
+                      "refuses": { "error": "NotAccepted" } },
+                    { "name": "locked", "when": { "eq": ["$fields.note", "locked"] },
+                      "refuses": { "error": "Locked" } },
+                    { "name": "issued", "effect": { "moves": { "from": "Draft", "to": "Issued" } },
+                      "set": { "total": { "increment": 1 } },
+                      "fulfills": {
+                        "issued_at": { "actions": "required" },
+                        "note": { "actions": "optional" }
+                      },
+                      "emits": [{ "type": "InvoiceIssued", "payload": {
+                        "issued_at": "$fields.issued_at", "total": "$fields.total"
+                      }}],
+                      "responds": { "issued_at": "$fields.issued_at" } }
+                ]
+            }}
+        });
+        let definition: EntityDefinition =
+            serde_json::from_value(document).expect("definition document parses");
+        ValidatedDefinition::new(definition).expect("service/3 definition validates")
+    }
+
+    fn loaded(state: &str, note: &str) -> EntityInstance {
+        EntityInstance {
+            entity: "invoice".to_owned(),
+            version: 1,
+            id: "s:inv-1".to_owned(),
+            lifecycle_state: state.to_owned(),
+            revision: 1,
+            fields: serde_json::from_value(json!({
+                "invoice_id": "inv-1", "issued_at": "pending", "note": note, "total": 4
+            }))
+            .expect("fields are an object"),
+        }
+    }
+
+    fn actions(pairs: &[(&str, OperationFieldAction)]) -> BTreeMap<String, OperationFieldAction> {
+        pairs
+            .iter()
+            .map(|(field, action)| ((*field).to_owned(), action.clone()))
+            .collect()
+    }
+
+    fn set(value: Value) -> OperationFieldAction {
+        OperationFieldAction::Set { value }
+    }
+
+    /// The decision's record as it is stored, or the refusal.
+    fn record_bytes(result: &Result<Evaluation, CoreError>) -> Option<Vec<u8>> {
+        match result {
+            Ok(Evaluation::Accepted(decision)) => {
+                Some(serde_json::to_vec(&decision.record).expect("a record serializes"))
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_fulfilled_operation_evaluates_its_assignments_once() {
+        let definition = invoice();
+        let PreloadDecision::Load(operation) =
+            decide_before_load(&definition, "s:inv-1", "Issue", json!({"accept": true}))
+                .expect("accepted input needs the subject")
+        else {
+            panic!("accepted input is not refused before load")
+        };
+        let before = definition.assignment_evaluations();
+        let LoadedDecision::NeedsFulfillment(prepared) = operation
+            .select_with(&loaded("Draft", "n"))
+            .expect("the issued branch is selected")
+        else {
+            panic!("the issued branch advertises fulfillment")
+        };
+        assert_eq!(
+            definition.assignment_evaluations() - before,
+            1,
+            "selecting the branch evaluates its one assignment"
+        );
+        let decision = prepared
+            .complete(actions(&[
+                ("issued_at", set(json!("2026-11-23"))),
+                ("note", OperationFieldAction::Preserve),
+            ]))
+            .expect("the actions are accepted")
+            .into_decision()
+            .expect("the branch accepts");
+        assert_eq!(
+            definition.assignment_evaluations() - before,
+            1,
+            "completing resumes at the fulfillment boundary and evaluates no assignment again"
+        );
+        assert_eq!(decision.instance.fields["total"], json!(5));
+        assert_eq!(decision.instance.fields["issued_at"], json!("2026-11-23"));
+        assert_eq!(decision.instance.revision, 2);
+    }
+
+    #[test]
+    fn resuming_at_the_fulfillment_boundary_answers_what_the_whole_step_table_answers() {
+        let definition = invoice();
+        let preserve = OperationFieldAction::Preserve;
+        let remove = OperationFieldAction::Remove;
+        // Accepted, every action kind, and each refusal after the boundary, including two inputs
+        // that break two rules at once so the first in step order must win.
+        let fulfilled = [
+            actions(&[
+                ("issued_at", set(json!("2026-11-23"))),
+                ("note", preserve.clone()),
+            ]),
+            actions(&[
+                ("issued_at", set(json!("2026-11-23"))),
+                ("note", remove.clone()),
+            ]),
+            actions(&[
+                ("issued_at", preserve.clone()),
+                ("note", set(json!("paid"))),
+            ]),
+            actions(&[("issued_at", remove.clone()), ("note", preserve.clone())]),
+            actions(&[("issued_at", set(json!("x")))]),
+            actions(&[
+                ("issued_at", set(json!("x"))),
+                ("note", preserve.clone()),
+                ("total", preserve.clone()),
+            ]),
+            actions(&[("issued_at", set(json!(5))), ("note", preserve.clone())]),
+            actions(&[
+                ("issued_at", set(json!("forbidden"))),
+                ("note", preserve.clone()),
+            ]),
+            actions(&[("issued_at", set(json!("forbidden")))]),
+            actions(&[
+                ("issued_at", set(json!("forbidden"))),
+                ("note", set(json!(7))),
+            ]),
+        ];
+        let mut accepted = 0;
+        for supplied in &fulfilled {
+            let PreloadDecision::Load(operation) =
+                decide_before_load(&definition, "s:inv-1", "Issue", json!({"accept": true}))
+                    .expect("accepted input needs the subject")
+            else {
+                panic!("accepted input is not refused before load")
+            };
+            let LoadedDecision::NeedsFulfillment(prepared) = operation
+                .select_with(&loaded("Draft", "n"))
+                .expect("the issued branch is selected")
+            else {
+                panic!("the issued branch advertises fulfillment")
+            };
+            let resumed = prepared.complete(supplied.clone());
+            // What `complete` ran before it kept the continuation: every step from step 0.
+            let whole = decide_with_fulfillments(
+                &definition,
+                &loaded("Draft", "n"),
+                "Issue",
+                json!({"accept": true}),
+                Some(supplied),
+                ResponseCheck::Checked,
+            );
+            assert_eq!(resumed, whole, "actions {supplied:?}");
+            assert_eq!(record_bytes(&resumed), record_bytes(&whole));
+            accepted += usize::from(record_bytes(&resumed).is_some());
+        }
+        assert_eq!(
+            accepted, 3,
+            "the three well-formed action sets are accepted"
+        );
+
+        // Before the boundary `select_with` answers what the whole table answers without actions:
+        // a refusing branch, a wrong state and a wrong entity, and the fulfillment request itself.
+        let other_entity = EntityInstance {
+            entity: "receipt".to_owned(),
+            ..loaded("Draft", "n")
+        };
+        for instance in [
+            loaded("Draft", "locked"),
+            loaded("Issued", "n"),
+            other_entity,
+            loaded("Draft", "n"),
+        ] {
+            let PreloadDecision::Load(operation) =
+                decide_before_load(&definition, "s:inv-1", "Issue", json!({"accept": true}))
+                    .expect("accepted input needs the subject")
+            else {
+                panic!("accepted input is not refused before load")
+            };
+            let selected = match operation.select_with(&instance) {
+                Ok(LoadedDecision::Complete(evaluation)) => Ok(evaluation),
+                Ok(LoadedDecision::NeedsFulfillment(prepared)) => {
+                    Err(CoreError::FulfillmentRequired {
+                        operation: "Issue".to_owned(),
+                        outcome: prepared.outcome().to_owned(),
+                        fields: prepared.requirements().keys().cloned().collect(),
+                    })
+                }
+                Err(error) => Err(error),
+            };
+            let whole = decide_with_fulfillments(
+                &definition,
+                &instance,
+                "Issue",
+                json!({"accept": true}),
+                None,
+                ResponseCheck::Checked,
+            );
+            assert_eq!(selected, whole, "instance {instance:?}");
+        }
+    }
+
+    #[test]
+    fn a_fulfilled_decision_replays_to_the_state_it_decided() {
+        let definition = invoice();
+        let genesis = create(
+            &definition,
+            "s:inv-1".to_owned(),
+            json!({"invoice_id": "inv-1", "issued_at": "pending", "note": "n"}),
+        )
+        .expect("creation accepts");
+        let PreloadDecision::Load(operation) =
+            decide_before_load(&definition, "s:inv-1", "Issue", json!({"accept": true}))
+                .expect("accepted input needs the subject")
+        else {
+            panic!("accepted input is not refused before load")
+        };
+        let LoadedDecision::NeedsFulfillment(prepared) = operation
+            .select_with(&genesis.instance)
+            .expect("the issued branch is selected")
+        else {
+            panic!("the issued branch advertises fulfillment")
+        };
+        let decision = prepared
+            .complete(actions(&[
+                ("issued_at", set(json!("2026-11-23"))),
+                ("note", OperationFieldAction::Remove),
+            ]))
+            .expect("the actions are accepted")
+            .into_decision()
+            .expect("the branch accepts");
+        let replayed = replay(&[genesis.record, decision.record.clone()])
+            .expect("the fulfilled record replays");
+        assert_eq!(replayed, decision.instance);
+        assert_eq!(replayed.fields["total"], json!(1));
+        assert!(!replayed.fields.contains_key("note"));
     }
 }

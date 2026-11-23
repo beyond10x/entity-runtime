@@ -18,6 +18,10 @@ pub struct ValidatedDefinition {
     /// long-lived runtime, and the serialize-canonicalize-deserialize round trip was a tenth of a
     /// whole CLI create. It is a pure function of `definition`, so equality and `Debug` ignore it.
     record_form: EntityDefinition,
+    /// How many `set` assignments decisions against this handle have evaluated, so a unit test can
+    /// hold a host-fulfilled operation to one evaluation per assignment. Absent outside tests.
+    #[cfg(test)]
+    assignment_evaluations: core::cell::Cell<usize>,
 }
 
 impl ValidatedDefinition {
@@ -32,7 +36,22 @@ impl ValidatedDefinition {
         Ok(Self {
             definition,
             record_form,
+            #[cfg(test)]
+            assignment_evaluations: core::cell::Cell::new(0),
         })
+    }
+
+    /// Counts one evaluated `set` assignment.
+    #[cfg(test)]
+    pub(crate) fn count_assignment_evaluation(&self) {
+        self.assignment_evaluations
+            .set(self.assignment_evaluations.get() + 1);
+    }
+
+    /// The `set` assignments evaluated against this handle so far.
+    #[cfg(test)]
+    pub(crate) fn assignment_evaluations(&self) -> usize {
+        self.assignment_evaluations.get()
     }
 
     /// The validated definition data, for inspection and deterministic storage.
