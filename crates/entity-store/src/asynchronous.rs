@@ -8,11 +8,12 @@ mod types;
 mod verify;
 
 pub use encoding::{
-    batch_comparison_bytes, batch_comparison_bytes_in, canonical_domain_bytes,
-    definition_comparison_bytes, definition_digest, member_id, original_request_comparison_bytes,
-    read_record_in_domain, record_comparison_bytes, record_comparison_bytes_in,
-    record_comparison_bytes_naming, record_definition, record_domain, record_framing,
-    request_domain, RecordForm, DEFINITION_DIGEST_DOMAIN, DEFINITION_FRAMING, RECORD_BY_DIGEST,
+    batch_comparison_bytes, batch_comparison_bytes_in, batch_comparison_bytes_known,
+    canonical_domain_bytes, definition_comparison_bytes, definition_digest, member_id,
+    original_request_comparison_bytes, read_record_in_domain, record_comparison_bytes,
+    record_comparison_bytes_in, record_comparison_bytes_known, record_comparison_bytes_naming,
+    record_definition, record_domain, record_framing, request_domain, KnownDefinitions, RecordForm,
+    DEFINITION_DIGEST_DOMAIN, DEFINITION_FRAMING, RECORD_BY_DIGEST,
 };
 pub use memory::{AppendScript, MemoryRecordedStore};
 pub use ports::{

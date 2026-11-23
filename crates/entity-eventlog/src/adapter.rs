@@ -16,11 +16,12 @@ use entity_store::{
     asynchronous::{
         AppendMember, AppendOutcome, AppendRequest, AsyncRecordedReader, AsyncRecordedWriter,
         AsyncStateReader, AsyncStoreError, BatchKey, BatchReceipt, BoxFuture, CommitReceipt,
-        CompleteStoreSnapshot, HistoryOrigin, RecordForm, RecordLookup, RecordPosition,
-        RecordReceipt, StoreCoverage, StoredBatch, StoredRecord, Subject, SubjectAssurance,
-        SubjectHistory, SubjectSnapshot, WriteFailure, batch_comparison_bytes_in,
-        branch_tips_of_records, definition_comparison_bytes, original_request_comparison_bytes,
-        record_comparison_bytes_in, record_definition, validate_entry_against_state,
+        CompleteStoreSnapshot, HistoryOrigin, KnownDefinitions, RecordForm, RecordLookup,
+        RecordPosition, RecordReceipt, StoreCoverage, StoredBatch, StoredRecord, Subject,
+        SubjectAssurance, SubjectHistory, SubjectSnapshot, WriteFailure, batch_comparison_bytes_in,
+        batch_comparison_bytes_known, branch_tips_of_records, definition_comparison_bytes,
+        original_request_comparison_bytes, record_comparison_bytes_in,
+        record_comparison_bytes_known, record_definition, validate_entry_against_state,
         verify_shared_subject_history_with_checked_bytes, verify_subject_history,
     },
 };
@@ -2324,13 +2325,25 @@ impl EventlogOperationStore<'_> {
             subject_rows_payload(&self.store.authority, &model, heads.keys(), false).ok();
         // Released before the commit, so the post-commit verification advances the model in place.
         drop(model);
-        let batch_bytes = batch_comparison_bytes_in(write_form(), &key, &request.members)
-            .map_err(WriteFailure::NotCommitted)?;
+        // Each definition the records name is serialized once, for the blob bound with them; the
+        // batch and every record then name it by that digest without serializing it again.
+        let (named, definitions) = if write_form() == RecordForm::DefinitionByDigest {
+            definition_blobs(&request.members).map_err(WriteFailure::NotCommitted)?
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let mut known = KnownDefinitions::new();
+        for (definition, digest) in &named {
+            known.insert(definition, digest);
+        }
+        let batch_bytes =
+            batch_comparison_bytes_known(write_form(), &key, &request.members, &known)
+                .map_err(WriteFailure::NotCommitted)?;
         let batch_digest =
             framed_key(BATCH_BLOB_DOMAIN, &batch_bytes).map_err(WriteFailure::NotCommitted)?;
         let mut wrappers = Vec::with_capacity(request.members.len());
         for (index, member) in request.members.iter().enumerate() {
-            let record_bytes = record_comparison_bytes_in(write_form(), &member.entry)
+            let record_bytes = record_comparison_bytes_known(write_form(), &member.entry, &known)
                 .map_err(WriteFailure::NotCommitted)?;
             let record_digest = framed_key(RECORD_BLOB_DOMAIN, &record_bytes)
                 .map_err(WriteFailure::NotCommitted)?;
@@ -2363,11 +2376,6 @@ impl EventlogOperationStore<'_> {
         // One event and one record row per member, one batch row, one subject row per subject the
         // store does not yet hold, and every blob not already bound. Counted before a byte is
         // uploaded, so a refusal costs nothing and leaves nothing.
-        let definitions = if write_form() == RecordForm::DefinitionByDigest {
-            definition_blobs(&request.members).map_err(WriteFailure::NotCommitted)?
-        } else {
-            Vec::new()
-        };
         let mut digests = BTreeMap::new();
         for (digest, bytes) in &definitions {
             digests.insert(digest.clone(), bytes.len() as u64);
@@ -5999,24 +6007,36 @@ fn write_form() -> RecordForm {
 
 /// The definition blobs one group's records name: each distinct definition once, as its canonical
 /// document under the digest the records name it by.
-fn definition_blobs(members: &[AppendMember]) -> Result<Vec<(String, Vec<u8>)>, AsyncStoreError> {
+///
+/// With them, each distinct definition and its digest, so the group's records name it by that
+/// digest without serializing it again.
+#[allow(clippy::type_complexity)]
+fn definition_blobs(
+    members: &[AppendMember],
+) -> Result<
+    (
+        Vec<(&entity_core::EntityDefinition, String)>,
+        Vec<(String, Vec<u8>)>,
+    ),
+    AsyncStoreError,
+> {
+    let mut named: Vec<(&entity_core::EntityDefinition, String)> = Vec::new();
     let mut blobs: Vec<(String, Vec<u8>)> = Vec::new();
-    let mut seen: Vec<&entity_core::EntityDefinition> = Vec::new();
     for definition in members
         .iter()
         .filter_map(|member| record_definition(&member.entry))
     {
-        if seen.contains(&definition) {
+        if named.iter().any(|(seen, _)| *seen == definition) {
             continue;
         }
-        seen.push(definition);
         let bytes = definition_comparison_bytes(definition)?;
         let digest = framed_key(DEFINITION_BLOB_DOMAIN, &bytes)?;
+        named.push((definition, digest.clone()));
         if blobs.iter().all(|(held, _)| *held != digest) {
             blobs.push((digest, bytes));
         }
     }
-    Ok(blobs)
+    Ok((named, blobs))
 }
 
 fn verify_digest(domain: &str, digest: &str, bytes: &[u8]) -> Result<(), AsyncStoreError> {

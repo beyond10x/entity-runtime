@@ -205,6 +205,13 @@ counters:
     direction: lower
     scenario: Eventlog SQLite, ticket definition, creates 2 and 3 on one handle
     hooked: true
+  - id: eventlog.by_digest.record_definition_serializations.b1
+    finding: record-encoding-skips-definition-serialization
+    measures: definition documents serialized to encode er.record/5 records, over one single-create batch on a handle that already wrote one and the batch lookup and history read of it
+    unit: serializations
+    direction: lower
+    scenario: Eventlog SQLite, ticket definition, create 2 on one handle, then lookup_batch and read_history
+    hooked: true
   - id: eventlog.append_conflict.attempts
     finding: E19
     measures: physical append attempts for one create while the provider answers every append with Conflict; the injector fails the 64th, so an unbounded retry reads 64

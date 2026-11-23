@@ -11,6 +11,7 @@
   },
   "counters": {
     "eventlog.append_conflict.attempts": 8,
+    "eventlog.by_digest.record_definition_serializations.b1": 0,
     "eventlog.projection.batch_blob_bytes.k32": 23170,
     "eventlog.projection.batch_blob_bytes.k8": 5818,
     "eventlog.projection.batch_blob_fetches.k32": 1,
@@ -24,7 +25,7 @@
     "eventlog_file.list_empty.read_bytes.t8": 199967,
     "executor.batch_retry.history_loads.k32": 1,
     "executor.batch_retry.history_loads.k8": 1,
-    "executor.fresh_create.alloc_bytes": 554813,
+    "executor.fresh_create.alloc_bytes": 531597,
     "executor.fresh_create.kernel_creates": 1,
     "file.create.subject_read_opens.n33": 32,
     "file.create.subject_read_opens.n9": 8,

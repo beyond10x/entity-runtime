@@ -78,6 +78,7 @@ impl RecordForm {
 pub fn definition_comparison_bytes(
     definition: &EntityDefinition,
 ) -> Result<Vec<u8>, AsyncStoreError> {
+    definition_serialized();
     canonical_domain_bytes(
         DEFINITION_FRAMING,
         serde_json::to_value(definition)
@@ -107,26 +108,72 @@ pub fn record_definition(entry: &RecordedEntry) -> Option<&EntityDefinition> {
     }
 }
 
+#[cfg(test)]
 const DEFINITION_POINTER: &str = "/commit/envelope/record/definition";
 
-/// The digests of the definitions one encoding pass has already hashed.
+/// The digests of definitions their caller already serialized, so that encoding a record that
+/// names one of them by digest ([`RECORD_BY_DIGEST`]) serializes it no more.
+///
+/// A writer serializes each definition its records name once, for the definition blob it binds
+/// with them, and has its digest then. The caller vouches that each digest is its definition's.
+/// A definition is recognised by identity or by value; one this does not hold is serialized
+/// and hashed, once per encoding pass.
+#[derive(Debug, Default, Clone)]
+pub struct KnownDefinitions<'a> {
+    known: Vec<(&'a EntityDefinition, &'a str)>,
+}
+
+impl<'a> KnownDefinitions<'a> {
+    /// Nothing known: every definition is serialized and hashed, once per encoding pass.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Holds `digest` as the digest of `definition`'s canonical document
+    /// ([`definition_comparison_bytes`], [`definition_digest`]).
+    pub fn insert(&mut self, definition: &'a EntityDefinition, digest: &'a str) {
+        self.known.push((definition, digest));
+    }
+
+    fn get(&self, definition: &EntityDefinition) -> Option<&'a str> {
+        self.known
+            .iter()
+            .find(|(known, _)| std::ptr::eq(*known, definition))
+            .or_else(|| self.known.iter().find(|(known, _)| *known == definition))
+            .map(|(_, digest)| *digest)
+    }
+}
+
+/// The digests one encoding pass names definitions by.
 ///
 /// A batch's members usually share one definition, and the batch and each member's record are
-/// encoded together on every write, so a definition is hashed once per pass and recognised by
-/// value after that.
-#[derive(Default)]
-struct DefinitionDigests(Vec<(Value, String)>);
+/// encoded together on every write, so a definition the caller did not already hash is hashed
+/// once per pass and recognised by value after that.
+struct DefinitionDigests<'k, 'a> {
+    known: &'k KnownDefinitions<'a>,
+    hashed: Vec<(EntityDefinition, String)>,
+}
 
-impl DefinitionDigests {
-    fn digest(&mut self, definition: Value) -> Result<String, AsyncStoreError> {
-        if let Some((_, digest)) = self.0.iter().find(|(seen, _)| *seen == definition) {
+impl<'k, 'a> DefinitionDigests<'k, 'a> {
+    fn new(known: &'k KnownDefinitions<'a>) -> Self {
+        Self {
+            known,
+            hashed: Vec::new(),
+        }
+    }
+
+    fn digest(&mut self, definition: &EntityDefinition) -> Result<String, AsyncStoreError> {
+        if let Some(digest) = self.known.get(definition) {
+            return Ok(digest.to_owned());
+        }
+        if let Some((_, digest)) = self.hashed.iter().find(|(seen, _)| seen == definition) {
             return Ok(digest.clone());
         }
-        let digest = definition_digest(&canonical_domain_bytes(
-            DEFINITION_FRAMING,
-            definition.clone(),
-        )?);
-        self.0.push((definition, digest.clone()));
+        #[cfg(feature = "kpi-counters")]
+        crate::kpi_counters::add(&crate::kpi_counters::BY_DIGEST_DEFINITION_SERIALIZATIONS, 1);
+        let digest = definition_digest(&definition_comparison_bytes(definition)?);
+        self.hashed.push((definition.clone(), digest.clone()));
         Ok(digest)
     }
 }
@@ -135,22 +182,152 @@ impl DefinitionDigests {
 fn framed_record(
     form: RecordForm,
     entry: &RecordedEntry,
-    digests: &mut DefinitionDigests,
+    digests: &mut DefinitionDigests<'_, '_>,
 ) -> Result<(&'static str, Value), AsyncStoreError> {
-    let mut body = tagged_record(entry)?;
-    if form == RecordForm::DefinitionByDigest && record_definition(entry).is_some() {
-        let slot = definition_slot(&mut body)?;
-        let definition = std::mem::take(slot);
-        *slot = Value::String(digests.digest(definition)?);
-        return Ok((RECORD_BY_DIGEST, body));
+    if let (RecordForm::DefinitionByDigest, RecordedEntry::Decision(commit)) = (form, entry) {
+        if let Some(definition) = &commit.envelope.record.definition {
+            let digest = digests.digest(definition)?;
+            return Ok((RECORD_BY_DIGEST, tagged_record_naming(commit, &digest)?));
+        }
     }
-    Ok((record_domain(entry), body))
+    Ok((record_domain(entry), tagged_record(entry)?))
 }
 
-fn definition_slot(body: &mut Value) -> Result<&mut Value, AsyncStoreError> {
-    body.pointer_mut(DEFINITION_POINTER).ok_or_else(|| {
-        AsyncStoreError::Encoding("a decision record body has no definition".to_owned())
-    })
+/// Counts one serialization of a whole definition document: what a record that names its
+/// definition by digest exists to stop paying for on every encoding.
+fn definition_serialized() {
+    #[cfg(test)]
+    DEFINITION_SERIALIZATIONS.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Definition documents this thread serialized ([`definition_serialized`]).
+    static DEFINITION_SERIALIZATIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// A decision commit spelled with its definition named by `digest`: serialized field for field as
+/// [`RecordedCommit`](crate::RecordedCommit) is, except that the definition is the digest. The
+/// definition is not serialized only to be discarded.
+///
+/// [`commit_naming`] destructures each type whole, so a field added to `RecordedCommit`,
+/// `Envelope` or `DecisionRecord` does not compile until it is spelled here too.
+#[derive(serde::Serialize)]
+struct CommitNaming<'a> {
+    instance: &'a entity_core::EntityInstance,
+    envelope: EnvelopeNaming<'a>,
+}
+
+#[derive(serde::Serialize)]
+struct EnvelopeNaming<'a> {
+    record_id: &'a str,
+    recorded_at: &'a str,
+    correlation: &'a Option<String>,
+    causation: &'a Option<String>,
+    actor: &'a Option<String>,
+    record: RecordNaming<'a>,
+}
+
+/// `DecisionRecord`'s fields, with the serde attributes it carries.
+#[derive(serde::Serialize)]
+struct RecordNaming<'a> {
+    definition: &'a str,
+    command: &'a DecisionCommand,
+    entity: &'a str,
+    id: &'a str,
+    revision: u64,
+    from_state: &'a Option<String>,
+    to_state: &'a str,
+    result: &'a entity_core::EntityInstance,
+    changed: &'a Map<String, Value>,
+    #[serde(skip_serializing_if = "no_removals")]
+    removed: &'a std::collections::BTreeSet<String>,
+    events: &'a [entity_core::DomainEvent],
+    #[serde(skip_serializing_if = "absent")]
+    outcome: &'a Option<String>,
+    #[serde(skip_serializing_if = "absent")]
+    effect: &'a Option<entity_core::DecisionEffect>,
+    #[serde(skip_serializing_if = "absent")]
+    response: &'a Option<Map<String, Value>>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref, clippy::ref_option_ref)]
+fn absent<T>(value: &&Option<T>) -> bool {
+    value.is_none()
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn no_removals(removed: &&std::collections::BTreeSet<String>) -> bool {
+    removed.is_empty()
+}
+
+fn commit_naming<'a>(commit: &'a crate::RecordedCommit, digest: &'a str) -> CommitNaming<'a> {
+    let crate::RecordedCommit { instance, envelope } = commit;
+    let crate::Envelope {
+        record_id,
+        recorded_at,
+        correlation,
+        causation,
+        actor,
+        record,
+    } = envelope;
+    let entity_core::DecisionRecord {
+        definition: _,
+        command,
+        entity,
+        id,
+        revision,
+        from_state,
+        to_state,
+        result,
+        changed,
+        removed,
+        events,
+        outcome,
+        effect,
+        response,
+    } = record;
+    CommitNaming {
+        instance,
+        envelope: EnvelopeNaming {
+            record_id,
+            recorded_at,
+            correlation,
+            causation,
+            actor,
+            record: RecordNaming {
+                definition: digest,
+                command,
+                entity,
+                id,
+                revision: *revision,
+                from_state,
+                to_state,
+                result,
+                changed,
+                removed,
+                events,
+                outcome,
+                effect,
+                response,
+            },
+        },
+    }
+}
+
+/// The tagged body of a decision record that names its definition by `digest`.
+fn tagged_record_naming(
+    commit: &crate::RecordedCommit,
+    digest: &str,
+) -> Result<Value, AsyncStoreError> {
+    let mut tagged = Map::new();
+    tagged.insert("kind".to_owned(), Value::String("decision".to_owned()));
+    tagged.insert(
+        "commit".to_owned(),
+        serde_json::to_value(commit_naming(commit, digest))
+            .map_err(|error| AsyncStoreError::Encoding(error.to_string()))?,
+    );
+    Ok(Value::Object(tagged))
 }
 
 /// Encodes one decision record in [`RECORD_BY_DIGEST`] naming `digest`, without hashing.
@@ -158,7 +335,8 @@ fn definition_slot(body: &mut Value) -> Result<&mut Value, AsyncStoreError> {
 /// For a provider that has just resolved `digest` to a definition blob, held that blob to its
 /// digest, and decoded the entry's definition from it: re-encoding the record to check its stored
 /// bytes then needs neither the definition serialized again nor hashed again. The definition the
-/// entry carries, if any, is not read; the caller vouches that `digest` is its digest.
+/// entry carries, if any, is not read, not even to be serialized and discarded; the caller vouches
+/// that `digest` is its digest.
 ///
 /// # Errors
 ///
@@ -167,14 +345,12 @@ pub fn record_comparison_bytes_naming(
     entry: &RecordedEntry,
     digest: &str,
 ) -> Result<Vec<u8>, AsyncStoreError> {
-    if !matches!(entry, RecordedEntry::Decision(_)) {
+    let RecordedEntry::Decision(commit) = entry else {
         return Err(AsyncStoreError::Encoding(
             "only a decision record names a definition".to_owned(),
         ));
-    }
-    let mut body = tagged_record(entry)?;
-    *definition_slot(&mut body)? = Value::String(digest.to_owned());
-    canonical_domain_bytes(RECORD_BY_DIGEST, body)
+    };
+    canonical_domain_bytes(RECORD_BY_DIGEST, tagged_record_naming(commit, digest)?)
 }
 
 /// Orders every object's keys, consuming the value rather than cloning it.
@@ -240,6 +416,9 @@ fn tagged_record(entry: &RecordedEntry) -> Result<Value, AsyncStoreError> {
     let mut tagged = Map::new();
     match entry {
         RecordedEntry::Decision(commit) => {
+            if commit.envelope.record.definition.is_some() {
+                definition_serialized();
+            }
             tagged.insert("kind".to_owned(), Value::String("decision".to_owned()));
             tagged.insert(
                 "commit".to_owned(),
@@ -315,7 +494,21 @@ pub fn record_comparison_bytes_in(
     form: RecordForm,
     entry: &RecordedEntry,
 ) -> Result<Vec<u8>, AsyncStoreError> {
-    let (domain, body) = framed_record(form, entry, &mut DefinitionDigests::default())?;
+    record_comparison_bytes_known(form, entry, &KnownDefinitions::new())
+}
+
+/// [`record_comparison_bytes_in`], naming a definition `known` holds by the digest it holds for
+/// it rather than serializing and hashing the definition again.
+///
+/// # Errors
+///
+/// Serialization failure without numeric coercion.
+pub fn record_comparison_bytes_known(
+    form: RecordForm,
+    entry: &RecordedEntry,
+    known: &KnownDefinitions<'_>,
+) -> Result<Vec<u8>, AsyncStoreError> {
+    let (domain, body) = framed_record(form, entry, &mut DefinitionDigests::new(known))?;
     canonical_domain_bytes(domain, body)
 }
 
@@ -511,8 +704,23 @@ pub fn batch_comparison_bytes_in(
     key: &BatchKey,
     members: &[AppendMember],
 ) -> Result<Vec<u8>, AsyncStoreError> {
+    batch_comparison_bytes_known(form, key, members, &KnownDefinitions::new())
+}
+
+/// [`batch_comparison_bytes_in`], naming each definition `known` holds by the digest it holds for
+/// it rather than serializing and hashing the definition again.
+///
+/// # Errors
+///
+/// Serialization failure without numeric coercion.
+pub fn batch_comparison_bytes_known(
+    form: RecordForm,
+    key: &BatchKey,
+    members: &[AppendMember],
+    known: &KnownDefinitions<'_>,
+) -> Result<Vec<u8>, AsyncStoreError> {
     key.validate()?;
-    let mut digests = DefinitionDigests::default();
+    let mut digests = DefinitionDigests::new(known);
     let mut encoded = Vec::with_capacity(members.len());
     for member in members {
         let expectation = match member.expect {
@@ -843,6 +1051,82 @@ mod tests {
         assert_eq!(
             record_framing(&record_comparison_bytes(&entry).expect("encodes")).expect("framed"),
             RECORD_BY_DIGEST
+        );
+    }
+
+    /// Definition documents serialized while `work` ran on this thread.
+    fn serialized(work: impl FnOnce()) -> u64 {
+        let before = DEFINITION_SERIALIZATIONS.with(std::cell::Cell::get);
+        work();
+        DEFINITION_SERIALIZATIONS.with(std::cell::Cell::get) - before
+    }
+
+    /// Encoding a record that names its definition by digest (`er.record/5`) serializes no
+    /// definition document: not when it is given the digest, as a read that re-encodes a stored
+    /// record is, and not when its caller already knows the digest, as a write that serialized the
+    /// definition once for its blob does. Only a definition nobody hashed yet is serialized, once
+    /// per encoding pass, and the embedded form serializes it as part of the record.
+    #[test]
+    fn encoding_a_record_by_digest_serializes_no_definition_document() {
+        let (decision, _) = service_entries();
+        let definition = record_definition(&decision).expect("carries a definition");
+        let digest = definition_digest(&definition_comparison_bytes(definition).expect("document"));
+        let mut known = KnownDefinitions::new();
+        known.insert(definition, &digest);
+        let key = BatchKey::Named("serializations".to_owned());
+        let members = [
+            AppendMember::new(crate::Expect::Absent, decision.clone(), Vec::new()),
+            AppendMember::new(crate::Expect::Absent, decision.clone(), Vec::new()),
+        ];
+
+        assert_eq!(
+            serialized(|| {
+                record_comparison_bytes_naming(&decision, &digest).expect("names");
+            }),
+            0,
+            "a record re-encoded under the digest it names"
+        );
+        assert_eq!(
+            serialized(|| {
+                record_comparison_bytes_known(RecordForm::DefinitionByDigest, &decision, &known)
+                    .expect("names");
+            }),
+            0,
+            "a record whose definition the writer already hashed"
+        );
+        assert_eq!(
+            serialized(|| {
+                batch_comparison_bytes_known(
+                    RecordForm::DefinitionByDigest,
+                    &key,
+                    &members,
+                    &known,
+                )
+                .expect("names");
+            }),
+            0,
+            "a batch whose definitions the writer already hashed"
+        );
+        assert_eq!(
+            serialized(|| {
+                batch_comparison_bytes(&key, &members).expect("names");
+            }),
+            1,
+            "a batch hashes a definition nobody hashed once for all its members"
+        );
+        assert_eq!(
+            serialized(|| {
+                record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &decision)
+                    .expect("embeds");
+            }),
+            1,
+            "the embedded form carries the definition"
+        );
+        assert_eq!(
+            record_comparison_bytes_known(RecordForm::DefinitionByDigest, &decision, &known)
+                .expect("names"),
+            record_comparison_bytes(&decision).expect("names"),
+            "the known digest names the record as hashing it does"
         );
     }
 }

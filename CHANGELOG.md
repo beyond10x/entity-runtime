@@ -65,6 +65,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   under `.cache/state/` instead of replaying every file: `ErRecordedProjector` now reports a
   `Projector::fingerprint`. Another program, a changed file or a projector reporting another
   configuration replays once.
+- Encoding a record that names its definition by digest (`er.record/5`) no longer serializes the
+  definition. An Eventlog write serializes each definition once, for its blob, and names it by
+  that digest in the batch and every record; reading a batch or a record back names it by the
+  digest it was read under. Before, each write serialized and hashed every definition two more
+  times, and each read once per record. `entity-store` adds `KnownDefinitions`,
+  `record_comparison_bytes_known` and `batch_comparison_bytes_known` for a caller that already
+  holds the digests; the bytes are those `record_comparison_bytes_in` and
+  `batch_comparison_bytes_in` write.
 
 ### Fixed
 
