@@ -307,6 +307,14 @@ re-verifies every blob digest of the whole authority — so the cost of importin
 the square of its size. Measured on a copy of the real ESS planning store on 2026-09-21, one
 `apply` is 7,810 imports at `t(k) = 115 + 0.992·k` ms, or about 8.5 hours.
 
+`RecordedProviderFacade::import_legacy` keeps one append per subject, so a failure leaves the
+subjects before it committed and reports them. It numbers each call as one import sequence: a
+subject is checked against the observation with which the subject before it verified its own
+commit, rather than observing the destination again first, so N subjects take N + 1 captures and
+the closing equivalence check one more. That observation is reused only while the handle still
+holds it as its verified model and only within the same sequence; the destination guard still
+decides each append.
+
 The batch changes what is *read*, never what is *written*:
 
 1. Prepare every member exactly as the singular path prepares its one — same pure validation, same

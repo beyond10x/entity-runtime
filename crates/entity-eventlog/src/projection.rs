@@ -171,7 +171,7 @@ async fn apply_recorded_entry(
     {
         return Err(invalid("request blob differs from its complete record"));
     }
-    let batch = verified_batch(store, &wrapper.batch_blob).await?;
+    let batch = member_batch(store, event, &wrapper).await?;
     let (decoded_key, members) = (&batch.key, &batch.members);
     let wrapper_key: BatchKey = wrapper.batch_key.clone().into();
     if *decoded_key != wrapper_key {
@@ -361,12 +361,85 @@ thread_local! {
     /// Every member event of a group references the same batch blob, which holds every member, so
     /// hashing and decoding it once per member made a group cost the square of its members. Both
     /// are functions of the bytes alone, so a blob read again with exactly the bytes and digest
-    /// verified last time reuses that answer. The blob is still read from the provider for every
-    /// member, so a blob the store does not hold is refused exactly as before. A blob over the
+    /// verified last time reuses that answer. A later member of the same group does not read the
+    /// blob again when the view proves its predecessor was projected from it ([`member_batch`]);
+    /// every other read still reaches the provider, so a blob the store does not hold is refused
+    /// exactly as before. A blob over the
     /// limit and a blob that does not verify both empty the slot, so it never holds more than the
     /// limit and never outlives a refusal.
     static LAST_BATCH: std::cell::RefCell<Option<std::sync::Arc<VerifiedBatch>>> =
         const { std::cell::RefCell::new(None) };
+}
+
+/// The verified batch blob one member event names.
+///
+/// Every member event of a group names the same batch blob, which holds every member, so reading
+/// it from the provider for each member returned the whole blob once per member: K copies of a
+/// blob that itself grows with K. Within one projection pass the blob is read, held to its digest
+/// and decoded once, by the first member that needs it.
+///
+/// A later member reuses that answer only when this projection view proves the member before it
+/// was projected from exactly that blob: its record row is present here, names this batch blob,
+/// this batch key and the member index just before this one, and stands at the commit position
+/// just before this event. That row is written only after its member's blob was read from this
+/// view and verified, and the inline projector runs a group, and a rebuild, in one transaction, so
+/// the availability and digest checks were made inside the same transaction. Anything else — the
+/// first member, a single record, a gap, another blob or batch, a kept answer for another digest
+/// or none — reads and verifies the blob from the provider as before.
+async fn member_batch(
+    store: &mut dyn ProjectionStore,
+    event: &RecordedEvent,
+    wrapper: &crate::encoding::RecordedEntryWrapper,
+) -> Result<std::sync::Arc<VerifiedBatch>, EventLogError> {
+    let last = LAST_BATCH.with(|last| last.borrow().clone());
+    if let Some(last) = last
+        && last.digest == wrapper.batch_blob
+        && previous_member_projected(store, event, wrapper, &last).await?
+    {
+        return Ok(last);
+    }
+    verified_batch(store, &wrapper.batch_blob).await
+}
+
+/// Whether this view holds the record row of the member before `wrapper`'s, projected from
+/// `batch` at the commit position directly before `event`.
+async fn previous_member_projected(
+    store: &mut dyn ProjectionStore,
+    event: &RecordedEvent,
+    wrapper: &crate::encoding::RecordedEntryWrapper,
+    batch: &VerifiedBatch,
+) -> Result<bool, EventLogError> {
+    let (Some(previous_index), Some(previous_seq)) = (
+        wrapper.member_index.checked_sub(1),
+        event.global_seq.checked_sub(1),
+    ) else {
+        return Ok(false);
+    };
+    let Some(previous) = usize::try_from(previous_index)
+        .ok()
+        .and_then(|index| batch.members.get(index))
+    else {
+        return Ok(false);
+    };
+    let key = record_key(&wrapper.authority, previous.entry.record_id()).map_err(store_error)?;
+    let Some(row) = store.get(record_spec(), &event.tenant, &key).await? else {
+        return Ok(false);
+    };
+    let Ok(body) = committed_record_body(&row) else {
+        return Ok(false);
+    };
+    let batch_key = serde_json::to_value(&wrapper.batch_key)
+        .map_err(|_| invalid("batch key does not encode"))?;
+    Ok(
+        body.get("batch_blob").and_then(Value::as_str) == Some(wrapper.batch_blob.as_str())
+            && body.get("batch_key") == Some(&batch_key)
+            && body.get("member_index").and_then(Value::as_u64) == Some(previous_index)
+            && body
+                .get("physical")
+                .and_then(|physical| physical.get("global_seq"))
+                .and_then(Value::as_u64)
+                == Some(previous_seq),
+    )
 }
 
 /// The batch blob `digest` names, read from `store`, held to its digest and decoded.

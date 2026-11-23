@@ -696,6 +696,13 @@ impl OwnedBackend {
     }
 }
 
+/// The acquisition source an import binds into its replay identity, if any, and the import
+/// sequence it is one step of, if any.
+struct ImportSource {
+    id: Option<String>,
+    sequence: Option<u64>,
+}
+
 trait WorkerDriver: Send {
     fn scoped<'a>(
         &'a self,
@@ -727,6 +734,13 @@ trait WorkerDriver: Send {
         &'a self,
         scope: &'a str,
     ) -> BoxFuture<'a, Result<CompleteStoreSnapshot, AsyncStoreError>>;
+    fn listing<'a>(
+        &'a self,
+        listing: &'a Listing,
+    ) -> BoxFuture<'a, Result<ListingAnswer, AsyncStoreError>> {
+        let snapshot = self.complete_snapshot(listing.scope());
+        Box::pin(async move { snapshot.await.map(|snapshot| listing.answer_from(snapshot)) })
+    }
     fn append<'a>(
         &'a self,
         context: EventlogOperationContext,
@@ -757,7 +771,7 @@ trait WorkerDriver: Send {
         &'a self,
         context: EventlogOperationContext,
         history: SubjectHistory,
-        source_id: Option<String>,
+        source: ImportSource,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>>;
     fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>>;
     /// How the store's open verified its authority.
@@ -861,6 +875,26 @@ impl WorkerDriver for ProductionDriver {
         self.store.complete_snapshot(scope)
     }
 
+    fn listing<'a>(
+        &'a self,
+        listing: &'a Listing,
+    ) -> BoxFuture<'a, Result<ListingAnswer, AsyncStoreError>> {
+        Box::pin(async move {
+            match listing {
+                Listing::Ids(scope, entity) => self
+                    .store
+                    .entity_ids(scope, entity)
+                    .await
+                    .map(ListingAnswer::Ids),
+                Listing::States(scope, entity) => self
+                    .store
+                    .entity_states(scope, entity)
+                    .await
+                    .map(ListingAnswer::States),
+            }
+        })
+    }
+
     fn append<'a>(
         &'a self,
         context: EventlogOperationContext,
@@ -929,13 +963,24 @@ impl WorkerDriver for ProductionDriver {
         &'a self,
         context: EventlogOperationContext,
         history: SubjectHistory,
-        source_id: Option<String>,
+        source: ImportSource,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
         Box::pin(async move {
             let operation = self.store.operation(context);
-            match source_id {
-                Some(source_id) => operation.import_source_anchor(source_id, history).await,
-                None => operation.import_anchor(history).await,
+            match source {
+                ImportSource {
+                    id: Some(source_id),
+                    sequence: Some(sequence),
+                } => {
+                    operation
+                        .import_source_anchor_in_sequence(source_id, history, sequence)
+                        .await
+                }
+                ImportSource {
+                    id: Some(source_id),
+                    sequence: None,
+                } => operation.import_source_anchor(source_id, history).await,
+                ImportSource { id: None, .. } => operation.import_anchor(history).await,
             }
         })
     }
@@ -1181,6 +1226,47 @@ pub(crate) enum ScopedAnswer {
     Histories(Vec<SubjectHistory>),
 }
 
+/// A listing of one entity type over the complete snapshot's observation: `(scope, entity)`.
+pub(crate) enum Listing {
+    Ids(String, String),
+    States(String, String),
+}
+
+pub(crate) enum ListingAnswer {
+    Ids(Vec<String>),
+    States(Vec<EntityInstance>),
+}
+
+impl Listing {
+    fn scope(&self) -> &str {
+        match self {
+            Self::Ids(scope, _) | Self::States(scope, _) => scope,
+        }
+    }
+
+    /// The answer taken from a whole snapshot, for a driver without a cheaper projection.
+    fn answer_from(&self, snapshot: CompleteStoreSnapshot) -> ListingAnswer {
+        match self {
+            Self::Ids(_, entity) => ListingAnswer::Ids(
+                snapshot
+                    .histories
+                    .into_iter()
+                    .filter(|entry| entry.history.subject.entity == *entity)
+                    .map(|entry| entry.history.subject.id)
+                    .collect(),
+            ),
+            Self::States(_, entity) => ListingAnswer::States(
+                snapshot
+                    .histories
+                    .into_iter()
+                    .filter(|entry| entry.terminal.entity == *entity)
+                    .map(|entry| entry.terminal)
+                    .collect(),
+            ),
+        }
+    }
+}
+
 enum Request {
     Scoped(
         ScopedRead,
@@ -1204,6 +1290,7 @@ enum Request {
         String,
         Arc<Cell<Result<CompleteStoreSnapshot, SyncReadError>>>,
     ),
+    Listing(Listing, Arc<Cell<Result<ListingAnswer, SyncReadError>>>),
     Append(
         EventlogOperationContext,
         AppendRequest,
@@ -1239,7 +1326,7 @@ enum Request {
         SubjectHistory,
         Subject,
         Arc<Cell<Result<ImportAnchorOutcome, SyncImportError>>>,
-        Option<String>,
+        ImportSource,
     ),
     Administer(Administration, Arc<Cell<Result<bool, SyncReadError>>>),
     Wake,
@@ -1254,6 +1341,7 @@ impl Request {
             Self::LookupBatch(_, c) => Some(&c.phase),
             Self::History(_, c) => Some(&c.phase),
             Self::Snapshot(_, c) => Some(&c.phase),
+            Self::Listing(_, c) => Some(&c.phase),
             Self::Append(_, _, _, c) => Some(&c.phase),
             Self::Create(_, _, _, c) => Some(&c.phase),
             Self::Execute(_, _, _, c) => Some(&c.phase),
@@ -1275,7 +1363,8 @@ impl Request {
                 Some(BridgeOperationIdentity::Read(BridgeReadKind::LookupBatch))
             }
             Self::History(..) => Some(BridgeOperationIdentity::Read(BridgeReadKind::History)),
-            Self::Snapshot(..) => Some(BridgeOperationIdentity::Read(
+            // A listing is a projection of the complete snapshot's observation.
+            Self::Snapshot(..) | Self::Listing(..) => Some(BridgeOperationIdentity::Read(
                 BridgeReadKind::CompleteSnapshot,
             )),
             Self::Append(_, _, k, _)
@@ -1308,6 +1397,9 @@ impl Request {
             Self::Snapshot(_, c) => {
                 c.complete(Err(SyncReadError::Rejected(BridgeRejection::Closed)))
             }
+            Self::Listing(_, c) => {
+                c.complete(Err(SyncReadError::Rejected(BridgeRejection::Closed)))
+            }
             Self::Append(_, _, _, c) => {
                 c.complete(Err(SyncWriteError::Rejected(BridgeRejection::Closed)))
             }
@@ -1336,6 +1428,7 @@ impl Request {
             Self::LookupBatch(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
             Self::History(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
             Self::Snapshot(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
+            Self::Listing(_, c) => c.complete(Err(SyncReadError::Rejected(rejection))),
             Self::Append(_, _, _, c) => c.complete(Err(SyncWriteError::Rejected(rejection))),
             Self::Create(_, _, _, c) | Self::Execute(_, _, _, c) | Self::Observe(_, _, _, c) => {
                 c.complete(Err(SyncExecutionError::Rejected(rejection)))
@@ -1366,6 +1459,9 @@ impl Request {
                 BridgeAfterDispatch::WorkerStopped,
             ))),
             Self::Snapshot(_, c) => c.complete(Err(SyncReadError::AfterDispatch(
+                BridgeAfterDispatch::WorkerStopped,
+            ))),
+            Self::Listing(_, c) => c.complete(Err(SyncReadError::AfterDispatch(
                 BridgeAfterDispatch::WorkerStopped,
             ))),
             Self::Append(_, _, key, c) => {
@@ -1640,6 +1736,53 @@ impl RecordedEventlogBridge {
             wait,
             BridgeOperationIdentity::Read(BridgeReadKind::CompleteSnapshot),
         )
+    }
+
+    /// The identifiers of every subject of `entity` in a complete logical scope.
+    ///
+    /// The observation, its verification and its refusals are those of
+    /// [`Self::complete_snapshot`]; no subject's history or state is copied out to list them.
+    pub fn entity_ids(
+        &self,
+        scope: &str,
+        entity: &str,
+        wait: CallWait,
+    ) -> Result<Vec<String>, SyncReadError> {
+        let cell = Cell::new();
+        let answer = self.submit(
+            Request::Listing(Listing::Ids(scope.into(), entity.into()), cell.clone()),
+            &cell,
+            wait,
+            BridgeOperationIdentity::Read(BridgeReadKind::CompleteSnapshot),
+        )?;
+        let ListingAnswer::Ids(ids) = answer else {
+            unreachable!("typed identifier listing request")
+        };
+        Ok(ids)
+    }
+
+    /// The terminal state of every subject of `entity` in a complete logical scope.
+    ///
+    /// The observation, its verification and its refusals are those of
+    /// [`Self::complete_snapshot`]; no subject's history, and no state of another entity type,
+    /// is copied out.
+    pub fn entity_states(
+        &self,
+        scope: &str,
+        entity: &str,
+        wait: CallWait,
+    ) -> Result<Vec<EntityInstance>, SyncReadError> {
+        let cell = Cell::new();
+        let answer = self.submit(
+            Request::Listing(Listing::States(scope.into(), entity.into()), cell.clone()),
+            &cell,
+            wait,
+            BridgeOperationIdentity::Read(BridgeReadKind::CompleteSnapshot),
+        )?;
+        let ListingAnswer::States(states) = answer else {
+            unreachable!("typed state listing request")
+        };
+        Ok(states)
     }
 
     /// How the worker's store open verified its authority.
@@ -1994,7 +2137,14 @@ impl SyncEventlogOperation<'_> {
         history: SubjectHistory,
         wait: CallWait,
     ) -> Result<ImportAnchorOutcome, SyncImportError> {
-        self.submit_import(history, None, wait)
+        self.submit_import(
+            history,
+            ImportSource {
+                id: None,
+                sequence: None,
+            },
+            wait,
+        )
     }
 
     /// Establishes a legacy boundary whose durable replay identity includes its acquisition source.
@@ -2004,13 +2154,39 @@ impl SyncEventlogOperation<'_> {
         history: SubjectHistory,
         wait: CallWait,
     ) -> Result<ImportAnchorOutcome, SyncImportError> {
-        self.submit_import(history, Some(source_id), wait)
+        self.submit_import(
+            history,
+            ImportSource {
+                id: Some(source_id),
+                sequence: None,
+            },
+            wait,
+        )
+    }
+
+    /// [`Self::import_source_anchor`] as one step of the import sequence numbered `sequence`; see
+    /// [`crate::EventlogOperationStore::import_source_anchor_in_sequence`].
+    pub(crate) fn import_source_anchor_in_sequence(
+        &self,
+        source_id: String,
+        history: SubjectHistory,
+        sequence: u64,
+        wait: CallWait,
+    ) -> Result<ImportAnchorOutcome, SyncImportError> {
+        self.submit_import(
+            history,
+            ImportSource {
+                id: Some(source_id),
+                sequence: Some(sequence),
+            },
+            wait,
+        )
     }
 
     fn submit_import(
         &self,
         history: SubjectHistory,
-        source_id: Option<String>,
+        source: ImportSource,
         wait: CallWait,
     ) -> Result<ImportAnchorOutcome, SyncImportError> {
         let subject = history.subject.clone();
@@ -2021,7 +2197,7 @@ impl SyncEventlogOperation<'_> {
                 history,
                 subject.clone(),
                 cell.clone(),
-                source_id,
+                source,
             ),
             &cell,
             wait,
@@ -2321,6 +2497,7 @@ fn drive_request(
         Request::LookupBatch(v, c) => poll_read(c, || runtime.block_on(driver.lookup_batch(&v))),
         Request::History(v, c) => poll_read(c, || runtime.block_on(driver.history(&v))),
         Request::Snapshot(v, c) => poll_read(c, || runtime.block_on(driver.complete_snapshot(&v))),
+        Request::Listing(v, c) => poll_read(c, || runtime.block_on(driver.listing(&v))),
         Request::Append(context, v, key, c) => {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 runtime.block_on(driver.append(context, v))
@@ -2353,8 +2530,8 @@ fn drive_request(
                 runtime.block_on(driver.batch(context, key, v))
             })
         }
-        Request::Import(context, history, subject, c, source_id) => poll_import(c, subject, || {
-            runtime.block_on(driver.import_anchor(context, history, source_id))
+        Request::Import(context, history, subject, c, source) => poll_import(c, subject, || {
+            runtime.block_on(driver.import_anchor(context, history, source))
         }),
         Request::Administer(call, c) => poll_read(c, || runtime.block_on(driver.administer(&call))),
         Request::Wake => false,
@@ -2776,7 +2953,7 @@ mod tests {
             &'a self,
             context: EventlogOperationContext,
             history: SubjectHistory,
-            _source_id: Option<String>,
+            _source: ImportSource,
         ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
             Box::pin(async move {
                 self.state.contexts.lock().expect("contexts").push(context);

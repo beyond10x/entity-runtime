@@ -85,6 +85,29 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   a stand-in for Cargo; `task test-slow` and the `Slow lane` workflow compile and run that crate
   when the generator or a crate it builds on changes. `entity-cli` gains a test-only `slow-lane`
   feature. No behaviour of `entity` changes.
+- Listing the ids of one entity type, and document queries, on an Eventlog-backed store (the
+  `entity list` command over `--eventlog-config`, and the File, SQLite and PostgreSQL facades)
+  no longer copy every subject's history and state out of the verified capture before filtering
+  by type. They still take one complete verified capture and refuse what a complete snapshot
+  refuses. New: `EventlogRecordedStore::entity_ids`, `entity_states` and
+  `RecordedEventlogBridge::entity_ids`, `entity_states`.
+- Full verification of an Eventlog store with imported history locates each imported record in
+  its anchor's evidence with one pass per subject instead of a search from the start per record
+  (n(n+1)/2 comparisons for an anchor of n records).
+- The inline Eventlog projector reads a group's batch blob once per projection pass instead of
+  once per member; a later member reuses it only when the projection already holds the previous
+  member's row for that blob. Batch blobs over 32 MiB are still read and decoded per member.
+- An Eventlog append that meets a physical stream conflict without committing is attempted at
+  most 8 times in all, each attempt reading and reconciling afresh, and then refuses with
+  `WriteFailure::NotCommitted(AsyncStoreError::Unreachable { provider: "eventlog", .. })`, whose
+  detail starts `physical stream contention`; nothing was committed and the request can be
+  retried. Before, it retried without a bound, holding one more future per attempt.
+- `RecordedProviderFacade::import_legacy` (`entity-eventlog`) observes its destination N + 1
+  times for N subjects, plus once for its closing equivalence check, instead
+  of 2N + 1: each subject is checked against the observation the subject before it verified its
+  commit with. Every subject is still appended, verified and reported on its own, and a failure
+  still leaves the subjects before it committed. An exact retry observes it twice instead of
+  N + 1 times.
 
 ### Fixed
 
@@ -148,6 +171,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `--definition` files. It refused with "several versions of 'counter' are registered", the
   message meant for `create`; the stored subject names its version and the kernel runs that
   version's definition.
+- An Eventlog store handle's memory of what it verified (64 MiB) charges an imported subject for
+  the anchor and terminal state it keeps a copy of, as what they encode to, instead of a fixed
+  16 KiB for the anchor and nothing for the state of a subject with no record after its anchor:
+  a 1 MiB field charged 33,024 bytes and now about 6.3 MB. A blob, decode or history that could
+  not fit even in an empty memory is no longer remembered, and no longer makes the memory forget
+  everything else first.
 
 ## [0.32.0] — 2026-11-22
 
