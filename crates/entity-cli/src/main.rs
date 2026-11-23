@@ -8,6 +8,8 @@
 //! invalid (the typed refusal is printed) · `2` the invocation itself was wrong — a missing file,
 //! unparsable input, two flags reading standard input.
 
+mod primed;
+
 use clap::Parser;
 #[cfg(feature = "eventlog-providers")]
 use entity_cli::cli::EventlogContextArgs;
@@ -334,18 +336,23 @@ fn run(command: Command, out: &mut impl Write) -> Result<(), Failure> {
                         );
                     }
                     let mut store = FileStore::open(root);
-                    let mut runtime = StoredRuntime::new(&registry, &mut store);
                     // The revision the caller observed. Without `--expected-revision` it is
                     // whatever the store holds now, which keeps a sequential local command
                     // working; passing it is what lets a retry name the revision its original
                     // request was decided on, so an accepted operation can be recovered by
-                    // record id after the subject has moved.
-                    let expected = match expected_revision {
-                        Some(revision) => revision,
-                        None => runtime.get(&entity, id)?.revision,
-                    };
-                    let recorded = runtime
-                        .execute(&entity, id, expected, &operation, arguments, &recording)?;
+                    // record id after the subject has moved. Either way the subject is read once.
+                    let recorded = primed::execute(
+                        &registry,
+                        &mut store,
+                        primed::ExecuteRequest {
+                            entity: &entity,
+                            id,
+                            expected_revision,
+                            operation: &operation,
+                            arguments,
+                            recording: &recording,
+                        },
+                    )?;
                     write_recorded(out, &recorded, format)
                 }
                 _ => {

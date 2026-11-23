@@ -22,18 +22,37 @@ writes are the required provenance path used by the CLI.
 
 A v2 root contains `.entity-store-format` with `entity.file-store/2`. Each subject is one JSON
 document under `subjects/<hex entity>/<hex id>.json`; caller-controlled entity names and ids never
-become path syntax. Existing path components and subject files may not be symlinks. A write creates
+become path syntax. Each name is one path component of at most 255 bytes, so an entity type over
+127 bytes, or an identity whose temporary document name (`<hex id>.json.writing.<pid>.<n>`) would
+exceed 255 bytes — about 116 bytes of identity — is refused with `StoreError::Backend` before
+anything is written. Existing path components and subject files may not be symlinks. A write creates
 and syncs a temporary document, then renames it over the subject, so current state and history
-cannot tear apart. Unix also syncs containing directories; Windows flushes file contents but does
-not promise directory-entry persistence across power loss. Recognizable abandoned subject
+cannot tear apart. On Unix the temporary document is created `0600` and, when it replaces a
+subject, takes that subject's permission bits before any data is written, so a replacement never
+widens what an operator restricted. Unix also syncs containing directories, and the parent of
+every directory a write creates (`subjects/` and a type directory on the first write of a type);
+Windows flushes file contents but does not promise directory-entry persistence across power loss. Recognizable abandoned subject
 temporary files are ignored by enumeration and record-id scans. All existing path components,
 including the format marker, are checked on reads and writes.
 
+Threat model: the File Store trusts the directory it is rooted in. Every operation resolves its
+path under the root again, and the operating system follows symlinks while doing so. The symlink
+checks above refuse a symlink that is already in place; they cannot confine an open, create or
+rename against a directory another process replaces between the check and the call. Only the
+store's principal — the account its readers and writers run as — may modify the root and its
+ancestors. A root another principal can modify is not supported: the advisory store lock
+coordinates cooperating writers and is no defence against anyone else.
+
 An unmarked non-empty directory is never guessed to be v2. `entity store migrate-file --from OLD
 --to NEW` is the only supported v1 transition: it validates every state and complete JSONL record,
-rejects symlinks, nesting, orphan logs and partial trailing records, writes a sibling staging tree,
-and publishes it by rename. The destination must not exist and the source is never modified.
-`--dry-run` performs the validation without creating destination bytes. Migrated subjects carry a
+holds each subject to the recorded importer's boundary (a terminal revision in `1..=i64::MAX`, no
+event later than it), rejects symlinks, nesting, orphan logs and partial trailing records, writes
+a sibling staging tree, and publishes it by rename. The destination must not exist and must not
+lie inside the source (both resolved canonically, dry runs included), and the source is never
+modified.
+`--dry-run` performs the validation without creating destination bytes. Validation holds one
+subject at a time and keeps only counts and identities; the real run then reads the source a
+second time and writes each subject as it reads it. Migrated subjects carry a
 `legacy_snapshot` origin and retain legacy events, but have no invented decision records.
 
 ### 2.1 The record-id index (0.17.6)
@@ -63,8 +82,10 @@ the index is a cache of what is on disk and never the authority.
 
 From 0.17.7 every write holds an OS advisory exclusive lock on `.entity-store-lock` across root
 initialization, global record-id lookup, revision checking and subject publication. The lock file
-is never unlinked. Its length is an invalidation epoch, advanced by one synced byte before a write:
-a handle invalidates its cached index if another writer advanced the epoch. A process crash releases
+is never unlinked. Its length is an invalidation epoch, advanced by one synced byte after the
+write's checks pass and before its first durable change: a handle invalidates its cached index if
+another writer advanced the epoch. A refused write (a revision or record conflict) and an
+idempotent retry change nothing and leave the epoch alone. A process crash releases
 the lock. This retains the single-writer index benefit while serializing independent handles and
 processes. Multi-subject transactions remain unsupported. All concurrent writers must use 0.17.7
 or later and a filesystem that supports advisory locking and atomic rename; older writers do not

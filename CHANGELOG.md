@@ -22,6 +22,27 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   fulfillment target, whose `Set` replaces the field and whose optional form admits `Remove`.
   MCP defines `false` as "only additive updates"; an operation that writes no field keeps it.
   Before, every tool claimed `destructiveHint: false`.
+- The File Store creates a subject document readable by its owner alone (`0600` on Unix) instead
+  of with the process umask, and a replacement takes the permission bits of the document it
+  replaces before any data is written. Before, every recorded write installed a new file with the
+  default permissions, so a subject an operator had restricted became readable again after its
+  next command.
+- The File Store's threat model is documented in the store design and on the storage concepts
+  page: paths under the root are resolved by following symlinks, so only the account the store
+  runs as may modify the root and its ancestors, and a root another account can modify is not
+  supported. No behaviour changes.
+
+### Added
+
+- `Store::load_with_history` returns a subject's current instance and its decision envelopes
+  together as a `LoadedSubject`. The provided default calls `load` and then `history().records`,
+  so existing providers keep working unchanged; `FileStore` overrides it with one read of the
+  subject document.
+- `entity-store`, `entity-executor`, `entity-eventlog`, `entity-graph` and `entity-mcp` have a
+  non-default `kpi-counters` feature. It exists for the repository's KPI gate (`checks/kpi`),
+  adds a counter per measured event and is not a supported API; builds without it are unchanged.
+  CI runs the gate as two jobs: `KPI / KPI counters` (meant to become a required check) and
+  `KPI / KPI timing` (the A/B on pull requests, informational only).
 
 ### Changed
 
@@ -46,14 +67,48 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
+- The first recorded write of a File Store handle reads each stored subject once while it builds
+  the record-id index, instead of once to list it and again to index it. A new `entity create` in
+  a store of 32 subjects opened 64 subject documents and now opens 32.
+- A stored `entity execute` reads its subject document twice instead of six times.
+  `StoredRuntime::execute` (and so MCP) reads state and retry history through one
+  `load_with_history` call, the command hands the shell the reading it took the implicit revision
+  from, and a write on a fresh `FileStore` handle reuses the index scan's reading of its target
+  subject. With 32 prior records on one subject, one command read 1,209,312 bytes and now reads
+  403,104 bytes. Every recorded write still rewrites the whole subject document.
+- `entity store migrate-file` holds one legacy subject in memory at a time instead of the whole
+  store. A dry run of 128 subjects with 256 KiB fields peaked at 41,156 KiB and now at 17,336 KiB
+  (one subject: 17,120 and 16,984 KiB, mostly process start-up). The real run validates the source
+  first, as before, and then reads it a second time to write it.
 
-### Added
+### Fixed
 
-- `entity-store`, `entity-executor`, `entity-eventlog`, `entity-graph` and `entity-mcp` have a
-  non-default `kpi-counters` feature. It exists for the repository's KPI gate (`checks/kpi`),
-  adds a counter per measured event and is not a supported API; builds without it are unchanged.
-  CI runs the gate as two jobs: `KPI / KPI counters` (meant to become a required check) and
-  `KPI / KPI timing` (the A/B on pull requests, informational only).
+- A store produced by `entity store migrate-file` can be acquired for an import at once.
+  `migrate_file_store_v1` now publishes the `.entity-store-lock` coordination file with the store,
+  and `FileStore::acquire_legacy` creates that file the way a writer does when an initialized v2
+  root lacks it, instead of failing with "No such file or directory".
+- On Unix the File Store syncs the parent of every directory it creates — the root, `subjects/`
+  and a type directory on the first write of a type. Before, only the subject's own directory was
+  synced, so power loss right after a successful first write could lose the path to the subject.
+- The File Store refuses an identity or entity type too long for its one-component hex file name
+  (an identity over about 116 bytes, an entity type over 127) with a `store_backend` error that
+  names the limit, before it creates any file or directory. Before, the write failed part-way with
+  the operating system's "File name too long".
+- `entity store migrate-file --to converted` (a destination with no directory part) succeeds.
+  Before, it installed the migrated store, then failed to sync the empty parent path and exited 2,
+  and a retry refused because the destination existed.
+- A refused File Store write (a revision or record conflict) and an idempotent retry no longer
+  grow and sync `.entity-store-lock`. The invalidation epoch advances only right before a write
+  changes the store, so other handles keep their record-id index after a conflict.
+- `entity store migrate-file` refuses a destination inside the legacy source, on a dry run too,
+  before it creates anything. Both paths are compared canonically, so `..` or a relative path
+  cannot hide the nesting. Before, a dry run accepted `--to OLD/converted` and the real run wrote
+  the v2 store into the source, which then no longer validated.
+- `entity store migrate-file` refuses a legacy subject whose event log holds an event later than
+  its saved state, or whose saved revision is 0, with the recorded importer's reason (for example
+  "imported event revision 2 is later than anchor revision 1"), on a dry run too. Before, it
+  published that history: event reads served the later event, and acquiring the store for a
+  recorded import refused it only afterwards.
 
 ## [0.32.0] — 2026-11-22
 

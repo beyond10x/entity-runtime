@@ -126,6 +126,52 @@ fn an_existing_handle_invalidates_its_index_after_another_writer() {
 }
 
 #[test]
+fn a_refused_write_leaves_the_invalidation_epoch_alone() {
+    let registry = registry();
+    let root = scratch("refused-epoch");
+    let lock = root.join(".entity-store-lock");
+    let epoch = || std::fs::metadata(&lock).expect("lock exists").len();
+    let mut store = FileStore::open(&root);
+    store
+        .commit_recorded(&recorded(opening(&registry, "one"), "r-1"), Expect::Absent)
+        .expect("created");
+    let after_create = epoch();
+    assert_eq!(
+        after_create, 1,
+        "the accepted create advanced the epoch once"
+    );
+
+    let mut other = FileStore::open(&root);
+    for attempt in 0..3 {
+        let refused = other.commit_recorded(
+            &recorded(opening(&registry, "one"), &format!("again-{attempt}")),
+            Expect::Absent,
+        );
+        assert!(
+            matches!(refused, Err(StoreError::RevisionConflict { .. })),
+            "{refused:?}"
+        );
+    }
+    store
+        .commit_recorded(&recorded(opening(&registry, "one"), "r-1"), Expect::Absent)
+        .expect("an identical retry is an idempotent success");
+    assert_eq!(
+        epoch(),
+        after_create,
+        "revision conflicts and idempotent retries change nothing, so they advance no epoch"
+    );
+
+    other
+        .commit_recorded(&recorded(opening(&registry, "two"), "r-2"), Expect::Absent)
+        .expect("created");
+    assert_eq!(
+        epoch(),
+        after_create + 1,
+        "an accepted write still advances it"
+    );
+}
+
+#[test]
 fn separate_writers_preserve_exactly_one_winning_revision_and_all_its_records() {
     use entity_store::{HistoryProvider, StateProvider};
     let registry = registry();
@@ -317,5 +363,108 @@ fn separate_processes_serialize_revision_checks_and_survive_a_killed_lock_holder
             .unwrap()
             .len(),
         2
+    );
+}
+
+/// The one subject document under `root`, wherever its hex path puts it.
+#[cfg(unix)]
+fn only_subject_file(root: &Path) -> PathBuf {
+    let mut files = Vec::new();
+    for entity in std::fs::read_dir(root.join("subjects")).expect("subjects listed") {
+        for file in std::fs::read_dir(entity.expect("entity entry").path()).expect("entity listed")
+        {
+            files.push(file.expect("subject entry").path());
+        }
+    }
+    assert_eq!(files.len(), 1, "exactly one subject document: {files:?}");
+    files.pop().expect("one file")
+}
+
+#[cfg(unix)]
+fn mode_of(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .expect("metadata")
+        .permissions()
+        .mode()
+        & 0o777
+}
+
+#[cfg(unix)]
+#[test]
+fn a_new_subject_document_is_readable_by_its_owner_alone() {
+    let registry = registry();
+    let root = scratch("private-new-subject");
+    let mut store = FileStore::open(&root);
+    store
+        .commit_recorded(&recorded(opening(&registry, "one"), "r-1"), Expect::Absent)
+        .expect("created");
+    let mode = mode_of(&only_subject_file(&root));
+    assert_eq!(
+        mode, 0o600,
+        "a subject document is created private rather than with the process umask: {mode:o}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn replacing_a_restricted_subject_document_keeps_its_restriction() {
+    use std::os::unix::fs::PermissionsExt;
+    let registry = registry();
+    let root = scratch("restricted-replacement");
+    let mut store = FileStore::open(&root);
+    let created = opening(&registry, "one");
+    store
+        .commit_recorded(&recorded(created.clone(), "r-1"), Expect::Absent)
+        .expect("created");
+    let path = only_subject_file(&root);
+    // Owner read-only: tighter than any creation policy, so a replacement built with the
+    // default permissions or with `0600` alone would widen it.
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).expect("restricted");
+    let closed = Runtime::new(&registry)
+        .execute(&created.instance, "close", serde_json::json!({}))
+        .expect("close is permitted");
+    store
+        .commit_recorded(&recorded(closed, "r-2"), Expect::Revision(1))
+        .expect("replaced");
+    assert_eq!(
+        mode_of(&path),
+        0o400,
+        "the replacement document keeps the permissions the operator set on the subject"
+    );
+}
+
+#[test]
+fn an_identity_too_long_for_a_file_name_is_refused_before_anything_is_written() {
+    use entity_store::StateProvider;
+    let registry = registry();
+    let root = scratch("overlong-identity");
+    let mut store = FileStore::open(&root);
+    for id in ["x".repeat(128), "é".repeat(64)] {
+        let refused =
+            store.commit_recorded(&recorded(opening(&registry, &id), "long"), Expect::Absent);
+        assert!(
+            matches!(&refused, Err(StoreError::Backend(detail))
+                if detail.contains("path component limit") && detail.contains("identity")),
+            "a {}-byte identity is refused with the reason, not the OS error: {refused:?}",
+            id.len()
+        );
+    }
+    assert!(
+        !root.exists(),
+        "a refused identity creates no root, lock or directory"
+    );
+
+    let fits = "y".repeat(100);
+    store
+        .commit_recorded(&recorded(opening(&registry, &fits), "fits"), Expect::Absent)
+        .expect("a 100-byte identity has a v2 path");
+    assert_eq!(
+        store
+            .load("ticket", &fits)
+            .expect("readable")
+            .expect("stored")
+            .id,
+        fits
     );
 }
