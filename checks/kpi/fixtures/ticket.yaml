@@ -1,0 +1,9 @@
+entity: ticket
+version: 1
+schema:
+  fields:
+    title: { type: string, required: true }
+lifecycle:
+  initial: open
+  states: [open]
+operations: {}

@@ -62,7 +62,9 @@
 //!
 //! A creation event is the same question with no operation in it: `create` records the instance's
 //! fields after defaults as both `args` and `changed`, so a fold requires the two to be equal, and
-//! its type has to be the one `create.emit` names.
+//! its type has to be the one `create.emit` names. Then the fold runs `create`'s own rules on those
+//! fields and the event's identity — the identity check and the declared defaults included — and
+//! refuses a creation event whose fields are not what `create` would have recorded from them.
 //!
 //! Where no operation both declares the transition and emits the event's type there is no operation
 //! to put the question to, and the fold refuses the event rather than admitting it on the strength
@@ -98,8 +100,8 @@ use crate::error::CoreError;
 use crate::runtime::{
     assigned_value, canonical_object, canonicalize, changed_fields, check_invariants,
     check_preconditions, decide_before_load_as, decide_create_as, resolve_template,
-    DecisionCommand, DecisionRecord, DomainEvent, EntityInstance, LoadedDecision, PreloadDecision,
-    ResponseCheck, TemplateContext,
+    DecisionCommand, DecisionRecord, DomainEvent, EntityInstance, Evaluation, LoadedDecision,
+    PreloadDecision, ResponseCheck, TemplateContext,
 };
 use crate::validation::validate_object;
 use crate::ValidatedDefinition;
@@ -222,8 +224,9 @@ pub fn replay(records: &[DecisionRecord]) -> Result<EntityInstance, CoreError> {
 /// that transition, arguments the emitting operation's argument schema or preconditions would have
 /// refused, a `changed` or `removed` that is not what that operation's `set:` would have written
 /// and cleared from those arguments — on a creation event, a type the definition does not emit on
-/// creation, any creation event at all when it emits none, or a `changed` that is not its own
-/// recorded fields — fields the schema refuses, removal evidence on a creation event or naming a
+/// creation, any creation event at all when it emits none, a `changed` that is not its own
+/// recorded fields, or a creation `create` would refuse or would record differently from those
+/// fields (a blank identity, a declared default missing) — fields the schema refuses, removal evidence on a creation event or naming a
 /// field no operation emitting the event on its transition clears, or a step the entity's
 /// invariants refuse.
 ///
@@ -614,6 +617,40 @@ pub fn rehydrate(
             });
         if !answered {
             return refuse(payload_refusals.join("; "));
+        }
+
+        // Genesis through `create` itself. Equal `changed` and `args` say only that the two halves
+        // agree; they do not say `create` wrote them. `create` refuses a blank identity and fills
+        // every declared default before it records the fields, so a creation event with a defaulted
+        // field missing from both halves, or with a blank identity, folds to a genesis no `create`
+        // call produced. Asked last, after the checks above have named any other defect, so the
+        // only refusals this adds are the ones nothing above can see.
+        if index == 0 {
+            let recomputed = decide_create_as(
+                definition,
+                first.id.clone(),
+                Value::Object(first.args.clone()),
+                ResponseCheck::Recorded,
+            )
+            .and_then(Evaluation::into_decision);
+            match recomputed {
+                Err(error) => {
+                    return refuse(format!(
+                        "event 0 (`{}`) is a creation `create` would have refused — {error}",
+                        first.event_type
+                    ))
+                }
+                Ok(decision) if decision.instance.fields != instance.fields => {
+                    return refuse(format!(
+                        "event 0 (`{}`) records fields `create` would not have written from them — \
+                         `create` fills every declared default before it records a creation, and \
+                         these differ on {}",
+                        first.event_type,
+                        disagreeing_fields(&decision.instance.fields, &instance.fields)
+                    ))
+                }
+                Ok(_) => {}
+            }
         }
 
         start = end;

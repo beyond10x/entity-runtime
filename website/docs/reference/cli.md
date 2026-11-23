@@ -185,7 +185,7 @@ Usage: entity generate rust-cli [OPTIONS] --definition <DEFINITIONS> --name <NAM
 | `--out <OUT>` | yes | no | none | Installed host-platform binary path. |
 | `--runtime-source <RUNTIME_SOURCE>` | no | no | `.` | Matching entity-runtime source checkout. Defaults to the current directory. |
 | `--build-dir <BUILD_DIR>` | no | no | none | Retained generated crate. Defaults to build/entity-runtime/NAME. |
-| `--force` | no | no | none | Replace only exact generator-owned build and output targets. |
+| `--force` | no | no | none | Replace a build directory that carries the generator marker, and an output binary only when that marker records it as the one this generator installed there. |
 
 ## `entity mcp`
 

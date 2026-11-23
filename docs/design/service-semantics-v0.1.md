@@ -1206,10 +1206,14 @@ pub enum MapKey { String, Boolean, Integer, Decimal, Timestamp, Duration, Uuid, 
 ```
 
 Keys are checked by their spelling, because a JSON object's keys are always strings: `Boolean` admits
-exactly `"false"` and `"true"`, `Integer` admits decimal integer text, `String` checks nothing, and the
-rest are checked as the matching text primitive. This is ESS's own key projection, variant for variant
-(`ESS/crates/generate/ess-gen/src/types.rs:527-548`). A key kind that is not on this list is
-`MapKeyNotText`.
+exactly `"false"` and `"true"`, `Integer` admits the text an `i64` writes back (`^-?(0|[1-9][0-9]*)$`
+without `-0`, as ESS's key readers `ess-domain` `primitive_literal` and `ess-conformance`
+`primitive_literal` read it, so `007`, `+7` and `-0` are refused), `Decimal` admits ESS's
+`DECIMAL_PATTERN` `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$` (no `+`, leading zero or exponent), `Bytes` admits
+padded base64 including the empty text, `String` checks nothing, and the rest are checked as the
+matching text primitive. This is ESS's own key projection, variant for variant, at the pinned
+ESS 0.97.4 (`ESS/crates/generate/ess-gen/src/types.rs:687-702`). A key kind that is not on this
+list is `MapKeyNotText`.
 
 `ESS Map<K,V>` lowers to `{type: map, key: <K>, items: <V>}`. Nothing is dropped: `V` is a full
 `FieldDefinition`, so a `Map<String, Money>` types its values as an object with `amount` and

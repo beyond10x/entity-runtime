@@ -91,6 +91,19 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
             state: definition.lifecycle.initial.clone(),
         });
     }
+    // The states a service outcome may name, every declared spelling included, built once for the
+    // creation and every operation rather than once per command: a definition with many states and
+    // many operations otherwise spends most of its validation rebuilding this one set.
+    let outcome_states: BTreeSet<&str> = if service {
+        definition
+            .lifecycle
+            .states
+            .iter()
+            .map(String::as_str)
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
 
     // What only a `service/1` definition may carry. Refused rather than ignored: an author who
     // writes a branch believes something selects it.
@@ -234,7 +247,12 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
             "create.response",
             semantics,
         ));
-        defects.extend(validate_outcomes(definition, None, "create"));
+        defects.extend(validate_outcomes(
+            definition,
+            None,
+            "create",
+            &outcome_states,
+        ));
 
         let create_selector = Scope {
             kind: ScopeKind::CreateSelector,
@@ -358,6 +376,7 @@ pub(crate) fn validate_definition(definition: &EntityDefinition) -> Result<(), D
                 definition,
                 Some(operation),
                 operation_name,
+                &outcome_states,
             ));
         }
 
@@ -888,22 +907,23 @@ fn validate_conditional_target(
 /// states they name.
 ///
 /// `operation` is `None` for the creation, which has no held state, no move and no wrong state.
+/// `states` is every declared lifecycle state, built once by the caller.
 fn validate_outcomes(
     definition: &EntityDefinition,
     operation: Option<&crate::OperationDefinition>,
     command: &str,
+    states: &BTreeSet<&str>,
 ) -> Vec<DefinitionError> {
     let outcomes: &[OutcomeDefinition] = match operation {
         Some(operation) => &operation.outcomes,
         None => &definition.create.outcomes,
     };
+    // Every check below is about a declared outcome, and the one after the loop needs a
+    // wrong-state outcome, so a command with none has nothing to report.
+    if outcomes.is_empty() {
+        return Vec::new();
+    }
     let mut defects = Vec::new();
-    let states: BTreeSet<&str> = definition
-        .lifecycle
-        .states
-        .iter()
-        .map(String::as_str)
-        .collect();
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     let mut defaults = 0_usize;
     let mut wrong_states = 0_usize;
@@ -2416,16 +2436,17 @@ fn validate_schema_definition(
     defects
 }
 
-/// Which constraints a kind admits. A constraint outside its kind's list is refused rather than
-/// ignored, because an author who writes one believes it is enforced.
 /// Every `ref` a definition declares, as `(path, target entity)`, at any depth.
 ///
-/// Walks the entity schema and every operation's argument schema, through `items` and `properties`,
-/// because a reference nested in a list of objects is still a reference and a check that only
-/// looked at top-level fields would be one an author discovers by being wrong.
+/// Walks the entity schema, the creation argument schema and every operation's argument schema,
+/// through `items` and `properties`, because a reference nested in a list of objects is still a
+/// reference and a check that only looked at top-level fields would be one an author discovers by
+/// being wrong. A `service/1` creation argument is a declared input like any operation's, so a
+/// `ref` there names a type the set must hold just as one in a persisted field does.
 pub(crate) fn relation_targets(definition: &EntityDefinition) -> Vec<(String, String)> {
     let mut found = Vec::new();
     collect_targets(&definition.schema, "schema", &mut found);
+    collect_targets(&definition.create.arguments, "create.arguments", &mut found);
     for (name, operation) in &definition.operations {
         collect_targets(
             &operation.arguments,
@@ -2696,11 +2717,14 @@ fn validate_alphabet(alphabet: &str, path: &str, defects: &mut Vec<DefinitionErr
 
 // --- Values --------------------------------------------------------------------------------------
 
-/// Fills in declared defaults, at every depth an object or array element already reaches.
+/// Fills in declared defaults, at every depth an object, array element or map value already
+/// reaches.
 ///
 /// A default inside an object that was not supplied at all is **not** materialised: filling it
 /// would invent an object the caller never sent. A default inside an object that *is* present —
-/// `{"address": {}}` — is filled, which is what a `default` on a nested property means.
+/// `{"address": {}}` — is filled, which is what a `default` on a nested property means. A map
+/// value is the same case as an array element: each value the caller sent gets its item
+/// defaults, and no value is invented for a key that was not sent.
 pub(crate) fn apply_defaults(schema: &ObjectSchema, object: &mut Map<String, Value>) {
     apply_member_defaults(&schema.fields, object);
 }
@@ -2732,6 +2756,13 @@ fn apply_nested_defaults(definition: &FieldDefinition, value: &mut Value) {
             if let (Some(items), Value::Array(values)) = (&definition.items, value) {
                 for element in values {
                     apply_nested_defaults(items, element);
+                }
+            }
+        }
+        FieldKind::Map => {
+            if let (Some(items), Value::Object(members)) = (&definition.items, value) {
+                for member in members.values_mut() {
+                    apply_nested_defaults(items, member);
                 }
             }
         }
@@ -3162,19 +3193,29 @@ fn validate_union(
 }
 
 /// A map key's spelling, because a JSON object's keys are always strings.
+///
+/// The grammar is the pinned ESS release's (`ess-gen` `types.rs` `key`, ESS 0.97.4): one value has
+/// one spelling, so `007`, `+7` and `-0` are not integer keys beside `7` and `0`, and the empty
+/// text is the padded base64 of no bytes.
 fn validate_map_key(key: MapKey, text: &str) -> Result<(), String> {
     match key {
         MapKey::String => Ok(()),
         MapKey::Boolean => (text == "false" || text == "true")
             .then_some(())
             .ok_or_else(|| "expected `false` or `true`".to_owned()),
+        // `^-?(0|[1-9][0-9]*)$` inside the `i64` span, read the way ESS's own key readers read it
+        // (`ess-domain` `primitive_literal`, `ess-conformance` `input.rs`): the text the `i64`
+        // writes back. That also refuses the `-0` the published pattern lets through.
         MapKey::Integer => text
             .parse::<i64>()
-            .map(|_| ())
-            .map_err(|_| "expected decimal integer text".to_owned()),
-        MapKey::Decimal => Observed::of_literal(text)
-            .map(|_| ())
-            .ok_or_else(|| "expected exact decimal text".to_owned()),
+            .is_ok_and(|number| number.to_string() == text)
+            .then_some(())
+            .ok_or_else(|| {
+                "expected decimal integer text without `+` or leading zeroes".to_owned()
+            }),
+        MapKey::Decimal => is_decimal_text(text).then_some(()).ok_or_else(|| {
+            "expected exact decimal text without `+`, leading zeroes or an exponent".to_owned()
+        }),
         MapKey::Timestamp => crate::timestamp::parse(text)
             .map(|_| ())
             .ok_or_else(|| format!("expected an instant written {INSTANT_FORMS}")),
@@ -3227,9 +3268,24 @@ fn is_uuid(text: &str) -> bool {
         })
 }
 
+/// Exact decimal text, ESS's `DECIMAL_PATTERN` `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$` (`ess-gen`
+/// `types.rs`, ESS 0.97.4): no `+`, no leading zero, no exponent, no bare point.
+fn is_decimal_text(text: &str) -> bool {
+    let unsigned = text.strip_prefix('-').unwrap_or(text);
+    let (whole, fraction) = match unsigned.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (unsigned, None),
+    };
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    digits(whole) && (whole == "0" || !whole.starts_with('0')) && fraction.is_none_or(digits)
+}
+
 /// Padded base64, which is the one spelling the source admits for bytes.
+///
+/// The empty text is admitted: it is the base64 of no bytes, and ESS's `BASE64_PATTERN` and
+/// `ess_primitives::facts::is_padded_base64` both admit it.
 fn is_padded_base64(text: &str) -> bool {
-    if text.is_empty() || text.len() % 4 != 0 {
+    if text.len() % 4 != 0 {
         return false;
     }
     let body = text.trim_end_matches('=');

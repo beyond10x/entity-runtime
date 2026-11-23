@@ -844,6 +844,83 @@ fn a_creation_event_whose_changed_differs_from_its_recorded_fields_is_refused() 
     );
 }
 
+/// A note with an optional field that carries a default: `create` always writes it.
+fn defaulted_note() -> Registry {
+    let definition = serde_json::from_value(json!({
+        "entity": "note",
+        "version": 1,
+        "schema": {
+            "fields": {
+                "text": { "type": "string", "required": true },
+                "priority": { "type": "string", "default": "normal" }
+            }
+        },
+        "lifecycle": { "initial": "open", "states": ["open"] },
+        "create": { "emit": { "type": "NoteOpened", "payload": { "note": "$id" } } }
+    }))
+    .expect("the definition parses");
+    let mut registry = Registry::new();
+    registry.register(definition).expect("it validates");
+    registry
+}
+
+#[test]
+fn a_creation_event_missing_a_default_create_always_writes_is_refused() {
+    // `changed` equals `args`, the schema accepts both (the field is optional) and no invariant
+    // reads it, so only `create`'s own default rule can tell this genesis from one `create` made.
+    let registry = defaulted_note();
+    let runtime = Runtime::new(&registry);
+    let definition = registry.get("note", 1).expect("registered");
+    let created = runtime
+        .create("note", 1, "n-1", json!({ "text": "hello" }))
+        .expect("permitted");
+    assert_eq!(created.events[0].changed["priority"], json!("normal"));
+    assert_eq!(
+        rehydrate(definition, &created.events).expect("the honest creation folds"),
+        created.instance
+    );
+
+    let mut forged = created.events.clone();
+    forged[0].changed.remove("priority");
+    forged[0].args.remove("priority");
+
+    let error = rehydrate(definition, &forged).expect_err("`create` always writes the default");
+    assert!(
+        matches!(error, entity_core::CoreError::Validation(ref errors)
+            if errors[0].path == "events"
+                && errors[0].message.contains("event 0 (`NoteOpened`)")
+                && errors[0].message.contains("fills every declared default")
+                && errors[0].message.contains("`priority` (recorded nothing, not \"normal\")")),
+        "the refusal names the event and the default it lacks: {error}"
+    );
+}
+
+#[test]
+fn a_creation_event_with_a_blank_identity_is_refused() {
+    // `create` refuses an empty or whitespace identity, so a history beginning with one describes
+    // no `create` call even when every other part of the event is consistent with it.
+    let registry = defaulted_note();
+    let runtime = Runtime::new(&registry);
+    let definition = registry.get("note", 1).expect("registered");
+    let created = runtime
+        .create("note", 1, "n-1", json!({ "text": "hello" }))
+        .expect("permitted");
+
+    let mut forged = created.events.clone();
+    forged[0].id = "  ".to_owned();
+    forged[0].payload = json!({ "note": "  " });
+
+    let error = rehydrate(definition, &forged).expect_err("`create` refuses a blank identity");
+    assert!(
+        matches!(error, entity_core::CoreError::Validation(ref errors)
+            if errors[0].path == "events"
+                && errors[0].message.contains("event 0 (`NoteOpened`)")
+                && errors[0].message.contains("`create` would have refused")
+                && errors[0].message.contains("identity cannot be empty")),
+        "the refusal names the event and the identity rule: {error}"
+    );
+}
+
 /// A counter whose invariant reads the very field a forged event gets wrong.
 ///
 /// The two rules disagree about what the defect is: the schema says `count` is an integer, while

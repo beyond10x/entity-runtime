@@ -69,20 +69,45 @@ fn record_charge(record: &StoredRecord) -> usize {
 }
 
 /// What a remembered history is charged beyond its records: its subject, its origin and its
-/// terminal state, which is no larger than the record that produced it.
-fn history_charge(history: &impl RememberedHistory) -> usize {
+/// terminal state.
+///
+/// The memory keeps its own copy of the origin and of the terminal. An imported origin holds the
+/// whole anchor — its state and every evidence envelope — so it is charged as a decode of what it
+/// encodes to, however large. A terminal reached by records is no larger than the record that
+/// produced it, which holds the state it reached; a history with no records yet ends on the
+/// anchor's state, which is charged as a decode of what it encodes to.
+fn history_charge(history: &impl RememberedHistory, terminal: &EntityInstance) -> usize {
     let largest = history
         .records()
         .map(|record| record.record_bytes.len())
-        .max()
-        .unwrap_or(0);
+        .max();
     let origin = match history.origin() {
         HistoryOrigin::Genesis => 0,
-        HistoryOrigin::Imported(_) => DECODED_FIXED,
+        HistoryOrigin::Imported(anchor) => decoded_charge(encoded_len(anchor)),
     };
+    let terminal = largest.unwrap_or_else(|| encoded_len(terminal));
     ENTRY
         .saturating_add(origin)
-        .saturating_add(decoded_charge(largest))
+        .saturating_add(decoded_charge(terminal))
+}
+
+/// The bytes `value` encodes to as JSON, counted without keeping them.
+pub(super) fn encoded_len(value: &impl serde::Serialize) -> usize {
+    struct Count(usize);
+    impl std::io::Write for Count {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len());
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut count = Count(0);
+    // A verified origin and state always encode; one that did not would be charged what it had
+    // encoded so far, which only means remembering it is forgotten sooner or later than exact.
+    let _ = serde_json::to_writer(&mut count, value);
+    count.0
 }
 
 /// A decode of one verified blob, by the decoder its domain names.
@@ -210,6 +235,10 @@ impl VerifiedMemory {
             return;
         }
         let charged = ENTRY + digest.len() + bytes.len();
+        if charged > self.cap {
+            self.forget_blob(digest);
+            return;
+        }
         self.make_room(charged);
         if let Some(replaced) = self.blobs.insert(
             digest.to_owned(),
@@ -246,6 +275,19 @@ impl VerifiedMemory {
             .filter(|remembered| remembered.bytes == bytes)
             .and_then(|remembered| remembered.decoded.as_ref())
             .map_or(0, |previous| previous.charge(bytes.len()));
+        let Some(blob) = self
+            .blobs
+            .get(digest)
+            .filter(|remembered| remembered.bytes == bytes)
+            .map(|remembered| remembered.charged)
+        else {
+            return;
+        };
+        if blob.saturating_sub(replacing).saturating_add(adding) > self.cap {
+            // The blob and this decode could never be held together: neither is kept.
+            self.forget_blob(digest);
+            return;
+        }
         // Forgetting everything forgets the blob this decode belongs to, and then there is
         // nothing to attach it to: a decode is only ever remembered beside its verified bytes.
         self.make_room(adding.saturating_sub(replacing));
@@ -275,6 +317,21 @@ impl VerifiedMemory {
 
     /// Remembers that `request` was just held to be the request of exactly `record`.
     pub(super) fn hold_request(&mut self, digest: &str, record: &[u8], request: &[u8]) {
+        let Some(blob) = self
+            .blobs
+            .get(digest)
+            .filter(|remembered| remembered.bytes == record)
+            .map(|remembered| {
+                let replaced = remembered.request.as_ref().map_or(0, Vec::len);
+                remembered.charged.saturating_sub(replaced)
+            })
+        else {
+            return;
+        };
+        if blob.saturating_add(request.len()) > self.cap {
+            self.forget_blob(digest);
+            return;
+        }
         self.make_room(request.len());
         let Some(remembered) = self
             .blobs
@@ -328,8 +385,16 @@ impl VerifiedMemory {
         terminal: &EntityInstance,
         verified: Option<usize>,
     ) {
-        let charged = history_charge(history)
+        let charged = history_charge(history, terminal)
             .saturating_add(history.records().map(record_charge).sum::<usize>());
+        if charged > self.cap {
+            // Holding it would pass the cap even with everything else forgotten. What this memory
+            // remembered of the subject belongs to an earlier model, so it goes too.
+            if let Some(forgotten) = self.histories.remove(history.subject()) {
+                self.held = self.held.saturating_sub(forgotten.charged);
+            }
+            return;
+        }
         if let Some(length) = verified
             && length <= history.len()
             && let Some(remembered) = self.histories.get(history.subject())
@@ -371,6 +436,13 @@ impl VerifiedMemory {
         self.histories
             .get(subject)
             .map(|history| history.records.as_slice())
+    }
+
+    /// Forgets the blob `digest` names, with its decode and request, if this memory holds it.
+    fn forget_blob(&mut self, digest: &str) {
+        if let Some(forgotten) = self.blobs.remove(digest) {
+            self.held = self.held.saturating_sub(forgotten.charged);
+        }
     }
 
     fn make_room(&mut self, adding: usize) {
@@ -542,6 +614,86 @@ mod tests {
                 "{fields} fields: forgets at {largest} measured bytes, far below its cap"
             );
         }
+    }
+
+    const MIB: usize = 1024 * 1024;
+
+    /// An imported subject with no record after its anchor, whose state holds one string field of
+    /// `field` bytes, and that state.
+    fn imported(id: &str, field: usize) -> (SubjectHistory, EntityInstance) {
+        use entity_store::asynchronous::{
+            LegacyAnchor, LegacyCompleteness, LegacyOrderDeclaration,
+        };
+        let instance = EntityInstance {
+            entity: "alpha".into(),
+            version: 1,
+            id: id.into(),
+            lifecycle_state: "open".into(),
+            revision: 3,
+            fields: serde_json::from_value(json!({ "title": "x".repeat(field) })).expect("fields"),
+        };
+        let history = SubjectHistory {
+            subject: Subject::new("alpha", id).expect("subject"),
+            origin: HistoryOrigin::Imported(LegacyAnchor {
+                instance: instance.clone(),
+                completeness: LegacyCompleteness::AvailableEvidenceOnly,
+                order: LegacyOrderDeclaration::PerKindOnly,
+                evidence: Vec::new(),
+            }),
+            records: Vec::new(),
+        };
+        (history, instance)
+    }
+
+    /// A remembered imported history keeps its own copy of the anchor and of the terminal state,
+    /// so a 1 MiB field is held at least twice and is charged at least that. A fixed allowance
+    /// for the origin and the size of the largest record for the terminal charged 33,024 bytes
+    /// for it: with no record after the anchor, the terminal was charged as an empty record.
+    #[test]
+    fn an_imported_history_is_charged_at_least_the_anchor_and_state_it_keeps() {
+        let (history, terminal) = imported("large", MIB);
+        let mut memory = VerifiedMemory::default();
+        memory.remember_history(&history, &terminal, None);
+        assert_eq!(
+            memory.histories.len(),
+            1,
+            "a history under the cap is remembered"
+        );
+        eprintln!("an imported 1 MiB history is charged {} bytes", memory.held);
+        assert!(
+            memory.held >= 2 * MIB,
+            "charged {} bytes for an imported history whose anchor and terminal copies each hold a \
+             {MIB}-byte string",
+            memory.held
+        );
+    }
+
+    /// What could not fit even in an empty memory is not remembered, and does not make the memory
+    /// forget what it holds. Forgetting everything and then inserting it anyway held more than
+    /// the cap.
+    #[test]
+    fn a_history_or_blob_larger_than_the_cap_is_not_remembered() {
+        let mut memory = VerifiedMemory::with_cap(MIB);
+        let small = b"{\"small\":true}";
+        memory.admit("sha256:small", "er.eventlog.record-blob-key/1", small);
+        let (history, terminal) = imported("large", MIB / 2);
+        memory.remember_history(&history, &terminal, None);
+        assert!(
+            memory.histories.is_empty(),
+            "a history charged over the {MIB}-byte cap was remembered, holding {}",
+            memory.held
+        );
+        let large = vec![b'x'; 2 * MIB];
+        memory.admit("sha256:large", "er.eventlog.record-blob-key/1", &large);
+        assert!(
+            !memory.admitted("sha256:large", "er.eventlog.record-blob-key/1", &large),
+            "a blob over the cap was remembered"
+        );
+        assert!(
+            memory.admitted("sha256:small", "er.eventlog.record-blob-key/1", small),
+            "remembering nothing made the memory forget what it held"
+        );
+        assert!(memory.held <= MIB, "holds {} over the cap", memory.held);
     }
 
     fn entry_instance(entry: &RecordedEntry) -> EntityInstance {

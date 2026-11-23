@@ -77,6 +77,12 @@ tasks:
     cmds:
       - cargo test --workspace --locked
 
+  test-slow:
+    desc: the slow lane, not part of check, compiles and runs the Rust CLI that generate rust-cli writes (minutes)
+    cmds:
+      - cargo clippy -p entity-cli --all-targets --features slow-lane --locked -- -D warnings
+      - cargo test -p entity-cli --features slow-lane --locked --test cli -- slow_lane
+
   doc-check:
     desc: rustdoc with broken intra-doc links as errors
     env:
@@ -119,6 +125,40 @@ tasks:
     cmds:
       - cargo run -q -p entity-xtask --locked -- aep-version --binary "$(command -v aep)"
       - aep plan artifact validate
+
+  kpi-build:
+    desc: the KPI harness and the release entity binary it times, on the Eventlog toolchain
+    env:
+      CARGO_TARGET_DIR: '{{.CARGO_TARGET_DIR | default "target"}}'
+    cmds:
+      - cargo fmt --manifest-path checks/kpi/Cargo.toml -- --check
+      - cargo +1.91.0 clippy --manifest-path checks/kpi/Cargo.toml --all-targets --locked -- -D warnings
+      - cargo +1.91.0 build --release --locked -p entity-cli --features eventlog-providers
+      - cargo +1.91.0 build --release --locked --manifest-path checks/kpi/Cargo.toml
+
+  kpi:
+    desc: KPI gate - counters against checks/kpi/baseline.json (pass -- --timing for one informational timing round)
+    env:
+      CARGO_TARGET_DIR: '{{.CARGO_TARGET_DIR | default "target"}}'
+    cmds:
+      - task: kpi-build
+      - '"$CARGO_TARGET_DIR/release/er-kpi" check --entity "$CARGO_TARGET_DIR/release/entity" {{.CLI_ARGS}}'
+
+  kpi-record:
+    desc: re-record checks/kpi/baseline.json (counters twice, timing over rounds); commit it with the change that moved a counter
+    env:
+      CARGO_TARGET_DIR: '{{.CARGO_TARGET_DIR | default "target"}}'
+    cmds:
+      - task: kpi-build
+      - '"$CARGO_TARGET_DIR/release/er-kpi" record --entity "$CARGO_TARGET_DIR/release/entity" {{.CLI_ARGS}}'
+
+  kpi-ab:
+    desc: timing A/B, BASE (default origin/main) against HEAD (default HEAD; WORKTREE for uncommitted), interleaved on this machine
+    env:
+      CARGO_TARGET_DIR: '{{.CARGO_TARGET_DIR | default "target"}}'
+    cmds:
+      - task: kpi-build
+      - '"$CARGO_TARGET_DIR/release/er-kpi" ab --base {{.BASE | default "origin/main"}} --head {{.HEAD | default "HEAD"}} {{.CLI_ARGS}}'
 
   fmt:
     desc: rustfmt, in place

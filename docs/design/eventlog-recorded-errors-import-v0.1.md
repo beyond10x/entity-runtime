@@ -307,6 +307,14 @@ re-verifies every blob digest of the whole authority — so the cost of importin
 the square of its size. Measured on a copy of the real ESS planning store on 2026-09-21, one
 `apply` is 7,810 imports at `t(k) = 115 + 0.992·k` ms, or about 8.5 hours.
 
+`RecordedProviderFacade::import_legacy` keeps one append per subject, so a failure leaves the
+subjects before it committed and reports them. It numbers each call as one import sequence: a
+subject is checked against the observation with which the subject before it verified its own
+commit, rather than observing the destination again first, so N subjects take N + 1 captures and
+the closing equivalence check one more. That observation is reused only while the handle still
+holds it as its verified model and only within the same sequence; the destination guard still
+decides each append.
+
 The batch changes what is *read*, never what is *written*:
 
 1. Prepare every member exactly as the singular path prepares its one — same pure validation, same
@@ -419,12 +427,23 @@ The batch changes what is *read*, never what is *written*:
    its own reader leaves a destination it cannot read, and because step 5 reports the outcome by
    reading the destination back, it would also lose every receipt for what it had just committed.
    The singular path overshoots its reader by at most the one event it wrote and the next call
-   refuses; a batch would overshoot by the whole batch in one commit. The three counts — events,
-   blobs not already bound, and projection rows — are exact and free. The payload-byte cap is
-   deliberately **not** checked: computing what a capture holds against it means re-encoding every
-   event, blob and row of the whole authority on every capture, which is the per-capture cost over
-   the whole store that batching exists to remove. A caller that meets this refusal divides the
-   work; the limits are its own, so the bound is one it chose.
+   refuses; a batch would overshoot by the whole batch in one commit. All four caps are checked.
+   The three counts — events, blobs not already bound, and projection rows — are exact and free.
+   The payload-byte cap is checked as Eventlog's `CaptureBudget` charges it: the compact JSON
+   length of every event body and projection row body plus every bound blob's bytes. What the
+   destination holds is counted exactly from the pre-capture, by the batch that needs it: a model
+   built from a complete capture leaves the count to the first write that asks, so reads never
+   encode every body of the authority (a provider's suffix or checkpoint carries its own count).
+   What the group adds is an upper bound: each anchor's
+   event body, record rows and subject row are built as the projector builds them, with the widest
+   physical reference of the subject's stream (a 36-character event id, the UUID every Eventlog
+   provider mints, and the largest positions), plus the bytes of every blob not already bound. The
+   ordinary write path (`admit_growth`) checks the same four caps the same way; there a subject row
+   the store already holds is replaced rather than added, and is bounded by what its revision,
+   state source and physical head can grow by. A caller that meets this refusal divides the work;
+   the limits are its own, so the bound is one it chose. (Until review A2 the payload cap was not
+   checked, on the reasoning that counting it would re-encode the whole authority per capture; a
+   batch past it committed a destination its own handle could not read back.)
 5. Take **one** post-capture and verify every member's anchor bytes and returned `PhysicalRef`
    before returning one outcome per input, in the input's order.
 

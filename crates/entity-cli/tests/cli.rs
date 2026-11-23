@@ -163,18 +163,36 @@ fn inspect_as_yaml_prints_a_definition_that_validates_again() {
         stderr(&output)
     );
 
-    // A definition with no data-carrying variant prints the bytes the YAML library writes for it.
+    // A number in the definition — the order's `gt: [$fields.total_cents, 0]` — is a YAML number a
+    // plain YAML reader decodes as one, not the private map `serde_json` serializes it as, and the
+    // printed definition still validates.
     let order = order_yaml();
     let printed = run(
         &["inspect", order.to_str().unwrap(), "--format", "yaml"],
         None,
     );
     assert_eq!(printed.status.code(), Some(0), "{}", stderr(&printed));
-    let definition =
-        entity_yaml::from_str(&fs::read_to_string(&order).expect("readable")).expect("loads");
+    let text = stdout(&printed);
+    assert!(!text.contains("$serde_json::private::Number"), "{text}");
+    let read: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("plain YAML");
+    let mut greater = Vec::new();
+    values_named(&read, "gt", &mut greater);
     assert_eq!(
-        stdout(&printed),
-        serde_yaml_ng::to_string(&definition).expect("serializes")
+        greater,
+        [&serde_yaml_ng::Value::Sequence(vec![
+            "$fields.total_cents".into(),
+            serde_yaml_ng::Value::Number(0.into()),
+        ])],
+        "{text}"
+    );
+    let reread = scratch("inspected-order.yaml", &text);
+    let output = run(&["validate", reread.to_str().unwrap()], None);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
     );
 }
 
@@ -1549,6 +1567,41 @@ fn file_store_migration_is_out_of_place_and_dry_run_writes_nothing() {
 }
 
 #[test]
+fn file_store_migration_to_a_bare_relative_destination_succeeds_once() {
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cli-file-migration-relative");
+    let _ = fs::remove_dir_all(&root);
+    let entity_dir = root.join("old").join("ticket");
+    fs::create_dir_all(&entity_dir).expect("legacy entity directory");
+    fs::write(
+        entity_dir.join("one.json"),
+        r#"{"entity":"ticket","version":1,"id":"one","lifecycle_state":"open","revision":1,"fields":{}}"#,
+    )
+    .expect("legacy state");
+    // `converted` has an empty parent path; the migration must treat it as the current directory.
+    let migrated = entity()
+        .current_dir(&root)
+        .args([
+            "store",
+            "migrate-file",
+            "--from",
+            "old",
+            "--to",
+            "converted",
+        ])
+        .output()
+        .expect("runs");
+    assert!(
+        migrated.status.success(),
+        "a bare relative destination migrates and reports success: {}",
+        String::from_utf8_lossy(&migrated.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("converted").join(".entity-store-format")).expect("marker"),
+        "entity.file-store/2\n"
+    );
+}
+
+#[test]
 fn generated_documentation_is_complete_and_replaces_only_generator_owned_output() {
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-docs");
     let _ = fs::remove_dir_all(&root);
@@ -1756,155 +1809,501 @@ fn mcp_command_keeps_stdout_as_json_rpc_and_lists_definition_derived_tools() {
     );
 }
 
-/// The triple Cargo would build for by default here, asked of `rustc` rather than assumed, so the
-/// test can set `CARGO_BUILD_TARGET` to something this machine can actually run.
-fn host_triple() -> String {
-    let output = Command::new("rustc")
-        .arg("-vV")
-        .output()
-        .expect("rustc reports its configuration");
-    assert!(output.status.success(), "{}", stderr(&output));
-    stdout(&output)
-        .lines()
-        .find_map(|line| line.strip_prefix("host: ").map(str::to_owned))
-        .expect("rustc -vV names its host triple")
+/// The committed copy of the crate `generate rust-cli` writes for `examples/refund.yaml` under the
+/// name `refundctl`. The fast test below holds the generator to it byte for byte; the slow lane
+/// (`task test-slow`) compiles and runs exactly these sources.
+#[cfg(any(unix, feature = "slow-lane"))]
+fn generated_rust_cli_snapshot() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/generated-rust-cli/refundctl")
 }
 
+/// The source the generator copies into the generated crate as `src/yaml_output.rs`.
+#[cfg(any(unix, feature = "slow-lane"))]
+const YAML_OUTPUT_SOURCE: &str = include_str!("../src/yaml_output.rs");
+
+/// The retained sources of a `refundctl` generation are the committed snapshot: `Cargo.toml` with
+/// the runtime source path written as `{runtime-source}`, `src/main.rs`, and `src/yaml_output.rs`
+/// the same bytes as the `entity` command's own YAML writer. `ENTITY_BLESS_SNAPSHOTS=1` writes the
+/// snapshot from the generated sources instead of comparing.
+#[cfg(any(unix, feature = "slow-lane"))]
+fn assert_generated_sources_match_the_snapshot(build_dir: &Path, runtime_source: &Path) {
+    let runtime_source = runtime_source
+        .canonicalize()
+        .expect("runtime source resolves")
+        .display()
+        .to_string();
+    let manifest = fs::read_to_string(build_dir.join("Cargo.toml"))
+        .expect("retained Cargo.toml")
+        .replace(&runtime_source, "{runtime-source}");
+    let main = fs::read_to_string(build_dir.join("src/main.rs")).expect("retained main.rs");
+    let snapshot = generated_rust_cli_snapshot();
+    if std::env::var_os("ENTITY_BLESS_SNAPSHOTS").is_some() {
+        fs::create_dir_all(&snapshot).expect("snapshot directory");
+        fs::write(snapshot.join("Cargo.toml.snap"), &manifest).expect("snapshot Cargo.toml");
+        fs::write(snapshot.join("main.rs.snap"), &main).expect("snapshot main.rs");
+    }
+    let bless = "rerun with ENTITY_BLESS_SNAPSHOTS=1 to accept, then run `task test-slow`";
+    assert_eq!(
+        manifest,
+        fs::read_to_string(snapshot.join("Cargo.toml.snap")).expect("snapshot Cargo.toml"),
+        "generated Cargo.toml differs from the snapshot; {bless}"
+    );
+    assert_eq!(
+        main,
+        fs::read_to_string(snapshot.join("main.rs.snap")).expect("snapshot main.rs"),
+        "generated main.rs differs from the snapshot; {bless}"
+    );
+    assert_eq!(
+        fs::read_to_string(build_dir.join("src/yaml_output.rs")).expect("retained yaml_output.rs"),
+        YAML_OUTPUT_SOURCE,
+        "the generated crate writes YAML with the entity command's own writer"
+    );
+}
+
+/// A stand-in for Cargo on `PATH`: it records each invocation, answers the lockfile step, and for
+/// `build` writes a small executable where Cargo would (under `--target-dir`, below
+/// `$CARGO_BUILD_TARGET` when one is set) and reports it in a `compiler-artifact` message.
+#[cfg(unix)]
+const STUB_CARGO: &str = r#"#!/bin/sh
+printf '%s\n' "$*" >> "$STUB_CARGO_LOG"
+case "$1" in
+  generate-lockfile|update) : > Cargo.lock; exit 0 ;;
+  build)
+    target_dir=${CARGO_TARGET_DIR:-target}
+    while [ $# -gt 0 ]; do
+      [ "$1" = --target-dir ] && target_dir=$2
+      shift
+    done
+    dir="$target_dir/${CARGO_BUILD_TARGET:+$CARGO_BUILD_TARGET/}release"
+    mkdir -p "$dir"
+    printf '#!/bin/sh\necho stub refundctl\n' > "$dir/refundctl"
+    chmod +x "$dir/refundctl"
+    printf '{"reason":"compiler-artifact","target":{"name":"refundctl","kind":["bin"]},"executable":"%s"}\n' "$dir/refundctl"
+    exit 0 ;;
+esac
+exit 1
+"#;
+
+/// The generator's half of R-118 without a Cargo build: the retained crate is the committed
+/// snapshot, Cargo is asked to build it locked and offline into the build directory's own target
+/// directory, and the executable Cargo reports — not one guessed from `CARGO_TARGET_DIR` or the
+/// build target — is the one installed at `--out`. Compiling and running the snapshot is the slow
+/// lane's `generated_rust_cli_compiles_and_executes_definition_specific_commands`.
+#[cfg(unix)]
 #[test]
-fn generated_rust_cli_compiles_and_executes_definition_specific_commands() {
-    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-rust-cli");
+fn generated_rust_cli_retains_the_snapshot_sources_and_installs_what_cargo_reports() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-rust-cli-sources");
     let _ = fs::remove_dir_all(&root);
-    fs::create_dir_all(&root).expect("scratch root");
-    let binary = root.join(format!("refundctl{}", std::env::consts::EXE_SUFFIX));
-    // A relative `--build-dir` is what the guide's invocation uses, and Cargo runs with the build
-    // directory as its working directory: a relative `--target-dir` would land under
-    // `<build-dir>/<build-dir>/target`.
+    let stub_dir = root.join("stub-bin");
+    fs::create_dir_all(&stub_dir).expect("stub directory");
+    let stub = stub_dir.join("cargo");
+    fs::write(&stub, STUB_CARGO).expect("stub cargo");
+    fs::set_permissions(&stub, fs::Permissions::from_mode(0o755)).expect("executable stub");
+    let log = root.join("cargo.log");
+    let path = std::env::join_paths(std::iter::once(stub_dir.clone()).chain(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    ))
+    .expect("PATH");
+
+    let binary = root.join("refundctl");
     let requested_build_dir = "build/refundctl-source";
     let build_dir = root.join(requested_build_dir);
-    // Neither a caller's `CARGO_TARGET_DIR` nor a selected build target may decide where the
-    // generator finds what it built — the first moves the directory, the second inserts a triple
-    // component under it.
     let misdirected = root.join("misdirected-target");
-    let triple = host_triple();
+    let triple = "x86_64-unknown-linux-gnu";
     let runtime_source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let generated = entity()
         .current_dir(&root)
+        .env("PATH", &path)
+        .env("STUB_CARGO_LOG", &log)
         .env("CARGO_TARGET_DIR", &misdirected)
-        .env("CARGO_BUILD_TARGET", &triple)
+        .env("CARGO_BUILD_TARGET", triple)
         .args(["generate", "rust-cli", "--definition"])
         .arg(refund_yaml())
         .args(["--name", "refundctl", "--out"])
         .arg(&binary)
         .arg("--runtime-source")
-        .arg(runtime_source)
+        .arg(&runtime_source)
         .args(["--build-dir", requested_build_dir])
         .output()
         .expect("runs");
-    assert!(
-        generated.status.success(),
-        "{}",
-        String::from_utf8_lossy(&generated.stderr)
+    assert_eq!(generated.status.code(), Some(0), "{}", stderr(&generated));
+
+    assert_generated_sources_match_the_snapshot(&build_dir, &runtime_source);
+    assert_eq!(
+        fs::read_to_string(build_dir.join("definitions/0.yaml")).expect("embedded definition"),
+        fs::read_to_string(refund_yaml()).expect("refund.yaml"),
+        "the definition is embedded byte for byte"
     );
-    assert!(binary.is_file(), "generated host binary");
-    assert!(build_dir.join("src/main.rs").is_file(), "retained source");
-    let artifact = build_dir
-        .join("target")
-        .join(&triple)
-        .join("release")
-        .join(format!("refundctl{}", std::env::consts::EXE_SUFFIX));
-    assert!(
-        artifact.is_file(),
-        "built into the build directory the generator named: {}",
-        artifact.display()
+
+    let target_dir = build_dir.join("target");
+    assert_eq!(
+        fs::read_to_string(&log).expect("cargo was run"),
+        format!(
+            "generate-lockfile --offline\nbuild --release --locked --offline \
+             --message-format=json-render-diagnostics --target-dir {}\n",
+            target_dir.display()
+        ),
+        "the lockfile is resolved offline and the build is locked, offline and into the build \
+         directory's own target directory"
     );
-    for candidate in [
-        misdirected.join("release"),
-        misdirected.join(&triple).join("release"),
-    ] {
-        assert!(
-            !candidate
-                .join(format!("refundctl{}", std::env::consts::EXE_SUFFIX))
-                .exists(),
-            "the environment's target directory was overridden, not honoured"
-        );
+    let reported = target_dir.join(triple).join("release/refundctl");
+    assert_eq!(
+        fs::read(&binary).expect("installed binary"),
+        fs::read(&reported).expect("built binary"),
+        "the executable Cargo reported is the one installed"
+    );
+    assert!(
+        !misdirected.exists(),
+        "the environment's target directory was overridden, not honoured"
+    );
+    assert_eq!(
+        stdout(&generated),
+        format!(
+            "generated refundctl at {}; source retained at {}\n",
+            binary.display(),
+            build_dir.display()
+        )
+    );
+}
+
+/// The slow lane: `task test-slow`, and the `Slow lane` workflow when the generator, its snapshot
+/// or a crate the generated command builds on changes. Each test here runs Cargo on a generated
+/// crate and takes minutes, so the gate's test step leaves them out.
+#[cfg(feature = "slow-lane")]
+mod slow_lane {
+    use super::*;
+
+    /// The triple Cargo would build for by default here, asked of `rustc` rather than assumed, so the
+    /// test can set `CARGO_BUILD_TARGET` to something this machine can actually run.
+    fn host_triple() -> String {
+        let output = Command::new("rustc")
+            .arg("-vV")
+            .output()
+            .expect("rustc reports its configuration");
+        assert!(output.status.success(), "{}", stderr(&output));
+        stdout(&output)
+            .lines()
+            .find_map(|line| line.strip_prefix("host: ").map(str::to_owned))
+            .expect("rustc -vV names its host triple")
     }
 
-    let store = root.join("store");
-    let created = Command::new(&binary)
-        .arg("--store")
-        .arg(&store)
-        .args([
-            "refund",
-            "create",
-            "--id",
-            "one",
-            "--fields",
-            r#"{"order_id":"order-1","amount_cents":2500,"evidence_count":1}"#,
-            "--record-id",
-            "create-one",
-            "--recorded-at",
-            "2026-08-31T10:00:00Z",
-            "--actor",
-            "test",
-        ])
-        .output()
-        .expect("generated command runs");
-    assert!(
-        created.status.success(),
-        "{}",
-        String::from_utf8_lossy(&created.stderr)
-    );
-    let submitted = Command::new(&binary)
-        .arg("--store")
-        .arg(&store)
-        .args([
-            "refund",
-            "submit",
-            "--id",
-            "one",
-            "--expected-revision",
-            "1",
-            "--record-id",
-            "submit-one",
-            "--recorded-at",
-            "2026-08-31T10:01:00Z",
-            "--actor",
-            "test",
-        ])
-        .output()
-        .expect("direct operation runs");
-    assert!(
-        submitted.status.success(),
-        "{}",
-        String::from_utf8_lossy(&submitted.stderr)
-    );
-    let value: serde_json::Value =
-        serde_json::from_slice(&submitted.stdout).expect("recorded decision JSON");
-    assert_eq!(value["instance"]["lifecycle_state"], "submitted");
+    /// The generator's snapshot compiles with Cargo, locked and offline, into the build directory
+    /// the generator names whatever `CARGO_TARGET_DIR` and `CARGO_BUILD_TARGET` say, and the
+    /// command it builds runs the definition's own subcommands against a File Store.
+    #[test]
+    fn generated_rust_cli_compiles_and_executes_definition_specific_commands() {
+        let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("generated-rust-cli");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("scratch root");
+        let binary = root.join(format!("refundctl{}", std::env::consts::EXE_SUFFIX));
+        // A relative `--build-dir` is what the guide's invocation uses, and Cargo runs with the build
+        // directory as its working directory: a relative `--target-dir` would land under
+        // `<build-dir>/<build-dir>/target`.
+        let requested_build_dir = "build/refundctl-source";
+        let build_dir = root.join(requested_build_dir);
+        // Neither a caller's `CARGO_TARGET_DIR` nor a selected build target may decide where the
+        // generator finds what it built — the first moves the directory, the second inserts a triple
+        // component under it.
+        let misdirected = root.join("misdirected-target");
+        let triple = host_triple();
+        let runtime_source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let generated = entity()
+            .current_dir(&root)
+            .env("CARGO_TARGET_DIR", &misdirected)
+            .env("CARGO_BUILD_TARGET", &triple)
+            .args(["generate", "rust-cli", "--definition"])
+            .arg(refund_yaml())
+            .args(["--name", "refundctl", "--out"])
+            .arg(&binary)
+            .arg("--runtime-source")
+            .arg(&runtime_source)
+            .args(["--build-dir", requested_build_dir])
+            .output()
+            .expect("runs");
+        assert!(
+            generated.status.success(),
+            "{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        assert!(binary.is_file(), "generated host binary");
+        assert!(build_dir.join("src/main.rs").is_file(), "retained source");
+        assert_generated_sources_match_the_snapshot(&build_dir, &runtime_source);
+        let artifact = build_dir
+            .join("target")
+            .join(&triple)
+            .join("release")
+            .join(format!("refundctl{}", std::env::consts::EXE_SUFFIX));
+        assert!(
+            artifact.is_file(),
+            "built into the build directory the generator named: {}",
+            artifact.display()
+        );
+        for candidate in [
+            misdirected.join("release"),
+            misdirected.join(&triple).join("release"),
+        ] {
+            assert!(
+                !candidate
+                    .join(format!("refundctl{}", std::env::consts::EXE_SUFFIX))
+                    .exists(),
+                "the environment's target directory was overridden, not honoured"
+            );
+        }
 
-    let stale = Command::new(&binary)
-        .arg("--store")
+        let store = root.join("store");
+        let created = Command::new(&binary)
+            .arg("--store")
+            .arg(&store)
+            .args([
+                "refund",
+                "create",
+                "--id",
+                "one",
+                "--fields",
+                r#"{"order_id":"order-1","amount_cents":2500,"evidence_count":1}"#,
+                "--record-id",
+                "create-one",
+                "--recorded-at",
+                "2026-08-31T10:00:00Z",
+                "--actor",
+                "test",
+            ])
+            .output()
+            .expect("generated command runs");
+        assert!(
+            created.status.success(),
+            "{}",
+            String::from_utf8_lossy(&created.stderr)
+        );
+        let submitted = Command::new(&binary)
+            .arg("--store")
+            .arg(&store)
+            .args([
+                "refund",
+                "submit",
+                "--id",
+                "one",
+                "--expected-revision",
+                "1",
+                "--record-id",
+                "submit-one",
+                "--recorded-at",
+                "2026-08-31T10:01:00Z",
+                "--actor",
+                "test",
+            ])
+            .output()
+            .expect("direct operation runs");
+        assert!(
+            submitted.status.success(),
+            "{}",
+            String::from_utf8_lossy(&submitted.stderr)
+        );
+        let value: serde_json::Value =
+            serde_json::from_slice(&submitted.stdout).expect("recorded decision JSON");
+        assert_eq!(value["instance"]["lifecycle_state"], "submitted");
+        // `--format yaml` writes the stored amount as a YAML number, not the private map serde_json
+        // serializes an exact number as.
+        let fetched = Command::new(&binary)
+            .arg("--store")
+            .arg(&store)
+            .args(["refund", "get", "--id", "one", "--format", "yaml"])
+            .output()
+            .expect("get runs");
+        assert!(
+            fetched.status.success(),
+            "{}",
+            String::from_utf8_lossy(&fetched.stderr)
+        );
+        let text = stdout(&fetched);
+        assert!(!text.contains("$serde_json::private::Number"), "{text}");
+        let read: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("plain YAML");
+        assert_eq!(
+            read["fields"]["amount_cents"],
+            serde_yaml_ng::Value::Number(2500.into()),
+            "{text}"
+        );
+
+        let stale = Command::new(&binary)
+            .arg("--store")
+            .arg(&store)
+            .args([
+                "refund",
+                "reject",
+                "--id",
+                "one",
+                "--expected-revision",
+                "1",
+                "--arguments",
+                r#"{"reason":"late"}"#,
+                "--record-id",
+                "stale-one",
+                "--recorded-at",
+                "2026-08-31T10:02:00Z",
+                "--actor",
+                "test",
+            ])
+            .output()
+            .expect("stale direct operation runs");
+        assert_eq!(stale.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&stale.stderr)
+            .contains("expected revision 1, found revision 2"));
+    }
+}
+
+/// Every value stored under `key` in `value`, outside an embedded `definition` (whose schema names
+/// the same fields).
+fn values_named<'a>(
+    value: &'a serde_yaml_ng::Value,
+    key: &str,
+    found: &mut Vec<&'a serde_yaml_ng::Value>,
+) {
+    match value {
+        serde_yaml_ng::Value::Mapping(members) => {
+            for (name, member) in members {
+                if name.as_str() == Some(key) {
+                    found.push(member);
+                }
+                if name.as_str() != Some("definition") {
+                    values_named(member, key, found);
+                }
+            }
+        }
+        serde_yaml_ng::Value::Sequence(items) => {
+            for item in items {
+                values_named(item, key, found);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A decision and a commit printed as YAML hold numbers a plain YAML reader decodes as numbers —
+/// not the private one-key maps `$serde_json::private::Number: '3.75'` that only this runtime's own
+/// reader turned back into numbers.
+#[test]
+fn decision_and_commit_yaml_write_numbers_as_yaml_numbers() {
+    let counter = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/counter.yaml");
+    let fields = r#"{"name": "City", "spent": 3.75, "views": 0}"#;
+    let decision = entity()
+        .args(["create", "--definition"])
+        .arg(&counter)
+        .args(["--id", "sample", "--fields", fields, "--format", "yaml"])
+        .output()
+        .expect("runs");
+    assert_eq!(decision.status.code(), Some(0), "{}", stderr(&decision));
+    let store = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("yaml-numbers-store");
+    let _ = fs::remove_dir_all(&store);
+    let commit = entity()
+        .args(["create", "--definition"])
+        .arg(&counter)
+        .args(["--id", "sample", "--fields", fields, "--store"])
         .arg(&store)
         .args([
-            "refund",
-            "reject",
-            "--id",
-            "one",
-            "--expected-revision",
-            "1",
-            "--arguments",
-            r#"{"reason":"late"}"#,
             "--record-id",
-            "stale-one",
+            "create-sample",
             "--recorded-at",
-            "2026-08-31T10:02:00Z",
+            "2026-11-22T10:00:00Z",
             "--actor",
-            "test",
+            "cli-test",
+            "--format",
+            "yaml",
         ])
         .output()
-        .expect("stale direct operation runs");
-    assert_eq!(stale.status.code(), Some(1));
+        .expect("runs");
+    assert_eq!(commit.status.code(), Some(0), "{}", stderr(&commit));
+    for (name, output) in [("decision", &decision), ("commit", &commit)] {
+        let text = stdout(output);
+        let read: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("plain YAML");
+        let mut spent = Vec::new();
+        values_named(&read, "spent", &mut spent);
+        let mut views = Vec::new();
+        values_named(&read, "views", &mut views);
+        assert!(!spent.is_empty() && !views.is_empty(), "{name}: {text}");
+        for value in spent {
+            assert_eq!(value.as_f64(), Some(3.75), "{name} spent: {text}");
+        }
+        for value in views {
+            assert!(
+                value.is_number() && value.as_u64() == Some(0),
+                "{name} views: {text}"
+            );
+        }
+    }
+}
+
+/// A stored subject is executed with the definition of its own version, also when a later version
+/// of its type is registered beside it: the subject names its version, so `--entity` (or the only
+/// type) is enough to address it.
+#[test]
+fn a_stored_subject_executes_with_its_own_version_when_several_versions_are_registered() {
+    let v1 = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/counter.yaml");
+    let text = fs::read_to_string(&v1).expect("counter v1");
     assert!(
-        String::from_utf8_lossy(&stale.stderr).contains("expected revision 1, found revision 2")
+        text.contains("version: 1\n"),
+        "the example declares version 1"
     );
+    let v2 = scratch(
+        "counter-v2.yaml",
+        &text.replacen("version: 1\n", "version: 2\n", 1),
+    );
+    let store = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("several-versions-store");
+    let _ = fs::remove_dir_all(&store);
+    let created = entity()
+        .args(["create", "--definition"])
+        .arg(&v1)
+        .args(["--id", "c", "--fields", r#"{"name": "City"}"#, "--store"])
+        .arg(&store)
+        .args([
+            "--record-id",
+            "c-create",
+            "--recorded-at",
+            "2026-11-23T10:00:00Z",
+            "--actor",
+            "cli-test",
+        ])
+        .output()
+        .expect("runs");
+    assert_eq!(created.status.code(), Some(0), "{}", stderr(&created));
+    for (record, wanted, revision) in [("c-view", None, 2), ("c-view-again", Some("counter"), 3)] {
+        let mut command = entity();
+        command
+            .args(["execute", "--definition"])
+            .arg(&v1)
+            .arg("--definition")
+            .arg(&v2)
+            .args(["--id", "c", "--operation", "view", "--store"])
+            .arg(&store)
+            .args([
+                "--record-id",
+                record,
+                "--recorded-at",
+                "2026-11-23T10:01:00Z",
+                "--actor",
+                "cli-test",
+            ]);
+        if let Some(wanted) = wanted {
+            command.args(["--entity", wanted]);
+        }
+        let executed = command.output().expect("runs");
+        assert_eq!(
+            executed.status.code(),
+            Some(0),
+            "{record}: {}{}",
+            stdout(&executed),
+            stderr(&executed)
+        );
+        let commit: serde_json::Value =
+            serde_json::from_str(&stdout(&executed)).expect("a JSON commit");
+        assert_eq!(
+            (
+                &commit["instance"]["version"],
+                &commit["instance"]["revision"]
+            ),
+            (&serde_json::json!(1), &serde_json::json!(revision)),
+            "{record}: the v1 subject moved on under v1"
+        );
+    }
 }

@@ -3,10 +3,7 @@
 use std::collections::BTreeSet;
 
 use crate::{
-    asynchronous::{
-        verify_store_histories, CompleteStoreSnapshot, HistoryOrigin, LegacyEvidence,
-        StoreCoverage, SubjectHistory, SubjectSnapshot,
-    },
+    asynchronous::{verify_explicit_histories, HistoryOrigin, LegacyEvidence, SubjectHistory},
     StoreError,
 };
 
@@ -72,24 +69,18 @@ impl LegacyStoreSnapshot {
                 }
             }
         }
-        let explicit = CompleteStoreSnapshot {
-            scope: source_id.clone(),
-            coverage: StoreCoverage::ExplicitSet,
-            histories: histories
-                .iter()
-                .map(|history| {
-                    let HistoryOrigin::Imported(anchor) = &history.origin else {
-                        unreachable!("checked above")
-                    };
-                    SubjectSnapshot {
-                        history: history.clone(),
-                        terminal: anchor.instance.clone(),
-                    }
-                })
-                .collect(),
-        };
-        verify_store_histories(&explicit)
-            .map_err(|error| StoreError::Backend(format!("invalid legacy acquisition: {error}")))?;
+        // Verified in place: each history is held to its own anchor's instance as its terminal,
+        // exactly what an explicit-set snapshot of copies of both was verified against.
+        verify_explicit_histories(
+            &source_id,
+            histories.iter().map(|history| {
+                let HistoryOrigin::Imported(anchor) = &history.origin else {
+                    unreachable!("checked above")
+                };
+                (history, &anchor.instance)
+            }),
+        )
+        .map_err(|error| StoreError::Backend(format!("invalid legacy acquisition: {error}")))?;
         Ok(Self {
             source_id,
             histories,
@@ -105,4 +96,64 @@ pub trait LegacyStoreSource {
     ///
     /// Provider failure, concurrent source change, corrupt bytes, or invalid evidence.
     fn acquire_legacy(&mut self, source_id: &str) -> Result<LegacyStoreSnapshot, StoreError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use entity_core::EntityInstance;
+    use serde_json::json;
+
+    use super::*;
+    use crate::asynchronous::{LegacyAnchor, LegacyCompleteness, LegacyOrderDeclaration, Subject};
+
+    fn imported(id: &str, anchor_id: &str) -> SubjectHistory {
+        SubjectHistory {
+            subject: Subject::new("ticket", id).expect("subject"),
+            origin: HistoryOrigin::Imported(LegacyAnchor {
+                instance: EntityInstance {
+                    entity: "ticket".to_owned(),
+                    id: anchor_id.to_owned(),
+                    version: 1,
+                    revision: 1,
+                    lifecycle_state: "open".to_owned(),
+                    fields: [("body".to_owned(), json!("z".repeat(1024)))]
+                        .into_iter()
+                        .collect(),
+                },
+                order: LegacyOrderDeclaration::PerKindOnly,
+                completeness: LegacyCompleteness::AvailableEvidenceOnly,
+                evidence: Vec::new(),
+            }),
+            records: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_legacy_snapshot_keeps_the_histories_it_verified_in_place() {
+        let inputs = vec![imported("b", "b"), imported("a", "a")];
+
+        let snapshot = LegacyStoreSnapshot::new("source", inputs.clone()).expect("valid");
+
+        assert_eq!(snapshot.source_id, "source");
+        assert_eq!(
+            snapshot.histories,
+            vec![inputs[1].clone(), inputs[0].clone()]
+        );
+    }
+
+    #[test]
+    fn a_legacy_snapshot_still_holds_each_history_to_its_anchor_when_verified_in_place() {
+        let error =
+            LegacyStoreSnapshot::new("source", vec![imported("a", "a"), imported("b", "c")])
+                .expect_err("an anchor of another subject is refused");
+
+        match error {
+            StoreError::Backend(message) => assert!(
+                message.starts_with("invalid legacy acquisition:")
+                    && message.contains("anchor instance belongs to another subject"),
+                "unexpected refusal: {message}"
+            ),
+            other => panic!("unexpected refusal: {other:?}"),
+        }
+    }
 }

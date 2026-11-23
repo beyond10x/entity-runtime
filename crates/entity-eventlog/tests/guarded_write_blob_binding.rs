@@ -80,6 +80,10 @@ struct Interposed {
     puts: AtomicUsize,
     /// The event ids each blob-bearing submission returned, in submission order.
     submissions: Mutex<Vec<Vec<String>>>,
+    /// Answers every group with a physical stream conflict, writing nothing.
+    contended: bool,
+    /// Groups answered with that conflict.
+    conflicts: AtomicUsize,
 }
 
 impl Interposed {
@@ -93,7 +97,27 @@ impl Interposed {
             fail_next_put: Mutex::new(None),
             puts: AtomicUsize::new(0),
             submissions: Mutex::new(Vec::new()),
+            contended: false,
+            conflicts: AtomicUsize::new(0),
         }
+    }
+
+    fn contended(inner: Arc<dyn EventlogBackend>) -> Self {
+        Self {
+            contended: true,
+            ..Self::new(inner, Offer::Override)
+        }
+    }
+
+    /// The physical stream conflict a contended provider answers every group with, counted.
+    fn conflict(&self) -> Option<EventLogError> {
+        self.contended.then(|| {
+            self.conflicts.fetch_add(1, Ordering::SeqCst);
+            EventLogError::Conflict {
+                expected: 1,
+                actual: 2,
+            }
+        })
     }
 
     fn replaying(inner: Arc<dyn EventlogBackend>) -> Self {
@@ -131,6 +155,9 @@ impl AtomicEventStore for Interposed {
         admission: Arc<dyn Guard>,
     ) -> BoxFuture<'a, Result<AppendGroupResult, EventLogError>> {
         Box::pin(async move {
+            if let Some(conflict) = self.conflict() {
+                return Err(conflict);
+            }
             self.run_rival(&group.tenant).await;
             self.inner.append_group_guarded(group, admission).await
         })
@@ -145,6 +172,9 @@ impl AtomicEventStore for Interposed {
         Box::pin(async move {
             if self.offer == Offer::DefaultOnly {
                 return Err(EventLogError::Invalid(eventlog_core::UNAVAILABLE.into()));
+            }
+            if let Some(conflict) = self.conflict() {
+                return Err(conflict);
             }
             self.run_rival(&group.tenant).await;
             let first = self
@@ -1076,5 +1106,52 @@ fn a_failed_fallback_upload_keeps_each_writes_blob_error() {
                 "{provider:?}: batch import"
             );
         }
+    });
+}
+
+/// A provider that answers every group with a physical stream conflict ends an append after the
+/// adapter's attempt budget with a retryable refusal that commits nothing, instead of retrying
+/// it, and holding it, without end. Every attempt read and reconciled before it wrote.
+#[test]
+fn an_append_that_meets_physical_conflicts_on_every_attempt_refuses_after_its_budget() {
+    block_on(async {
+        let destination = destination(Provider::Sqlite, "contended").await;
+        destination.bind().await;
+        let interposed = Arc::new(Interposed::contended(destination.inner.clone()));
+        let erased: Arc<dyn EventlogBackend> = interposed.clone();
+        let store = EventlogRecordedStore::open(erased, destination.authority.clone(), LIMITS)
+            .await
+            .expect("bound store");
+        let before = store.calls().scoped_reads;
+        let operation = store.operation(context("contended"));
+        let registry = registry();
+        let refused = Executor::new(&registry, &operation)
+            .create(create("contended", "contended-create"))
+            .await
+            .expect_err("a request that never meets an unmoved head does not commit");
+        assert!(
+            matches!(
+                &refused,
+                entity_executor::ExecutionError::Write(WriteFailure::NotCommitted(
+                    AsyncStoreError::Unreachable { provider, detail }
+                )) if provider == "eventlog" && detail.starts_with("physical stream contention: 8 attempts")
+            ),
+            "{refused:?}"
+        );
+        assert_eq!(
+            interposed.conflicts.load(Ordering::SeqCst),
+            8,
+            "the append is attempted exactly its budget of times"
+        );
+        assert!(
+            store.calls().scoped_reads - before >= 8,
+            "every attempt reads and reconciles before it writes"
+        );
+        let subject = Subject::new("ticket", "contended").expect("subject");
+        assert_eq!(
+            AsyncStateReader::load(&store, &subject).await,
+            Ok(None),
+            "nothing of the request committed"
+        );
     });
 }

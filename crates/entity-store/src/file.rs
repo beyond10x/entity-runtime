@@ -5,7 +5,7 @@
 //! and history are replaced together through a synced temporary file and rename.
 
 use fs2::FileExt;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -18,11 +18,13 @@ use serde_json::Value;
 
 use crate::{
     asynchronous::{
-        HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
-        LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
+        validate_imported_boundary, HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder,
+        LegacyAnchor, LegacyCompleteness, LegacyEvidence, LegacyOrderDeclaration, RecordedEntry,
+        Subject, SubjectHistory,
     },
     check, Envelope, EventProvider, Expect, HistoryProvider, LegacyStoreSnapshot,
-    LegacyStoreSource, RecordedCommit, RecordedObservation, StateProvider, Store, StoreError,
+    LegacyStoreSource, LoadedSubject, RecordedCommit, RecordedObservation, StateProvider, Store,
+    StoreError,
 };
 
 const FORMAT: &str = "entity.file-store/2";
@@ -67,6 +69,22 @@ struct RecordLocation {
     id: String,
     /// `true` for a recorded observation, `false` for a decision record.
     observation: bool,
+}
+
+/// The exclusive writer lock on `.entity-store-lock`, held until dropped, and its epoch.
+struct WriteGuard {
+    file: fs::File,
+    path: PathBuf,
+    epoch: u64,
+}
+
+/// What a record-id lookup already knows about the subject the write targets.
+enum Target {
+    /// Nothing was read for it; the write reads the subject itself.
+    Unread,
+    /// Read under the write guard by the scan that built the index: the subject, or `None` when
+    /// the store holds no such subject.
+    Scanned(Option<Box<StoredSubject>>),
 }
 
 fn lock(records: &Mutex<Option<RecordIndex>>) -> std::sync::MutexGuard<'_, Option<RecordIndex>> {
@@ -123,15 +141,19 @@ impl FileStore {
         &self.root
     }
 
+    /// Takes the exclusive writer lock and reads its epoch, dropping the cached index if another
+    /// writer advanced it. The epoch itself advances only through [`FileStore::advance_epoch`],
+    /// right before the write's first durable change, so a refused write (a revision or record
+    /// conflict, an idempotent retry) leaves it alone and other handles keep their index.
+    ///
     /// The lock file is never removed: unlinking a locked inode would admit another writer.
-    /// Append the invalidation epoch before mutation, so an interrupted write cannot leave
-    /// another handle trusting stale locations. A crash releases the OS lock automatically.
-    fn write_guard(&self) -> Result<fs::File, StoreError> {
+    /// A crash releases the OS lock automatically.
+    fn write_guard(&self) -> Result<WriteGuard, StoreError> {
         reject_symlink_components(&self.root)?;
-        fs::create_dir_all(&self.root).map_err(|e| backend("creating", &self.root, &e))?;
+        create_directory_durably(&self.root)?;
         let path = self.root.join(".entity-store-lock");
         reject_symlink_components(&path)?;
-        let mut file = fs::OpenOptions::new()
+        let file = fs::OpenOptions::new()
             .read(true)
             .append(true)
             .create(true)
@@ -146,12 +168,26 @@ impl FileStore {
         if epoch != self.epoch.load(Ordering::Relaxed) {
             *lock(&self.records) = None;
         }
-        file.write_all(&[0])
-            .map_err(|e| backend("advancing epoch", &path, &e))?;
-        file.sync_all()
-            .map_err(|e| backend("syncing epoch", &path, &e))?;
-        self.epoch.store(epoch + 1, Ordering::Relaxed);
-        Ok(file)
+        self.epoch.store(epoch, Ordering::Relaxed);
+        Ok(WriteGuard { file, path, epoch })
+    }
+
+    /// Appends one synced byte to the epoch before the guarded write changes anything durable, so
+    /// an interrupted write cannot leave another handle trusting stale locations.
+    fn advance_epoch(&self, guard: &mut WriteGuard) -> Result<(), StoreError> {
+        guard
+            .file
+            .write_all(&[0])
+            .map_err(|e| backend("advancing epoch", &guard.path, &e))?;
+        #[cfg(feature = "kpi-counters")]
+        crate::kpi_counters::add(&crate::kpi_counters::FILE_SYNCS, 1);
+        guard
+            .file
+            .sync_all()
+            .map_err(|e| backend("syncing epoch", &guard.path, &e))?;
+        guard.epoch += 1;
+        self.epoch.store(guard.epoch, Ordering::Relaxed);
+        Ok(())
     }
 
     /// Coordinates a source acquisition with every FileStore writer without advancing its epoch.
@@ -162,10 +198,24 @@ impl FileStore {
         }
         let path = self.root.join(".entity-store-lock");
         reject_symlink_components(&path)?;
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .open(&path)
-            .map_err(|error| backend("opening acquisition lock", &path, &error))?;
+        let file = match fs::OpenOptions::new().read(true).open(&path) {
+            Ok(file) => file,
+            // A v2 root no writer has locked yet: a migrated store published before the migrator
+            // created the lock, or a root a pre-0.17.7 writer made. Create the lock exactly as a
+            // writer does — create-if-absent, never truncated or unlinked — so a writer racing
+            // this acquisition opens and locks the same inode.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let file = fs::OpenOptions::new()
+                    .read(true)
+                    .append(true)
+                    .create(true)
+                    .open(&path)
+                    .map_err(|error| backend("creating acquisition lock", &path, &error))?;
+                sync_directory(&self.root)?;
+                file
+            }
+            Err(error) => return Err(backend("opening acquisition lock", &path, &error)),
+        };
         FileExt::lock_shared(&file)
             .map_err(|error| backend("locking acquisition", &path, &error))?;
         Ok(Some(file))
@@ -234,7 +284,7 @@ impl FileStore {
             RootState::V2 => return Ok(()),
             RootState::Missing | RootState::Empty => {}
         }
-        fs::create_dir_all(&self.root).map_err(|error| backend("creating", &self.root, &error))?;
+        create_directory_durably(&self.root)?;
         reject_symlink_components(&self.root)?;
         let marker = self.format_path();
         let temporary = self.root.join(".entity-store-format.writing");
@@ -247,6 +297,8 @@ impl FileStore {
             .map_err(|error| backend("creating", &marker, &error))?;
         file.write_all(format!("{FORMAT}\n").as_bytes())
             .map_err(|error| backend("writing", &marker, &error))?;
+        #[cfg(feature = "kpi-counters")]
+        crate::kpi_counters::add(&crate::kpi_counters::FILE_SYNCS, 1);
         file.sync_all()
             .map_err(|error| backend("syncing", &marker, &error))?;
         drop(file);
@@ -260,8 +312,15 @@ impl FileStore {
             RootState::Missing | RootState::Empty => return Ok(None),
             RootState::V2 => {}
         }
+        self.parse_subject(entity, id)
+    }
+
+    /// Reads and validates one subject document of a root already known to be v2.
+    fn parse_subject(&self, entity: &str, id: &str) -> Result<Option<StoredSubject>, StoreError> {
         let path = self.subject_path(entity, id);
         reject_symlink_components(&path)?;
+        #[cfg(test)]
+        tests::count_subject_read(&path);
         let text = match fs::read_to_string(&path) {
             Ok(text) => text,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -288,30 +347,27 @@ impl FileStore {
     }
 
     fn write_subject(&self, subject: &StoredSubject) -> Result<(), StoreError> {
-        self.prepare()?;
         let entity = &subject.instance.entity;
         let id = &subject.instance.id;
+        let counter = WRITES.fetch_add(1, Ordering::Relaxed);
+        refuse_overlong_names(entity, id, counter)?;
+        self.prepare()?;
         let directory = self.entity_directory(entity);
         reject_symlink_components(&directory)?;
-        fs::create_dir_all(&directory).map_err(|error| backend("creating", &directory, &error))?;
+        create_directory_durably(&directory)?;
         reject_symlink_components(&directory)?;
         let path = self.subject_path(entity, id);
         reject_symlink(&path)?;
-        let temporary = path.with_extension(format!(
-            "json.writing.{}.{}",
-            std::process::id(),
-            WRITES.fetch_add(1, Ordering::Relaxed)
-        ));
+        let temporary = path.with_extension(temporary_extension(counter));
         let text = serde_json::to_string_pretty(subject)
             .map_err(|error| backend("serialising", &path, &error))?;
         let result = (|| {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temporary)
-                .map_err(|error| backend("creating", &temporary, &error))?;
+            let mut file = create_private(&temporary)?;
+            keep_permissions(&file, &path, &temporary)?;
             file.write_all(format!("{text}\n").as_bytes())
                 .map_err(|error| backend("writing", &temporary, &error))?;
+            #[cfg(feature = "kpi-counters")]
+            crate::kpi_counters::add(&crate::kpi_counters::FILE_SYNCS, 1);
             file.sync_all()
                 .map_err(|error| backend("syncing", &temporary, &error))?;
             drop(file);
@@ -324,27 +380,62 @@ impl FileStore {
         result
     }
 
-    fn record_document(&self, record_id: &str) -> Result<Option<Value>, StoreError> {
+    /// Whether `record_id` is held anywhere, and the stored document if it is. Called under the
+    /// write guard, for a write to the subject `entity`/`id`.
+    ///
+    /// When the index has to be built, its scan reads every subject anyway, so the target subject
+    /// it read is handed back as [`Target::Scanned`] and the write does not read it a second time.
+    fn record_document(
+        &self,
+        record_id: &str,
+        entity: &str,
+        id: &str,
+    ) -> Result<(Option<Value>, Target), StoreError> {
         match self.root_state()? {
-            RootState::Missing | RootState::Empty => return Ok(None),
+            RootState::Missing | RootState::Empty => return Ok((None, Target::Scanned(None))),
             RootState::V2 => {}
         }
+        let mut target = Target::Unread;
         let location = {
             let mut records = lock(&self.records);
             if records.is_none() {
-                *records = Some(self.scan_records()?);
+                let (index, scanned) = self.scan_records((entity, id))?;
+                *records = Some(index);
+                target = Target::Scanned(scanned.map(Box::new));
             }
             records
                 .as_ref()
                 .and_then(|index| index.locations.get(record_id).cloned())
         };
         let Some(location) = location else {
-            return Ok(None);
+            return Ok((None, target));
         };
-        let Some(subject) = self.read_subject(&location.entity, &location.id)? else {
-            return Ok(None);
+        let held = match target {
+            Target::Scanned(Some(subject)) if location.entity == entity && location.id == id => {
+                Some(*subject)
+            }
+            _ => self.read_subject(&location.entity, &location.id)?,
         };
-        let subject_path = self.subject_path(&location.entity, &location.id);
+        // A hit ends the write, which never needs the target subject after it.
+        let Some(subject) = held else {
+            return Ok((None, Target::Unread));
+        };
+        let document = Self::stored_document(subject, &location, record_id).map_err(|error| {
+            backend(
+                "serialising a stored record",
+                &self.subject_path(&location.entity, &location.id),
+                &error,
+            )
+        })?;
+        Ok((document, Target::Unread))
+    }
+
+    /// The stored observation, or the recorded commit, that holds `record_id` in `subject`.
+    fn stored_document(
+        subject: StoredSubject,
+        location: &RecordLocation,
+        record_id: &str,
+    ) -> Result<Option<Value>, serde_json::Error> {
         if location.observation {
             subject
                 .observations
@@ -352,7 +443,6 @@ impl FileStore {
                 .find(|observation| observation.envelope.record_id == record_id)
                 .map(serde_json::to_value)
                 .transpose()
-                .map_err(|error| backend("serialising a stored observation", &subject_path, &error))
         } else {
             subject
                 .records
@@ -365,18 +455,23 @@ impl FileStore {
                     })
                 })
                 .transpose()
-                .map_err(|error| backend("serialising a stored record", &subject_path, &error))
         }
     }
 
-    /// One read of every subject: where each record id lives. Built once per handle.
-    fn scan_records(&self) -> Result<RecordIndex, StoreError> {
+    /// One read of every subject: where each record id lives. Built once per handle. The subject
+    /// `target` names is returned as the scan read it, or `None` when the store holds no such
+    /// subject.
+    fn scan_records(
+        &self,
+        target: (&str, &str),
+    ) -> Result<(RecordIndex, Option<StoredSubject>), StoreError> {
         let mut index = RecordIndex::default();
+        let mut held = None;
         let subjects = self.root.join("subjects");
         reject_symlink_components(&subjects)?;
         let entities = match fs::read_dir(&subjects) {
             Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(index),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok((index, None)),
             Err(error) => return Err(backend("listing", &subjects, &error)),
         };
         for entity_entry in entities {
@@ -407,10 +502,12 @@ impl FileStore {
                     entity_path.display()
                 ))
             })?;
-            for id in self.ids(&entity)? {
-                let subject = self
-                    .read_subject(&entity, &id)?
-                    .expect("ids validates every returned subject");
+            // One read per subject: parsing it is the validation `ids` would have done, so the
+            // listing reads names only and the document read here is the only one.
+            for id in self.listed_ids(&entity)? {
+                let Some(subject) = self.parse_subject(&entity, &id)? else {
+                    continue;
+                };
                 for envelope in &subject.records {
                     index.locations.insert(
                         envelope.record_id.clone(),
@@ -431,9 +528,12 @@ impl FileStore {
                         },
                     );
                 }
+                if entity == target.0 && id == target.1 {
+                    held = Some(subject);
+                }
             }
         }
-        Ok(index)
+        Ok((index, held))
     }
 
     /// A write this handle made: keep the index current without reading anything.
@@ -656,7 +756,80 @@ fn reject_symlink_components(path: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 
+/// The longest path component the File Store writes: `NAME_MAX` on Linux and the BSDs, and the
+/// component limit of APFS and NTFS, all of which hold the ASCII hex names used here.
+const MAX_COMPONENT_BYTES: usize = 255;
+
+/// The extension after `<hex id>.` of the temporary document for write number `counter`.
+fn temporary_extension(counter: u64) -> String {
+    format!("json.writing.{}.{counter}", std::process::id())
+}
+
+/// Refuses, before anything is written, a subject whose names would exceed a path component.
+///
+/// File Store v2 spells an entity type and an identity as one hex component each, so an identity
+/// over about 116 bytes, or an entity name over 127, has no v2 path. Without this check the write
+/// failed half-way with the operating system's "File name too long". A bounded layout for long
+/// identities would change the v2 format and is not made here.
+fn refuse_overlong_names(entity: &str, id: &str, counter: u64) -> Result<(), StoreError> {
+    let directory = hex(entity.as_bytes()).len();
+    let temporary = hex(id.as_bytes()).len() + 1 + temporary_extension(counter).len();
+    let (what, bytes) = if directory > MAX_COMPONENT_BYTES {
+        ("entity type", directory)
+    } else if temporary > MAX_COMPONENT_BYTES {
+        ("identity", temporary)
+    } else {
+        return Ok(());
+    };
+    Err(StoreError::Backend(format!(
+        "File Store cannot hold {entity}/{id}: its hex-encoded {what} needs a {bytes}-byte file \
+         name, over the {MAX_COMPONENT_BYTES}-byte path component limit; use a shorter {what}"
+    )))
+}
+
+/// Creates `path` and every missing ancestor, syncing the parent of each directory it creates.
+///
+/// A directory entry is durable only once its parent is synced. Syncing the subject's own
+/// directory after the rename is not enough on a first write: the entries for `subjects/` and the
+/// type directory could still be lost on power loss, taking the flushed subject with them.
+fn create_directory_durably(path: &Path) -> Result<(), StoreError> {
+    if path.as_os_str().is_empty() {
+        return Ok(());
+    }
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_dir() => return Ok(()),
+        Ok(_) => {
+            return Err(StoreError::Backend(format!(
+                "File Store path {} is not a directory",
+                path.display()
+            )))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(backend("inspecting", path, &error)),
+    }
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    create_directory_durably(parent)?;
+    match fs::create_dir(path) {
+        Ok(()) => {
+            #[cfg(test)]
+            tests::log_directory_event("created", path);
+        }
+        // Another process created it between the check and here; its entry may not be synced yet,
+        // and syncing the parent again is cheap and makes it so.
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(backend("creating", path, &error)),
+    }
+    sync_directory(parent)
+}
+
 fn sync_directory(path: &Path) -> Result<(), StoreError> {
+    #[cfg(feature = "kpi-counters")]
+    crate::kpi_counters::add(&crate::kpi_counters::DIRECTORY_SYNCS, 1);
+    #[cfg(test)]
+    tests::log_directory_event("synced", path);
     #[cfg(windows)]
     {
         // Windows cannot flush a directory through the ordinary File API.
@@ -668,6 +841,45 @@ fn sync_directory(path: &Path) -> Result<(), StoreError> {
     fs::File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(|error| backend("syncing directory", path, &error))
+}
+
+/// Creates a temporary subject document readable by its owner alone (`0600` on Unix).
+///
+/// The rename that installs it replaces the old inode, so a document created with the process
+/// default permissions would be readable by anyone the umask admits for as long as it exists and,
+/// once installed, would silently widen a subject the operator had restricted.
+fn create_private(temporary: &Path) -> Result<fs::File, StoreError> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options
+        .open(temporary)
+        .map_err(|error| backend("creating", temporary, &error))
+}
+
+/// Gives the temporary document the permission bits of the subject it is about to replace, before
+/// any subject data is written, so a replacement neither widens nor narrows what the operator set.
+/// A new subject keeps the private bits [`create_private`] gave it.
+fn keep_permissions(file: &fs::File, path: &Path, temporary: &Path) -> Result<(), StoreError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = match fs::symlink_metadata(path) {
+            Ok(metadata) => metadata.permissions().mode() & 0o777,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(backend("inspecting", path, &error)),
+        };
+        file.set_permissions(fs::Permissions::from_mode(mode))
+            .map_err(|error| backend("restricting", temporary, &error))
+    }
+    #[cfg(not(unix))]
+    {
+        // Copying a read-only flag onto the temporary file would make the write below fail; the
+        // directory's access control list governs the replacement on these platforms.
+        let _ = (file, path, temporary);
+        Ok(())
+    }
 }
 
 fn is_temporary_subject(name: &str) -> bool {
@@ -694,6 +906,19 @@ impl StateProvider for FileStore {
             RootState::Missing | RootState::Empty => return Ok(Vec::new()),
             RootState::V2 => {}
         }
+        let mut ids = self.listed_ids(entity)?;
+        for id in &ids {
+            self.parse_subject(entity, id)?;
+        }
+        ids.sort();
+        Ok(ids)
+    }
+}
+
+impl FileStore {
+    /// The identities stored for `entity` in a v2 root, from file names alone: no document is read,
+    /// abandoned temporary files are skipped, and any other unexpected entry is refused.
+    fn listed_ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
         let directory = self.entity_directory(entity);
         reject_symlink_components(&directory)?;
         let entries = match fs::read_dir(&directory) {
@@ -732,10 +957,8 @@ impl StateProvider for FileStore {
                     path.display()
                 ))
             })?;
-            self.read_subject(entity, &id)?;
             ids.push(id);
         }
-        ids.sort();
         Ok(ids)
     }
 }
@@ -775,8 +998,25 @@ impl Store for FileStore {
     fn history(&self) -> Option<&dyn HistoryProvider> {
         Some(self)
     }
+    /// State and history live in one subject document, so both come from one read of it.
+    fn load_with_history(
+        &self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Option<LoadedSubject>, StoreError> {
+        Ok(self.read_subject(entity, id)?.map(|stored| LoadedSubject {
+            instance: stored.instance,
+            records: Some(stored.records),
+        }))
+    }
     fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
-        let _guard = self.write_guard()?;
+        // Refused before the guard creates a root or a lock for a subject it could never hold.
+        refuse_overlong_names(
+            &decision.instance.entity,
+            &decision.instance.id,
+            WRITES.load(Ordering::Relaxed),
+        )?;
+        let mut guard = self.write_guard()?;
         let instance = &decision.instance;
         let held = self.read_subject(&instance.entity, &instance.id)?;
         check(
@@ -797,6 +1037,7 @@ impl Store for FileStore {
             stored.events.push(event.clone());
         }
         stored.instance = instance.clone();
+        self.advance_epoch(&mut guard)?;
         self.write_subject(&stored)
     }
 
@@ -806,10 +1047,18 @@ impl Store for FileStore {
         expect: Expect,
     ) -> Result<(), StoreError> {
         commit.validate()?;
-        let _guard = self.write_guard()?;
+        refuse_overlong_names(
+            &commit.instance.entity,
+            &commit.instance.id,
+            WRITES.load(Ordering::Relaxed),
+        )?;
+        let mut guard = self.write_guard()?;
         let document =
             serde_json::to_value(commit).map_err(|error| StoreError::Backend(error.to_string()))?;
-        if let Some(existing) = self.record_document(&commit.envelope.record_id)? {
+        let entity = &commit.instance.entity;
+        let id = &commit.instance.id;
+        let (existing, target) = self.record_document(&commit.envelope.record_id, entity, id)?;
+        if let Some(existing) = existing {
             return if existing == document {
                 Ok(())
             } else {
@@ -818,9 +1067,10 @@ impl Store for FileStore {
                 })
             };
         }
-        let entity = &commit.instance.entity;
-        let id = &commit.instance.id;
-        let mut held = self.read_subject(entity, id)?;
+        let mut held = match target {
+            Target::Scanned(held) => held.map(|subject| *subject),
+            Target::Unread => self.read_subject(entity, id)?,
+        };
         if let Some(stored) = &held {
             if let Some(existing) = stored
                 .records
@@ -861,6 +1111,7 @@ impl Store for FileStore {
         });
         stored.instance = commit.instance.clone();
         stored.records.push(commit.envelope.clone());
+        self.advance_epoch(&mut guard)?;
         self.write_subject(&stored)?;
         self.remember(&commit.envelope.record_id, entity, id, false);
         Ok(())
@@ -868,10 +1119,15 @@ impl Store for FileStore {
 
     fn observe(&mut self, observation: &RecordedObservation) -> Result<(), StoreError> {
         observation.validate()?;
-        let _guard = self.write_guard()?;
+        let mut guard = self.write_guard()?;
         let document = serde_json::to_value(observation)
             .map_err(|error| StoreError::Backend(error.to_string()))?;
-        if let Some(existing) = self.record_document(&observation.envelope.record_id)? {
+        let (existing, target) = self.record_document(
+            &observation.envelope.record_id,
+            &observation.entity,
+            &observation.id,
+        )?;
+        if let Some(existing) = existing {
             return if existing == document {
                 Ok(())
             } else {
@@ -880,14 +1136,16 @@ impl Store for FileStore {
                 })
             };
         }
-        let mut stored = self
-            .read_subject(&observation.entity, &observation.id)?
-            .ok_or_else(|| StoreError::RevisionConflict {
-                entity: observation.entity.clone(),
-                id: observation.id.clone(),
-                expected: Expect::Revision(observation.revision),
-                found: None,
-            })?;
+        let held = match target {
+            Target::Scanned(held) => held.map(|subject| *subject),
+            Target::Unread => self.read_subject(&observation.entity, &observation.id)?,
+        };
+        let mut stored = held.ok_or_else(|| StoreError::RevisionConflict {
+            entity: observation.entity.clone(),
+            id: observation.id.clone(),
+            expected: Expect::Revision(observation.revision),
+            found: None,
+        })?;
         if let Some(existing) = stored
             .observations
             .iter()
@@ -917,6 +1175,7 @@ impl Store for FileStore {
             Some(stored.instance.revision),
         )?;
         stored.observations.push(observation.clone());
+        self.advance_epoch(&mut guard)?;
         self.write_subject(&stored)?;
         self.remember(
             &observation.envelope.record_id,
@@ -933,7 +1192,8 @@ impl Store for FileStore {
 /// # Errors
 ///
 /// [`StoreError::Backend`] for malformed, partial, symlinked or ambiguous source data, an existing
-/// destination, or an IO failure. The source is never modified.
+/// destination, a destination inside the source (dry runs included), or an IO failure. The source
+/// is never modified.
 pub fn migrate_file_store_v1(
     source: impl AsRef<Path>,
     destination: impl AsRef<Path>,
@@ -956,18 +1216,22 @@ pub fn migrate_file_store_v1(
         )));
     }
 
-    let subjects = read_legacy(source)?;
-    let report = FileMigrationReport {
-        subjects: subjects.len(),
-        events: subjects.values().map(|subject| subject.events.len()).sum(),
-        dry_run,
-    };
+    refuse_destination_inside_source(source, destination)?;
+    // Validation holds one legacy subject at a time and keeps only counts and identities. An invalid
+    // source is refused here, before the real run creates any directory.
+    let validated = walk_legacy(source, dry_run, |_| Ok(()))?;
     if dry_run {
-        return Ok(report);
+        return Ok(validated);
     }
 
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent).map_err(|error| backend("creating", parent, &error))?;
+    // A bare relative destination (`converted`) has an empty parent, which no directory call
+    // accepts: syncing it after the publishing rename failed and reported an installed store as a
+    // failure. It is the current directory.
+    let parent = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    create_directory_durably(parent)?;
     reject_symlink_components(parent)?;
     let file_name = destination.file_name().ok_or_else(|| {
         StoreError::Backend("migration destination must name one directory".to_owned())
@@ -987,22 +1251,95 @@ pub fn migrate_file_store_v1(
     let result = (|| {
         let store = FileStore::open(&staging);
         store.prepare()?;
-        for subject in subjects.values() {
-            store.write_subject(subject)?;
-        }
+        // The coordination file every writer and acquisition locks, published with the store so
+        // the migrated root is complete the moment it appears.
+        let lock = staging.join(".entity-store-lock");
+        fs::OpenOptions::new()
+            .append(true)
+            .create_new(true)
+            .open(&lock)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| backend("creating lock", &lock, &error))?;
+        // A second pass writes each subject as it reads it, so the real run does not hold the
+        // whole store either; it validates again and reports what it wrote.
+        let report = walk_legacy(source, false, |subject| store.write_subject(&subject))?;
         sync_directory(&staging)?;
         fs::rename(&staging, destination)
             .map_err(|error| backend("publishing", destination, &error))?;
-        sync_directory(parent)
+        sync_directory(parent)?;
+        Ok(report)
     })();
     if result.is_err() {
         let _ = fs::remove_dir_all(&staging);
     }
-    result.map(|()| report)
+    result
 }
 
-fn read_legacy(root: &Path) -> Result<BTreeMap<(String, String), StoredSubject>, StoreError> {
-    let mut subjects = BTreeMap::new();
+/// Refuses a migration destination inside the legacy source, dry runs included.
+///
+/// The migration promises to leave its source unchanged, but a destination beneath it puts the
+/// staging tree and then the published store into the source, which no longer validates afterwards
+/// (it holds a nested directory). Both paths are compared canonically, so `..` and a relative path
+/// cannot hide the nesting.
+fn refuse_destination_inside_source(source: &Path, destination: &Path) -> Result<(), StoreError> {
+    let source_resolved =
+        fs::canonicalize(source).map_err(|error| backend("resolving", source, &error))?;
+    if resolve_absent(destination)?.starts_with(&source_resolved) {
+        return Err(StoreError::Backend(format!(
+            "migration destination {} lies inside the legacy source {}, which a migration never \
+             modifies; choose a destination outside it",
+            destination.display(),
+            source.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Resolves a path that does not exist yet: its longest existing prefix canonically, the rest
+/// lexically, as creating the missing directories one by one would resolve it.
+fn resolve_absent(path: &Path) -> Result<PathBuf, StoreError> {
+    let components: Vec<Component<'_>> = path.components().collect();
+    let mut split = components.len();
+    let existing = loop {
+        if split == 0 {
+            break PathBuf::from(".");
+        }
+        let prefix: PathBuf = components[..split].iter().collect();
+        if fs::symlink_metadata(&prefix).is_ok() {
+            break prefix;
+        }
+        split -= 1;
+    };
+    let mut resolved =
+        fs::canonicalize(&existing).map_err(|error| backend("resolving", &existing, &error))?;
+    for component in &components[split..] {
+        match component {
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            Component::Normal(name) => resolved.push(name),
+            Component::CurDir | Component::RootDir | Component::Prefix(_) => {}
+        }
+    }
+    Ok(resolved)
+}
+
+/// Validates a legacy split-file store one subject at a time, handing each to `visit` and
+/// dropping it before the next is read.
+///
+/// Only counts and the subject identities (for the duplicate check) outlive a subject: a dry run
+/// used to keep every document and event in memory just to return two counts.
+fn walk_legacy(
+    root: &Path,
+    dry_run: bool,
+    mut visit: impl FnMut(StoredSubject) -> Result<(), StoreError>,
+) -> Result<FileMigrationReport, StoreError> {
+    let mut identities = BTreeSet::new();
+    let mut report = FileMigrationReport {
+        subjects: 0,
+        events: 0,
+        dry_run,
+    };
     for entity_entry in fs::read_dir(root).map_err(|error| backend("listing", root, &error))? {
         let entity_entry = entity_entry.map_err(|error| backend("listing", root, &error))?;
         let entity_path = entity_entry.path();
@@ -1080,26 +1417,22 @@ fn read_legacy(root: &Path) -> Result<BTreeMap<(String, String), StoredSubject>,
                     )));
                 }
             }
-            let key = (entity.clone(), id.to_owned());
-            if subjects
-                .insert(
-                    key.clone(),
-                    StoredSubject {
-                        format: SUBJECT_FORMAT.to_owned(),
-                        origin: SubjectOrigin::LegacySnapshot,
-                        instance,
-                        records: Vec::new(),
-                        observations: Vec::new(),
-                        events,
-                    },
-                )
-                .is_some()
-            {
+            let (instance, events) = within_import_boundary(&state_path, instance, events)?;
+            if !identities.insert((entity.clone(), id.to_owned())) {
                 return Err(StoreError::Backend(format!(
-                    "duplicate legacy subject {}/{}",
-                    key.0, key.1
+                    "duplicate legacy subject {entity}/{id}"
                 )));
             }
+            report.subjects += 1;
+            report.events += events.len();
+            visit(StoredSubject {
+                format: SUBJECT_FORMAT.to_owned(),
+                origin: SubjectOrigin::LegacySnapshot,
+                instance,
+                records: Vec::new(),
+                observations: Vec::new(),
+                events,
+            })?;
         }
         for event_entry in
             fs::read_dir(&entity_path).map_err(|error| backend("listing", &entity_path, &error))?
@@ -1125,7 +1458,50 @@ fn read_legacy(root: &Path) -> Result<BTreeMap<(String, String), StoredSubject>,
             }
         }
     }
-    Ok(subjects)
+    Ok(report)
+}
+
+/// Holds one legacy subject to the boundary the recorded importer holds it to, before the migration
+/// publishes it: a terminal revision in `1..=i64::MAX`, and no event about another subject or later
+/// than that revision.
+///
+/// A split backup taken while a write was under way can hold an event log newer than its state
+/// document. Published as is, native event reads would serve that later event, and acquiring the
+/// store for a recorded import would refuse the same history only afterwards.
+fn within_import_boundary(
+    state_path: &Path,
+    instance: EntityInstance,
+    events: Vec<DomainEvent>,
+) -> Result<(EntityInstance, Vec<DomainEvent>), StoreError> {
+    let subject = Subject::new(instance.entity.clone(), instance.id.clone())
+        .map_err(|error| backend("validating", state_path, &error))?;
+    let history = SubjectHistory {
+        subject,
+        origin: HistoryOrigin::Imported(LegacyAnchor {
+            instance,
+            completeness: LegacyCompleteness::CompleteSubject,
+            order: LegacyOrderDeclaration::PerKindOnly,
+            evidence: events.into_iter().map(LegacyEvidence::Event).collect(),
+        }),
+        records: Vec::new(),
+    };
+    validate_imported_boundary(&history)
+        .map_err(|error| backend("validating", state_path, &error))?;
+    let HistoryOrigin::Imported(anchor) = history.origin else {
+        return Err(StoreError::Backend(format!(
+            "legacy subject {} lost its imported boundary",
+            state_path.display()
+        )));
+    };
+    let events = anchor
+        .evidence
+        .into_iter()
+        .filter_map(|evidence| match evidence {
+            LegacyEvidence::Event(event) => Some(event),
+            LegacyEvidence::Envelope(_) | LegacyEvidence::Decision(_) => None,
+        })
+        .collect();
+    Ok((anchor.instance, events))
 }
 
 fn parse_legacy_events(path: &Path, text: &str) -> Result<Vec<DomainEvent>, StoreError> {
@@ -1148,4 +1524,275 @@ fn parse_legacy_events(path: &Path, text: &str) -> Result<Vec<DomainEvent>, Stor
             serde_json::from_str(line).map_err(|error| backend("parsing", path, &error))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    //! Subject document reads and directory creation and syncs, which an integration test cannot
+    //! see.
+    use super::*;
+    use crate::Recording;
+    use entity_core::{Registry, Runtime};
+    use std::cell::RefCell;
+
+    thread_local! {
+        static READS: RefCell<Vec<PathBuf>> = const { RefCell::new(Vec::new()) };
+        static DIRECTORIES: RefCell<Vec<(&'static str, PathBuf)>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// Called by `parse_subject` before it opens a document.
+    pub(super) fn count_subject_read(path: &Path) {
+        READS.with(|reads| reads.borrow_mut().push(path.to_owned()));
+    }
+
+    /// Every subject document read since the last call, in order.
+    fn take_reads() -> Vec<PathBuf> {
+        READS.with(|reads| std::mem::take(&mut *reads.borrow_mut()))
+    }
+
+    /// Called when a directory is created (`created`) or synced (`synced`).
+    pub(super) fn log_directory_event(event: &'static str, path: &Path) {
+        DIRECTORIES.with(|log| log.borrow_mut().push((event, path.to_owned())));
+    }
+
+    fn take_directory_events() -> Vec<(&'static str, PathBuf)> {
+        DIRECTORIES.with(|log| std::mem::take(&mut *log.borrow_mut()))
+    }
+
+    #[test]
+    fn a_first_write_syncs_the_parent_of_every_directory_it_creates() {
+        let registry = registry();
+        let root = scratch("durable-directories");
+        let mut store = FileStore::open(&root);
+        take_directory_events();
+        store
+            .commit_recorded(
+                &created(&registry, "ticket", "a", "ticket-a"),
+                Expect::Absent,
+            )
+            .expect("the first subject is accepted");
+        let events = take_directory_events();
+        let created_directories: Vec<&PathBuf> = events
+            .iter()
+            .filter(|(event, _)| *event == "created")
+            .map(|(_, path)| path)
+            .collect();
+        let subjects = root.join("subjects");
+        let entity = store.entity_directory("ticket");
+        for expected in [&root, &subjects, &entity] {
+            assert!(
+                created_directories.contains(&expected),
+                "{} is created by the first write: {events:?}",
+                expected.display()
+            );
+        }
+        for (position, (event, path)) in events.iter().enumerate() {
+            if *event != "created" {
+                continue;
+            }
+            let parent = path.parent().expect("a created directory has a parent");
+            assert!(
+                events[position + 1..]
+                    .iter()
+                    .any(|(later, synced)| *later == "synced" && synced == parent),
+                "creating {} is followed by a sync of {}: {events:?}",
+                path.display(),
+                parent.display()
+            );
+        }
+
+        take_directory_events();
+        store
+            .commit_recorded(
+                &created(&registry, "ticket", "b", "ticket-b"),
+                Expect::Absent,
+            )
+            .expect("a second subject is accepted");
+        assert!(
+            take_directory_events()
+                .iter()
+                .all(|(event, _)| *event != "created"),
+            "a later write creates no directory"
+        );
+    }
+
+    /// A fresh directory beside the test binary: never `/tmp`, and outside the source tree.
+    fn scratch(name: &str) -> PathBuf {
+        let root = std::env::current_exe()
+            .expect("test binary path")
+            .parent()
+            .expect("binary directory")
+            .join("entity-store-file-unit")
+            .join(name);
+        let _ = fs::remove_dir_all(&root);
+        root
+    }
+
+    fn registry() -> Registry {
+        let mut registry = Registry::new();
+        for entity in ["ticket", "note"] {
+            let definition = serde_json::from_value(serde_json::json!({
+                "entity": entity,
+                "version": 1,
+                "schema": {},
+                "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+                "operations": {
+                    "close": { "transitions": [{ "from": "open", "to": "closed" }] }
+                }
+            }))
+            .expect("the definition parses");
+            registry.register(definition).expect("it validates");
+        }
+        registry
+    }
+
+    fn created(registry: &Registry, entity: &str, id: &str, record_id: &str) -> RecordedCommit {
+        let decision = Runtime::new(registry)
+            .create(entity, 1, id, serde_json::json!({}))
+            .expect("creation is permitted");
+        RecordedCommit::new(
+            decision,
+            &Recording {
+                record_id: record_id.to_owned(),
+                recorded_at: "2026-11-22T12:00:00Z".to_owned(),
+                correlation: None,
+                causation: None,
+                actor: None,
+            },
+        )
+        .expect("valid metadata")
+    }
+
+    /// A store holding three tickets and one note, written by a handle that is then dropped.
+    fn populated(name: &str, registry: &Registry) -> (PathBuf, Vec<PathBuf>) {
+        let root = scratch(name);
+        let mut writer = FileStore::open(&root);
+        let mut paths = Vec::new();
+        for (entity, id) in [
+            ("ticket", "a"),
+            ("ticket", "b"),
+            ("ticket", "c"),
+            ("note", "n"),
+        ] {
+            writer
+                .commit_recorded(
+                    &created(registry, entity, id, &format!("{entity}-{id}")),
+                    Expect::Absent,
+                )
+                .expect("created");
+            paths.push(writer.subject_path(entity, id));
+        }
+        (root, paths)
+    }
+
+    #[test]
+    fn building_the_record_index_reads_each_stored_subject_once() {
+        let registry = registry();
+        let (root, existing) = populated("index-reads-once", &registry);
+        let mut fresh = FileStore::open(&root);
+        take_reads();
+        fresh
+            .commit_recorded(
+                &created(&registry, "ticket", "d", "ticket-d"),
+                Expect::Absent,
+            )
+            .expect("a new subject is accepted");
+        let reads = take_reads();
+        for path in &existing {
+            let times = reads.iter().filter(|read| *read == path).count();
+            assert_eq!(
+                times,
+                1,
+                "the cold record-id scan reads {} once, not once to list and again to index: {reads:?}",
+                path.display()
+            );
+        }
+    }
+
+    #[test]
+    fn state_and_retry_history_come_from_one_read_of_the_subject() {
+        let registry = registry();
+        let (root, existing) = populated("load-with-history", &registry);
+        let store = FileStore::open(&root);
+        take_reads();
+        let loaded = store
+            .load_with_history("ticket", "a")
+            .expect("readable")
+            .expect("stored");
+        assert_eq!(loaded.instance.id, "a");
+        assert_eq!(
+            loaded.records.expect("the File Store keeps history").len(),
+            1
+        );
+        assert_eq!(take_reads(), [existing[0].clone()], "one document read");
+        assert!(store
+            .load_with_history("ticket", "absent")
+            .expect("readable")
+            .is_none());
+    }
+
+    #[test]
+    fn a_cold_write_to_a_stored_subject_reads_that_subject_once() {
+        let registry = registry();
+        let (root, existing) = populated("cold-write-target", &registry);
+        let held = FileStore::open(&root)
+            .load("ticket", "a")
+            .expect("readable")
+            .expect("stored");
+        let closed = Runtime::new(&registry)
+            .execute(&held, "close", serde_json::json!({}))
+            .expect("close is permitted");
+        let commit = RecordedCommit::new(
+            closed,
+            &Recording {
+                record_id: "ticket-a-close".to_owned(),
+                recorded_at: "2026-11-22T12:00:00Z".to_owned(),
+                correlation: None,
+                causation: None,
+                actor: None,
+            },
+        )
+        .expect("valid metadata");
+        let mut fresh = FileStore::open(&root);
+        take_reads();
+        fresh
+            .commit_recorded(&commit, Expect::Revision(1))
+            .expect("the operation is recorded");
+        let reads = take_reads();
+        assert_eq!(
+            reads.iter().filter(|read| **read == existing[0]).count(),
+            1,
+            "the index scan's reading of the target serves the revision check: {reads:?}"
+        );
+        assert_eq!(
+            reads.len(),
+            existing.len(),
+            "every other subject once: {reads:?}"
+        );
+
+        take_reads();
+        let observation = RecordedObservation {
+            entity: "ticket".to_owned(),
+            id: "b".to_owned(),
+            revision: 1,
+            envelope: Recording {
+                record_id: "ticket-b-seen".to_owned(),
+                recorded_at: "2026-11-22T12:00:00Z".to_owned(),
+                correlation: None,
+                causation: None,
+                actor: None,
+            }
+            .seal(serde_json::json!({"seen": true}))
+            .expect("observation envelope"),
+        };
+        FileStore::open(&root)
+            .observe(&observation)
+            .expect("observed");
+        let reads = take_reads();
+        assert_eq!(
+            reads.iter().filter(|read| **read == existing[1]).count(),
+            1,
+            "an observation on a cold handle reads its subject once too: {reads:?}"
+        );
+    }
 }

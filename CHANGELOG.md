@@ -4,11 +4,352 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Security
+
+- `RemoteStore::load` refuses an answer whose instance names another entity type or id than the
+  one asked for, as `StoreError::Backend` naming both subjects. Before, a misrouted reply was
+  returned as the requested subject, and `StoredRuntime::execute` committed to the returned
+  instance's coordinates, so a routing bug on the far side could redirect a write.
+- `entity mcp` (`entity_mcp::Server::serve`) reads at most 4 MiB of one request line. A longer
+  line is discarded without being buffered and answered with a JSON-RPC `-32600` error with a
+  `null` id; the session goes on with the next line. `Server::with_frame_limit` sets another
+  limit. Before, a peer could make the server buffer an unbounded line and keep that allocation.
+  A line that is not UTF-8 is now answered with a `-32700` parse error instead of ending the
+  session with an I/O error.
+- `entity mcp` advertises `destructiveHint: true` on an operation tool that can overwrite or
+  remove a field value in any registered version: any assignment in the operation's `set` or in
+  an outcome's `set` or `set_if_present` (a template, an increment or a clear), or any
+  fulfillment target, whose `Set` replaces the field and whose optional form admits `Remove`.
+  MCP defines `false` as "only additive updates"; an operation that writes no field keeps it.
+  Before, every tool claimed `destructiveHint: false`.
+- The File Store creates a subject document readable by its owner alone (`0600` on Unix) instead
+  of with the process umask, and a replacement takes the permission bits of the document it
+  replaces before any data is written. Before, every recorded write installed a new file with the
+  default permissions, so a subject an operator had restricted became readable again after its
+  next command.
+- The File Store's threat model is documented in the store design and on the storage concepts
+  page: paths under the root are resolved by following symlinks, so only the account the store
+  runs as may modify the root and its ancestors, and a root another account can modify is not
+  supported. No behaviour changes.
+
+### Added
+
+- `Store::load_with_history` returns a subject's current instance and its decision envelopes
+  together as a `LoadedSubject`. The provided default calls `load` and then `history().records`,
+  so existing providers keep working unchanged; `FileStore` overrides it with one read of the
+  subject document.
+- `entity-store`, `entity-executor`, `entity-eventlog`, `entity-graph` and `entity-mcp` have a
+  non-default `kpi-counters` feature. It exists for the repository's KPI gate (`checks/kpi`),
+  adds a counter per measured event and is not a supported API; builds without it are unchanged.
+  CI runs the gate as two jobs: `KPI / KPI counters` (meant to become a required check) and
+  `KPI / KPI timing` (the A/B on pull requests, informational only).
+- `MemoryStore::instances_after(entity, after)` borrows one entity type's instances after an
+  identity, in identity order, for keyset paging.
+
 ### Changed
 
+- `entity mcp` builds its `tools/list` catalogue once per server instead of on every request; the
+  reply is unchanged.
+- `ValidatedDefinition::new` computes the definition snapshot a decision record carries once, and
+  every decision reuses it, instead of serializing, canonicalizing and reading back the definition
+  per decision. Records keep the same bytes. Validating a definition costs that computation once,
+  whether or not it ever decides.
+- `entity mcp` refuses to start when a built-in tool name (`<entity>.create`, `.get`, `.list`,
+  `.events`) is longer than 128 characters, as it already did for operation tools. Before, a long
+  entity name produced built-in names a host enforcing the limit could not register.
+- A `for_all` or `for_any` guard decided before the subject is loaded stops at the first element
+  that settles it, as the guard after loading already did. The answer is unchanged; an outcome
+  refused as unobservable no longer names addresses read only past that element.
+- `exists:` on a reference reads the value through a borrowed path instead of copying it, so
+  checking that a long list is present no longer copies the list. The answer is unchanged.
+- `PreparedOutcome::complete` resumes where `PreparedOperation::select_with` stopped, at the
+  host-fulfillment boundary, instead of evaluating the operation again from its first step: each
+  `set` assignment of a host-fulfilled operation, replay included, is evaluated once instead of
+  twice. Decisions, records and refusals are unchanged.
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
+- The first recorded write of a File Store handle reads each stored subject once while it builds
+  the record-id index, instead of once to list it and again to index it. A new `entity create` in
+  a store of 32 subjects opened 64 subject documents and now opens 32.
+- A stored `entity execute` reads its subject document twice instead of six times.
+  `StoredRuntime::execute` (and so MCP) reads state and retry history through one
+  `load_with_history` call, the command hands the shell the reading it took the implicit revision
+  from, and a write on a fresh `FileStore` handle reuses the index scan's reading of its target
+  subject. With 32 prior records on one subject, one command read 1,209,312 bytes and now reads
+  403,104 bytes. Every recorded write still rewrites the whole subject document.
+- `entity store migrate-file` holds one legacy subject in memory at a time instead of the whole
+  store. A dry run of 128 subjects with 256 KiB fields peaked at 41,156 KiB and now at 17,336 KiB
+  (one subject: 17,120 and 16,984 KiB, mostly process start-up). The real run validates the source
+  first, as before, and then reads it a second time to write it.
+- The gate's test step no longer compiles a generated Rust CLI (about a minute to several on its
+  own). It holds `entity generate rust-cli` to a committed snapshot of the crate it writes, with
+  a stand-in for Cargo; `task test-slow` and the `Slow lane` workflow compile and run that crate
+  when the generator or a crate it builds on changes. `entity-cli` gains a test-only `slow-lane`
+  feature. No behaviour of `entity` changes.
+- Listing the ids of one entity type, and document queries, on an Eventlog-backed store (the
+  `entity list` command over `--eventlog-config`, and the File, SQLite and PostgreSQL facades)
+  no longer copy every subject's history and state out of the verified capture before filtering
+  by type. They still take one complete verified capture and refuse what a complete snapshot
+  refuses. New: `EventlogRecordedStore::entity_ids`, `entity_states` and
+  `RecordedEventlogBridge::entity_ids`, `entity_states`.
+- Full verification of an Eventlog store with imported history locates each imported record in
+  its anchor's evidence with one pass per subject instead of a search from the start per record
+  (n(n+1)/2 comparisons for an anchor of n records).
+- The inline Eventlog projector reads a group's batch blob once per projection pass instead of
+  once per member; a later member reuses it only when the projection already holds the previous
+  member's row for that blob. Batch blobs over 32 MiB are still read and decoded per member.
+- An Eventlog append that meets a physical stream conflict without committing is attempted at
+  most 8 times in all, each attempt reading and reconciling afresh, and then refuses with
+  `WriteFailure::NotCommitted(AsyncStoreError::Unreachable { provider: "eventlog", .. })`, whose
+  detail starts `physical stream contention`; nothing was committed and the request can be
+  retried. Before, it retried without a bound, holding one more future per attempt.
+- `RecordedProviderFacade::import_legacy` (`entity-eventlog`) observes its destination N + 1
+  times for N subjects, plus once for its closing equivalence check, instead
+  of 2N + 1: each subject is checked against the observation the subject before it verified its
+  commit with. Every subject is still appended, verified and reported on its own, and a failure
+  still leaves the subjects before it committed. An exact retry observes it twice instead of
+  N + 1 times.
+- `Hybrid::catch_up` reads the destination's observations once per restore pass. It read them
+  again for every eligible observation before each missing decision: 10 reads to restore 4
+  revisions with one observation each, N(N+1)/2 in general.
+- `MemoryStore` document queries seek past the cursor and copy only the documents a page returns.
+  A one-document page over 1,024 documents with a 1 KiB title allocated 2,007,992 bytes; it now
+  allocates 3,824 bytes.
+- A document-query cursor is now `v1.<digest>.<last id>`, with a 128-bit FNV-1a digest of the
+  query in place of the whole hex-encoded query, so its length no longer grows with the predicate
+  (a 64 KiB filter made a 131,121-byte cursor; every cursor for the id `id-1` is now 44 bytes).
+  A cursor of the earlier form still continues its own query, checked without decoding the cursor
+  or serialising the query into a buffer; a cursor of another query is refused as before.
+- Document-query array containment indexes a stored array's scalars once when a query names more
+  of them than the logarithm of its length, instead of searching from the start for each member
+  (131,328 comparisons for 512 tags, now under 20,000). Numbers still match by exact value.
+- `MemoryStore::commit_batch` stages only the subjects a batch touches instead of copying the
+  whole store, and still applies every member or none. A one-member batch beside 1,024 subjects
+  with a 1 KiB title allocated 2,033,234 bytes; it now allocates 3,727 bytes.
+- `Hybrid::catch_up` reads a source subject's recorded history once per pass and reconciles a
+  subject once per direction, still checking every divergence's own record. 32 writes made while
+  the replica was down read the source's 32 events 32 times; they are now read once, and a pass
+  over a replica that is already level reads no events.
+- `MemoryStore` lists one entity type's identities by seeking to that type in its ordered map
+  instead of filtering every key, so listing a type it does not hold no longer walks the others.
+- `entity-executor` recovers a retried batch with one history read per subject instead of one
+  per member, and verifies each member's history prefix as an extension of the prefix already
+  verified, so a retry of K consecutive decisions on one subject checks each record once instead
+  of 1 + … + K times. `verify_subject_prefix` no longer copies the history it verifies. Refusals
+  and the batch membership checks are unchanged.
+- `entity-executor` runs the creation kernel once for a fresh create: its request-comparison bytes
+  are encoded from the record the kernel just produced instead of deciding the creation again. A
+  retry is still compared by deciding its request again under the saved definition, so a
+  different request under the same record id is still refused.
+- `branch_heads` and the verification of a branched history keep each decision's direct parents
+  instead of its whole ancestor set, so a chain of N decisions holds N − 1 entries instead of
+  N(N − 1)/2 (at 512 decisions the extra peak heap fell from 17.2 MB to 0.55 MB). Ancestry is
+  walked only for a record that follows more than one decision. Heads and refusals are unchanged.
+- `LegacyStoreSnapshot::new`, which the file, SQLite and PostgreSQL legacy readers call, verifies
+  the histories it owns in place instead of copying every history and terminal state first (128
+  subjects of 64 KiB: extra peak heap from 17.1 MB to 0.1 MB). Refusals are unchanged.
+- `entity validate` and `Registry::validate_all` now check a `ref` declared in a `service/1`
+  `create` argument, as they already checked one in the schema or an operation argument. A set
+  whose creation argument points at an entity type nobody registered is refused with
+  `unknown_relation_target` at a path such as `create.arguments.tracking`; it used to pass.
+- Validating a `service/1` definition builds its set of lifecycle states once instead of once per
+  command, and skips commands with no outcomes. A definition with many states and operations
+  validates faster; the defects reported are unchanged.
+- `entity-yaml` looks up repeated mapping keys in an ordered set instead of comparing each key
+  with every key before it, so a definition with hundreds of fields parses in n log n rather than
+  n² comparisons. Repeated keys and merge keys are refused as before, with the same message.
+- A `service/1` number literal or bound that is zero is read as zero at once, whatever its
+  exponent. `0e100000000` took about 13 seconds in a debug build at registration and again at each value check,
+  and an exponent near the `i64` limit did not finish. A literal such as
+  `0.5e-9223372036854775807` no longer overflows the scale arithmetic; it reads as zero, as a
+  release build already read it. No answer changes.
+
+### Fixed
+
+- A store produced by `entity store migrate-file` can be acquired for an import at once.
+  `migrate_file_store_v1` now publishes the `.entity-store-lock` coordination file with the store,
+  and `FileStore::acquire_legacy` creates that file the way a writer does when an initialized v2
+  root lacks it, instead of failing with "No such file or directory".
+- On Unix the File Store syncs the parent of every directory it creates — the root, `subjects/`
+  and a type directory on the first write of a type. Before, only the subject's own directory was
+  synced, so power loss right after a successful first write could lose the path to the subject.
+- The File Store refuses an identity or entity type too long for its one-component hex file name
+  (an identity over about 116 bytes, an entity type over 127) with a `store_backend` error that
+  names the limit, before it creates any file or directory. Before, the write failed part-way with
+  the operating system's "File name too long".
+- `entity store migrate-file --to converted` (a destination with no directory part) succeeds.
+  Before, it installed the migrated store, then failed to sync the empty parent path and exited 2,
+  and a retry refused because the destination existed.
+- A refused File Store write (a revision or record conflict) and an idempotent retry no longer
+  grow and sync `.entity-store-lock`. The invalidation epoch advances only right before a write
+  changes the store, so other handles keep their record-id index after a conflict.
+- `entity store migrate-file` refuses a destination inside the legacy source, on a dry run too,
+  before it creates anything. Both paths are compared canonically, so `..` or a relative path
+  cannot hide the nesting. Before, a dry run accepted `--to OLD/converted` and the real run wrote
+  the v2 store into the source, which then no longer validated.
+- `entity store migrate-file` refuses a legacy subject whose event log holds an event later than
+  its saved state, or whose saved revision is 0, with the recorded importer's reason (for example
+  "imported event revision 2 is later than anchor revision 1"), on a dry run too. Before, it
+  published that history: event reads served the later event, and acquiring the store for a
+  recorded import refused it only afterwards.
+- `entity generate docs` no longer removes a directory another writer creates at `--out` while
+  the documentation is being generated. Publication decides again under a lock file beside the
+  destination (`.<name>.lock`, removed afterwards), moves into place without replacing anything
+  (`renameat2(RENAME_NOREPLACE)` on Linux), and with `--force` replaces only the directory it
+  checked for the generator marker. A leftover lock file from an interrupted run is named in the
+  error; remove it when no generation is running.
+- `entity generate rust-cli --force` keeps the retained crate's `target/` and, when the same
+  runtime version generated it, its `Cargo.lock` (refreshed with `cargo update --offline
+  --workspace` instead of resolved again). A change confined to an embedded definition recompiles
+  the generated crate rather than every dependency.
+- `entity graph` computes the diagram layout only for `--format svg` and `--format html`; text,
+  Mermaid and DOT output no longer pay for a layout they do not use.
+- `entity generate rust-cli --force` no longer replaces an unrelated file at `--out`. The build
+  directory's marker now records the binary the generator installed (path, length and FNV-1a
+  digest), and an existing output is replaced only when it is that binary, checked before the
+  build and again on the file moved aside. A binary installed by 0.32.0 or earlier carries no
+  record: remove it once by hand before regenerating over it.
+- `entity create` and `execute` with `--format yaml` write numbers as YAML numbers
+  (`spent: 3.75`) with their exact digits, instead of one-key mappings
+  (`spent: {$serde_json::private::Number: '3.75'}`) that only this runtime's own reader turned
+  back into numbers. A consumer that matched the mapping form must read plain numbers now.
+- `entity inspect --format yaml` writes the numbers of a definition (a condition operand such as
+  `gt: [$fields.total_cents, 0]`, a default, a schema bound) as YAML numbers too; the printed
+  definition still validates.
+- A command built by `entity generate rust-cli` writes numbers as YAML numbers with `--format
+  yaml` (`amount_cents: 2500`), with the same writer as `entity`; regenerate to get it. The
+  generated crate gains `src/yaml_output.rs` and its `Cargo.toml` is unchanged.
+- `entity validate` with several files reads each file once and runs the cross-file checks on
+  the definitions it validated. It used to read every file again for those checks and skip one
+  that could no longer be read or parsed, so a set could be certified without one of its files.
+- `entity execute --store` runs a stored subject when several versions of its type are given as
+  `--definition` files. It refused with "several versions of 'counter' are registered", the
+  message meant for `create`; the stored subject names its version and the kernel runs that
+  version's definition.
+- An Eventlog store handle's memory of what it verified (64 MiB) charges an imported subject for
+  the anchor and terminal state it keeps a copy of, as what they encode to, instead of a fixed
+  16 KiB for the anchor and nothing for the state of a subject with no record after its anchor:
+  a 1 MiB field charged 33,024 bytes and now about 6.3 MB. A blob, decode or history that could
+  not fit even in an empty memory is no longer remembered, and no longer makes the memory forget
+  everything else first.
+- `Hybrid::catch_up` keeps a divergence when a legacy replica that is behind holds events up to
+  its revision that are not the source's. It used to append only the source's later events and
+  clear the divergence, leaving the replica with the source's state over a history the source
+  never produced. The divergence now says the replica's history is not the source's.
+- `entity generate docs` (and `entity_surface::asyncapi`) publishes the events a `service/1`
+  definition declares on its creation and operation outcomes. Before, only `create.emit` and an
+  operation's `emits` reached the AsyncAPI contract, so an event the kernel emitted from an
+  outcome had no channel, message or receive operation. Each payload keeps the schema of the
+  creation's or the operation's arguments it reads.
+- The OpenAPI create request and the MCP `<entity>.create` tool describe the input the kernel
+  validates. A `service/1`, `service/2` or `service/3` definition with creation outcomes takes its
+  declared creation arguments in `fields` (OpenAPI component `<Entity>V<n>CreateArguments`);
+  before, both surfaces required the instance fields and refused the arguments the kernel accepts.
+  A definition without creation outcomes still takes its instance fields.
+- Every `operationId` in the generated OpenAPI document is unique. A domain operation named
+  `list`, `create`, `get` or `events` took the id of the generated method (`list_counter_v1` on
+  both the collection GET and the operation's POST). The generated method keeps its id and the
+  later method in path order takes the lowest free `_2`, `_3`, … suffix; ids that were already
+  unique are unchanged.
+- Drawing a graph as Mermaid or SVG (`entity graph`, `entity generate docs`) looks up each edge's
+  endpoints in an index built once per drawing instead of scanning every node per endpoint; a
+  300-state chain no longer costs about 90,000 id comparisons. The output is byte-identical, and a
+  duplicate node id still resolves to its last node.
+- Input schemas no longer require a field the kernel fills from its declared `default`: the
+  OpenAPI create request (component `<Entity>V<n>CreateFields` where it differs from the stored
+  fields), the creation and operation arguments, and the MCP `<entity>.create` tool. A counter
+  whose `views` and `spent` default to 0 is created with `name` alone, and its schemas required all
+  three. The stored `<Entity>V<n>Fields` and the instance schema still require every required
+  field.
+- The MCP operation tools (`<entity>.<operation>`) no longer require an argument the kernel fills
+  from its declared `default`, at the top level or inside an object argument the caller sends.
+- The lifecycle graph (`entity graph`, the diagrams of `entity generate docs`) draws the state
+  changes a `service/*` operation makes through an outcome's `moves` effect, labelled with the
+  operation. Before, only `transitions` were drawn, so a shipment `dispatch` from `pending` to
+  `shipped` gave two boxes and no edge. Two outcomes moving between the same states are one edge.
+- SVG layering places nodes in one topological pass over the forward edges instead of relaxing
+  them until nothing moves, so its cost no longer depends on how the state names sort. The layers
+  and the drawing are unchanged.
+- `rehydrate` runs `create`'s own rules on a legacy creation event's fields and identity, and
+  refuses a creation event that lacks a declared default or carries a blank identity: `create`
+  never records either, so such a history folded to a genesis no `create` call produced. Every
+  history `create` and `execute` wrote still folds.
+- An imported boundary whose envelopes claim one order position twice — two decisions or two
+  observations at one `PerKind` index, or two records at one `Subject` position — is refused as
+  corrupt history instead of verifying. Gaps are still accepted, and a decision and an observation
+  may share a `PerKind` index. The File, SQLite and PostgreSQL legacy readers never produce a
+  repeated position, so what they acquire is unchanged.
+- Two versions of one entity that declare the same relation now load together. `entity validate`
+  and `Registry::validate_all` refused, for example, invoice v1 and v2 that both reference
+  `account` through `account_id` with `relation_field_claimed_twice` naming the same relation
+  twice, and two versions of one owner with `relation_second_owner` naming the same entity twice.
+  Both checks now count claims within one version; two relations on one field, or two owners of
+  one entity, inside one version are still refused.
+- Creation, operation arguments and definition defaults now fill item defaults inside each value
+  of a typed `map`, as they already did inside each array element. A required property with a
+  default, left out of a map value, was refused with `required property is missing` at a path such
+  as `fields.routing.east.enabled`; it is now filled. No map entry is invented for a key the caller
+  did not send.
+- A number in a definition that a binary64 cannot hold is read as written. `entity` and
+  `entity_yaml::from_str` read a bound such as `min: 1.0000000000000001`, in a YAML or a `.json`
+  file, as `1.0` and then admitted `rate: 1`; the bound now keeps its digits and `1` is refused.
+  A number a binary64 already holds (`0.5`, `1e3`) reads exactly as before, so existing
+  definitions keep their bytes. Documents with a root `$defs` or `$ref` still round.
+- Typed map keys follow the key grammar of the pinned ESS release (0.97.4). A `key: integer` map
+  now refuses `007`, `+7` and `-0`, which were accepted as further keys beside `7` and `0`, with
+  ``key is not integer text: expected decimal integer text without `+` or leading zeroes``. A
+  `key: bytes` map now accepts the empty key, the padded base64 of no bytes; it was refused.
+- A `key: decimal` map now checks its keys by ESS's decimal pattern
+  `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$`. Keys such as `1e3`, `+1`, `.5` and `01.5`, which any number
+  reader accepted, are refused with
+  ``key is not decimal text: expected exact decimal text without `+`, leading zeroes or an exponent``;
+  an integer with more digits than a binary64 can hold is now accepted.
+- `PostgresStore` saves a document whose string field holds U+0000. Before, the GIN index
+  `instances_document_query` on `document::jsonb` refused it (SQLSTATE 22P05) and a store with
+  such a row could not build the index. `migrate` drops that index and creates
+  `instances_document_index` on the new function `entity_index_document(document)`, which rewrites
+  each escaped U+0000 and U+0001 to a pair starting with U+0001; document pages filter through the
+  same function, so they match the same documents. This is the one statement in `migrate` that is
+  not additive: upgrade every service that opens a database (aep and aep-service) together.
+  Building the index blocks writes to `instances`.
+- `PostgresStore::events` and `PostgresSession::events` read bare events and recorded decisions
+  in one statement. Before, they read them in two, each with its own snapshot, so a bare revision
+  and then a recorded revision committing between the two reads produced a history that showed the
+  later recorded event and left out the bare event before it.
+- `PostgresStore` document pages after a cursor read an index instead of scanning and sorting the
+  entity's instances. `migrate` now creates `instances_id_byte_order` on
+  `(entity, id COLLATE "C")`, the order pages seek and sort by. An existing database gets it the
+  next time a store opens it. Building it blocks writes to `instances` while it builds; for a large
+  table, run `CREATE INDEX CONCURRENTLY instances_id_byte_order ON instances (entity, id COLLATE "C")`
+  first.
+- `acquire_legacy` on `SqliteStore` and `PostgresStore` reads a store in four statements, however
+  many subjects it holds. Before, it ran four statements per subject (4,097 for 1,024 subjects on
+  SQLite). The snapshot it returns is unchanged, and evidence without a terminal instance is still
+  refused.
+- `PostgresStore::connect_in_schema` and `PostgresStore::drop_schema` refuse a schema name longer
+  than the server's `max_identifier_length` (63 bytes by default). Before, PostgreSQL truncated it,
+  so two long names with the same first 63 bytes opened the same tables, and `drop_schema` with
+  the longer name dropped the other's schema. `connect_in_schema` also refuses a name the session
+  resolves to another schema (such as `$user`) and leaves nothing created. A deployment that used
+  a longer name was working in the truncated schema; pass the truncated name to keep its data.
+- `PostgresStore::commit_recorded` and `PostgresStore::observe` key the lock on a record id by the
+  `history` table they write. Before, writers of one record id in different schemas of a database
+  waited on each other; writers in one schema still do. During a rolling upgrade an older and a
+  newer store writing the same record id in one schema take different locks: the unique
+  `record_id` still refuses the duplicate, as a backend error instead of a retry or a record
+  conflict. Upgrade every writer of one schema together.
+- `SqliteStore` and `PostgresStore` read the next event position once per revision when they
+  append a decision's events, instead of once per event (128 reads for 128 events), and
+  PostgreSQL appends the events in one statement. Stored positions are unchanged.
+- An Eventlog write or import batch that would take the tenant past
+  `CaptureLimits::max_payload_bytes` is refused before anything is uploaded, with
+  `AsyncStoreError::BatchExceedsReadBounds { bound: "max_payload_bytes", .. }`
+  (`WriteFailure::NotCommitted` or `ImportAnchorFailure::NotCommitted`). Before, the payload cap
+  was not checked: such a write committed, its own verification then failed, and every later open
+  at the same limits was refused. The check counts the write's events, rows and new blobs as an
+  upper bound, so a write within a few hundred bytes of the cap can be refused although it would
+  have fitted.
 
 ## [0.32.0] — 2026-11-22
 

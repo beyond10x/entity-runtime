@@ -26,6 +26,10 @@ use crate::{
     },
 };
 
+/// The number of the next legacy import, process-wide: each `import_legacy` call is its own
+/// import sequence, so one never reuses what another verified.
+static IMPORT_SEQUENCES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 /// Eventlog-backed File facade with complete recorded receipts and atomic groups.
 #[cfg(feature = "file")]
 #[derive(Debug)]
@@ -404,12 +408,18 @@ impl RecordedProviderFacade {
             .map_err(LegacyImportError::Source)?;
         let mut settled = Vec::with_capacity(snapshot.histories.len());
         let mut replayed = 0;
+        // Each subject is checked against the destination the subject before it verified rather
+        // than observing the destination again first: N subjects, N + 1 observations.
+        let sequence = IMPORT_SEQUENCES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         for history in &snapshot.histories {
-            match self.operation(context.clone()).import_source_anchor(
-                snapshot.source_id.clone(),
-                history.clone(),
-                wait,
-            ) {
+            match self
+                .operation(context.clone())
+                .import_source_anchor_in_sequence(
+                    snapshot.source_id.clone(),
+                    history.clone(),
+                    sequence,
+                    wait,
+                ) {
                 Ok(outcome) => {
                     replayed += usize::from(outcome.replayed);
                     settled.push(outcome.assurance);
@@ -553,16 +563,11 @@ impl StateProvider for RecordedProviderFacade {
             .map_err(sync_read_error)
     }
 
+    /// Lists from the complete snapshot's verified observation without copying any history out.
     fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
-        let snapshot = self
-            .complete_snapshot(CallWait::Forever)
-            .map_err(sync_read_error)?;
-        Ok(snapshot
-            .histories
-            .into_iter()
-            .filter(|entry| entry.history.subject.entity == entity)
-            .map(|entry| entry.history.subject.id)
-            .collect())
+        self.bridge
+            .entity_ids(&self.authority.logical_scope, entity, CallWait::Forever)
+            .map_err(sync_read_error)
     }
 }
 
@@ -656,19 +661,19 @@ impl HistoryProvider for RecordedProviderFacade {
 }
 
 impl DocumentQueryProvider for RecordedProviderFacade {
+    /// Filters by entity type over the complete snapshot's verified observation before any state
+    /// is copied out; no history is.
     fn query_documents(&self, query: &DocumentQuery) -> Result<DocumentPage, QueryError> {
-        let snapshot = self
-            .complete_snapshot(CallWait::Forever)
+        let states = self
+            .bridge
+            .entity_states(
+                &self.authority.logical_scope,
+                &query.entity,
+                CallWait::Forever,
+            )
             .map_err(sync_read_error)
             .map_err(QueryError::Store)?;
-        query_ordered_instances(
-            query,
-            snapshot
-                .histories
-                .into_iter()
-                .filter(|entry| entry.terminal.entity == query.entity)
-                .map(|entry| entry.terminal),
-        )
+        query_ordered_instances(query, states)
     }
 }
 
@@ -800,3 +805,6 @@ impl ScopedRecordedProviderFacade<'_> {
         Ok(batch)
     }
 }
+
+#[cfg(all(test, feature = "sqlite"))]
+mod import_tests;

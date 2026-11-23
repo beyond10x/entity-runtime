@@ -2,8 +2,8 @@
 //! scale context, the four new operators and the two collection address forms.
 
 use entity_core::{
-    create, replay, CoreError, DefinitionError, DefinitionErrors, EntityDefinition, Registry,
-    Runtime, Truth, ValidatedDefinition,
+    create, replay, CoreError, DefinitionError, DefinitionErrors, EntityDefinition, Observed,
+    Registry, Runtime, Truth, ValidatedDefinition,
 };
 use serde_json::{json, Value};
 
@@ -121,6 +121,61 @@ fn a_map_field_types_its_values_and_refuses_an_untyped_member() {
 }
 
 #[test]
+fn creation_fills_item_defaults_inside_each_map_value_as_inside_each_array_element() {
+    let item = json!({
+        "type": "object",
+        "properties": { "enabled": { "type": "boolean", "required": true, "default": true } }
+    });
+    let validated = ValidatedDefinition::new(definition(json!({
+        "entity": "settings",
+        "version": 1,
+        "semantics": "service/1",
+        "schema": { "fields": {
+            "routing": { "type": "map", "key": "string", "items": item },
+            "lanes": { "type": "array", "items": item }
+        }},
+        "lifecycle": { "initial": "open", "states": ["open"] }
+    })))
+    .expect("registers");
+
+    let decision = create(
+        &validated,
+        "cfg".to_owned(),
+        json!({
+            "routing": { "east": {}, "west": { "enabled": false } },
+            "lanes": [{}]
+        }),
+    )
+    .expect("the required property's default fills it in a map value as in an array element");
+    assert_eq!(
+        decision.instance.fields,
+        json!({
+            "routing": { "east": { "enabled": true }, "west": { "enabled": false } },
+            "lanes": [{ "enabled": true }]
+        })
+        .as_object()
+        .expect("an object")
+        .clone()
+    );
+
+    // Only values the caller sent are filled: a default invents no map entry.
+    let empty = create(&validated, "cfg".to_owned(), json!({ "routing": {} }))
+        .expect("an empty map is a map");
+    assert_eq!(empty.instance.fields["routing"], json!({}));
+
+    // A value of the wrong kind is still refused at its path rather than defaulted over.
+    let Err(CoreError::Validation(errors)) = create(
+        &validated,
+        "cfg".to_owned(),
+        json!({ "routing": { "east": { "enabled": "yes" } } }),
+    ) else {
+        panic!("a map value is still typed by `items`");
+    };
+    assert_eq!(errors[0].path, "fields.routing.east.enabled");
+    assert_eq!(errors[0].message, "expected boolean");
+}
+
+#[test]
 fn a_map_with_an_integer_key_refuses_a_key_that_is_not_integer_text() {
     let schema = json!({ "fields": { "counts": {
         "type": "map", "key": "integer", "items": { "type": "integer" }, "required": true
@@ -147,6 +202,175 @@ fn a_map_with_an_integer_key_refuses_a_key_that_is_not_integer_text() {
     };
     assert_eq!(errors[0].path, "fields.counts.seven");
     assert!(errors[0].message.contains("integer text"));
+}
+
+/// What creating `{ "m": { <key>: "v" } }` answers over a map keyed by `kind`: `Ok`, or the one
+/// message reported at the key's path.
+fn map_key_verdict(kind: &str, key: &str) -> Result<(), String> {
+    let schema = json!({ "fields": { "m": {
+        "type": "map", "key": kind, "items": { "type": "string" }, "required": true
+    }}});
+    let validated = ValidatedDefinition::new(definition(probe(
+        "service/1",
+        schema,
+        json!({}),
+        true.into(),
+    )))
+    .expect("registers");
+    let mut members = serde_json::Map::new();
+    members.insert(key.to_owned(), json!("v"));
+    match create(&validated, "p-1".to_owned(), json!({ "m": members })) {
+        Ok(_) => Ok(()),
+        Err(CoreError::Validation(errors)) => {
+            assert_eq!(
+                errors.len(),
+                1,
+                "one defect for {kind} key {key:?}: {errors:?}"
+            );
+            assert_eq!(errors[0].path, format!("fields.m.{key}"));
+            Err(errors[0].message.clone())
+        }
+        Err(other) => panic!("{kind} key {key:?} refused for another reason: {other}"),
+    }
+}
+
+/// E44: the boundary rows are the answers of `ess specify validate` 0.97.4 to the same key in a
+/// precondition literal over `Map<Integer, _>` and `Map<Bytes, _>`. One value has one spelling, so
+/// `007` and `+7` are not keys beside `7`, and `-0` is not one beside `0`; the empty text is the
+/// padded base64 of no bytes.
+#[test]
+fn integer_and_bytes_map_keys_follow_the_pinned_ess_key_grammar() {
+    let integer = "key is not integer text: expected decimal integer text without `+` or leading \
+                   zeroes";
+    let bytes = "key is not bytes text: expected padded base64";
+    let rows: &[(&str, &str, Option<&str>)] = &[
+        ("integer", "7", None),
+        ("integer", "-2", None),
+        ("integer", "0", None),
+        ("integer", "9223372036854775807", None),
+        ("integer", "-9223372036854775808", None),
+        ("integer", "007", Some(integer)),
+        ("integer", "07", Some(integer)),
+        ("integer", "+7", Some(integer)),
+        ("integer", "-0", Some(integer)),
+        ("integer", " 7", Some(integer)),
+        ("integer", "9223372036854775808", Some(integer)),
+        ("integer", "1e3", Some(integer)),
+        ("integer", "", Some(integer)),
+        ("bytes", "", None),
+        ("bytes", "AA==", None),
+        ("bytes", "AAA=", None),
+        ("bytes", "AAAA", None),
+        ("bytes", "A===", Some(bytes)),
+        ("bytes", "AA=", Some(bytes)),
+        ("bytes", "AA-_", Some(bytes)),
+        ("bytes", "AAAA AAAA", Some(bytes)),
+    ];
+    let wrong: Vec<String> = rows
+        .iter()
+        .filter_map(|(kind, key, refusal)| {
+            let verdict = map_key_verdict(kind, key);
+            (verdict != refusal.map_or(Ok(()), |message| Err(message.to_owned())))
+                .then(|| format!("{kind} key {key:?}: expected {refusal:?}, got {verdict:?}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// E44: a decimal key is spelt by ESS's published `DECIMAL_PATTERN`
+/// `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$`, not by whatever a number reader parses: `1e3`, `+1` and `.5`
+/// were keys beside `1000`, `1` and `0.5`.
+#[test]
+fn decimal_map_keys_follow_the_pinned_ess_decimal_pattern() {
+    let decimal = "key is not decimal text: expected exact decimal text without `+`, leading \
+                   zeroes or an exponent";
+    let long = format!("1{}", "0".repeat(400));
+    let rows: &[(&str, Option<&str>)] = &[
+        ("0", None),
+        ("7", None),
+        ("-2.5", None),
+        ("1.50", None),
+        ("0.0", None),
+        ("-0.0", None),
+        ("0.1000000000000000000001", None),
+        (&long, None),
+        ("1e3", Some(decimal)),
+        ("+1", Some(decimal)),
+        ("01.5", Some(decimal)),
+        ("007", Some(decimal)),
+        (".5", Some(decimal)),
+        ("1.", Some(decimal)),
+        ("-", Some(decimal)),
+        ("", Some(decimal)),
+        (" 1", Some(decimal)),
+        ("1.5.0", Some(decimal)),
+        ("inf", Some(decimal)),
+        ("0e9223372036854775807", Some(decimal)),
+    ];
+    let wrong: Vec<String> = rows
+        .iter()
+        .filter_map(|(key, refusal)| {
+            let verdict = map_key_verdict("decimal", key);
+            (verdict != refusal.map_or(Ok(()), |message| Err(message.to_owned())))
+                .then(|| format!("decimal key {key:?}: expected {refusal:?}, got {verdict:?}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// E52: a zero is zero at every exponent and is read without one step per place of it. Before,
+/// the exact reader scaled the zero first, so `0e100000000` took about 13 s and an exponent near
+/// `i64::MAX` would not end; a `service/1` bound is read that way at registration and at every
+/// value check. Runs on its own thread so a regression fails here instead of hanging the run.
+#[test]
+fn a_zero_literal_is_read_without_scaling_through_its_exponent() {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let literals: Vec<Option<String>> = [
+            "0e9223372036854775807",
+            "0e-9223372036854775807",
+            "-0.000e9223372036854775807",
+        ]
+        .into_iter()
+        .map(|text| Observed::of_literal(text).map(Observed::exact_text))
+        .collect();
+        let schema: Value = serde_json::from_str(
+            r#"{ "fields": { "amount": { "type": "number", "min": 0e9223372036854775807 } } }"#,
+        )
+        .expect("the schema parses");
+        let validated = ValidatedDefinition::new(definition(probe(
+            "service/1",
+            schema,
+            json!({}),
+            true.into(),
+        )))
+        .expect("a zero bound registers");
+        let verdict =
+            |amount: i64| match create(&validated, "p-1".to_owned(), json!({ "amount": amount })) {
+                Ok(_) => "accepted".to_owned(),
+                Err(CoreError::Validation(errors)) => errors[0].message.clone(),
+                Err(other) => other.to_string(),
+            };
+        let _ = sender.send((literals, verdict(0), verdict(-1)));
+    });
+    let (literals, zero, below) = receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("reading a zero with an exponent of 2^63 - 1 did not end within 10 s");
+    assert_eq!(literals, vec![Some("0".to_owned()); 3]);
+    assert_eq!(zero, "accepted");
+    assert!(below.contains("is below minimum"), "{below}");
+}
+
+/// E52: the scale of a nonzero literal is computed with checked arithmetic. `0.5e-(2^63 - 1)`
+/// overflowed the `i64` subtraction (a panic where overflow checks are on); it is now read as the
+/// binary64 the same text parses to, which is the answer a release build already gave.
+#[test]
+fn a_literal_whose_scale_overflows_i64_is_read_as_its_binary64() {
+    for text in ["0.5e-9223372036854775807", "-12.5e-9223372036854775807"] {
+        let observed = Observed::of_literal(text).expect("a finite literal is observable");
+        assert_eq!(observed.exact_text(), "0", "{text}");
+        assert!(observed.is_zero(), "{text} underflows to a zero binary64");
+    }
 }
 
 #[test]

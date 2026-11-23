@@ -48,7 +48,10 @@
 //! authentication beyond the URL are the deployment's, not this crate's — choosing a TLS backend
 //! here would choose it for every adopter.
 
-use std::sync::Mutex;
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    sync::Mutex,
+};
 
 use entity_core::{Decision, DecisionRecord, DomainEvent, EntityInstance};
 #[cfg(feature = "eventlog-facade")]
@@ -296,20 +299,44 @@ impl PostgresStore {
     /// For a test that needs a store of its own on a shared server, and for a deployment that
     /// keeps several plans in one database. The schema name is quoted as an identifier.
     ///
+    /// PostgreSQL silently truncates an identifier longer than its `max_identifier_length` (63
+    /// bytes by default), so two long names with the same first 63 bytes would name one schema.
+    /// A name longer than the server's limit is therefore refused before anything is created, and
+    /// the schema the session then resolves must be exactly `schema`; if it is not, the creation
+    /// is rolled back and the name refused.
+    ///
     /// # Errors
     ///
-    /// As [`Self::connect_no_tls`].
+    /// As [`Self::connect_no_tls`], and [`StoreError::Backend`] when `schema` is longer than the
+    /// server's identifier limit or does not resolve to itself.
     pub fn connect_in_schema(url: &str, schema: &str) -> Result<Self, StoreError> {
         let mut client = Client::connect(url, NoTls).map_err(|error| StoreError::Unreachable {
             provider: "postgres".to_owned(),
             detail: error.to_string(),
         })?;
+        check_identifier_length(&mut client, schema)?;
         let quoted = quote_identifier(schema);
-        client
+        let mut selecting = client
+            .transaction()
+            .map_err(|error| database("beginning schema selection", &error))?;
+        selecting
             .batch_execute(&format!(
                 "CREATE SCHEMA IF NOT EXISTS {quoted}; SET search_path TO {quoted};"
             ))
             .map_err(|error| database("selecting the schema", &error))?;
+        let resolved: Option<String> = selecting
+            .query_one("SELECT current_schema()", &[])
+            .map_err(|error| database("resolving the schema", &error))?
+            .get(0);
+        if resolved.as_deref() != Some(schema) {
+            // Dropping the transaction rolls back the creation and the `SET` with it.
+            return Err(StoreError::Backend(format!(
+                "schema {schema:?} resolves to {resolved:?} on this server, not to itself"
+            )));
+        }
+        selecting
+            .commit()
+            .map_err(|error| database("committing schema selection", &error))?;
         let mut store = Self {
             client: Mutex::new(client),
         };
@@ -322,13 +349,39 @@ impl PostgresStore {
     /// Called by [`Self::connect`]; public so an operator can run it as a step of its own — schema
     /// creation is a command, not a README instruction.
     ///
+    /// Every statement is additive (`IF NOT EXISTS`), so a database created by an older release
+    /// gains a later index the next time a store opens it. `instances_id_byte_order` exists because
+    /// listings and document pages order and seek by `id COLLATE "C"` (byte order, so every
+    /// provider agrees), and the primary key uses the column's default collation, which that
+    /// expression cannot use: without it a page is a full scan and a sort. Building it takes a
+    /// lock that blocks writes to `instances` for the build; an operator with a large table can run
+    /// `CREATE INDEX CONCURRENTLY instances_id_byte_order ON instances (entity, id COLLATE "C")`
+    /// first, and this statement then finds it and does nothing.
+    ///
+    /// One statement is not additive: `DROP INDEX IF EXISTS instances_document_query`. That index
+    /// cast `document` to `jsonb`, and `jsonb` refuses the escaped U+0000 that a string field may
+    /// hold, so an insert of such a document failed (SQLSTATE 22P05). Its replacement,
+    /// `instances_document_index`, indexes `entity_index_document(document)`: the same `jsonb`
+    /// with every escaped U+0000 and U+0001 in the text rewritten to a pair starting with U+0001,
+    /// a one-to-one mapping of strings, so containment over it matches containment over the
+    /// document. Building it blocks writes to `instances` like the index above.
+    ///
     /// # Errors
     ///
     /// [`StoreError::Backend`] when the server refuses the statements.
     pub fn migrate(&mut self) -> Result<(), StoreError> {
         self.client()?
             .batch_execute(
-                "CREATE TABLE IF NOT EXISTS instances (
+                "CREATE OR REPLACE FUNCTION entity_index_document(document TEXT) RETURNS jsonb
+                     LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $f$
+                     SELECT CASE WHEN strpos(document, chr(92) || 'u') = 0 THEN document::jsonb
+                     ELSE replace(replace(replace(replace(document,
+                         chr(92) || chr(92), chr(1)),
+                         chr(92) || 'u0001', chr(92) || 'u0001' || chr(92) || 'u0001'),
+                         chr(92) || 'u0000', chr(92) || 'u0001' || chr(92) || 'u0002'),
+                         chr(1), chr(92) || chr(92))::jsonb END
+                 $f$;
+                 CREATE TABLE IF NOT EXISTS instances (
                      entity   TEXT   NOT NULL,
                      id       TEXT   NOT NULL,
                      revision BIGINT NOT NULL,
@@ -362,8 +415,11 @@ impl PostgresStore {
                      namespace  TEXT   PRIMARY KEY,
                      next_value BIGINT NOT NULL CHECK (next_value >= 0)
                  );
-                 CREATE INDEX IF NOT EXISTS instances_document_query
-                     ON instances USING GIN ((document::jsonb) jsonb_path_ops);",
+                 DROP INDEX IF EXISTS instances_document_query;
+                 CREATE INDEX IF NOT EXISTS instances_document_index
+                     ON instances USING GIN (entity_index_document(document) jsonb_path_ops);
+                 CREATE INDEX IF NOT EXISTS instances_id_byte_order
+                     ON instances (entity, id COLLATE \"C\");",
             )
             .map_err(|error| database("establishing the schema", &error))
     }
@@ -371,11 +427,17 @@ impl PostgresStore {
     /// Drops everything under `schema`. For a test cleaning up after itself; a deployment does not
     /// call this.
     ///
+    /// A name longer than the server's identifier limit is refused rather than truncated, so it
+    /// can never drop the schema that a different, shorter name owns.
+    ///
     /// # Errors
     ///
-    /// [`StoreError::Backend`] when the server refuses.
+    /// [`StoreError::Backend`] when the server refuses, or when `schema` is longer than the
+    /// server's identifier limit.
     pub fn drop_schema(&mut self, schema: &str) -> Result<(), StoreError> {
-        self.client()?
+        let mut client = self.client()?;
+        check_identifier_length(&mut client, schema)?;
+        client
             .batch_execute(&format!(
                 "DROP SCHEMA IF EXISTS {} CASCADE;",
                 quote_identifier(schema)
@@ -390,6 +452,13 @@ impl DocumentQueryProvider for PostgresStore {
     }
 }
 
+/// One page of matching documents after a cursor, in byte order of `id`; served by the
+/// `instances_id_byte_order` index rather than a scan and a sort.
+const DOCUMENT_PAGE: &str = "SELECT document FROM instances
+     WHERE entity = $1 AND id COLLATE \"C\" > $2
+       AND entity_index_document(document) @> entity_index_document($3::text)
+     ORDER BY id COLLATE \"C\" LIMIT $4";
+
 fn query_documents(
     client: &mut impl GenericClient,
     query: &DocumentQuery,
@@ -400,13 +469,7 @@ fn query_documents(
     let matching = serde_json::to_string(&serde_json::json!({ "fields": query.matching }))
         .map_err(|error| QueryError::Invalid(error.to_string()))?;
     let rows = client
-        .query(
-            "SELECT document FROM instances
-             WHERE entity = $1 AND id COLLATE \"C\" > $2
-               AND document::jsonb @> $3::text::jsonb
-             ORDER BY id COLLATE \"C\" LIMIT $4",
-            &[&query.entity, &after, &matching, &limit],
-        )
+        .query(DOCUMENT_PAGE, &[&query.entity, &after, &matching, &limit])
         .map_err(|error| QueryError::from(database("querying instances", &error)))?;
     let items = rows
         .into_iter()
@@ -448,32 +511,7 @@ impl PostgresSession<'_> {
 
     /// Reads one instance's events from this transaction's current view, oldest first.
     pub fn events(&mut self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
-        let mut events: Vec<DomainEvent> = self
-            .transaction
-            .query(
-                "SELECT document FROM events WHERE entity = $1 AND id = $2
-                 ORDER BY revision, position",
-                &[&entity, &id],
-            )
-            .map_err(|error| database("reading events in a session", &error))?
-            .into_iter()
-            .map(|row| {
-                let document: String = row.get(0);
-                serde_json::from_str(&document)
-                    .map_err(|error| backend("parsing an event in a session", &error))
-            })
-            .collect::<Result<_, _>>()?;
-        for row in self.transaction.query(
-            "SELECT document FROM history WHERE entity = $1 AND id = $2 AND kind = 'decision' ORDER BY position",
-            &[&entity, &id],
-        ).map_err(|e| database("reading session history", &e))? {
-            let document: String = row.get(0);
-            let envelope: Envelope<DecisionRecord> = serde_json::from_str(&document)
-                .map_err(|e| backend("parsing session history", &e))?;
-            events.extend(envelope.record.events);
-        }
-        events.sort_by_key(|event| event.revision);
-        Ok(events)
+        read_events(&mut self.transaction, entity, id)
     }
 
     /// Atomically reserves `count` monotonically increasing values in `namespace`.
@@ -558,6 +596,28 @@ fn quote_identifier(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
+/// Refuses an identifier the server would truncate: PostgreSQL keeps only the first
+/// `max_identifier_length` bytes of a name, so a longer one would silently name another object.
+fn check_identifier_length(client: &mut Client, name: &str) -> Result<(), StoreError> {
+    let limit: String = client
+        .query_one("SELECT current_setting('max_identifier_length')", &[])
+        .map_err(|error| database("reading the identifier limit", &error))?
+        .get(0);
+    let limit: usize = limit.parse().map_err(|_| {
+        StoreError::Backend(format!(
+            "the server reports identifier limit {limit:?}, which is not a byte count"
+        ))
+    })?;
+    if name.len() > limit {
+        return Err(StoreError::Backend(format!(
+            "schema name {name:?} is {} bytes; this server truncates identifiers to {limit} bytes, \
+             so it would name a different schema",
+            name.len()
+        )));
+    }
+    Ok(())
+}
+
 impl StateProvider for PostgresStore {
     fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
         let mut client = self.client()?;
@@ -602,28 +662,51 @@ impl StateProvider for PostgresStore {
 
 impl EventProvider for PostgresStore {
     fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
-        let mut client = self.client()?;
-        let rows = client
-            .query(
-                "SELECT document FROM events WHERE entity = $1 AND id = $2 \
-                 ORDER BY revision, position",
-                &[&entity, &id],
-            )
-            .map_err(|error| database("reading events", &error))?;
-        let mut events: Vec<DomainEvent> = rows
-            .iter()
-            .map(|row| {
-                let text: String = row.get(0);
-                serde_json::from_str(&text).map_err(|error| backend("parsing an event", &error))
-            })
-            .collect::<Result<_, _>>()?;
-        drop(client);
-        for record in self.records(entity, id)? {
-            events.extend(record.record.events);
-        }
-        events.sort_by_key(|event| event.revision);
-        Ok(events)
+        read_events(&mut *self.client()?, entity, id)
     }
+}
+
+/// One subject's events from both places they are kept: the bare-event table and the events inside
+/// recorded decisions, oldest first.
+///
+/// One statement, so one snapshot. Under `READ COMMITTED` every statement takes a snapshot of its
+/// own, so two reads would let a bare revision and then a recorded one commit between them: the
+/// second read would show the later recorded event and the first would already have missed the
+/// bare one before it — a history with a missing middle that sorting cannot repair. Bare rows come
+/// first in revision and position order, then decisions in history order; the stable sort by
+/// revision afterwards interleaves them as two separate reads used to.
+fn read_events(
+    client: &mut impl GenericClient,
+    entity: &str,
+    id: &str,
+) -> Result<Vec<DomainEvent>, StoreError> {
+    let rows = client
+        .query(
+            "SELECT 0 AS source, revision, position, document FROM events \
+             WHERE entity = $1 AND id = $2 \
+             UNION ALL \
+             SELECT 1, 0, position, document FROM history \
+             WHERE entity = $1 AND id = $2 AND kind = 'decision' \
+             ORDER BY source, revision, position",
+            &[&entity, &id],
+        )
+        .map_err(|error| database("reading events", &error))?;
+    let mut events: Vec<DomainEvent> = Vec::with_capacity(rows.len());
+    for row in rows {
+        let source: i32 = row.get(0);
+        let text: String = row.get(3);
+        if source == 0 {
+            events.push(
+                serde_json::from_str(&text).map_err(|error| backend("parsing an event", &error))?,
+            );
+        } else {
+            let envelope: Envelope<DecisionRecord> = serde_json::from_str(&text)
+                .map_err(|error| backend("parsing a history record", &error))?;
+            events.extend(envelope.record.events);
+        }
+    }
+    events.sort_by_key(|event| event.revision);
+    Ok(events)
 }
 
 impl HistoryProvider for PostgresStore {
@@ -704,27 +787,53 @@ fn write_decision(
             &[&entity, &id, &revision],
         )
         .map_err(|error| database("marking the legacy snapshot boundary", &error))?;
-    for event in &decision.record.events {
+    // One position read per revision under the instance lock taken above, then one insert for
+    // every event: positions continue from what each revision already holds, consecutively and
+    // in the order the decision emitted them.
+    let events = &decision.record.events;
+    let mut next_positions: BTreeMap<i64, i64> = BTreeMap::new();
+    let (mut revisions, mut positions, mut documents) = (
+        Vec::with_capacity(events.len()),
+        Vec::with_capacity(events.len()),
+        Vec::with_capacity(events.len()),
+    );
+    for event in events {
         let document = serde_json::to_string(event)
             .map_err(|error| backend("serialising an event", &error))?;
         let at_revision = i64::try_from(event.revision)
             .map_err(|_| StoreError::Backend("the revision does not fit a BIGINT".to_owned()))?;
-        let position: i64 = transaction
-            .query_one(
-                "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
-                 WHERE entity = $1 AND id = $2 AND revision = $3",
-                &[&entity, &id, &at_revision],
-            )
-            .map_err(|error| database("reading the event position", &error))?
-            .get(0);
-        transaction
-            .execute(
-                "INSERT INTO events (entity, id, revision, position, document) \
-                 VALUES ($1, $2, $3, $4, $5)",
-                &[&entity, &id, &at_revision, &position, &document],
-            )
-            .map_err(|error| database("appending an event", &error))?;
+        let next = match next_positions.entry(at_revision) {
+            Entry::Occupied(next) => next.into_mut(),
+            Entry::Vacant(vacant) => vacant.insert(
+                transaction
+                    .query_one(
+                        "SELECT COALESCE(MAX(position) + 1, 0) FROM events \
+                         WHERE entity = $1 AND id = $2 AND revision = $3",
+                        &[&entity, &id, &at_revision],
+                    )
+                    .map_err(|error| database("reading the event position", &error))?
+                    .get(0),
+            ),
+        };
+        positions.push(*next);
+        *next = next.checked_add(1).ok_or_else(|| {
+            StoreError::Backend("the event position does not fit a BIGINT".to_owned())
+        })?;
+        revisions.push(at_revision);
+        documents.push(document);
     }
+    if documents.is_empty() {
+        return Ok(());
+    }
+    transaction
+        .execute(
+            "INSERT INTO events (entity, id, revision, position, document) \
+             SELECT $1, $2, appended.revision, appended.position, appended.document \
+             FROM UNNEST($3::BIGINT[], $4::BIGINT[], $5::TEXT[]) \
+                 AS appended (revision, position, document)",
+            &[&entity, &id, &revisions, &positions, &documents],
+        )
+        .map_err(|error| database("appending the events", &error))?;
     Ok(())
 }
 
@@ -732,9 +841,14 @@ fn lock_record(
     transaction: &mut postgres::Transaction<'_>,
     record_id: &str,
 ) -> Result<(), StoreError> {
+    // Advisory locks are database-wide, and record ids are unique per `history` table. The key
+    // is seeded with the identity of the `history` table this transaction resolves, so writers of
+    // one record id in different schemas do not wait on each other, and writers in one schema
+    // still do.
     transaction
         .query_one(
-            "SELECT pg_advisory_xact_lock(hashtextextended($1, 412731))",
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, \
+             hashtextextended('history'::regclass::oid::text, 412731)))",
             &[&record_id],
         )
         .map_err(|e| database("locking record identity", &e))?;
@@ -913,6 +1027,26 @@ impl LegacyStoreSource for PostgresStore {
                 &[],
             )
             .map_err(|error| database("acquiring legacy instances", &error))?;
+        // Every subject's origin, bare events and history, read as three ordered statements in this
+        // snapshot rather than three per subject: acquisition costs four statements whatever the
+        // store holds. Every grouped row belongs to a coordinate above, because the coordinates are
+        // the union of these tables.
+        let mut origins = grouped(
+            &mut transaction,
+            "SELECT entity, id, revision FROM legacy_origins",
+            "acquiring legacy origins",
+        )?;
+        let mut events = grouped(
+            &mut transaction,
+            "SELECT entity, id, document FROM events ORDER BY entity, id, revision, position",
+            "acquiring legacy events",
+        )?;
+        let mut histories_by_subject = grouped(
+            &mut transaction,
+            "SELECT entity, id, position, kind, record_id, document FROM history \
+             ORDER BY entity, id, position",
+            "acquiring legacy history",
+        )?;
         let mut histories = Vec::with_capacity(coordinates.len());
         for row in coordinates {
             let entity: String = row.get(0);
@@ -934,13 +1068,14 @@ impl LegacyStoreSource for PostgresStore {
                     "legacy PostgreSQL instance row {entity:?}/{id:?} substitutes its identity or revision"
                 )));
             }
-            let legacy_origin = transaction
-                .query_opt(
-                    "SELECT revision FROM legacy_origins WHERE entity = $1 AND id = $2",
-                    &[&entity, &id],
-                )
-                .map_err(|error| database("acquiring a legacy origin", &error))?
-                .map(|row| revision_of(row.get::<_, i64>(0)))
+            let subject = (entity, id);
+            let origin_rows = origins.remove(&subject).unwrap_or_default();
+            let event_rows = events.remove(&subject).unwrap_or_default();
+            let history_rows = histories_by_subject.remove(&subject).unwrap_or_default();
+            let (entity, id) = subject;
+            let legacy_origin = origin_rows
+                .first()
+                .map(|row| revision_of(row.get::<_, i64>(2)))
                 .transpose()?;
             if legacy_origin.is_some_and(|revision| revision > instance.revision) {
                 return Err(StoreError::Backend(format!(
@@ -948,28 +1083,15 @@ impl LegacyStoreSource for PostgresStore {
                     instance.revision
                 )));
             }
-            let has_bare_events: bool = transaction
-                .query_one(
-                    "SELECT EXISTS(SELECT 1 FROM events WHERE entity = $1 AND id = $2)",
-                    &[&entity, &id],
-                )
-                .map_err(|error| database("checking legacy event evidence", &error))?
-                .get(0);
-            let history_rows = transaction
-                .query(
-                    "SELECT position, kind, record_id, document FROM history \
-                     WHERE entity = $1 AND id = $2 ORDER BY position",
-                    &[&entity, &id],
-                )
-                .map_err(|error| database("acquiring legacy history", &error))?;
+            let has_bare_events = !event_rows.is_empty();
             let mut evidence = Vec::new();
             let mut decision_position = 0_u64;
             let mut observation_position = 0_u64;
             for row in history_rows {
-                let position = revision_of(row.get::<_, i64>(0))?;
-                let kind: String = row.get(1);
-                let record_id: String = row.get(2);
-                let document: String = row.get(3);
+                let position = revision_of(row.get::<_, i64>(2))?;
+                let kind: String = row.get(3);
+                let record_id: String = row.get(4);
+                let document: String = row.get(5);
                 let (entry, per_kind_position) = match kind.as_str() {
                     "decision" => {
                         let envelope: Envelope<DecisionRecord> = serde_json::from_str(&document)
@@ -1030,15 +1152,8 @@ impl LegacyStoreSource for PostgresStore {
                     .map_err(|error| StoreError::Backend(error.to_string()))?,
                 ));
             }
-            for row in transaction
-                .query(
-                    "SELECT document FROM events WHERE entity = $1 AND id = $2 \
-                     ORDER BY revision, position",
-                    &[&entity, &id],
-                )
-                .map_err(|error| database("acquiring legacy events", &error))?
-            {
-                let document: String = row.get(0);
+            for row in event_rows {
+                let document: String = row.get(2);
                 evidence.push(LegacyEvidence::Event(
                     serde_json::from_str(&document)
                         .map_err(|error| backend("parsing a legacy event", &error))?,
@@ -1066,6 +1181,26 @@ impl LegacyStoreSource for PostgresStore {
         drop(client);
         LegacyStoreSnapshot::new(source_id, histories)
     }
+}
+
+/// The rows of one statement whose first two columns are `entity` and `id`, grouped by subject in
+/// the order the statement returned them.
+fn grouped(
+    transaction: &mut postgres::Transaction<'_>,
+    sql: &str,
+    operation: &str,
+) -> Result<BTreeMap<(String, String), Vec<postgres::Row>>, StoreError> {
+    let mut grouped: BTreeMap<(String, String), Vec<postgres::Row>> = BTreeMap::new();
+    for row in transaction
+        .query(sql, &[])
+        .map_err(|error| database(operation, &error))?
+    {
+        grouped
+            .entry((row.get(0), row.get(1)))
+            .or_default()
+            .push(row);
+    }
+    Ok(grouped)
 }
 
 impl PostgresStore {
@@ -1099,5 +1234,179 @@ impl PostgresStore {
                 "the connection is poisoned: a previous call panicked while holding it".to_owned(),
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PostgresStore, DOCUMENT_PAGE};
+
+    /// Every `Node Type` in an `EXPLAIN (FORMAT JSON)` plan, outermost first.
+    fn node_types(plan: &serde_json::Value, into: &mut Vec<String>) {
+        if let Some(kind) = plan.get("Node Type").and_then(serde_json::Value::as_str) {
+            let index = plan
+                .get("Index Name")
+                .and_then(serde_json::Value::as_str)
+                .map_or(String::new(), |name| format!(" using {name}"));
+            into.push(format!("{kind}{index}"));
+        }
+        for child in plan
+            .get("Plans")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            node_types(child, into);
+        }
+    }
+
+    #[test]
+    fn a_document_page_after_a_cursor_reads_an_index_in_byte_order_without_sorting() {
+        let Some(url) = std::env::var("ENTITY_POSTGRES_URL")
+            .ok()
+            .filter(|url| !url.trim().is_empty())
+        else {
+            eprintln!("skipped: ENTITY_POSTGRES_URL unset, so no server to hold this provider to");
+            return;
+        };
+        let schema = format!("entity_test_{}_document_page_plan", std::process::id());
+        let mut store = PostgresStore::connect_in_schema(&url, &schema).unwrap_or_else(|error| {
+            panic!("ENTITY_POSTGRES_URL is set and the server refused: {error}")
+        });
+        let plan: String = {
+            let mut client = store.client().expect("connection");
+            // 16,384 subjects of one entity, as the review measured; a page of two after the
+            // midpoint. With the planner's statistics current, only an index whose order is the
+            // query's byte order avoids reading half the table and sorting it.
+            client
+                .batch_execute(
+                    "INSERT INTO instances (entity, id, revision, document)
+                     SELECT 'ticket', lpad(n::text, 6, '0'), 1,
+                            json_build_object('fields', json_build_object('title', 'T'))::text
+                     FROM generate_series(1, 16384) AS n;
+                     ANALYZE instances;",
+                )
+                .expect("seeded");
+            // The exact shipped statement, prepared and explained over the simple protocol, which
+            // returns the JSON plan as text.
+            client
+                .batch_execute(&format!(
+                    "PREPARE document_page (text, text, text, bigint) AS {DOCUMENT_PAGE}"
+                ))
+                .expect("prepared");
+            client
+                .simple_query(
+                    "EXPLAIN (FORMAT JSON) \
+                     EXECUTE document_page ('ticket', '008192', '{\"fields\":{}}', 3)",
+                )
+                .expect("explains")
+                .into_iter()
+                .find_map(|message| match message {
+                    postgres::SimpleQueryMessage::Row(row) => row.get(0).map(str::to_owned),
+                    _ => None,
+                })
+                .expect("a plan row")
+        };
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("JSON plan");
+        let mut nodes = Vec::new();
+        node_types(&plan[0]["Plan"], &mut nodes);
+        assert!(
+            nodes
+                .iter()
+                .any(|node| node == "Index Scan using instances_id_byte_order"),
+            "the page must be read from the byte-order index: {nodes:?}"
+        );
+        assert!(
+            !nodes.iter().any(|node| node == "Sort"),
+            "the page must come in index order, not from a sort: {nodes:?}"
+        );
+        store.drop_schema(&schema).expect("dropped");
+    }
+
+    /// Review E23: a string field holding U+0000 (serialized as the escape `\u0000`) is admitted
+    /// by the kernel, and the old `document::jsonb` index refused to insert it (SQLSTATE 22P05).
+    #[test]
+    fn a_document_holding_u0000_saves_and_a_page_finds_exactly_the_documents_it_contains() {
+        let Some(url) = std::env::var("ENTITY_POSTGRES_URL")
+            .ok()
+            .filter(|url| !url.trim().is_empty())
+        else {
+            eprintln!("skipped: ENTITY_POSTGRES_URL unset, so no server to hold this provider to");
+            return;
+        };
+        let schema = format!("entity_test_{}_document_u0000", std::process::id());
+        let mut store = PostgresStore::connect_in_schema(&url, &schema).unwrap_or_else(|error| {
+            panic!("ENTITY_POSTGRES_URL is set and the server refused: {error}")
+        });
+        {
+            // A database from an older release still has the old index; migrate drops it.
+            let mut client = store.client().expect("connection");
+            client
+                .batch_execute(
+                    "CREATE INDEX instances_document_query
+                         ON instances USING GIN ((document::jsonb) jsonb_path_ops);",
+                )
+                .expect("old index");
+        }
+        store.migrate().expect("migrated");
+        let mut client = store.client().expect("connection");
+        let indexes: Vec<String> = client
+            .query(
+                "SELECT indexname::text FROM pg_indexes
+                 WHERE schemaname = current_schema() AND tablename = 'instances'",
+                &[],
+            )
+            .expect("indexes")
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+        assert!(
+            !indexes
+                .iter()
+                .any(|name| name == "instances_document_query"),
+            "{indexes:?}"
+        );
+        assert!(
+            indexes
+                .iter()
+                .any(|name| name == "instances_document_index"),
+            "{indexes:?}"
+        );
+        // Labels whose JSON text differs only around the escapes the index rewrites.
+        let labels = [
+            ("nul", r"a\u0000b"),
+            ("one-two", r"a\u0001\u0002b"),
+            ("one", r"a\u0001b"),
+            ("escaped-backslash", r"a\\u0000b"),
+            ("backslash-nul", r"a\\\u0000b"),
+            ("plain", "ab"),
+        ];
+        for (id, label) in labels {
+            let document = format!(r#"{{"fields":{{"label":"{label}"}}}}"#);
+            client
+                .execute(
+                    "INSERT INTO instances (entity, id, revision, document) VALUES ('c', $1, 1, $2)",
+                    &[&id, &document],
+                )
+                .unwrap_or_else(|error| panic!("{id} is saved: {error}"));
+        }
+        let page = client.prepare(DOCUMENT_PAGE).expect("prepared");
+        for (id, label) in labels {
+            let filter = format!(r#"{{"fields":{{"label":"{label}"}}}}"#);
+            let matched: Vec<String> = client
+                .query(&page, &[&"c", &"", &filter, &100_i64])
+                .expect("page")
+                .iter()
+                .map(|row| row.get::<_, String>(0))
+                .collect();
+            assert_eq!(matched.len(), 1, "{id}: {matched:?}");
+            assert!(matched[0].contains(label), "{id}: {matched:?}");
+        }
+        let everything = client
+            .query(&page, &[&"c", &"", &r#"{"fields":{}}"#, &100_i64])
+            .expect("page");
+        assert_eq!(everything.len(), labels.len());
+        drop(client);
+        store.drop_schema(&schema).expect("dropped");
     }
 }

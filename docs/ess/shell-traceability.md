@@ -17,7 +17,7 @@ crate into a publisher, projection engine, asynchronous executor, or source of a
 | R-88: changed operation, revision, arguments or provenance conflicts | saved command/provenance comparison in `StoredRuntime::execute`; exact envelope resealing | `memory-changed-retry-conflicts`, `file-changed-retry-conflicts` |
 | R-86, R-87: complete recording provenance validated before provider commit | `RecordedCommit::new`, `Recording::seal`, `Envelope::validate` in `entity-store`; shell maps failure to `ShellError::Recording` | `memory-invalid-recording-publishes-nothing`, `file-invalid-recording-publishes-nothing` |
 | Stable provider error kinds/boundaries, including unavailable versus absent | `ShellError::{kind,boundary}`; `StateProvider`, `EventProvider`, `HistoryProvider`, `Store` calls | `provider-failures-preserve-classification`, `file-provider-failures-preserve-classification` |
-| A failed state/history read cannot become retry success | `StoredRuntime::execute` reads current state before history and propagates either failure | `retry-does-not-hide-read-failure` |
+| A failed state/history read cannot become retry success | `StoredRuntime::execute` reads state and history through `Store::load_with_history`, whose default reads current state before history and propagates either failure | `retry-does-not-hide-read-failure` |
 | Kernel evaluation precedes recording validation | ordering in `StoredRuntime::{create,execute}` | `kernel-refusal-precedes-recording-validation` |
 | Duplicate events stay ordered and zero-event execution advances revision | actual records returned by the kernel and stored by providers | `memory-round-trip`, `file-round-trip` |
 

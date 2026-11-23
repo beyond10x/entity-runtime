@@ -10,6 +10,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -348,14 +349,18 @@ pub enum LoadedDecision<'definition> {
 }
 
 /// An opaque continuation bound to one loaded subject and one selected outcome.
+///
+/// It holds the evaluation up to the host-fulfillment boundary — the normalized arguments, the
+/// selected branch and the fields its `set` and `set_if_present` produced — so
+/// [`complete`](Self::complete) resumes there and evaluates no assignment a second time.
 #[derive(Debug)]
 pub struct PreparedOutcome<'definition> {
     definition: &'definition ValidatedDefinition,
     operation: String,
     instance: EntityInstance,
-    arguments: Map<String, Value>,
     outcome: String,
     response_check: ResponseCheck,
+    settled: Settled<'definition>,
 }
 
 impl PreparedOutcome<'_> {
@@ -390,11 +395,13 @@ impl PreparedOutcome<'_> {
         self,
         actions: BTreeMap<String, OperationFieldAction>,
     ) -> Result<Evaluation, CoreError> {
-        decide_with_fulfillments(
+        // Steps 0 to 8 ran in `select_with` against this same instance and arguments; the actions
+        // are the only new input, and they enter at step 8's fulfillment.
+        resume(
             self.definition,
             &self.instance,
             &self.operation,
-            Value::Object(self.arguments),
+            self.settled,
             Some(&actions),
             self.response_check,
         )
@@ -454,26 +461,36 @@ impl<'definition> PreparedOperation<'definition> {
             });
         }
         ensure_state_known(self.definition, instance)?;
-        match decide_with_fulfillments(
+        let settled = match settle(
             self.definition,
             instance,
             &self.operation,
-            Value::Object(self.arguments.clone()),
+            Value::Object(self.arguments),
+        )? {
+            Settlement::Refused(refusal) => {
+                return Ok(LoadedDecision::Complete(Evaluation::Refused(refusal)))
+            }
+            Settlement::Settled(settled) => settled,
+        };
+        if settled.requires_fulfillment() {
+            return Ok(LoadedDecision::NeedsFulfillment(PreparedOutcome {
+                definition: self.definition,
+                outcome: settled.selected.name.unwrap_or_default().to_owned(),
+                operation: self.operation,
+                instance: instance.clone(),
+                response_check: self.response_check,
+                settled,
+            }));
+        }
+        resume(
+            self.definition,
+            instance,
+            &self.operation,
+            settled,
             None,
             self.response_check,
-        ) {
-            Err(CoreError::FulfillmentRequired { outcome, .. }) => {
-                Ok(LoadedDecision::NeedsFulfillment(PreparedOutcome {
-                    definition: self.definition,
-                    operation: self.operation,
-                    instance: instance.clone(),
-                    arguments: self.arguments,
-                    outcome,
-                    response_check: self.response_check,
-                }))
-            }
-            result => result.map(LoadedDecision::Complete),
-        }
+        )
+        .map(LoadedDecision::Complete)
     }
 }
 
@@ -1276,6 +1293,8 @@ pub fn decide(
     )
 }
 
+/// The whole step table in one call: [`settle`] runs steps 0 to 8 up to the host's fulfillment,
+/// [`resume`] runs the rest.
 fn decide_with_fulfillments(
     definition: &ValidatedDefinition,
     instance: &EntityInstance,
@@ -1284,6 +1303,59 @@ fn decide_with_fulfillments(
     fulfillments: Option<&BTreeMap<String, OperationFieldAction>>,
     response_check: ResponseCheck,
 ) -> Result<Evaluation, CoreError> {
+    match settle(definition, instance, operation_name, arguments)? {
+        Settlement::Refused(refusal) => Ok(Evaluation::Refused(refusal)),
+        Settlement::Settled(settled) => resume(
+            definition,
+            instance,
+            operation_name,
+            settled,
+            fulfillments,
+            response_check,
+        ),
+    }
+}
+
+/// One operation evaluated through step 8's `set` and `set_if_present`, stopped where the host's
+/// fulfillment actions enter.
+///
+/// Everything here is a function of the definition, the loaded instance and the arguments, none of
+/// which the actions change, so [`PreparedOutcome`] keeps it and [`resume`] continues from it
+/// rather than evaluating steps 0 to 8 again.
+#[derive(Debug)]
+struct Settled<'definition> {
+    operation: &'definition OperationDefinition,
+    /// The arguments as step 3 normalized them.
+    args: Map<String, Value>,
+    selected: Branch<'definition>,
+    /// The pre-operation fields after the branch's `set` and `set_if_present`.
+    new_fields: Map<String, Value>,
+    /// The fields the branch's `set` cleared.
+    removed: BTreeSet<String>,
+}
+
+impl Settled<'_> {
+    /// Whether the selected branch requires host field actions before step 9.
+    fn requires_fulfillment(&self) -> bool {
+        self.selected
+            .fulfills
+            .is_some_and(|requirements| !requirements.is_empty())
+    }
+}
+
+/// What [`settle`] reached: a refusing branch (step 6) or the fulfillment boundary.
+enum Settlement<'definition> {
+    Refused(Refusal),
+    Settled(Settled<'definition>),
+}
+
+/// Steps 0 to 8, short of the host's fulfillment actions.
+fn settle<'definition>(
+    definition: &'definition ValidatedDefinition,
+    instance: &EntityInstance,
+    operation_name: &str,
+    arguments: Value,
+) -> Result<Settlement<'definition>, CoreError> {
     // Steps 0 and 1, in the order the code has always checked them.
     ensure_instance_matches(definition, instance)?;
 
@@ -1353,7 +1425,7 @@ fn decide_with_fulfillments(
 
     // Step 6.
     if let Some((name, refusal)) = selected.refusal() {
-        return Ok(Evaluation::Refused(Refusal {
+        return Ok(Settlement::Refused(Refusal {
             outcome: name.to_owned(),
             error: refusal.error.clone(),
             message: refusal.message.clone(),
@@ -1382,6 +1454,8 @@ fn decide_with_fulfillments(
     let mut new_fields = canonical_object(old_fields.clone());
     let mut removed = BTreeSet::new();
     for (field, value) in selected.set {
+        #[cfg(test)]
+        definition.count_assignment_evaluation();
         match assigned_value(operation_name, field, value, &context)? {
             Some(value) => {
                 new_fields.insert(field.clone(), value);
@@ -1393,6 +1467,33 @@ fn decide_with_fulfillments(
         }
     }
     insert_present_arguments(&mut new_fields, selected.set_if_present, &args);
+    Ok(Settlement::Settled(Settled {
+        operation,
+        args,
+        selected,
+        new_fields,
+        removed,
+    }))
+}
+
+/// Step 8's host fulfillment, then steps 9 to 15, continuing what [`settle`] produced for the same
+/// definition, instance and operation.
+fn resume(
+    definition: &ValidatedDefinition,
+    instance: &EntityInstance,
+    operation_name: &str,
+    settled: Settled<'_>,
+    fulfillments: Option<&BTreeMap<String, OperationFieldAction>>,
+    response_check: ResponseCheck,
+) -> Result<Evaluation, CoreError> {
+    let Settled {
+        operation,
+        args,
+        selected,
+        mut new_fields,
+        mut removed,
+    } = settled;
+    let old_fields = &instance.fields;
     let requirements = selected.fulfills.unwrap_or(&EMPTY_FULFILLMENTS);
     if !requirements.is_empty() {
         let Some(actions) = fulfillments else {
@@ -1576,6 +1677,7 @@ static EMPTY_PRESENT_ARGUMENTS: BTreeMap<String, PresentArgument> = BTreeMap::ne
 /// needs.
 ///
 /// `kernel/1` is `service/1` with one implicit branch, so there is one evaluation path and not two.
+#[derive(Debug)]
 struct Branch<'a> {
     name: Option<&'a str>,
     to_state: String,
@@ -1894,11 +1996,38 @@ fn insert_present_arguments(
     }
 }
 
+/// The definition snapshot a decision record carries, computed once per validated handle.
 fn definition_snapshot(definition: &ValidatedDefinition) -> EntityDefinition {
-    let value = serde_json::to_value(definition.as_definition())
-        .expect("an EntityDefinition always serializes to JSON");
-    serde_json::from_value(canonicalize(value))
+    definition.record_form().clone()
+}
+
+/// The definition as a decision record carries it: serialized, every JSON object's keys put in
+/// canonical order, and read back, so the record's bytes do not depend on the order a caller built
+/// a map in.
+///
+/// [`ValidatedDefinition::new`] calls this once; every decision reuses the result.
+pub(crate) fn record_form(definition: &EntityDefinition) -> EntityDefinition {
+    let value =
+        serde_json::to_value(definition).expect("an EntityDefinition always serializes to JSON");
+    // `canonicalize` only reorders object keys. When `serde_json` keeps its maps sorted (no
+    // `preserve_order` feature anywhere in the build) every object already is in that order and
+    // the rebuild is skipped; the result is the same value either way.
+    let value = if maps_are_sorted() {
+        value
+    } else {
+        canonicalize(value)
+    };
+    serde_json::from_value(value)
         .expect("canonicalizing JSON cannot change an EntityDefinition's shape")
+}
+
+/// Whether `serde_json::Map` iterates in key order, which it does unless a crate in the build
+/// enables `serde_json`'s `preserve_order` feature.
+fn maps_are_sorted() -> bool {
+    let mut probe = Map::new();
+    probe.insert("b".to_owned(), Value::Null);
+    probe.insert("a".to_owned(), Value::Null);
+    probe.keys().next().map(String::as_str) == Some("a")
 }
 
 /// Defaults and validates operation arguments without evaluating state-dependent rules.
@@ -2123,6 +2252,17 @@ fn quantify_before_load(
             Quantification::All => result.and(answer),
             Quantification::Any => result.or(answer),
         };
+        // A known `False` under `for_all` or `True` under `for_any` absorbs every later element,
+        // `NeedsSubject` included, so the answer is settled; the post-load `quantify` stops at the
+        // same point. `Unknown` and `NeedsSubject` settle nothing and the walk goes on.
+        let settled = matches!(
+            (mode, result),
+            (Quantification::All, PartialTruth::Known(Truth::False))
+                | (Quantification::Any, PartialTruth::Known(Truth::True))
+        );
+        if settled {
+            break;
+        }
     }
     Ok(result)
 }
@@ -2245,9 +2385,9 @@ fn evaluate_condition(
             // observation, and in `any: [{exists: $fields.a}, {eq: [$fields.b, 1]}]` naming
             // `$fields.a` beside the genuinely unreadable `$fields.b` would send whoever reads the
             // refusal after the wrong one.
-            let mut answered = Unobserved::new();
-            let resolved = resolve_operand(exists, context, bindings, &mut answered)?;
-            Ok(Truth::from_bool(resolved.is_some()))
+            Ok(Truth::from_bool(operand_present(
+                exists, context, bindings,
+            )?))
         }
         Condition::Before { before } => {
             compare_instants(before, context, bindings, unobserved, |left, right| {
@@ -2765,6 +2905,35 @@ fn resolve_pair(
     Ok((left, right))
 }
 
+/// Whether an operand resolves to something to observe: exactly `resolve_operand(..).is_some()`,
+/// without copying what a reference finds.
+///
+/// A `$` reference is answered through a borrowed path, so `exists: $fields.inventory` on a long
+/// list reads no element of it; a computed answer (a `service/1` count) is the only value made.
+/// Every other operand — a `$$` escape, a literal, a list or mapping — goes through
+/// [`resolve_operand`] unchanged, since a list or mapping operand is present only when every
+/// reference inside it is. Nothing is recorded as unobserved, as `exists` requires.
+fn operand_present(
+    value: &Value,
+    context: &TemplateContext<'_>,
+    bindings: Option<&Bindings<'_>>,
+) -> Result<bool, CoreError> {
+    match value {
+        Value::String(expression)
+            if expression.starts_with('$') && !expression.starts_with("$$") =>
+        {
+            Ok(!matches!(
+                resolve_expression_ref(expression, context, bindings)?.as_deref(),
+                None | Some(Value::Null)
+            ))
+        }
+        _ => {
+            let mut answered = Unobserved::new();
+            Ok(resolve_operand(value, context, bindings, &mut answered)?.is_some())
+        }
+    }
+}
+
 /// Resolves an operand, where nothing to observe is `None` rather than an error — which is what
 /// makes a comparison against it [`Truth::Unknown`].
 ///
@@ -3095,6 +3264,16 @@ fn resolve_expression_optional(
     context: &TemplateContext<'_>,
     bindings: Option<&Bindings<'_>>,
 ) -> Result<Option<Value>, CoreError> {
+    Ok(resolve_expression_ref(expression, context, bindings)?.map(Cow::into_owned))
+}
+
+/// [`resolve_expression_optional`] without copying a stored value: a path into the arguments, the
+/// fields or a binder's element is borrowed, and every other answer is owned exactly as before.
+fn resolve_expression_ref<'v>(
+    expression: &str,
+    context: &TemplateContext<'v>,
+    bindings: Option<&Bindings<'v>>,
+) -> Result<Option<Cow<'v, Value>>, CoreError> {
     // A binder extends whichever scope encloses it, for the duration of its body only: `$<bind>` is
     // the element and `$<bind>.<path>` is a path into it, while every address whose first segment is
     // not a binder passes through untouched. An inner binder wins over an outer one of the same
@@ -3108,8 +3287,8 @@ fn resolve_expression_optional(
             // Registration reached the element's declaration through declared fields only, so it
             // is as checked as a schema root's field.
             return Ok(match path {
-                None => Some(element.clone()),
-                Some(path) => walk(
+                None => Some(Cow::Borrowed(element)),
+                Some(path) => walk_ref(
                     element,
                     path,
                     declared,
@@ -3121,20 +3300,21 @@ fn resolve_expression_optional(
         }
     }
 
+    let owned = |value: Value| Ok(Some(Cow::Owned(value)));
     match expression {
         "$id" => context
             .id
-            .map(|id| Some(Value::String(id.to_owned())))
+            .map(|id| Some(Cow::Owned(Value::String(id.to_owned()))))
             .ok_or_else(pre_address_identity_error),
-        "$entity" => Ok(Some(Value::String(context.definition.entity.clone()))),
-        "$version" => Ok(Some(Value::from(context.definition.version))),
+        "$entity" => owned(Value::String(context.definition.entity.clone())),
+        "$version" => owned(Value::from(context.definition.version)),
         "$from_state" => Ok(context
             .from_state
-            .map(|state| Value::String(state.to_owned()))),
-        "$to_state" | "$state" => Ok(Some(Value::String(context.to_state.to_owned()))),
-        "$args" => Ok(Some(Value::Object(context.args.clone()))),
-        "$fields" => Ok(Some(Value::Object(context.new_fields.clone()))),
-        "$old_fields" => Ok(Some(Value::Object(context.old_fields.clone()))),
+            .map(|state| Cow::Owned(Value::String(state.to_owned())))),
+        "$to_state" | "$state" => owned(Value::String(context.to_state.to_owned())),
+        "$args" => owned(Value::Object(context.args.clone())),
+        "$fields" => owned(Value::Object(context.new_fields.clone())),
+        "$old_fields" => owned(Value::Object(context.old_fields.clone())),
         _ => {
             let service = context.service();
             for (prefix, map, schema) in [
@@ -3151,9 +3331,10 @@ fn resolve_expression_optional(
                 ),
             ] {
                 if let Some(path) = expression.strip_prefix(prefix) {
-                    // Walk by reference and clone the leaf: a `$fields.x` reference used to copy
-                    // every field of the instance to read one of them.
-                    return Ok(lookup(map, path, schema, service));
+                    // Walk by reference and hand back the leaf borrowed: a `$fields.x` reference
+                    // used to copy every field of the instance to read one of them, and a presence
+                    // question copied the leaf it only had to find.
+                    return Ok(lookup_ref(map, path, schema, service));
                 }
             }
 
@@ -3176,12 +3357,15 @@ impl TemplateContext<'_> {
 /// only `count` a map has is its size, so `{metadata: {count: "7"}}` cannot be read as its own
 /// `count` key. Each form answers only for the kind its declaration names, so a stored value of
 /// another kind answers nothing rather than another kind's size.
-fn lookup(
-    root: &Map<String, Value>,
+///
+/// A stored value is borrowed, and only a computed one (a `service/1` count) is owned, so a
+/// presence question copies nothing and a value question copies only the leaf it reads.
+fn lookup_ref<'v>(
+    root: &'v Map<String, Value>,
     path: &str,
     schema: Option<&ObjectSchema>,
     service: bool,
-) -> Option<Value> {
+) -> Option<Cow<'v, Value>> {
     let mut segments = path.splitn(2, '.');
     let first = segments.next()?;
     if first.is_empty() {
@@ -3190,12 +3374,12 @@ fn lookup(
     let value = root.get(first)?;
     let field = schema.and_then(|schema| schema.fields.get(first));
     match segments.next() {
-        None => Some(value.clone()),
-        Some(rest) => walk(value, rest, field, field.is_some(), service, Start::Root),
+        None => Some(Cow::Borrowed(value)),
+        Some(rest) => walk_ref(value, rest, field, field.is_some(), service, Start::Root),
     }
 }
 
-/// Where a [`walk`] started, which decides how it reads a declared `map`.
+/// Where a [`walk_ref`] started, which decides how it reads a declared `map`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Start {
     /// A schema root — `$fields`, `$old_fields`, `$args`: a declared map's `count` is its size and
@@ -3223,6 +3407,7 @@ enum Start {
 /// admits untyped, and a text's length is read only from a checked `string` field. Keyed on the value
 /// instead, every path registration admits untyped would turn from nothing into a number, and a
 /// recorded decision over one would replay differently (R-97).
+#[cfg(test)]
 fn walk(
     value: &Value,
     path: &str,
@@ -3231,6 +3416,18 @@ fn walk(
     service: bool,
     start: Start,
 ) -> Option<Value> {
+    walk_ref(value, path, field, checked, service, start).map(Cow::into_owned)
+}
+
+/// The walk itself, without copying the leaf: a stored value is borrowed, a computed one owned.
+fn walk_ref<'v>(
+    value: &'v Value,
+    path: &str,
+    field: Option<&crate::FieldDefinition>,
+    checked: bool,
+    service: bool,
+    start: Start,
+) -> Option<Cow<'v, Value>> {
     let mut segments = path.splitn(2, '.');
     let segment = segments.next()?;
     let rest = segments.next();
@@ -3246,15 +3443,21 @@ fn walk(
         if checked && field.is_some_and(|field| field.kind == FieldKind::String) {
             return match (value, rest) {
                 (Value::String(text), None) if segment == "count" => {
-                    Some(Value::from(text.chars().count()))
+                    Some(Cow::Owned(Value::from(text.chars().count())))
                 }
                 _ => None,
             };
         }
         if let Some((next, next_field)) = collection_address(value, field, segment) {
-            return match rest {
-                None => Some(next),
-                Some(rest) => walk(&next, rest, next_field, checked, service, start),
+            return match (rest, next) {
+                (None, next) => Some(next),
+                (Some(rest), Cow::Borrowed(next)) => {
+                    walk_ref(next, rest, next_field, checked, service, start)
+                }
+                (Some(rest), Cow::Owned(next)) => {
+                    walk_ref(&next, rest, next_field, checked, service, start)
+                        .map(|found| Cow::Owned(found.into_owned()))
+                }
             };
         }
         // A declared map's keys and a declared array's members are not addressable, so nothing
@@ -3274,8 +3477,8 @@ fn walk(
     });
     let checked = checked && !field.is_some_and(|field| field.kind == FieldKind::Union);
     match rest {
-        None => Some(next.clone()),
-        Some(rest) => walk(next, rest, next_field, checked, service, start),
+        None => Some(Cow::Borrowed(next)),
+        Some(rest) => walk_ref(next, rest, next_field, checked, service, start),
     }
 }
 
@@ -3311,20 +3514,20 @@ fn selected_variant<'a>(
 /// the value (no declaration, or `json`). A stored value whose kind disagrees with its declaration
 /// — no store validates an instance on load — answers what the declaration says it has, so a
 /// declared map holding an array has no size and a declared object holding one has no length.
-fn collection_address<'a>(
-    value: &Value,
+fn collection_address<'v, 'a>(
+    value: &'v Value,
     field: Option<&'a crate::FieldDefinition>,
     segment: &str,
-) -> Option<(Value, Option<&'a crate::FieldDefinition>)> {
+) -> Option<(Cow<'v, Value>, Option<&'a crate::FieldDefinition>)> {
     let declared = field.map(|field| field.kind);
     let array = matches!(declared, None | Some(FieldKind::Array | FieldKind::Json));
     match value {
         // A declared map's size, and nothing else it holds.
         Value::Object(members) if declared == Some(FieldKind::Map) && segment == "count" => {
-            Some((Value::from(members.len()), None))
+            Some((Cow::Owned(Value::from(members.len())), None))
         }
         Value::Array(values) if array && segment == "count" => {
-            Some((Value::from(values.len()), None))
+            Some((Cow::Owned(Value::from(values.len())), None))
         }
         // `0`, or a digit string with no leading zero.
         Value::Array(values) if array => {
@@ -3332,8 +3535,11 @@ fn collection_address<'a>(
                 return None;
             }
             let index: usize = segment.parse().ok()?;
-            let element = values.get(index)?.clone();
-            Some((element, field.and_then(|field| field.items.as_deref())))
+            let element = values.get(index)?;
+            Some((
+                Cow::Borrowed(element),
+                field.and_then(|field| field.items.as_deref()),
+            ))
         }
         _ => None,
     }
@@ -3576,5 +3782,439 @@ mod tests {
             compared > 300 && lengths >= 8 && map_members >= 6,
             "compared {compared} paths, {lengths} text lengths, {map_members} map counts"
         );
+    }
+
+    /// The per-decision snapshot this replaced, kept here as the reference the cached form is held
+    /// to byte for byte.
+    fn snapshot_as_it_was(definition: &EntityDefinition) -> EntityDefinition {
+        let value = serde_json::to_value(definition).expect("serializes");
+        serde_json::from_value(super::canonicalize(value)).expect("deserializes")
+    }
+
+    #[test]
+    fn a_decision_record_carries_the_same_definition_bytes_as_the_per_decision_snapshot_did() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "ticket", "version": 3,
+            "schema": { "fields": {
+                "title": { "type": "string", "required": true },
+                "meta": { "type": "json", "default": { "z": 1, "a": { "y": [ { "b": 2, "a": 1 } ] } } }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+            "create": { "emit": { "type": "Opened", "payload": { "z": "$id", "a": "$fields.title" } } },
+            "operations": { "close": {
+                "transitions": [{ "from": "open", "to": "closed" }],
+                "set": { "meta": { "zz": "$id", "aa": "$fields.title" } },
+                "emits": [{ "type": "Closed", "payload": { "y": "$id", "b": "$old_fields.title" } }]
+            }}
+        }))
+        .expect("definition");
+        let expected = serde_json::to_vec(&snapshot_as_it_was(&definition)).expect("bytes");
+        assert_eq!(
+            serde_json::to_vec(&super::record_form(&definition)).expect("bytes"),
+            expected
+        );
+
+        let mut registry = crate::Registry::new();
+        registry.register(definition.clone()).expect("valid");
+        let runtime = crate::Runtime::new(&registry);
+        let created = runtime
+            .create("ticket", 3, "t-1", json!({ "title": "A" }))
+            .expect("created");
+        let closed = runtime
+            .execute(&created.instance, "close", json!({}))
+            .expect("closed");
+        for record in [&created.record, &closed.record] {
+            assert_eq!(
+                serde_json::to_vec(record.definition.as_ref().expect("snapshot")).expect("bytes"),
+                expected,
+                "the record's definition must keep the bytes the per-decision snapshot wrote"
+            );
+        }
+
+        // The cached form is not part of the handle's identity or its rendering.
+        let validated = ValidatedDefinition::new(definition.clone()).expect("valid");
+        assert_eq!(validated.as_definition(), &definition);
+        assert!(format!("{validated:?}").starts_with("ValidatedDefinition(EntityDefinition {"));
+    }
+
+    #[test]
+    fn a_borrowed_presence_answer_agrees_with_resolving_the_operand() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "cart", "version": 1, "semantics": "service/1",
+            "schema": { "fields": {
+                "lines": { "type": "array", "items": { "type": "string" } },
+                "note": { "type": "string" },
+                "owner": { "type": "object", "properties": { "name": { "type": "string" } } }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open"] }
+        }))
+        .expect("definition");
+        let fields = json!({
+            "lines": ["a", "b"], "note": null, "owner": { "name": "x", "nick": null }
+        });
+        let fields = fields.as_object().expect("object");
+        let args = json!({ "limit": 3, "unset": null });
+        let args = args.as_object().expect("object");
+        let context = super::TemplateContext {
+            definition: &definition,
+            id: Some("c-1"),
+            args,
+            arguments_schema: None,
+            old_fields: fields,
+            new_fields: fields,
+            from_state: Some("open"),
+            to_state: "open",
+        };
+        let element = json!({ "k": 1, "n": null });
+        let binder = super::Bindings {
+            name: "item",
+            value: &element,
+            declared: None,
+            outer: None,
+        };
+        let operands = [
+            json!("$fields.lines"),
+            json!("$fields.lines.count"),
+            json!("$fields.lines.0"),
+            json!("$fields.lines.7"),
+            json!("$fields.note"),
+            json!("$fields.owner.name"),
+            json!("$fields.owner.nick"),
+            json!("$fields.absent"),
+            json!("$old_fields.lines"),
+            json!("$args.limit"),
+            json!("$args.unset"),
+            json!("$args"),
+            json!("$fields"),
+            json!("$id"),
+            json!("$from_state"),
+            json!("$item"),
+            json!("$item.k"),
+            json!("$item.n"),
+            json!("$item.absent"),
+            json!("$$literal"),
+            json!(["$fields.lines", "$fields.note"]),
+            json!({ "a": "$fields.lines" }),
+            json!(1),
+            Value::Null,
+        ];
+        let mut present = 0;
+        for operand in &operands {
+            for bindings in [None, Some(&binder)] {
+                let mut unobserved = super::Unobserved::new();
+                let expected = super::resolve_operand(operand, &context, bindings, &mut unobserved)
+                    .map(|resolved| resolved.is_some());
+                let answered = super::operand_present(operand, &context, bindings);
+                assert_eq!(
+                    answered,
+                    expected,
+                    "{operand} with binder {}",
+                    bindings.is_some()
+                );
+                present += usize::from(expected == Ok(true));
+            }
+        }
+        // Both answers occur, so the comparison is not vacuous.
+        assert!(present > 10 && present < operands.len() * 2, "{present}");
+    }
+
+    #[test]
+    fn skipping_canonicalization_on_sorted_maps_changes_no_value() {
+        let value = json!({ "z": { "b": [ { "d": 1, "c": 2 } ], "a": null }, "m": 1 });
+        if super::maps_are_sorted() {
+            assert_eq!(super::canonicalize(value.clone()), value);
+            let keys: Vec<&String> = value.as_object().expect("object").keys().collect();
+            assert_eq!(keys, ["m", "z"]);
+        } else {
+            let keys: Vec<String> = super::canonicalize(value)
+                .as_object()
+                .expect("object")
+                .keys()
+                .cloned()
+                .collect();
+            assert_eq!(keys, ["m", "z"]);
+        }
+    }
+}
+
+/// Review E54: a host-fulfilled operation resumes at the fulfillment boundary instead of
+/// evaluating steps 0 to 8 a second time, and nothing it answers changes.
+#[cfg(test)]
+mod fulfillment_resume {
+    use std::collections::BTreeMap;
+
+    use serde_json::{json, Value};
+
+    use super::{
+        decide_before_load, decide_with_fulfillments, LoadedDecision, PreloadDecision,
+        ResponseCheck,
+    };
+    use crate::{
+        create, replay, CoreError, EntityDefinition, EntityInstance, Evaluation,
+        OperationFieldAction, ValidatedDefinition,
+    };
+
+    /// A `service/3` invoice whose accepting branch increments a total, needs one required and
+    /// one optional fulfillment, emits, responds and is held to an invariant; one refusing branch
+    /// is decided before load and one after it.
+    fn invoice() -> ValidatedDefinition {
+        let document = json!({
+            "entity": "invoice", "version": 1, "semantics": "service/3",
+            "identity": { "field": "invoice_id" },
+            "schema": { "fields": {
+                "invoice_id": { "type": "string", "required": true },
+                "issued_at": { "type": "string", "required": true },
+                "note": { "type": "string" },
+                "total": { "type": "integer", "required": true, "default": 0 }
+            }},
+            "invariants": [{ "name": "issued_at_is_admitted",
+                "assert": { "ne": ["$fields.issued_at", "forbidden"] } }],
+            "lifecycle": { "initial": "Draft", "states": ["Draft", "Issued"] },
+            "operations": { "Issue": {
+                "arguments": { "fields": { "accept": { "type": "boolean", "required": true } } },
+                "response": { "fields": { "issued_at": { "type": "string", "required": true } } },
+                "outcomes": [
+                    { "name": "rejected", "when": { "eq": ["$args.accept", false] },
+                      "refuses": { "error": "NotAccepted" } },
+                    { "name": "locked", "when": { "eq": ["$fields.note", "locked"] },
+                      "refuses": { "error": "Locked" } },
+                    { "name": "issued", "effect": { "moves": { "from": "Draft", "to": "Issued" } },
+                      "set": { "total": { "increment": 1 } },
+                      "fulfills": {
+                        "issued_at": { "actions": "required" },
+                        "note": { "actions": "optional" }
+                      },
+                      "emits": [{ "type": "InvoiceIssued", "payload": {
+                        "issued_at": "$fields.issued_at", "total": "$fields.total"
+                      }}],
+                      "responds": { "issued_at": "$fields.issued_at" } }
+                ]
+            }}
+        });
+        let definition: EntityDefinition =
+            serde_json::from_value(document).expect("definition document parses");
+        ValidatedDefinition::new(definition).expect("service/3 definition validates")
+    }
+
+    fn loaded(state: &str, note: &str) -> EntityInstance {
+        EntityInstance {
+            entity: "invoice".to_owned(),
+            version: 1,
+            id: "s:inv-1".to_owned(),
+            lifecycle_state: state.to_owned(),
+            revision: 1,
+            fields: serde_json::from_value(json!({
+                "invoice_id": "inv-1", "issued_at": "pending", "note": note, "total": 4
+            }))
+            .expect("fields are an object"),
+        }
+    }
+
+    fn actions(pairs: &[(&str, OperationFieldAction)]) -> BTreeMap<String, OperationFieldAction> {
+        pairs
+            .iter()
+            .map(|(field, action)| ((*field).to_owned(), action.clone()))
+            .collect()
+    }
+
+    fn set(value: Value) -> OperationFieldAction {
+        OperationFieldAction::Set { value }
+    }
+
+    /// The decision's record as it is stored, or the refusal.
+    fn record_bytes(result: &Result<Evaluation, CoreError>) -> Option<Vec<u8>> {
+        match result {
+            Ok(Evaluation::Accepted(decision)) => {
+                Some(serde_json::to_vec(&decision.record).expect("a record serializes"))
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_fulfilled_operation_evaluates_its_assignments_once() {
+        let definition = invoice();
+        let PreloadDecision::Load(operation) =
+            decide_before_load(&definition, "s:inv-1", "Issue", json!({"accept": true}))
+                .expect("accepted input needs the subject")
+        else {
+            panic!("accepted input is not refused before load")
+        };
+        let before = definition.assignment_evaluations();
+        let LoadedDecision::NeedsFulfillment(prepared) = operation
+            .select_with(&loaded("Draft", "n"))
+            .expect("the issued branch is selected")
+        else {
+            panic!("the issued branch advertises fulfillment")
+        };
+        assert_eq!(
+            definition.assignment_evaluations() - before,
+            1,
+            "selecting the branch evaluates its one assignment"
+        );
+        let decision = prepared
+            .complete(actions(&[
+                ("issued_at", set(json!("2026-11-23"))),
+                ("note", OperationFieldAction::Preserve),
+            ]))
+            .expect("the actions are accepted")
+            .into_decision()
+            .expect("the branch accepts");
+        assert_eq!(
+            definition.assignment_evaluations() - before,
+            1,
+            "completing resumes at the fulfillment boundary and evaluates no assignment again"
+        );
+        assert_eq!(decision.instance.fields["total"], json!(5));
+        assert_eq!(decision.instance.fields["issued_at"], json!("2026-11-23"));
+        assert_eq!(decision.instance.revision, 2);
+    }
+
+    #[test]
+    fn resuming_at_the_fulfillment_boundary_answers_what_the_whole_step_table_answers() {
+        let definition = invoice();
+        let preserve = OperationFieldAction::Preserve;
+        let remove = OperationFieldAction::Remove;
+        // Accepted, every action kind, and each refusal after the boundary, including two inputs
+        // that break two rules at once so the first in step order must win.
+        let fulfilled = [
+            actions(&[
+                ("issued_at", set(json!("2026-11-23"))),
+                ("note", preserve.clone()),
+            ]),
+            actions(&[
+                ("issued_at", set(json!("2026-11-23"))),
+                ("note", remove.clone()),
+            ]),
+            actions(&[
+                ("issued_at", preserve.clone()),
+                ("note", set(json!("paid"))),
+            ]),
+            actions(&[("issued_at", remove.clone()), ("note", preserve.clone())]),
+            actions(&[("issued_at", set(json!("x")))]),
+            actions(&[
+                ("issued_at", set(json!("x"))),
+                ("note", preserve.clone()),
+                ("total", preserve.clone()),
+            ]),
+            actions(&[("issued_at", set(json!(5))), ("note", preserve.clone())]),
+            actions(&[
+                ("issued_at", set(json!("forbidden"))),
+                ("note", preserve.clone()),
+            ]),
+            actions(&[("issued_at", set(json!("forbidden")))]),
+            actions(&[
+                ("issued_at", set(json!("forbidden"))),
+                ("note", set(json!(7))),
+            ]),
+        ];
+        let mut accepted = 0;
+        for supplied in &fulfilled {
+            let PreloadDecision::Load(operation) =
+                decide_before_load(&definition, "s:inv-1", "Issue", json!({"accept": true}))
+                    .expect("accepted input needs the subject")
+            else {
+                panic!("accepted input is not refused before load")
+            };
+            let LoadedDecision::NeedsFulfillment(prepared) = operation
+                .select_with(&loaded("Draft", "n"))
+                .expect("the issued branch is selected")
+            else {
+                panic!("the issued branch advertises fulfillment")
+            };
+            let resumed = prepared.complete(supplied.clone());
+            // What `complete` ran before it kept the continuation: every step from step 0.
+            let whole = decide_with_fulfillments(
+                &definition,
+                &loaded("Draft", "n"),
+                "Issue",
+                json!({"accept": true}),
+                Some(supplied),
+                ResponseCheck::Checked,
+            );
+            assert_eq!(resumed, whole, "actions {supplied:?}");
+            assert_eq!(record_bytes(&resumed), record_bytes(&whole));
+            accepted += usize::from(record_bytes(&resumed).is_some());
+        }
+        assert_eq!(
+            accepted, 3,
+            "the three well-formed action sets are accepted"
+        );
+
+        // Before the boundary `select_with` answers what the whole table answers without actions:
+        // a refusing branch, a wrong state and a wrong entity, and the fulfillment request itself.
+        let other_entity = EntityInstance {
+            entity: "receipt".to_owned(),
+            ..loaded("Draft", "n")
+        };
+        for instance in [
+            loaded("Draft", "locked"),
+            loaded("Issued", "n"),
+            other_entity,
+            loaded("Draft", "n"),
+        ] {
+            let PreloadDecision::Load(operation) =
+                decide_before_load(&definition, "s:inv-1", "Issue", json!({"accept": true}))
+                    .expect("accepted input needs the subject")
+            else {
+                panic!("accepted input is not refused before load")
+            };
+            let selected = match operation.select_with(&instance) {
+                Ok(LoadedDecision::Complete(evaluation)) => Ok(evaluation),
+                Ok(LoadedDecision::NeedsFulfillment(prepared)) => {
+                    Err(CoreError::FulfillmentRequired {
+                        operation: "Issue".to_owned(),
+                        outcome: prepared.outcome().to_owned(),
+                        fields: prepared.requirements().keys().cloned().collect(),
+                    })
+                }
+                Err(error) => Err(error),
+            };
+            let whole = decide_with_fulfillments(
+                &definition,
+                &instance,
+                "Issue",
+                json!({"accept": true}),
+                None,
+                ResponseCheck::Checked,
+            );
+            assert_eq!(selected, whole, "instance {instance:?}");
+        }
+    }
+
+    #[test]
+    fn a_fulfilled_decision_replays_to_the_state_it_decided() {
+        let definition = invoice();
+        let genesis = create(
+            &definition,
+            "s:inv-1".to_owned(),
+            json!({"invoice_id": "inv-1", "issued_at": "pending", "note": "n"}),
+        )
+        .expect("creation accepts");
+        let PreloadDecision::Load(operation) =
+            decide_before_load(&definition, "s:inv-1", "Issue", json!({"accept": true}))
+                .expect("accepted input needs the subject")
+        else {
+            panic!("accepted input is not refused before load")
+        };
+        let LoadedDecision::NeedsFulfillment(prepared) = operation
+            .select_with(&genesis.instance)
+            .expect("the issued branch is selected")
+        else {
+            panic!("the issued branch advertises fulfillment")
+        };
+        let decision = prepared
+            .complete(actions(&[
+                ("issued_at", set(json!("2026-11-23"))),
+                ("note", OperationFieldAction::Remove),
+            ]))
+            .expect("the actions are accepted")
+            .into_decision()
+            .expect("the branch accepts");
+        let replayed = replay(&[genesis.record, decision.record.clone()])
+            .expect("the fulfilled record replays");
+        assert_eq!(replayed, decision.instance);
+        assert_eq!(replayed.fields["total"], json!(1));
+        assert!(!replayed.fields.contains_key("note"));
     }
 }

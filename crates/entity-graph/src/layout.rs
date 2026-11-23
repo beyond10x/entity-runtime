@@ -151,32 +151,43 @@ impl Layout {
 
     /// Longest path from the left, over forward edges only.
     ///
-    /// Relaxed until nothing moves, which terminates because the forward edges form a DAG — every
-    /// cycle has at least one edge classified back, by construction of the search above.
+    /// One topological pass: a node's depth is final once every forward edge into it has been
+    /// relaxed, so each forward edge is relaxed exactly once. The forward edges form a DAG — every
+    /// cycle has at least one edge classified back, by construction of the search above. The
+    /// longest-path depth does not depend on the order nodes leave the queue, so the layers are
+    /// the ones repeated relaxation reached, whose number of passes depended on how the sorted edge
+    /// order happened to line up with the paths.
     fn layer(
         graph: &Graph,
         resolved: &[Option<(usize, usize)>],
         back: &BTreeSet<usize>,
     ) -> Vec<Vec<usize>> {
-        let forward: Vec<(usize, usize)> = resolved
+        let mut successors: Vec<Vec<usize>> = vec![Vec::new(); graph.nodes.len()];
+        let mut waiting = vec![0usize; graph.nodes.len()];
+        for (_, edge) in resolved
             .iter()
             .enumerate()
             .filter(|(at, _)| !back.contains(at))
-            .filter_map(|(_, edge)| *edge)
-            .collect();
+        {
+            if let Some((from, to)) = *edge {
+                successors[from].push(to);
+                waiting[to] += 1;
+            }
+        }
 
         let mut depth = vec![0usize; graph.nodes.len()];
-        // At most one relaxation per node per pass, and a longest path is at most n - 1 edges.
-        for _ in 0..graph.nodes.len() {
-            let mut moved = false;
-            for &(from, to) in &forward {
-                if depth[to] < depth[from] + 1 {
-                    depth[to] = depth[from] + 1;
-                    moved = true;
+        let mut ready: Vec<usize> = (0..graph.nodes.len())
+            .filter(|at| waiting[*at] == 0)
+            .collect();
+        while let Some(from) = ready.pop() {
+            for &to in &successors[from] {
+                #[cfg(test)]
+                probe::relax();
+                depth[to] = depth[to].max(depth[from] + 1);
+                waiting[to] -= 1;
+                if waiting[to] == 0 {
+                    ready.push(to);
                 }
-            }
-            if !moved {
-                break;
             }
         }
         let width = depth.iter().copied().max().unwrap_or(0) + 1;
@@ -203,5 +214,172 @@ impl Layout {
     #[must_use]
     pub fn height(&self) -> usize {
         self.layers.iter().map(Vec::len).max().unwrap_or(0)
+    }
+}
+
+/// Counts forward-edge relaxations, so a test can hold layering to one per edge.
+#[cfg(test)]
+mod probe {
+    use std::cell::Cell;
+
+    thread_local! {
+        static RELAXED: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(super) fn relax() {
+        RELAXED.with(|relaxed| relaxed.set(relaxed.get() + 1));
+    }
+
+    /// The relaxations made since the last call, on this thread.
+    pub(super) fn take() -> usize {
+        RELAXED.with(|relaxed| relaxed.replace(0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{Edge, GraphKind, Node};
+
+    fn graph(ids: &[&str], entry: &str, edges: &[(&str, &str)]) -> Graph {
+        Graph {
+            kind: GraphKind::Lifecycle,
+            title: "t".into(),
+            nodes: ids
+                .iter()
+                .map(|id| Node {
+                    id: (*id).into(),
+                    label: (*id).into(),
+                    emphasis: if *id == entry {
+                        Emphasis::Entry
+                    } else {
+                        Emphasis::Plain
+                    },
+                })
+                .collect(),
+            edges: edges
+                .iter()
+                .map(|(from, to)| Edge {
+                    from: (*from).into(),
+                    to: (*to).into(),
+                    label: "x".into(),
+                })
+                .collect(),
+        }
+    }
+
+    /// The review's 300-state chains, in sorted edge order as `Graph::lifecycle` builds it: the
+    /// path runs up the names (`stage000` first) or down them (`stage299` first).
+    fn chain(reversed: bool) -> Graph {
+        let ids: Vec<String> = (0..300).map(|at| format!("stage{at:03}")).collect();
+        let mut edges: Vec<(&str, &str)> = ids
+            .windows(2)
+            .map(|pair| {
+                if reversed {
+                    (pair[1].as_str(), pair[0].as_str())
+                } else {
+                    (pair[0].as_str(), pair[1].as_str())
+                }
+            })
+            .collect();
+        edges.sort_unstable();
+        let entry = if reversed { "stage299" } else { "stage000" };
+        let refs: Vec<&str> = ids.iter().map(String::as_str).collect();
+        graph(&refs, entry, &edges)
+    }
+
+    /// The layering this crate shipped before: relax every forward edge until nothing moves.
+    fn relaxed_until_still(graph: &Graph) -> Vec<Vec<usize>> {
+        let layout = Layout::of(graph);
+        let index: BTreeMap<&str, usize> = graph
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(at, node)| (node.id.as_str(), at))
+            .collect();
+        let forward: Vec<(usize, usize)> = graph
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(at, _)| !layout.back_edges.contains(at))
+            .filter_map(|(_, edge)| {
+                Some((
+                    *index.get(edge.from.as_str())?,
+                    *index.get(edge.to.as_str())?,
+                ))
+            })
+            .collect();
+        let mut depth = vec![0usize; graph.nodes.len()];
+        for _ in 0..graph.nodes.len() {
+            let mut moved = false;
+            for &(from, to) in &forward {
+                if depth[to] < depth[from] + 1 {
+                    depth[to] = depth[from] + 1;
+                    moved = true;
+                }
+            }
+            if !moved {
+                break;
+            }
+        }
+        let mut layers = vec![Vec::new(); depth.iter().copied().max().unwrap_or(0) + 1];
+        for (at, &layer) in depth.iter().enumerate() {
+            layers[layer].push(at);
+        }
+        layers
+    }
+
+    #[test]
+    fn layering_relaxes_each_forward_edge_once_whatever_the_state_names_spell() {
+        for reversed in [false, true] {
+            let chain = chain(reversed);
+            probe::take();
+            let layout = Layout::of(&chain);
+            let relaxed = probe::take();
+            assert_eq!(
+                relaxed, 299,
+                "reversed={reversed}: a 299-edge chain took {relaxed} relaxations"
+            );
+            assert_eq!(layout.width(), 300);
+            assert_eq!(layout.layers, relaxed_until_still(&chain));
+        }
+    }
+
+    #[test]
+    fn one_pass_layering_places_every_node_where_repeated_relaxation_did() {
+        let cases = [
+            // A ladder with a step back up it, a shortcut, and a branch that rejoins later.
+            graph(
+                &["draft", "proposed", "active", "done", "dropped"],
+                "draft",
+                &[
+                    ("active", "done"),
+                    ("draft", "done"),
+                    ("draft", "proposed"),
+                    ("proposed", "active"),
+                    ("proposed", "draft"),
+                    ("proposed", "dropped"),
+                ],
+            ),
+            // A self-loop, a node nothing reaches, and an edge naming a node that does not exist.
+            graph(
+                &["a", "b", "c", "lonely"],
+                "a",
+                &[("a", "a"), ("a", "b"), ("b", "c"), ("c", "ghost")],
+            ),
+            // One closed loop with no entry at all.
+            graph(
+                &["x", "y", "z"],
+                "none",
+                &[("x", "y"), ("y", "z"), ("z", "x")],
+            ),
+        ];
+        for case in &cases {
+            assert_eq!(
+                Layout::of(case).layers,
+                relaxed_until_still(case),
+                "{case:?}"
+            );
+        }
     }
 }

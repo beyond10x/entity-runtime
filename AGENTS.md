@@ -198,6 +198,12 @@ separate SQLite tracking/facade contract on Rust 1.91). Every cargo step runs `-
 gate judges the dependency set the repository committed rather than one cargo re-resolved on the
 way past. Each step runs alone as `task <step>`.
 
+Slow lane: `task test-slow` (and the `Slow lane` workflow, which runs when the generator, its
+snapshot under `crates/entity-cli/tests/fixtures/generated-rust-cli/` or a crate the generated
+command builds on changes) compiles and runs the Rust CLI `entity generate rust-cli` writes. It is
+not part of `task check`: the gate's test step holds the generator to the committed snapshot
+instead (`ENTITY_BLESS_SNAPSHOTS=1` rewrites it; then run the slow lane).
+
 Toolchains: there is no `rust-toolchain.toml`. CI's Gate job installs the current stable
 toolchain, the MSRV job 1.85.0 and the Eventlog job 1.91.0; `task check` needs `cargo +1.91.0` as
 well as your default toolchain. The ESS steps build into `checks/ess-conformance/target` unless
@@ -239,6 +245,38 @@ Land nothing until `task check` itself exits zero. A change under `website/` mus
 
 **Prose states no count of the gate's suites or tests.** That number lives in exactly one place:
 the gate's output.
+
+## KPI gate
+
+`checks/kpi` (`er-kpi`, outside the workspace like `checks/ess-conformance`, built on Rust
+1.91 because it drives the Eventlog providers) holds the low bar for cost: `kpis.yaml` defines
+each KPI (id, what it measures, unit, better direction, scenario, tolerance) and `baseline.json`
+holds the recorded values. It is its own lane, not a step of `task check`.
+
+* **Counters** — bytes read and written, files opened (inotify), fsyncs, allocation bytes,
+  history loads, kernel calls, PostgreSQL plan rows — give the same number for the same tree on
+  any machine. `task kpi` compares them with `baseline.json` and fails on a counter that moved
+  the wrong way beyond its tolerance. Five crates carry a non-default `kpi-counters` feature for
+  the counters that need a hook; only `checks/kpi` turns it on.
+* **Timing** — latency per provider, throughput, CLI process wall time — is never compared with
+  a number from another machine. `task kpi-ab BASE=<rev>` builds both revisions with the current
+  harness and runs them interleaved, and compares the best round of each side; a gated KPI fails
+  above its `max_ratio` (2.0: an A/A run on a shared 20-CPU workstation at load 20-200 moved by
+  up to 1.94x). `task kpi -- --timing` adds one timing round beside the recorded local numbers,
+  for information only. `er-kpi list` prints every KPI.
+
+A change that moves a counter re-records in the same commit: `task kpi-record`, then commit
+`checks/kpi/baseline.json` (a ratchet; an improvement is reported until it is recorded, never
+written back by itself). Record on an idle machine: `baseline.json` keeps the host, CPU, load
+average and rustc with the numbers. PostgreSQL KPIs run only with `ENTITY_POSTGRES_URL` and say
+so when skipped. Run the KPI tasks without the `slot` prefix: they measure, and their `cargo`
+calls take a slot through the shim. CI runs two jobs from `.github/workflows/kpi.yml`.
+`KPI / KPI counters` runs the counters with a PostgreSQL service on every pull request and push
+to `main`; it is meant to become a required check (not yet in the ruleset). `KPI / KPI timing`
+runs the A/B against the merge base on a pull request; it is informational
+(`continue-on-error`) and never a required check. A change of only `.engineering/` or Markdown
+(the one path list, `PROSE_PATHS` in the workflow, tested on both sides at the start of the
+counters job) skips the measuring steps and both jobs pass.
 
 ## Branch protection
 

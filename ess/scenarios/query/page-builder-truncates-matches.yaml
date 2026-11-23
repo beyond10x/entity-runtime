@@ -10,7 +10,7 @@ timeline:
   outcome: returned
   response:
     count: 1
-    cursor: 5b22646f6373222c7b7d5d.61
+    cursor: v1.2b0ed12cf104ee82390a85b3b219daac.61
     has_next: true
     ids: '["a"]'
     ok: true

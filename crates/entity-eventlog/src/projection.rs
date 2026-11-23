@@ -8,9 +8,9 @@ use serde_json::{Value, json};
 
 use crate::encoding::{
     ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN, ENTRY_BLOB_DOMAIN,
-    PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, SubjectWire, authority_subject_value,
-    decode_anchor, decode_batch, decode_binding, decode_entry, decode_record, framed_key,
-    key_for_value,
+    PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, RecordedEntryWrapper, SubjectWire,
+    authority_subject_value, decode_anchor, decode_batch, decode_binding, decode_entry,
+    decode_record, framed_key, key_for_value,
 };
 
 pub(crate) const PROJECTOR_NAME: &str = "er_recorded_v1";
@@ -171,7 +171,7 @@ async fn apply_recorded_entry(
     {
         return Err(invalid("request blob differs from its complete record"));
     }
-    let batch = verified_batch(store, &wrapper.batch_blob).await?;
+    let batch = member_batch(store, event, &wrapper).await?;
     let (decoded_key, members) = (&batch.key, &batch.members);
     let wrapper_key: BatchKey = wrapper.batch_key.clone().into();
     if *decoded_key != wrapper_key {
@@ -192,13 +192,7 @@ async fn apply_recorded_entry(
     validate_revision(&entry)?;
     let physical = physical(event);
     let row_key = record_key(&wrapper.authority, entry.record_id()).map_err(store_error)?;
-    let record_row = json!(["er.eventlog.record-index/1", {"entry": {
-        "kind":"committed", "authority":wrapper.authority, "record_id":entry.record_id(),
-        "subject":SubjectWire::from(&subject), "record_kind":kind(entry.kind()), "revision":entry.revision(),
-        "batch_key":wrapper.batch_key, "member_index":wrapper.member_index,
-        "record_blob":wrapper.record_blob, "request_blob":wrapper.request_blob,
-        "batch_blob":wrapper.batch_blob, "physical":physical,
-    }}]);
+    let record_row = committed_record_row(&wrapper, &entry, &physical);
     upsert_once(store, record_spec(), &event.tenant, &row_key, &record_row).await?;
 
     let subject_row_key = subject_key(&wrapper.authority, &subject).map_err(store_error)?;
@@ -207,10 +201,14 @@ async fn apply_recorded_entry(
         .await?;
     let (origin, state_source, prior_revision) =
         fold_subject_source(prior.as_ref(), &entry, &wrapper.record_blob)?;
-    let subject_row = json!(["er.eventlog.subject-index/1", {
-        "authority":wrapper.authority, "subject":SubjectWire::from(&subject), "origin":origin,
-        "revision":prior_revision, "state_source":state_source, "physical_head":physical,
-    }]);
+    let subject_row = subject_row(
+        &wrapper.authority,
+        &subject,
+        &origin,
+        prior_revision,
+        &state_source,
+        &physical,
+    );
     store
         .upsert(
             subject_spec(),
@@ -239,15 +237,17 @@ async fn apply_recorded_entry(
                     "batch member row does not reproduce its membership",
                 ));
             }
-            saved.push(json!({
-                "member_index":index,"record_id":member.entry.record_id(),"record_key":key,
-                "subject":SubjectWire::from(&member.entry.subject()),"record_kind":kind(member.entry.kind()),
-                "revision":member.entry.revision(),"record_blob":body["record_blob"],
-                "request_blob":body["request_blob"],"physical":body["physical"],
-            }));
+            saved.push(batch_member_row(
+                index,
+                &member.entry,
+                &key,
+                &body["record_blob"],
+                &body["request_blob"],
+                &body["physical"],
+            ));
         }
         let key = batch_key(&wrapper.authority, decoded_key).map_err(store_error)?;
-        let row = json!(["er.eventlog.batch-index/1", {"authority":wrapper.authority,"batch_key":crate::encoding::BatchKeyWire::from(decoded_key),"batch_blob":wrapper.batch_blob,"members":saved}]);
+        let row = batch_row(&wrapper.authority, decoded_key, &wrapper.batch_blob, saved);
         upsert_once(store, batch_spec(), &event.tenant, &key, &row).await?;
     }
     let _ = entry_digest;
@@ -281,21 +281,25 @@ async fn apply_import_anchor(
             }
             validate_revision(&entry)?;
             let key = record_key(&wrapper.authority, entry.record_id()).map_err(store_error)?;
-            let row = json!(["er.eventlog.record-index/1", {"entry": {
-                "kind":"imported","authority":wrapper.authority,"record_id":entry.record_id(),
-                "subject":SubjectWire::from(&subject),"record_kind":kind(entry.kind()),"revision":entry.revision(),
-                "anchor_blob":anchor_digest,"evidence_index":index,"record_blob":record_blob,"anchor_physical":physical(event),
-            }}]);
+            let row = imported_record_row(
+                &wrapper.authority,
+                &entry,
+                &anchor_digest,
+                index,
+                record_blob,
+                &physical(event),
+            );
             upsert_once(store, record_spec(), &event.tenant, &key, &row).await?;
         }
     }
     let key = subject_key(&wrapper.authority, &subject).map_err(store_error)?;
-    let row = json!(["er.eventlog.subject-index/1", {
-        "authority":wrapper.authority,"subject":SubjectWire::from(&subject),
-        "origin":{"kind":"imported","anchor_blob":anchor_digest,"anchor_physical":physical(event)},
-        "revision":wrapper.instance.revision,"state_source":{"kind":"anchor","anchor_blob":anchor_digest},
-        "physical_head":physical(event),
-    }]);
+    let row = imported_subject_row(
+        &wrapper.authority,
+        &subject,
+        &anchor_digest,
+        wrapper.instance.revision,
+        &physical(event),
+    );
     upsert_once(store, subject_spec(), &event.tenant, &key, &row).await
 }
 
@@ -361,12 +365,85 @@ thread_local! {
     /// Every member event of a group references the same batch blob, which holds every member, so
     /// hashing and decoding it once per member made a group cost the square of its members. Both
     /// are functions of the bytes alone, so a blob read again with exactly the bytes and digest
-    /// verified last time reuses that answer. The blob is still read from the provider for every
-    /// member, so a blob the store does not hold is refused exactly as before. A blob over the
+    /// verified last time reuses that answer. A later member of the same group does not read the
+    /// blob again when the view proves its predecessor was projected from it ([`member_batch`]);
+    /// every other read still reaches the provider, so a blob the store does not hold is refused
+    /// exactly as before. A blob over the
     /// limit and a blob that does not verify both empty the slot, so it never holds more than the
     /// limit and never outlives a refusal.
     static LAST_BATCH: std::cell::RefCell<Option<std::sync::Arc<VerifiedBatch>>> =
         const { std::cell::RefCell::new(None) };
+}
+
+/// The verified batch blob one member event names.
+///
+/// Every member event of a group names the same batch blob, which holds every member, so reading
+/// it from the provider for each member returned the whole blob once per member: K copies of a
+/// blob that itself grows with K. Within one projection pass the blob is read, held to its digest
+/// and decoded once, by the first member that needs it.
+///
+/// A later member reuses that answer only when this projection view proves the member before it
+/// was projected from exactly that blob: its record row is present here, names this batch blob,
+/// this batch key and the member index just before this one, and stands at the commit position
+/// just before this event. That row is written only after its member's blob was read from this
+/// view and verified, and the inline projector runs a group, and a rebuild, in one transaction, so
+/// the availability and digest checks were made inside the same transaction. Anything else — the
+/// first member, a single record, a gap, another blob or batch, a kept answer for another digest
+/// or none — reads and verifies the blob from the provider as before.
+async fn member_batch(
+    store: &mut dyn ProjectionStore,
+    event: &RecordedEvent,
+    wrapper: &crate::encoding::RecordedEntryWrapper,
+) -> Result<std::sync::Arc<VerifiedBatch>, EventLogError> {
+    let last = LAST_BATCH.with(|last| last.borrow().clone());
+    if let Some(last) = last
+        && last.digest == wrapper.batch_blob
+        && previous_member_projected(store, event, wrapper, &last).await?
+    {
+        return Ok(last);
+    }
+    verified_batch(store, &wrapper.batch_blob).await
+}
+
+/// Whether this view holds the record row of the member before `wrapper`'s, projected from
+/// `batch` at the commit position directly before `event`.
+async fn previous_member_projected(
+    store: &mut dyn ProjectionStore,
+    event: &RecordedEvent,
+    wrapper: &crate::encoding::RecordedEntryWrapper,
+    batch: &VerifiedBatch,
+) -> Result<bool, EventLogError> {
+    let (Some(previous_index), Some(previous_seq)) = (
+        wrapper.member_index.checked_sub(1),
+        event.global_seq.checked_sub(1),
+    ) else {
+        return Ok(false);
+    };
+    let Some(previous) = usize::try_from(previous_index)
+        .ok()
+        .and_then(|index| batch.members.get(index))
+    else {
+        return Ok(false);
+    };
+    let key = record_key(&wrapper.authority, previous.entry.record_id()).map_err(store_error)?;
+    let Some(row) = store.get(record_spec(), &event.tenant, &key).await? else {
+        return Ok(false);
+    };
+    let Ok(body) = committed_record_body(&row) else {
+        return Ok(false);
+    };
+    let batch_key = serde_json::to_value(&wrapper.batch_key)
+        .map_err(|_| invalid("batch key does not encode"))?;
+    Ok(
+        body.get("batch_blob").and_then(Value::as_str) == Some(wrapper.batch_blob.as_str())
+            && body.get("batch_key") == Some(&batch_key)
+            && body.get("member_index").and_then(Value::as_u64) == Some(previous_index)
+            && body
+                .get("physical")
+                .and_then(|physical| physical.get("global_seq"))
+                .and_then(Value::as_u64)
+                == Some(previous_seq),
+    )
 }
 
 /// The batch blob `digest` names, read from `store`, held to its digest and decoded.
@@ -378,6 +455,11 @@ async fn verified_batch(
         .get_blob(digest)
         .await?
         .ok_or(EventLogError::NotFound)?;
+    #[cfg(feature = "kpi-counters")]
+    {
+        crate::kpi_counters::add(&crate::kpi_counters::BATCH_BLOB_FETCHES, 1);
+        crate::kpi_counters::add(&crate::kpi_counters::BATCH_BLOB_BYTES, bytes.len() as u64);
+    }
     verify_batch(digest, bytes, LAST_BATCH_LIMIT)
 }
 
@@ -436,11 +518,9 @@ fn fold_subject_source(
     record_blob: &str,
 ) -> Result<(Value, Value, u64), EventLogError> {
     match (prior, entry) {
-        (None, RecordedEntry::Decision(_)) if entry.revision() == 1 => Ok((
-            json!({"kind":"genesis"}),
-            json!({"kind":"decision","record_blob":record_blob}),
-            1,
-        )),
+        (None, RecordedEntry::Decision(_)) if entry.revision() == 1 => {
+            Ok((genesis_origin(), decision_state_source(record_blob), 1))
+        }
         (None, _) => Err(invalid(
             "subject history does not begin with creation or anchor",
         )),
@@ -448,7 +528,7 @@ fn fold_subject_source(
             let body = tagged_body(row, "er.eventlog.subject-index/1")?;
             Ok((
                 body["origin"].clone(),
-                json!({"kind":"decision","record_blob":record_blob}),
+                decision_state_source(record_blob),
                 entry.revision(),
             ))
         }
@@ -505,6 +585,108 @@ fn require_tenant(event: &RecordedEvent, authority: &Authority) -> Result<(), Ev
     } else {
         Err(invalid("authority tenant differs from event tenant"))
     }
+}
+
+// The row bodies the projector writes. The adapter builds the same bodies before a write, with
+// the widest physical reference, to bound the payload bytes the write adds (see `admit_growth`).
+
+pub(crate) fn committed_record_row(
+    wrapper: &RecordedEntryWrapper,
+    entry: &RecordedEntry,
+    physical: &PhysicalRef,
+) -> Value {
+    json!(["er.eventlog.record-index/1", {"entry": {
+        "kind":"committed", "authority":wrapper.authority, "record_id":entry.record_id(),
+        "subject":SubjectWire::from(&entry.subject()), "record_kind":kind(entry.kind()),
+        "revision":entry.revision(), "batch_key":wrapper.batch_key,
+        "member_index":wrapper.member_index, "record_blob":wrapper.record_blob,
+        "request_blob":wrapper.request_blob, "batch_blob":wrapper.batch_blob, "physical":physical,
+    }}])
+}
+
+pub(crate) fn imported_record_row(
+    authority: &Authority,
+    entry: &RecordedEntry,
+    anchor_blob: &str,
+    evidence_index: usize,
+    record_blob: &str,
+    physical: &PhysicalRef,
+) -> Value {
+    json!(["er.eventlog.record-index/1", {"entry": {
+        "kind":"imported","authority":authority,"record_id":entry.record_id(),
+        "subject":SubjectWire::from(&entry.subject()),"record_kind":kind(entry.kind()),
+        "revision":entry.revision(),"anchor_blob":anchor_blob,"evidence_index":evidence_index,
+        "record_blob":record_blob,"anchor_physical":physical,
+    }}])
+}
+
+pub(crate) fn subject_row(
+    authority: &Authority,
+    subject: &Subject,
+    origin: &Value,
+    revision: u64,
+    state_source: &Value,
+    physical: &PhysicalRef,
+) -> Value {
+    json!(["er.eventlog.subject-index/1", {
+        "authority":authority, "subject":SubjectWire::from(subject), "origin":origin,
+        "revision":revision, "state_source":state_source, "physical_head":physical,
+    }])
+}
+
+pub(crate) fn imported_subject_row(
+    authority: &Authority,
+    subject: &Subject,
+    anchor_blob: &str,
+    revision: u64,
+    physical: &PhysicalRef,
+) -> Value {
+    subject_row(
+        authority,
+        subject,
+        &json!({"kind":"imported","anchor_blob":anchor_blob,"anchor_physical":physical}),
+        revision,
+        &json!({"kind":"anchor","anchor_blob":anchor_blob}),
+        physical,
+    )
+}
+
+/// The origin of a subject whose history begins with its creation.
+pub(crate) fn genesis_origin() -> Value {
+    json!({"kind":"genesis"})
+}
+
+/// The state source a decision leaves on its subject's row.
+pub(crate) fn decision_state_source(record_blob: &str) -> Value {
+    json!({"kind":"decision","record_blob":record_blob})
+}
+
+pub(crate) fn batch_member_row(
+    index: usize,
+    entry: &RecordedEntry,
+    record_key: &str,
+    record_blob: &Value,
+    request_blob: &Value,
+    physical: &Value,
+) -> Value {
+    json!({
+        "member_index":index,"record_id":entry.record_id(),"record_key":record_key,
+        "subject":SubjectWire::from(&entry.subject()),"record_kind":kind(entry.kind()),
+        "revision":entry.revision(),"record_blob":record_blob,
+        "request_blob":request_blob,"physical":physical,
+    })
+}
+
+pub(crate) fn batch_row(
+    authority: &Authority,
+    key: &BatchKey,
+    batch_blob: &str,
+    members: Vec<Value>,
+) -> Value {
+    json!(["er.eventlog.batch-index/1", {
+        "authority":authority,"batch_key":crate::encoding::BatchKeyWire::from(key),
+        "batch_blob":batch_blob,"members":members,
+    }])
 }
 
 pub(crate) fn physical(event: &RecordedEvent) -> PhysicalRef {

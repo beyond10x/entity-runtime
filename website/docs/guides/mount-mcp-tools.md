@@ -24,7 +24,8 @@ the store path are operator configuration, never model input. A client configura
 
 The server answers `server/discover` with protocol versions `2026-07-28` and `2025-11-25`, and
 `initialize` with `2025-11-25`. Standard output carries protocol messages only; diagnostics go to
-standard error.
+standard error. A request line longer than 4 MiB is discarded without being buffered and answered
+with a JSON-RPC `-32600` error whose `id` is `null`; the server then reads the next line.
 
 ## Drive it from a file
 

@@ -24,10 +24,13 @@
 //! # Ok::<(), entity_yaml::YamlError>(())
 //! ```
 
+mod exact;
 mod fragments;
 
 use entity_core::EntityDefinition;
 use serde::de::{DeserializeSeed, Error as _, MapAccess, SeqAccess, Visitor};
+use std::cell::Cell;
+use std::collections::BTreeSet;
 use std::fmt;
 
 /// The YAML could not be parsed into an [`EntityDefinition`].
@@ -63,9 +66,12 @@ impl std::error::Error for YamlError {
 /// [`YamlError`] when the text is not valid YAML or does not have the shape of a definition —
 /// a missing `lifecycle`, a field without a `type`, a condition with an unknown operator.
 pub fn from_str(input: &str) -> Result<EntityDefinition, YamlError> {
+    let floats = Cell::new(false);
     let mut documents = serde_yaml_ng::Deserializer::from_str(input);
     if let Some(document) = documents.next() {
-        NoDuplicates.deserialize(document).map_err(YamlError)?;
+        NoDuplicates(&floats)
+            .deserialize(document)
+            .map_err(YamlError)?;
     }
     let keys: std::collections::BTreeMap<String, serde::de::IgnoredAny> =
         serde_yaml_ng::from_str(input).map_err(YamlError)?;
@@ -76,31 +82,49 @@ pub fn from_str(input: &str) -> Result<EntityDefinition, YamlError> {
     // key, as JSON writes it. The YAML reader on its own takes such a variant only as a `!moves`
     // tag. Read with this wrapper, every enum accepts the one-key mapping at any depth; a unit
     // variant is still a plain scalar, and untagged enums and plain values read as before.
-    serde_yaml_ng::with::singleton_map_recursive::deserialize(
+    let definition = serde_yaml_ng::with::singleton_map_recursive::deserialize(
         serde_yaml_ng::Deserializer::from_str(input),
     )
-    .map_err(YamlError)
+    .map_err(YamlError)?;
+    // The reading above resolves every float scalar to a binary64 first, so a bound such as
+    // `1.0000000000000001` arrived as `1.0` and the kernel compared exactly against a number the
+    // author never wrote. When a float was seen, read the document again with each float at its
+    // source value; that reading is used only when it changed a value, so a definition that was
+    // already read exactly keeps its bytes.
+    if floats.get() {
+        if let Some(exact) = exact::exact_value(input).map_err(YamlError)? {
+            return serde_json::from_value(exact).map_err(|error| {
+                YamlError(serde_yaml_ng::Error::custom(format!(
+                    "a number here has more digits than a binary64 holds, and the document \
+                     read with that number exact is not a definition: {error}"
+                )))
+            });
+        }
+    }
+    Ok(definition)
 }
 
 /// A first pass that consumes no values and exists only to reject mapping ambiguity. Serde's map
 /// collectors otherwise keep the last occurrence of a dynamic key, unlike duplicate struct
-/// fields, so a repeated schema field silently changes the definition that is validated.
-struct NoDuplicates;
+/// fields, so a repeated schema field silently changes the definition that is validated. It also
+/// records, in its cell, whether any scalar was read as a float, which is when `exact` runs.
+#[derive(Clone, Copy)]
+struct NoDuplicates<'a>(&'a Cell<bool>);
 
-impl<'de> DeserializeSeed<'de> for NoDuplicates {
+impl<'de> DeserializeSeed<'de> for NoDuplicates<'_> {
     type Value = ();
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_any(NoDuplicatesVisitor)
+        deserializer.deserialize_any(NoDuplicatesVisitor(self.0))
     }
 }
 
-struct NoDuplicatesVisitor;
+struct NoDuplicatesVisitor<'a>(&'a Cell<bool>);
 
-impl<'de> Visitor<'de> for NoDuplicatesVisitor {
+impl<'de> Visitor<'de> for NoDuplicatesVisitor<'_> {
     type Value = ();
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -111,18 +135,33 @@ impl<'de> Visitor<'de> for NoDuplicatesVisitor {
     where
         A: MapAccess<'de>,
     {
-        let mut keys = Vec::new();
+        // A plain string key equals another key only when that key is the same plain string, so
+        // string keys — every key of a definition document in practice — are looked up in an
+        // ordered set, and a mapping of n fields costs n log n comparisons rather than n²/2.
+        // Every other key (a number, a tagged scalar, a sequence) keeps YAML value equality
+        // against the other non-string keys; no such key can equal a plain string.
+        let mut text_keys: BTreeSet<String> = BTreeSet::new();
+        let mut other_keys: Vec<serde_yaml_ng::Value> = Vec::new();
         while let Some(key) = map.next_key::<serde_yaml_ng::Value>()? {
             if key.as_str() == Some("<<") {
                 return Err(A::Error::custom(
                     "YAML merge keys are not accepted; write every effective key once",
                 ));
             }
-            if keys.contains(&key) {
+            let repeated = match &key {
+                serde_yaml_ng::Value::String(text) => text_keys.contains(text.as_str()),
+                other => other_keys.contains(other),
+            };
+            if repeated {
                 return Err(A::Error::custom(format!("duplicate mapping key {key:?}")));
             }
-            keys.push(key);
-            map.next_value_seed(NoDuplicates)?;
+            match key {
+                serde_yaml_ng::Value::String(text) => {
+                    text_keys.insert(text);
+                }
+                other => other_keys.push(other),
+            }
+            map.next_value_seed(NoDuplicates(self.0))?;
         }
         Ok(())
     }
@@ -131,7 +170,7 @@ impl<'de> Visitor<'de> for NoDuplicatesVisitor {
     where
         A: SeqAccess<'de>,
     {
-        while sequence.next_element_seed(NoDuplicates)?.is_some() {}
+        while sequence.next_element_seed(NoDuplicates(self.0))?.is_some() {}
         Ok(())
     }
 
@@ -163,6 +202,7 @@ impl<'de> Visitor<'de> for NoDuplicatesVisitor {
     }
 
     fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E> {
+        self.0.set(true);
         Ok(())
     }
 
@@ -182,7 +222,7 @@ impl<'de> Visitor<'de> for NoDuplicatesVisitor {
     where
         D: serde::Deserializer<'de>,
     {
-        NoDuplicates.deserialize(deserializer)
+        NoDuplicates(self.0).deserialize(deserializer)
     }
 
     fn visit_unit<E>(self) -> Result<Self::Value, E> {

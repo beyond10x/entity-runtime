@@ -332,16 +332,20 @@ impl<L: Store, R: Store> Hybrid<L, R> {
     /// # What it compares, and what it therefore cannot catch
     ///
     /// Divergence is judged on the **revision** the replica holds, plus an equality check when the
-    /// two are at the same one. A replica that took somebody else's write at a revision this store
-    /// has already passed is not detected while it stays behind — detecting that needs the
-    /// definition, to fold this store's own history down to that revision and compare, and a store
-    /// does not hold definitions. It is caught as soon as the replica reaches this store's
-    /// revision, and the write itself is still protected: the replay is committed with
-    /// [`Expect::Revision`] of what the replica held, so a replica that moves in between refuses
-    /// it and the divergence stays outstanding.
+    /// two are at the same one. A replica that is behind must also hold exactly this store's
+    /// events up to its revision; the replay appends only the events above it, so a replica whose
+    /// earlier events differ keeps its divergence rather than ending with this store's state over
+    /// a history this store never produced. A replica that took somebody else's write at a
+    /// revision this store has already passed, and emitted the same events doing it, is not
+    /// detected while it stays behind — detecting that needs the definition, to fold this store's
+    /// own history down to that revision and compare, and a store does not hold definitions. It is
+    /// caught as soon as the replica reaches this store's revision, and the write itself is still
+    /// protected: the replay is committed with [`Expect::Revision`] of what the replica held, so a
+    /// replica that moves in between refuses it and the divergence stays outstanding.
     pub fn catch_up(&mut self) -> usize {
         let outstanding: Vec<Divergence> = std::mem::take(&mut self.divergences);
         let mut still = Vec::new();
+        let mut pass = Pass::default();
         for divergence in outstanding {
             let keep = |detail: String| Divergence {
                 entity: divergence.entity.clone(),
@@ -353,20 +357,8 @@ impl<L: Store, R: Store> Hybrid<L, R> {
                 detail,
             };
             let outcome = match divergence.source {
-                StoreSide::Local => reconcile_divergence(
-                    &self.local,
-                    &mut self.remote,
-                    &divergence.entity,
-                    &divergence.id,
-                    divergence.record_id.as_deref(),
-                ),
-                StoreSide::Remote => reconcile_divergence(
-                    &self.remote,
-                    &mut self.local,
-                    &divergence.entity,
-                    &divergence.id,
-                    divergence.record_id.as_deref(),
-                ),
+                StoreSide::Local => pass.catch_up(&self.local, &mut self.remote, &divergence),
+                StoreSide::Remote => pass.catch_up(&self.remote, &mut self.local, &divergence),
             };
             if let Err(detail) = outcome {
                 still.push(keep(detail));
@@ -378,35 +370,134 @@ impl<L: Store, R: Store> Hybrid<L, R> {
     }
 }
 
+/// What one [`Hybrid::catch_up`] pass knows about the subjects it has met.
+///
+/// Several divergences of one subject are typical — every write made while the other side was
+/// down records one — and each used to read the source's whole history again, then compare and
+/// re-import a subject an earlier divergence had already brought level: 32 offline writes read
+/// the source's 32 events 32 times. A pass reads a source subject's recorded history once, checks
+/// each divergence's own record against it, and reconciles a subject once it is level.
+///
+/// Two facts make that sound. A pass writes only the destination of the divergence in hand, so a
+/// subject's history on the source side does not change while the pass handles divergences in
+/// that direction; and a write to a side drops what the pass remembered of that subject on that
+/// side, so divergences recorded in both directions for one subject still see each other's writes.
+#[derive(Default)]
+struct Pass {
+    subjects: Vec<PassSubject>,
+}
+
+/// One subject on one side, as a pass has seen it.
+struct PassSubject {
+    side: StoreSide,
+    entity: String,
+    id: String,
+    /// The side's recorded history of the subject; `None` when the side has no history capability.
+    history: Option<SourceHistory>,
+    /// The subject was reconciled from this side in this pass and nothing has written this side's
+    /// copy since: the other side holds what this side holds.
+    level: bool,
+}
+
+/// A source subject's recorded history, read once per pass.
+struct SourceHistory {
+    records: Vec<Envelope<DecisionRecord>>,
+    observations: Vec<RecordedObservation>,
+}
+
+impl Pass {
+    fn catch_up<S: Store, D: Store>(
+        &mut self,
+        source: &S,
+        destination: &mut D,
+        divergence: &Divergence,
+    ) -> Result<(), String> {
+        let (entity, id) = (divergence.entity.as_str(), divergence.id.as_str());
+        let index = match self.subjects.iter().position(|subject| {
+            subject.side == divergence.source && subject.entity == entity && subject.id == id
+        }) {
+            Some(index) => index,
+            None => {
+                let history = match source.history() {
+                    None => None,
+                    Some(history) => Some(SourceHistory {
+                        records: history.records(entity, id).map_err(|e| e.to_string())?,
+                        observations: history
+                            .observations(entity, id)
+                            .map_err(|e| e.to_string())?,
+                    }),
+                };
+                self.subjects.push(PassSubject {
+                    side: divergence.source,
+                    entity: entity.to_owned(),
+                    id: id.to_owned(),
+                    history,
+                    level: false,
+                });
+                self.subjects.len() - 1
+            }
+        };
+        let subject = &self.subjects[index];
+        // Every divergence's own record is checked, level or not.
+        holds_record(subject.history.as_ref(), divergence.record_id.as_deref())?;
+        if subject.level {
+            return Ok(());
+        }
+        // Whatever happens next may write the destination's copy, so forget it.
+        self.subjects.retain(|other| {
+            !(other.side == divergence.destination && other.entity == entity && other.id == id)
+        });
+        let index = self
+            .subjects
+            .iter()
+            .position(|subject| {
+                subject.side == divergence.source && subject.entity == entity && subject.id == id
+            })
+            .ok_or("catch-up lost track of its source subject")?;
+        let subject = &mut self.subjects[index];
+        reconcile_divergence(source, destination, entity, id, subject.history.as_ref())?;
+        subject.level = true;
+        Ok(())
+    }
+}
+
+/// Refuses a recorded divergence whose record the source no longer holds.
+fn holds_record(history: Option<&SourceHistory>, record_id: Option<&str>) -> Result<(), String> {
+    let Some(record_id) = record_id else {
+        return Ok(());
+    };
+    let history = history.ok_or("source has no recorded history capability")?;
+    if history
+        .records
+        .iter()
+        .any(|entry| entry.record_id == record_id)
+        || history
+            .observations
+            .iter()
+            .any(|entry| entry.envelope.record_id == record_id)
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "source no longer holds required record {record_id}"
+        ))
+    }
+}
+
 fn reconcile_divergence<S: Store, D: Store>(
     source: &S,
     destination: &mut D,
     entity: &str,
     id: &str,
-    record_id: Option<&str>,
+    history: Option<&SourceHistory>,
 ) -> Result<(), String> {
-    let Some(history) = source.history() else {
-        return if record_id.is_some() {
-            Err("source has no recorded history capability".into())
-        } else {
-            reconcile(source, destination, entity, id)
-        };
+    let Some(SourceHistory {
+        records,
+        observations,
+    }) = history
+    else {
+        return reconcile(source, destination, entity, id);
     };
-    let records = history.records(entity, id).map_err(|e| e.to_string())?;
-    let observations = history
-        .observations(entity, id)
-        .map_err(|e| e.to_string())?;
-    if let Some(record_id) = record_id {
-        if !records.iter().any(|entry| entry.record_id == record_id)
-            && !observations
-                .iter()
-                .any(|entry| entry.envelope.record_id == record_id)
-        {
-            return Err(format!(
-                "source no longer holds required record {record_id}"
-            ));
-        }
-    }
     if records.is_empty() && observations.is_empty() {
         return reconcile(source, destination, entity, id);
     }
@@ -416,7 +507,7 @@ fn reconcile_divergence<S: Store, D: Store>(
             .load(entity, id)
             .map_err(|e| e.to_string())?
             .map(|state| state.revision);
-        return restore_observations(destination, &observations, revision);
+        return ObservationRestore::new(observations).up_to(destination, revision);
     }
     let held = destination.load(entity, id).map_err(|e| e.to_string())?;
     let mut revision = held.as_ref().map(|instance| instance.revision);
@@ -429,12 +520,13 @@ fn reconcile_divergence<S: Store, D: Store>(
         .history()
         .ok_or("destination has no recorded history capability")?;
     let existing = history.records(entity, id).map_err(|e| e.to_string())?;
+    let mut restore = ObservationRestore::new(observations);
     for envelope in records {
         if let Some(previous) = existing
             .iter()
             .find(|entry| entry.record_id == envelope.record_id)
         {
-            if previous != &envelope {
+            if previous != envelope {
                 return Err(format!("conflicting record {}", envelope.record_id));
             }
             continue;
@@ -448,53 +540,98 @@ fn reconcile_divergence<S: Store, D: Store>(
         if revision.unwrap_or(0).checked_add(1) != Some(envelope.record.revision) {
             return Err("a missing legacy prefix or gap requires explicit history repair".into());
         }
-        restore_observations(destination, &observations, revision)?;
+        restore.up_to(destination, revision)?;
         let commit = RecordedCommit {
             instance: envelope.record.result.clone(),
-            envelope,
+            envelope: envelope.clone(),
         };
         destination
             .commit_recorded(&commit, revision.map_or(Expect::Absent, Expect::Revision))
             .map_err(|e| e.to_string())?;
         revision = Some(commit.instance.revision);
     }
-    restore_observations(destination, &observations, revision)?;
+    restore.up_to(destination, revision)?;
     // Only after exact envelopes have arrived may a later legacy suffix be mirrored.
     reconcile(source, destination, entity, id)
 }
 
-fn restore_observations<D: Store>(
-    destination: &mut D,
-    observations: &[RecordedObservation],
-    revision: Option<u64>,
-) -> Result<(), String> {
-    for observation in observations
-        .iter()
-        .filter(|entry| revision.is_some_and(|at| entry.revision <= at))
-    {
-        let history = destination
-            .history()
-            .ok_or("destination has no recorded history capability")?;
-        let existing = history
-            .observations(&observation.entity, &observation.id)
-            .map_err(|e| e.to_string())?;
-        if let Some(previous) = existing
-            .iter()
-            .find(|entry| entry.envelope.record_id == observation.envelope.record_id)
-        {
-            if previous != observation {
-                return Err(format!(
-                    "conflicting observation {}",
-                    observation.envelope.record_id
-                ));
-            }
-        } else {
-            destination
-                .observe(observation)
-                .map_err(|e| e.to_string())?;
+/// Restores a source's observations at the destination in one pass over both.
+///
+/// Catch-up asks it to restore up to each revision before that revision's successor is committed
+/// (an observation is accepted only at the revision it is about), and once more at the end. It
+/// reads what the destination holds once per subject and walks the source's observations in
+/// revision order from where the previous call stopped, so `N` restored revisions cost one
+/// destination read rather than `N(N+1)/2`. Comparison stays exact: an observation the
+/// destination already holds under the same record id must equal the source's, envelope and all.
+struct ObservationRestore<'a> {
+    /// The source's observations, stably ordered by revision.
+    pending: Vec<&'a RecordedObservation>,
+    /// How many of `pending` are restored or proved present.
+    next: usize,
+    /// What the destination holds, per subject, read on first need and extended by what this pass
+    /// writes. Nothing else writes observations at the destination during one pass.
+    held: Vec<((&'a str, &'a str), Vec<RecordedObservation>)>,
+}
+
+impl<'a> ObservationRestore<'a> {
+    fn new(observations: &'a [RecordedObservation]) -> Self {
+        let mut pending: Vec<&RecordedObservation> = observations.iter().collect();
+        pending.sort_by_key(|observation| observation.revision);
+        Self {
+            pending,
+            next: 0,
+            held: Vec::new(),
         }
     }
-    Ok(())
+
+    /// Restores every source observation at or below `revision` not yet restored.
+    fn up_to<D: Store>(
+        &mut self,
+        destination: &mut D,
+        revision: Option<u64>,
+    ) -> Result<(), String> {
+        let Some(at) = revision else {
+            return Ok(());
+        };
+        while let Some(&observation) = self.pending.get(self.next) {
+            if observation.revision > at {
+                break;
+            }
+            let subject = (observation.entity.as_str(), observation.id.as_str());
+            let index = match self.held.iter().position(|(held, _)| *held == subject) {
+                Some(index) => index,
+                None => {
+                    let history = destination
+                        .history()
+                        .ok_or("destination has no recorded history capability")?;
+                    let existing = history
+                        .observations(subject.0, subject.1)
+                        .map_err(|e| e.to_string())?;
+                    self.held.push((subject, existing));
+                    self.held.len() - 1
+                }
+            };
+            let held = &mut self.held[index].1;
+            if let Some(previous) = held
+                .iter()
+                .find(|entry| entry.envelope.record_id == observation.envelope.record_id)
+            {
+                if previous != observation {
+                    return Err(format!(
+                        "conflicting observation {}",
+                        observation.envelope.record_id
+                    ));
+                }
+            } else {
+                destination
+                    .observe(observation)
+                    .map_err(|e| e.to_string())?;
+                held.push(observation.clone());
+            }
+            self.next += 1;
+        }
+        Ok(())
+    }
 }
 
 fn reconcile<S: Store, D: Store>(
@@ -510,14 +647,12 @@ fn reconcile<S: Store, D: Store>(
             "the source holds no instance; absence cannot prove a recorded divergence vanished"
                 .to_owned()
         })?;
-    let events = source
-        .events(entity, id)
-        .map_err(|error| format!("the source history could not be read: {error}"))?;
     let held = destination
         .load(entity, id)
         .map_err(|error| format!("the destination could not be read: {error}"))?;
     let at = held.as_ref().map(|held| held.revision);
     let behind = at.unwrap_or(0);
+    // Equal state needs no events: read them only for a destination that may take an import.
     if held.as_ref() == Some(&instance) {
         return Ok(());
     }
@@ -526,6 +661,25 @@ fn reconcile<S: Store, D: Store>(
             "the destination moved on its own: it holds revision {behind} and the source holds {}; no merge rule exists",
             instance.revision
         ));
+    }
+    let events = source
+        .events(entity, id)
+        .map_err(|error| format!("the source history could not be read: {error}"))?;
+    // The import below appends only the source's events above `behind`, so the destination's own
+    // events up to `behind` stay. Unless they are the source's events up to `behind`, the commit
+    // would lay the source's state over a history the source never produced and clear the
+    // divergence that is the only record of it. A prefix that cannot be proved stays a conflict.
+    if held.is_some() {
+        let held_events = destination
+            .events(entity, id)
+            .map_err(|error| format!("the destination history could not be read: {error}"))?;
+        let held_prefix = held_events.iter().filter(|event| event.revision <= behind);
+        let source_prefix = events.iter().filter(|event| event.revision <= behind);
+        if !held_prefix.eq(source_prefix) {
+            return Err(format!(
+                "the destination's history up to revision {behind} is not the source's: it moved on its own and no merge rule exists"
+            ));
+        }
     }
     let decision = Decision::legacy_import(
         instance,

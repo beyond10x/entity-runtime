@@ -417,6 +417,7 @@ dependencies = [
  "entity-surface",
  "entity-yaml",
  "eventlog-core",
+ "rustix",
  "serde",
  "serde_json",
  "serde_yaml_ng",

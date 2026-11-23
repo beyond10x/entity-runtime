@@ -1664,7 +1664,7 @@
         "scenario": "entity.query/authored/consumed-prefix-before-cursor-is-validated"
       },
       "scenarios/query/fixed-dataset-complete-traversal.yaml": {
-        "digest": "sha256:718efdbba9dd3994f2d8d85db89b6bd97f0a65b83e4341206f2dd6e78bdb1147",
+        "digest": "sha256:33b6dc9e3fb9ccc802bc8174e8381b350dc2135c6685778380e653a75c741fd7",
         "disposition": "accepted",
         "scenario": "entity.query/authored/fixed-dataset-complete-traversal"
       },
@@ -1704,7 +1704,7 @@
         "scenario": "entity.query/authored/ordered-api-stops-after-matching-lookahead"
       },
       "scenarios/query/page-builder-truncates-matches.yaml": {
-        "digest": "sha256:4d378169c5f21bfc2ac28b5d5e1b225f414fab9c1331056fb0c3095d0ffca3cb",
+        "digest": "sha256:b4c4a692fb24dd2f8d865b687f228964b1d4f93e7df0b72470fc3309d21f8fe9",
         "disposition": "accepted",
         "scenario": "entity.query/authored/page-builder-truncates-matches"
       },
@@ -83955,7 +83955,7 @@
             },
             "expected": {
               "count": 1.0,
-              "cursor": "5b22646f6373222c7b7d5d.5a",
+              "cursor": "v1.2b0ed12cf104ee82390a85b3b219daac.5a",
               "has_next": true,
               "ids": "[\"Z\"]",
               "ok": true
@@ -87429,7 +87429,7 @@
             },
             "expected": {
               "count": 1.0,
-              "cursor": "5b22646f6373222c7b7d5d.61",
+              "cursor": "v1.2b0ed12cf104ee82390a85b3b219daac.61",
               "has_next": true,
               "ids": "[\"a\"]",
               "ok": true
