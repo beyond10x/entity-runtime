@@ -73,6 +73,22 @@ counters:
     scenario: ticket definition, 64 unrelated tickets
     tolerance: 0.01
     slack: 1024
+  - id: eventlog_file.create.blob_bytes.first
+    finding: "#94"
+    measures: blob bytes the first create of a type appends to an Eventlog File store, its definition blob included
+    unit: bytes
+    direction: lower
+    scenario: ticket definition, one create into an empty store
+    tolerance: 0.01
+    slack: 64
+  - id: eventlog_file.create.blob_bytes.second
+    finding: "#94"
+    measures: blob bytes one more create of the same type appends to an Eventlog File store (record, request, batch and entry blobs)
+    unit: bytes
+    direction: lower
+    scenario: ticket definition, second create
+    tolerance: 0.01
+    slack: 64
   - id: memory.query_one_row.alloc_bytes.n16
     finding: E07
     measures: bytes allocated by a one-row MemoryStore query_documents page

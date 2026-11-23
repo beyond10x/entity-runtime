@@ -15,8 +15,9 @@ use entity_core::{replay, Decision, Registry, Runtime};
 use entity_store::{
     asynchronous::{
         original_request_comparison_bytes, read_record_in_domain, record_comparison_bytes,
-        record_domain, request_domain, verify_complete_store, AppendMember, AppendRequest,
-        AsyncRecordedWriter, BatchKey, MemoryRecordedStore, RecordedEntry,
+        record_comparison_bytes_in, record_domain, request_domain, verify_complete_store,
+        AppendMember, AppendRequest, AsyncRecordedWriter, BatchKey, MemoryRecordedStore,
+        RecordForm, RecordedEntry, RECORD_BY_DIGEST,
     },
     EventProvider, Expect, FileStore, HistoryProvider, RecordedCommit, Recording, StateProvider,
     Store,
@@ -141,8 +142,21 @@ fn a_clear_record_frames_in_the_domain_of_its_semantics_and_verifies_in_the_memo
             let entry = RecordedEntry::Decision(commit);
             assert_eq!(record_domain(&entry), record, "{semantics}");
             assert_eq!(request_domain(&entry), request, "{semantics}");
-            let bytes = record_comparison_bytes(&entry).expect("encodes");
+            // The semantics' framing is the record's framing with its definition embedded; the form a
+            // store writes since 0.33.0 names the definition and carries the same `removed`.
+            let bytes = record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry)
+                .expect("encodes");
             let body = read_record_in_domain(record, &bytes).expect("reads in its own domain");
+            let named = read_record_in_domain(
+                RECORD_BY_DIGEST,
+                &record_comparison_bytes(&entry).expect("encodes"),
+            )
+            .expect("reads by digest");
+            assert_eq!(
+                named["commit"]["envelope"]["record"]["removed"],
+                body["commit"]["envelope"]["record"]["removed"],
+                "{semantics} record {at}"
+            );
             if at > 0 {
                 assert_eq!(
                     body["commit"]["envelope"]["record"]["removed"],

@@ -17,7 +17,10 @@ use std::collections::BTreeMap;
 use entity_core::EntityInstance;
 #[cfg(test)]
 use entity_store::asynchronous::SubjectHistory;
-use entity_store::asynchronous::{HistoryOrigin, RecordedEntry, StoredRecord, Subject};
+use entity_store::asynchronous::{
+    HistoryOrigin, RecordForm, RecordedEntry, StoredRecord, Subject, definition_comparison_bytes,
+    record_definition,
+};
 
 use super::shared::{ModelHistory, SharedRecord};
 use crate::encoding::RecordedEntryWrapper;
@@ -47,11 +50,25 @@ fn decoded_charge(raw: usize) -> usize {
     DECODED_FIXED.saturating_add(raw.saturating_mul(DECODED_PER_BYTE))
 }
 
+/// What a record decoded from `bytes` holds beyond them: the definition an `er.record/5` record
+/// names by digest, which its decode holds in full. Such a record is charged as the record that
+/// embeds it, so a small record naming a large definition does not pass the cap uncounted.
+fn named_definition_bytes(bytes: &[u8], entry: &RecordedEntry) -> usize {
+    if RecordForm::of_record(bytes) != RecordForm::DefinitionByDigest {
+        return 0;
+    }
+    record_definition(entry)
+        .and_then(|definition| definition_comparison_bytes(definition).ok())
+        .map_or(0, |document| document.len())
+}
+
 impl Decoded {
-    /// What this decode of `raw` bytes is charged against the cap.
-    fn charge(&self, raw: usize) -> usize {
+    /// What this decode of `bytes` is charged against the cap.
+    fn charge(&self, bytes: &[u8]) -> usize {
+        let raw = bytes.len();
         match self {
-            Self::Entry(_) | Self::Record(_) => decoded_charge(raw),
+            Self::Entry(_) => decoded_charge(raw),
+            Self::Record(entry) => decoded_charge(raw + named_definition_bytes(bytes, entry)),
             Self::BatchSubjects(subjects) => subjects
                 .iter()
                 .map(|subject| ENTRY + subject.entity.len() + subject.id.len())
@@ -62,10 +79,12 @@ impl Decoded {
 
 /// What a remembered stored record is charged: its decode, both byte strings and its receipt.
 fn record_charge(record: &StoredRecord) -> usize {
-    decoded_charge(record.record_bytes.len())
-        .saturating_add(record.record_bytes.len())
-        .saturating_add(record.request_bytes.len())
-        .saturating_add(4 * ENTRY)
+    decoded_charge(
+        record.record_bytes.len() + named_definition_bytes(&record.record_bytes, &record.entry),
+    )
+    .saturating_add(record.record_bytes.len())
+    .saturating_add(record.request_bytes.len())
+    .saturating_add(4 * ENTRY)
 }
 
 /// What a remembered history is charged beyond its records: its subject, its origin and its
@@ -268,13 +287,13 @@ impl VerifiedMemory {
 
     /// Remembers the decode of a blob this handle verified as exactly `bytes`.
     pub(super) fn remember(&mut self, digest: &str, bytes: &[u8], decoded: Decoded) {
-        let adding = decoded.charge(bytes.len());
+        let adding = decoded.charge(bytes);
         let replacing = self
             .blobs
             .get(digest)
             .filter(|remembered| remembered.bytes == bytes)
             .and_then(|remembered| remembered.decoded.as_ref())
-            .map_or(0, |previous| previous.charge(bytes.len()));
+            .map_or(0, |previous| previous.charge(bytes));
         let Some(blob) = self
             .blobs
             .get(digest)
@@ -299,7 +318,7 @@ impl VerifiedMemory {
             let previous = remembered
                 .decoded
                 .replace(decoded)
-                .map_or(0, |previous| previous.charge(bytes.len()));
+                .map_or(0, |previous| previous.charge(bytes));
             remembered.charged = remembered
                 .charged
                 .saturating_sub(previous)
@@ -459,7 +478,7 @@ mod tests {
         Expect, RecordedCommit, Recording,
         asynchronous::{
             BatchKey, RecordPosition, RecordReceipt, original_request_comparison_bytes,
-            record_comparison_bytes,
+            record_comparison_bytes, record_comparison_bytes_in,
         },
     };
     use serde_json::json;
@@ -533,7 +552,8 @@ mod tests {
             expect: Expect::Absent,
             request_bytes: original_request_comparison_bytes(entry).expect("request bytes"),
             lineage: None,
-            record_bytes: record_comparison_bytes(entry).expect("record bytes"),
+            record_bytes: record_comparison_bytes_in(RecordForm::DefinitionEmbedded, entry)
+                .expect("record bytes"),
         }
     }
 
@@ -562,7 +582,20 @@ mod tests {
         const CAP: usize = 2 * 1024 * 1024;
         for (fields, raw, entry_heap, stored_heap) in MEASURED {
             let entry = created(fields);
-            let bytes = record_comparison_bytes(&entry).expect("record bytes");
+            let bytes = record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry)
+                .expect("record bytes");
+            // The same record naming its definition is charged at least as the one that embeds
+            // it: its decode holds the same definition.
+            let by_digest = record_comparison_bytes(&entry).expect("by-digest bytes");
+            assert!(
+                by_digest.len() < bytes.len(),
+                "{fields} fields: names its definition"
+            );
+            assert!(
+                Decoded::Record(Box::new(entry.clone())).charge(&by_digest)
+                    >= Decoded::Record(Box::new(entry.clone())).charge(&bytes),
+                "{fields} fields: a record naming its definition is charged below its decode"
+            );
             assert_eq!(
                 bytes.len(),
                 raw,

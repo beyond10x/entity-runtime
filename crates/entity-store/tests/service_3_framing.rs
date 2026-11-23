@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 use entity_core::{LoadedDecision, OperationFieldAction, PreloadDecision, Registry, Runtime};
 use entity_store::{
     asynchronous::{
-        batch_comparison_bytes, original_request_comparison_bytes, read_record_in_domain,
-        record_comparison_bytes, record_domain, record_framing, request_domain, AppendMember,
-        BatchKey, RecordedEntry,
+        batch_comparison_bytes_in, original_request_comparison_bytes, read_record_in_domain,
+        record_comparison_bytes_in, record_domain, record_framing, request_domain, AppendMember,
+        BatchKey, RecordForm, RecordedEntry,
     },
     Expect, RecordedCommit, Recording,
 };
@@ -94,7 +94,7 @@ fn service_3_uses_record_4_and_request_4_with_exact_ordered_actions() {
     let entry = entry();
     assert_eq!(record_domain(&entry), "er.record/4");
     assert_eq!(request_domain(&entry), "er.request/4");
-    let record = record_comparison_bytes(&entry).unwrap();
+    let record = record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry).unwrap();
     assert!(read_record_in_domain("er.record/3", &record).is_err());
     let record_text = String::from_utf8(record).unwrap();
     assert!(record_text.contains(r#""removed":["note"]"#));
@@ -107,8 +107,12 @@ fn service_3_uses_record_4_and_request_4_with_exact_ordered_actions() {
         br#"["er.request/4",{"arguments":{},"expected_revision":1,"fulfillments":{"issued_at":{"set":{"value":"2026-09-16T10:00:00Z"}},"note":"remove"},"kind":"execute","operation":"Issue","recording":{"actor":null,"causation":null,"correlation":null,"record_id":"r-2","recorded_at":"2026-09-16T10:00:00Z"},"subject":["invoice","i-1"]}]"#
     );
     let member = AppendMember::new(Expect::Absent, entry, request);
-    let batch =
-        batch_comparison_bytes(&BatchKey::Named("service-3".to_owned()), &[member]).unwrap();
+    let batch = batch_comparison_bytes_in(
+        RecordForm::DefinitionEmbedded,
+        &BatchKey::Named("service-3".to_owned()),
+        &[member],
+    )
+    .unwrap();
     assert_eq!(record_framing(&batch).unwrap(), "er.batch/1");
     assert!(String::from_utf8(batch).unwrap().contains("er.record/4"));
 }

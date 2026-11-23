@@ -12,9 +12,9 @@ use serde_json::Value;
 use crate::Expect;
 
 use super::{
-    original_request_comparison_bytes, record_comparison_bytes, AsyncStoreError,
+    original_request_comparison_bytes, record_comparison_bytes_in, AsyncStoreError,
     CompleteStoreSnapshot, HistoryOrigin, KnownLegacyOrder, LegacyEvidence, LegacyOrderDeclaration,
-    RecordKind, RecordedEntry, StoreAssurance, StoreCoverage, StoredRecord, Subject,
+    RecordForm, RecordKind, RecordedEntry, StoreAssurance, StoreCoverage, StoredRecord, Subject,
     SubjectAssurance, SubjectHistory,
 };
 
@@ -527,12 +527,14 @@ fn validate_stored_coordinates(
     if bytes_held {
         return Ok(());
     }
-    let encoded = record_comparison_bytes(&record.entry).map_err(|error| {
-        corrupt(
-            subject,
-            format!("complete record cannot be encoded for comparison: {error}"),
-        )
-    })?;
+    let encoded =
+        record_comparison_bytes_in(RecordForm::of_record(&record.record_bytes), &record.entry)
+            .map_err(|error| {
+                corrupt(
+                    subject,
+                    format!("complete record cannot be encoded for comparison: {error}"),
+                )
+            })?;
     if encoded != record.record_bytes {
         return Err(corrupt(
             subject,
@@ -927,7 +929,7 @@ pub fn verify_subject_history_extension(
 ///
 /// [`verify_subject_history_extension`] — or [`verify_subject_history`] without a verified
 /// prefix — for a reader that decoded every stored record of `history` from exactly its
-/// `record_bytes`, and has already held those bytes to be [`record_comparison_bytes`] of the entry
+/// `record_bytes`, and has already held those bytes to be [`record_comparison_bytes_in`] (in its stored form) of the entry
 /// they decoded to and its `request_bytes` to be [`original_request_comparison_bytes`] of it,
 /// refusing the record otherwise.
 ///
@@ -1516,7 +1518,7 @@ mod tests {
             };
             self.history.records.push(StoredRecord {
                 request_bytes: original_request_comparison_bytes(&entry).expect("request bytes"),
-                record_bytes: record_comparison_bytes(&entry).expect("record bytes"),
+                record_bytes: super::super::record_comparison_bytes(&entry).expect("record bytes"),
                 entry,
                 position,
                 receipt,

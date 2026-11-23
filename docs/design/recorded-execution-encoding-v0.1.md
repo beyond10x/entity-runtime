@@ -171,3 +171,38 @@ The literal framing controls are:
 The first line pins the tag independently of a payload an older reader cannot parse. The second is
 the complete request vector. A reader capped at `/2` refuses either `/3` tag before parsing the
 payload. No fallback rewrites or interprets `/3` as `/2`.
+
+## Definition by digest (`er.record/5`, 0.33.0)
+
+Issue 94. A decision record embedded its whole definition snapshot, which is the same for every
+record of one entity type: a consumer's Eventlog store measured 94 % of its blob bytes as repeated
+definitions. Since 0.33.0 a decision that carries a definition is written in one more framing:
+
+```text
+DefinitionDocument = ["er.definition/1", Definition]            (canonical C bytes)
+DefinitionDigest   = K("er.definition-key/1", DefinitionDocument)
+["er.record/5", Body]
+```
+
+`Body` is exactly the body the record has in the framing the table above gives its semantics, with
+`commit.envelope.record.definition` replaced by `DefinitionDigest` as a JSON string. `K` is the
+framed SHA-256 of [the Eventlog encoding](eventlog-recorded-encoding-v0.1.md), so the digest a
+record names is the key its definition blob is stored under. One framing serves every semantics:
+the semantics is read from the definition the digest resolves to, and the request framing is still
+chosen from it (`er.request/1` to `/4`; requests never carried the definition). An observation and
+a decision without a definition carry nothing to name and keep their framings. `er.batch/1` is
+unchanged; its members carry `er.record/5` where they name a definition.
+
+Old records keep their bytes. A record framed `er.record/1` to `/4` is read and re-encoded with its
+definition embedded (`RecordForm::DefinitionEmbedded`), so its record and batch digests, and every
+chain over them, are unchanged and a store written before 0.33.0 needs no rewrite. A stored record
+or batch is compared in the form its bytes are in (`RecordForm::of_record`, `RecordForm::of_batch`),
+so a retry of a batch written before 0.33.0 still finds the same batch. A new record's digest is
+over its `er.record/5` bytes.
+
+A reader resolves the digest to the definition document, holds the document to the digest, decodes
+it and requires its typed re-encoding to be the same bytes, and only then gives the record its
+definition. A digest that resolves to nothing, or to bytes that do not hash to it, is refused
+(`ProviderIntegrity`); so is an `er.record/5` body whose definition is not a string. `entity-store`
+computes the digest without a hash dependency (`asynchronous/sha256.rs`, held to the FIPS vectors);
+every Eventlog read re-hashes the definition blob with `sha2`, so the two cannot drift silently.
