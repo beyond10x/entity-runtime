@@ -323,3 +323,78 @@ fn a_destination_inside_the_legacy_source_is_refused_before_anything_is_written(
     assert_eq!(tree(&legacy), before, "the source is left exactly as it was");
 }
 
+
+/// Set by `a_dry_run_holds_one_legacy_subject_at_a_time` for the child process it measures.
+const DRY_RUN_PROBE: &str = "ENTITY_STORE_DRY_RUN_PROBE";
+
+/// One line of `/proc/self/status`, in KiB.
+#[cfg(target_os = "linux")]
+fn status_kib(field: &str) -> u64 {
+    let status = std::fs::read_to_string("/proc/self/status").expect("process status");
+    status
+        .lines()
+        .find_map(|line| line.strip_prefix(field)?.strip_prefix(':'))
+        .and_then(|value| value.trim().strip_suffix("kB")?.trim().parse().ok())
+        .unwrap_or_else(|| panic!("{field} in /proc/self/status"))
+}
+
+/// Runs only in the child process `a_dry_run_holds_one_legacy_subject_at_a_time` starts: a dry run
+/// over the store it names, printing how far it raised the peak resident memory.
+#[cfg(target_os = "linux")]
+#[test]
+fn dry_run_memory_probe() {
+    let Some(legacy) = std::env::var_os(DRY_RUN_PROBE) else {
+        return;
+    };
+    let legacy = PathBuf::from(legacy);
+    // Writing 5 resets the peak to the current resident size, so the peak below is the dry run's.
+    let _ = std::fs::write("/proc/self/clear_refs", "5");
+    let before = status_kib("VmHWM");
+    let report = entity_store::migrate_file_store_v1(&legacy, legacy.with_file_name("unwritten"), true)
+        .expect("dry run");
+    let peak = status_kib("VmHWM");
+    println!("dry-run subjects {} grew-kib {}", report.subjects, peak.saturating_sub(before));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_dry_run_holds_one_legacy_subject_at_a_time() {
+    const SUBJECTS: usize = 64;
+    let base = scratch("dry-run-memory");
+    let legacy = base.join("legacy");
+    std::fs::create_dir_all(legacy.join("ticket")).expect("legacy entity directory");
+    let created = Runtime::new(&registry())
+        .create("ticket", 1, "0", serde_json::json!({"title": "x".repeat(256 * 1024)}))
+        .expect("creation");
+    let mut instance = created.instance;
+    for index in 0..SUBJECTS {
+        instance.id = index.to_string();
+        std::fs::write(
+            legacy.join("ticket").join(format!("{index}.json")),
+            serde_json::to_vec(&instance).expect("instance serializes"),
+        )
+        .expect("legacy state");
+    }
+    // Measured in a child running the probe alone, so no other test shares its peak.
+    let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+        .args(["--exact", "dry_run_memory_probe", "--nocapture", "--test-threads=1"])
+        .env(DRY_RUN_PROBE, &legacy)
+        .output()
+        .expect("probe runs");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "probe failed: {stdout}{}", String::from_utf8_lossy(&output.stderr));
+    let line = stdout
+        .lines()
+        .find_map(|line| line.split_once("dry-run subjects ").map(|(_, report)| report))
+        .unwrap_or_else(|| panic!("probe reported nothing: {stdout}"));
+    let (subjects, grown) = line.split_once(" grew-kib ").expect("probe line");
+    assert_eq!(subjects, SUBJECTS.to_string());
+    let grown: u64 = grown.parse().expect("KiB");
+    // 64 documents of 256 KiB are 16 MiB: holding them all raised the peak by more than that, holding
+    // one at a time by under 3 MiB.
+    assert!(
+        grown < 8 * 1024,
+        "a dry run over {SUBJECTS} documents of 256 KiB raised peak memory by {grown} KiB; it holds one subject at a time"
+    );
+    std::fs::remove_dir_all(&base).expect("fixture removed");
+}

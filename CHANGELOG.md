@@ -25,6 +25,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   from, and a write on a fresh `FileStore` handle reuses the index scan's reading of its target
   subject. With 32 prior records on one subject, one command read 1,209,312 bytes and now reads
   403,104 bytes. Every recorded write still rewrites the whole subject document.
+- `entity store migrate-file` holds one legacy subject in memory at a time instead of the whole
+  store. A dry run of 128 subjects with 256 KiB fields peaked at 41,156 KiB and now at 17,336 KiB
+  (one subject: 17,120 and 16,984 KiB, mostly process start-up). The real run validates the source
+  first, as before, and then reads it a second time to write it.
 
 ### Fixed
 

@@ -5,7 +5,7 @@
 //! and history are replaced together through a synced temporary file and rename.
 
 use fs2::FileExt;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -1208,14 +1208,11 @@ pub fn migrate_file_store_v1(
     }
 
     refuse_destination_inside_source(source, destination)?;
-    let subjects = read_legacy(source)?;
-    let report = FileMigrationReport {
-        subjects: subjects.len(),
-        events: subjects.values().map(|subject| subject.events.len()).sum(),
-        dry_run,
-    };
+    // Validation holds one legacy subject at a time and keeps only counts and identities. An invalid
+    // source is refused here, before the real run creates any directory.
+    let validated = walk_legacy(source, dry_run, |_| Ok(()))?;
     if dry_run {
-        return Ok(report);
+        return Ok(validated);
     }
 
     // A bare relative destination (`converted`) has an empty parent, which no directory call
@@ -1254,18 +1251,19 @@ pub fn migrate_file_store_v1(
             .open(&lock)
             .and_then(|file| file.sync_all())
             .map_err(|error| backend("creating lock", &lock, &error))?;
-        for subject in subjects.values() {
-            store.write_subject(subject)?;
-        }
+        // A second pass writes each subject as it reads it, so the real run does not hold the
+        // whole store either; it validates again and reports what it wrote.
+        let report = walk_legacy(source, false, |subject| store.write_subject(&subject))?;
         sync_directory(&staging)?;
         fs::rename(&staging, destination)
             .map_err(|error| backend("publishing", destination, &error))?;
-        sync_directory(parent)
+        sync_directory(parent)?;
+        Ok(report)
     })();
     if result.is_err() {
         let _ = fs::remove_dir_all(&staging);
     }
-    result.map(|()| report)
+    result
 }
 
 /// Refuses a migration destination inside the legacy source, dry runs included.
@@ -1317,8 +1315,22 @@ fn resolve_absent(path: &Path) -> Result<PathBuf, StoreError> {
     Ok(resolved)
 }
 
-fn read_legacy(root: &Path) -> Result<BTreeMap<(String, String), StoredSubject>, StoreError> {
-    let mut subjects = BTreeMap::new();
+/// Validates a legacy split-file store one subject at a time, handing each to `visit` and
+/// dropping it before the next is read.
+///
+/// Only counts and the subject identities (for the duplicate check) outlive a subject: a dry run
+/// used to keep every document and event in memory just to return two counts.
+fn walk_legacy(
+    root: &Path,
+    dry_run: bool,
+    mut visit: impl FnMut(StoredSubject) -> Result<(), StoreError>,
+) -> Result<FileMigrationReport, StoreError> {
+    let mut identities = BTreeSet::new();
+    let mut report = FileMigrationReport {
+        subjects: 0,
+        events: 0,
+        dry_run,
+    };
     for entity_entry in fs::read_dir(root).map_err(|error| backend("listing", root, &error))? {
         let entity_entry = entity_entry.map_err(|error| backend("listing", root, &error))?;
         let entity_path = entity_entry.path();
@@ -1396,26 +1408,21 @@ fn read_legacy(root: &Path) -> Result<BTreeMap<(String, String), StoredSubject>,
                     )));
                 }
             }
-            let key = (entity.clone(), id.to_owned());
-            if subjects
-                .insert(
-                    key.clone(),
-                    StoredSubject {
-                        format: SUBJECT_FORMAT.to_owned(),
-                        origin: SubjectOrigin::LegacySnapshot,
-                        instance,
-                        records: Vec::new(),
-                        observations: Vec::new(),
-                        events,
-                    },
-                )
-                .is_some()
-            {
+            if !identities.insert((entity.clone(), id.to_owned())) {
                 return Err(StoreError::Backend(format!(
-                    "duplicate legacy subject {}/{}",
-                    key.0, key.1
+                    "duplicate legacy subject {entity}/{id}"
                 )));
             }
+            report.subjects += 1;
+            report.events += events.len();
+            visit(StoredSubject {
+                format: SUBJECT_FORMAT.to_owned(),
+                origin: SubjectOrigin::LegacySnapshot,
+                instance,
+                records: Vec::new(),
+                observations: Vec::new(),
+                events,
+            })?;
         }
         for event_entry in
             fs::read_dir(&entity_path).map_err(|error| backend("listing", &entity_path, &error))?
@@ -1441,7 +1448,7 @@ fn read_legacy(root: &Path) -> Result<BTreeMap<(String, String), StoredSubject>,
             }
         }
     }
-    Ok(subjects)
+    Ok(report)
 }
 
 fn parse_legacy_events(path: &Path, text: &str) -> Result<Vec<DomainEvent>, StoreError> {

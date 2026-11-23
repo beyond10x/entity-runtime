@@ -48,7 +48,9 @@ An unmarked non-empty directory is never guessed to be v2. `entity store migrate
 rejects symlinks, nesting, orphan logs and partial trailing records, writes a sibling staging tree,
 and publishes it by rename. The destination must not exist and must not lie inside the source
 (both resolved canonically, dry runs included), and the source is never modified.
-`--dry-run` performs the validation without creating destination bytes. Migrated subjects carry a
+`--dry-run` performs the validation without creating destination bytes. Validation holds one
+subject at a time and keeps only counts and identities; the real run then reads the source a
+second time and writes each subject as it reads it. Migrated subjects carry a
 `legacy_snapshot` origin and retain legacy events, but have no invented decision records.
 
 ### 2.1 The record-id index (0.17.6)
