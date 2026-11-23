@@ -41,9 +41,10 @@ use crate::{
         encode_source_anchor, history_from_anchor, key_for_value,
     },
     projection::{
-        PROJECTOR_NAME, batch_key as physical_batch_key, batch_spec, binding_spec, physical,
-        projection_specs, record_key, record_spec, subject_key, subject_spec, subject_stream_id,
-        tagged_body,
+        PROJECTOR_NAME, batch_key as physical_batch_key, batch_member_row, batch_row, batch_spec,
+        binding_spec, committed_record_row, decision_state_source, genesis_origin,
+        imported_record_row, imported_subject_row, physical, projection_specs, record_key,
+        record_spec, subject_key, subject_row, subject_spec, subject_stream_id, tagged_body,
     },
 };
 
@@ -54,6 +55,8 @@ mod scoped;
 mod shared;
 mod tracked;
 pub use tracked::{CapturePolicy, OpenVerification};
+#[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
+mod payload_tests;
 #[cfg(all(test, feature = "sqlite", feature = "sync-bridge"))]
 mod small_store_cost;
 
@@ -1011,8 +1014,17 @@ pub struct EventlogRecordedStore {
 struct Growth {
     events: u64,
     rows: u64,
-    digests: BTreeSet<String>,
+    /// An upper bound on the payload bytes the events and rows add (see [`CaptureHeld`]): the
+    /// event bodies exactly, every row body built with the widest physical reference, and every
+    /// subject row the write touches counted as if it were added whole.
+    payload: u64,
+    /// Every blob the write binds, with its byte length; one already bound adds nothing.
+    digests: BTreeMap<String, u64>,
 }
+
+/// One member of a group being written: its entry wrapper, the wrapper's bytes and digest, and
+/// its record's bytes and digest.
+type MemberBlobs = (RecordedEntryWrapper, Vec<u8>, String, Vec<u8>, String);
 
 /// One verified capture and the model built from it.
 ///
@@ -1404,25 +1416,85 @@ impl EventlogRecordedStore {
     }
 
     fn install(&self, capture: TenantCapture, model: CapturedModel) -> Arc<CapturedModel> {
-        if let Ok(mut held) = self.held.lock() {
-            *held = model.held.clone();
-        }
+        let held = model.held.clone();
         let model = Arc::new(model);
+        // The capture before the counts, each under its own lock: `count_payload` holds the
+        // capture's lock while it counts and sets the payload, so it counts either the capture the
+        // held counts come from, or this newer one onto counts about to be replaced. A payload
+        // counted from an older capture never lands on newer counts.
         if let Ok(mut verified) = self.verified.lock() {
             *verified = Some(Verified {
                 capture,
                 model: Arc::clone(&model),
             });
         }
+        if let Ok(mut bounds) = self.held.lock() {
+            *bounds = held;
+        }
         model
+    }
+
+    /// The exact payload of the capture this handle last verified, if it keeps one.
+    fn verified_payload(&self) -> Result<Option<u64>, AsyncStoreError> {
+        Ok(self
+            .verified
+            .lock()
+            .map_err(|_| integrity("verified model lock poisoned"))?
+            .as_ref()
+            .map(|verified| capture_payload(&verified.capture)))
+    }
+
+    /// Counts the payload of the observation the held counts come from, if it is not counted yet.
+    ///
+    /// A complete capture's payload is counted only when a write needs it, from the capture this
+    /// handle keeps: a read never pays for encoding every body of the authority, and a write pays
+    /// once per observation. Without a kept capture, a fresh observation is taken first.
+    async fn count_payload(&self) -> Result<(), AsyncStoreError> {
+        for _ in 0..2 {
+            let counted = {
+                let held = self
+                    .held
+                    .lock()
+                    .map_err(|_| integrity("read bound lock poisoned"))?;
+                held.payload.is_some()
+            };
+            if counted {
+                return Ok(());
+            }
+            {
+                let verified = self
+                    .verified
+                    .lock()
+                    .map_err(|_| integrity("verified model lock poisoned"))?;
+                if let Some(verified) = verified.as_ref() {
+                    let payload = capture_payload(&verified.capture);
+                    let mut held = self
+                        .held
+                        .lock()
+                        .map_err(|_| integrity("read bound lock poisoned"))?;
+                    held.payload.get_or_insert(payload);
+                    return Ok(());
+                }
+            }
+            self.capture_model().await?;
+        }
+        Err(integrity(
+            "no observation to count the tenant's payload bytes from",
+        ))
     }
 
     /// Refuses a write that would leave the tenant holding more than this handle reads back.
     ///
     /// A writer that commits past its own reader leaves a store it cannot read, and loses the
-    /// receipt of the write it just made, because the outcome is verified by reading it back. The
-    /// payload-byte cap is not checked, for the reason the import path gives: computing it would
-    /// re-encode the whole authority on every write.
+    /// receipt of the write it just made, because the outcome is verified by reading it back.
+    /// All four caps are checked: events, blobs, projection rows and payload bytes.
+    ///
+    /// The payload check adds the write's upper bound ([`Growth::payload`] and the bytes of every
+    /// blob not yet bound) to what the handle holds: the exact payload of its last observation
+    /// (counted here, on first need, if that was a complete capture; see `count_payload`), plus
+    /// the bounds its own writes were admitted with since. A write that estimate would refuse is
+    /// checked once more against a fresh observation (`capture_model`), so an over-estimate never
+    /// refuses a write that fits.
     ///
     /// A handle opened from a checkpoint knows the provider's counts but not which digests are
     /// bound, so it asks the provider about each digest of the write it has not seen bound: one
@@ -1436,7 +1508,7 @@ impl EventlogRecordedStore {
             if held.partial {
                 growth
                     .digests
-                    .iter()
+                    .keys()
                     .filter(|digest| !held.digests.contains(digest.as_str()))
                     .cloned()
                     .collect()
@@ -1469,42 +1541,50 @@ impl EventlogRecordedStore {
                 }
             }
         }
+        let mut recounted = false;
+        loop {
+            self.count_payload().await?;
+            let (refusal, estimated) = {
+                let mut held = self
+                    .held
+                    .lock()
+                    .map_err(|_| integrity("read bound lock poisoned"))?;
+                // Already counted in the provider's usage: known bound, not added by this write.
+                held.digests.extend(known.drain(..));
+                (
+                    exceeded_bound(&self.limits, &held, growth),
+                    held.payload_added > 0,
+                )
+            };
+            match refusal {
+                None => return Ok(()),
+                Some(("max_payload_bytes", _, _)) if estimated && !recounted => {
+                    self.recount_payload().await?;
+                    recounted = true;
+                }
+                Some((bound, limit, would_hold)) => {
+                    return Err(AsyncStoreError::BatchExceedsReadBounds {
+                        bound: bound.to_owned(),
+                        limit,
+                        would_hold,
+                    });
+                }
+            }
+        }
+    }
+
+    /// Replaces an estimated payload charge with the charge of a fresh observation.
+    ///
+    /// A model the observation returns unchanged is not installed again, so its counts are taken
+    /// here; a payload it has not counted is counted from the capture by `count_payload`.
+    async fn recount_payload(&self) -> Result<(), AsyncStoreError> {
+        let model = self.capture_model().await?;
         let mut held = self
             .held
             .lock()
             .map_err(|_| integrity("read bound lock poisoned"))?;
-        // Already counted in the provider's usage: known bound, not added by this write.
-        held.digests.extend(known);
-        let added_blobs = growth
-            .digests
-            .iter()
-            .filter(|digest| !held.digests.contains(digest.as_str()))
-            .count() as u64;
-        for (bound, limit, would_hold) in [
-            (
-                "max_events",
-                self.limits.max_events,
-                held.events.saturating_add(growth.events),
-            ),
-            (
-                "max_blobs",
-                self.limits.max_blobs,
-                held.blobs.saturating_add(added_blobs),
-            ),
-            (
-                "max_projection_rows",
-                self.limits.max_projection_rows,
-                held.rows.saturating_add(growth.rows),
-            ),
-        ] {
-            if would_hold > limit {
-                return Err(AsyncStoreError::BatchExceedsReadBounds {
-                    bound: bound.to_owned(),
-                    limit,
-                    would_hold,
-                });
-            }
-        }
+        held.payload = model.held.payload;
+        held.payload_added = model.held.payload_added;
         Ok(())
     }
 
@@ -1513,11 +1593,14 @@ impl EventlogRecordedStore {
         if let Ok(mut held) = self.held.lock() {
             held.events = held.events.saturating_add(growth.events);
             held.rows = held.rows.saturating_add(growth.rows);
-            for digest in &growth.digests {
+            let mut payload = growth.payload;
+            for (digest, bytes) in &growth.digests {
                 if held.digests.insert(digest.clone()) {
                     held.blobs = held.blobs.saturating_add(1);
+                    payload = payload.saturating_add(*bytes);
                 }
             }
+            held.payload_added = held.payload_added.saturating_add(payload);
         }
     }
 
@@ -2039,6 +2122,73 @@ impl EventlogOperationStore<'_> {
         }))
     }
 
+    /// An upper bound on the payload bytes a group's events and index rows add ([`Growth::payload`]).
+    ///
+    /// Event bodies and record rows are built as the projector builds them, each with the widest
+    /// physical reference of its stream, and so is the batch row. A subject row is replaced, not
+    /// added: what it adds is what its revision, state source and physical head grow by, since
+    /// its authority, subject and origin do not change. The row of a subject the store holds is
+    /// therefore counted with a `null` origin and the largest revision, which bounds that growth;
+    /// a new subject's row is counted whole, with the genesis origin it begins with.
+    fn write_payload_bound(
+        &self,
+        key: &BatchKey,
+        batch_digest: &str,
+        wrappers: &[MemberBlobs],
+        request: &AppendRequest,
+        new_subjects: &BTreeSet<Subject>,
+    ) -> Result<u64, AsyncStoreError> {
+        let authority = &self.store.authority;
+        let mut payload = 0u64;
+        let mut state_sources: BTreeMap<Subject, &str> = BTreeMap::new();
+        let mut members = Vec::with_capacity(wrappers.len());
+        for (index, ((wrapper, _, wrapper_digest, _, _), member)) in
+            wrappers.iter().zip(&request.members).enumerate()
+        {
+            let subject = member.entry.subject();
+            let widest = widest_physical(&subject_stream_id(authority, &subject)?);
+            payload = payload
+                .saturating_add(payload_len(&json!({ "blob": wrapper_digest })))
+                .saturating_add(payload_len(&committed_record_row(
+                    wrapper,
+                    &member.entry,
+                    &widest,
+                )));
+            members.push(batch_member_row(
+                index,
+                &member.entry,
+                &record_key(authority, member.entry.record_id())?,
+                &json!(wrapper.record_blob),
+                &json!(wrapper.request_blob),
+                &json!(widest),
+            ));
+            state_sources.insert(subject, &wrapper.record_blob);
+        }
+        payload = payload.saturating_add(payload_len(&batch_row(
+            authority,
+            key,
+            batch_digest,
+            members,
+        )));
+        for (subject, record_blob) in state_sources {
+            let origin = if new_subjects.contains(&subject) {
+                genesis_origin()
+            } else {
+                Value::Null
+            };
+            let widest = widest_physical(&subject_stream_id(authority, &subject)?);
+            payload = payload.saturating_add(payload_len(&subject_row(
+                authority,
+                &subject,
+                &origin,
+                u64::MAX,
+                &decision_state_source(record_blob),
+                &widest,
+            )));
+        }
+        Ok(payload)
+    }
+
     /// One attempt of [`Self::append_inner`].
     async fn append_attempt(&self, request: &AppendRequest) -> Result<Attempted, WriteFailure> {
         request.validate().map_err(WriteFailure::NotCommitted)?;
@@ -2099,10 +2249,11 @@ impl EventlogOperationStore<'_> {
                     })
             });
         }
-        let new_subjects = heads
+        let new_subjects: BTreeSet<Subject> = heads
             .keys()
             .filter(|subject| !model.histories.contains_key(*subject))
-            .count() as u64;
+            .cloned()
+            .collect();
         // Released before the commit, so the post-commit verification advances the model in place.
         drop(model);
         let batch_bytes =
@@ -2144,22 +2295,25 @@ impl EventlogOperationStore<'_> {
         // One event and one record row per member, one batch row, one subject row per subject the
         // store does not yet hold, and every blob not already bound. Counted before a byte is
         // uploaded, so a refusal costs nothing and leaves nothing.
+        let mut digests = BTreeMap::new();
+        digests.insert(batch_digest.clone(), batch_bytes.len() as u64);
+        for ((wrapper, wrapper_bytes, wrapper_digest, record_bytes, _), member) in
+            wrappers.iter().zip(&request.members)
+        {
+            digests.insert(wrapper.record_blob.clone(), record_bytes.len() as u64);
+            digests.insert(
+                wrapper.request_blob.clone(),
+                member.request_bytes.len() as u64,
+            );
+            digests.insert(wrapper_digest.clone(), wrapper_bytes.len() as u64);
+        }
         let growth = Growth {
             events: wrappers.len() as u64,
-            rows: wrappers.len() as u64 + 1 + new_subjects,
-            digests: std::iter::once(batch_digest.clone())
-                .chain(
-                    wrappers
-                        .iter()
-                        .flat_map(|(wrapper, _, wrapper_digest, _, _)| {
-                            [
-                                wrapper.record_blob.clone(),
-                                wrapper.request_blob.clone(),
-                                wrapper_digest.clone(),
-                            ]
-                        }),
-                )
-                .collect(),
+            rows: wrappers.len() as u64 + 1 + new_subjects.len() as u64,
+            payload: self
+                .write_payload_bound(&key, &batch_digest, &wrappers, request, &new_subjects)
+                .map_err(WriteFailure::NotCommitted)?,
+            digests,
         };
         self.store
             .admit_growth(&growth)
@@ -2242,6 +2396,7 @@ impl EventlogOperationStore<'_> {
             self.store.grow(&Growth {
                 events: 0,
                 rows: 0,
+                payload: 0,
                 digests: growth.digests.clone(),
             });
         }
@@ -2256,7 +2411,7 @@ impl EventlogOperationStore<'_> {
                 self.store.remember_own(&result);
                 if !result.deduplicated {
                     self.store.grow(&Growth {
-                        digests: BTreeSet::new(),
+                        digests: BTreeMap::new(),
                         ..growth
                     });
                 }
@@ -3324,6 +3479,8 @@ struct PreparedImport {
     uploads: Vec<(String, Vec<u8>)>,
     anchor_bytes: Vec<u8>,
     anchor_digest: String,
+    /// An upper bound on the payload bytes the anchor's event and index rows add; blobs apart.
+    payload: u64,
 }
 
 impl EventlogOperationStore<'_> {
@@ -3417,6 +3574,37 @@ impl EventlogOperationStore<'_> {
         .map_err(ImportAnchorFailure::NotCommitted)?;
         let anchor_digest = framed_key(ANCHOR_BLOB_DOMAIN, &anchor_bytes)
             .map_err(ImportAnchorFailure::NotCommitted)?;
+        // The anchor's event body, one record row per envelope and the subject's row, as the
+        // projector writes them, with the widest physical reference of the subject's stream.
+        let authority = &self.store.authority;
+        let widest = widest_physical(
+            &subject_stream_id(authority, &history.subject)
+                .map_err(ImportAnchorFailure::NotCommitted)?,
+        );
+        let mut payload = payload_len(&json!({ "blob": anchor_digest })).saturating_add(
+            payload_len(&imported_subject_row(
+                authority,
+                &history.subject,
+                &anchor_digest,
+                anchor.instance.revision,
+                &widest,
+            )),
+        );
+        let mut record_blob = record_blobs.iter();
+        for (index, evidence) in anchor.evidence.iter().enumerate() {
+            if let entity_store::asynchronous::LegacyEvidence::Envelope(saved) = evidence
+                && let Some(record_blob) = record_blob.next()
+            {
+                payload = payload.saturating_add(payload_len(&imported_record_row(
+                    authority,
+                    &saved.entry,
+                    &anchor_digest,
+                    index,
+                    record_blob,
+                    &widest,
+                )));
+            }
+        }
         Ok(PreparedImport {
             subject: history.subject.clone(),
             assurance,
@@ -3424,6 +3612,7 @@ impl EventlogOperationStore<'_> {
             uploads,
             anchor_bytes,
             anchor_digest,
+            payload,
         })
     }
 
@@ -3730,8 +3919,14 @@ impl EventlogOperationStore<'_> {
             }
         }
         drop(claimed);
-        let held = model.held.clone();
+        let mut held = model.held.clone();
         drop(model);
+        if held.payload.is_none() {
+            held.payload = self
+                .store
+                .verified_payload()
+                .map_err(ImportAnchorFailure::NotCommitted)?;
+        }
         let pending: Vec<&PreparedImport> = prepared
             .iter()
             .zip(&already)
@@ -3757,48 +3952,40 @@ impl EventlogOperationStore<'_> {
         // Counted before a byte is uploaded, so the refusal costs nothing and leaves nothing. A
         // caller that meets it divides the work and calls again; `CaptureLimits` is the caller's
         // own, so the bound it is measured against is the one it chose.
-        let limits = self.store.limits;
-        let added_rows: u64 = pending
-            .iter()
-            .map(|item| 1 + item.record_ids.len() as u64)
-            .sum();
-        let added_blobs = pending
-            .iter()
-            .flat_map(|item| {
-                item.uploads
-                    .iter()
-                    .map(|(digest, _)| digest)
-                    .chain(std::iter::once(&item.anchor_digest))
-            })
-            .filter(|digest| !held.digests.contains(digest.as_str()))
-            .collect::<BTreeSet<_>>()
-            .len() as u64;
-        for (bound, limit, would_hold) in [
-            (
-                "max_events",
-                limits.max_events,
-                held.events.saturating_add(pending.len() as u64),
-            ),
-            (
-                "max_blobs",
-                limits.max_blobs,
-                held.blobs.saturating_add(added_blobs),
-            ),
-            (
-                "max_projection_rows",
-                limits.max_projection_rows,
-                held.rows.saturating_add(added_rows),
-            ),
-        ] {
-            if would_hold > limit {
-                return Err(ImportAnchorFailure::NotCommitted(
-                    AsyncStoreError::BatchExceedsReadBounds {
-                        bound: bound.to_owned(),
-                        limit,
-                        would_hold,
-                    },
-                ));
-            }
+        //
+        // The held counts come from the capture just taken, so the payload they hold is exact;
+        // what the batch adds to it is an upper bound (see `PreparedImport::payload`).
+        let growth = Growth {
+            events: pending.len() as u64,
+            rows: pending
+                .iter()
+                .map(|item| 1 + item.record_ids.len() as u64)
+                .sum(),
+            payload: pending
+                .iter()
+                .fold(0u64, |sum, item| sum.saturating_add(item.payload)),
+            digests: pending
+                .iter()
+                .flat_map(|item| {
+                    item.uploads
+                        .iter()
+                        .map(|(digest, bytes)| (digest.clone(), bytes.len() as u64))
+                        .chain(std::iter::once((
+                            item.anchor_digest.clone(),
+                            item.anchor_bytes.len() as u64,
+                        )))
+                })
+                .collect(),
+        };
+        if let Some((bound, limit, would_hold)) = exceeded_bound(&self.store.limits, &held, &growth)
+        {
+            return Err(ImportAnchorFailure::NotCommitted(
+                AsyncStoreError::BatchExceedsReadBounds {
+                    bound: bound.to_owned(),
+                    limit,
+                    would_hold,
+                },
+            ));
         }
 
         let command_key = key_for_value(
@@ -4153,15 +4340,23 @@ impl ImportGuard {
 
 /// What the capture this model was built from actually charged against its limits.
 ///
-/// Counts only. The payload-byte charge is deliberately absent: computing it would re-encode
-/// every event, blob and projection row of the whole authority on every capture, which is the
-/// per-capture cost over the whole store that batching exists to remove. The three counts are
-/// free — they are vector lengths — and are exact.
+/// The three counts are vector lengths and exact. `payload` is the payload-byte charge as
+/// Eventlog's `CaptureBudget` counts it: the compact JSON length of every event body and every
+/// projection row body, plus every bound blob's byte length. A provider's suffix or checkpoint
+/// reports it in its usage, and a tracked complete verification counts it once. A model built
+/// from a complete capture leaves it uncounted: encoding every body of the authority on every
+/// capture is the per-capture cost over the whole store that batching exists to remove, so the
+/// handle counts it from the capture it keeps only when a write needs it.
 #[derive(Default, Clone)]
 struct CaptureHeld {
     events: u64,
     blobs: u64,
     rows: u64,
+    /// The exact payload of the observation these counts come from; `None` until counted.
+    payload: Option<u64>,
+    /// What this handle's own writes since that observation added, as the upper bound
+    /// `admit_growth` admitted each with.
+    payload_added: u64,
     /// Which blobs are already bound, so a batch counts only the ones it would add.
     digests: BTreeSet<String>,
     /// Whether `digests` is only what this handle has seen bound, not every bound digest: a
@@ -4382,8 +4577,89 @@ fn capture_held(capture: &TenantCapture, blobs: &BTreeMap<&str, &[u8]>, rows: u6
         events: capture.events.len() as u64,
         blobs: blobs.len() as u64,
         rows,
+        payload: None,
+        payload_added: 0,
         digests: blobs.keys().map(|digest| (*digest).to_owned()).collect(),
         partial: false,
+    }
+}
+
+/// A complete capture's payload charge, counted as Eventlog's `CaptureBudget` counts it.
+fn capture_payload(capture: &TenantCapture) -> u64 {
+    let events = capture.events.iter().fold(0u64, |sum, event| {
+        sum.saturating_add(payload_len(&event.data))
+    });
+    let bytes = capture.blobs.iter().fold(0u64, |sum, blob| {
+        sum.saturating_add(blob.bytes.len() as u64)
+    });
+    let bodies = capture
+        .projections
+        .iter()
+        .flat_map(|projection| &projection.rows)
+        .fold(0u64, |sum, (_, body)| sum.saturating_add(payload_len(body)));
+    events.saturating_add(bytes).saturating_add(bodies)
+}
+
+/// The first of the four read bounds `growth` would take the tenant past, from what `held`
+/// holds: its name, its limit and what the tenant would hold. Blobs `held` knows bound add
+/// neither a blob nor their bytes. `held.payload` must be counted; `None` counts as nothing.
+fn exceeded_bound(
+    limits: &CaptureLimits,
+    held: &CaptureHeld,
+    growth: &Growth,
+) -> Option<(&'static str, u64, u64)> {
+    let added: Vec<u64> = growth
+        .digests
+        .iter()
+        .filter(|(digest, _)| !held.digests.contains(digest.as_str()))
+        .map(|(_, bytes)| *bytes)
+        .collect();
+    let added_bytes = added
+        .iter()
+        .fold(growth.payload, |sum, bytes| sum.saturating_add(*bytes));
+    [
+        (
+            "max_events",
+            limits.max_events,
+            held.events.saturating_add(growth.events),
+        ),
+        (
+            "max_blobs",
+            limits.max_blobs,
+            held.blobs.saturating_add(added.len() as u64),
+        ),
+        (
+            "max_projection_rows",
+            limits.max_projection_rows,
+            held.rows.saturating_add(growth.rows),
+        ),
+        (
+            "max_payload_bytes",
+            limits.max_payload_bytes,
+            held.payload
+                .unwrap_or_default()
+                .saturating_add(held.payload_added)
+                .saturating_add(added_bytes),
+        ),
+    ]
+    .into_iter()
+    .find(|(_, limit, would_hold)| would_hold > limit)
+}
+
+/// One body's payload charge: its compact JSON length, as Eventlog's `CaptureBudget` counts it.
+fn payload_len(body: &Value) -> u64 {
+    memory::encoded_len(body) as u64
+}
+
+/// The widest physical reference a provider returns for an event of `stream_id`: an event id as
+/// long as the UUID every Eventlog provider mints, and the largest positions. A row built with it
+/// encodes to at least as many bytes as the row the projector writes with the real one.
+fn widest_physical(stream_id: &str) -> PhysicalRef {
+    PhysicalRef {
+        event_id: "0".repeat(36),
+        global_seq: u64::MAX,
+        stream_id: stream_id.to_owned(),
+        stream_version: u64::MAX,
     }
 }
 

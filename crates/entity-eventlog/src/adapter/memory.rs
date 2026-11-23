@@ -92,7 +92,7 @@ fn history_charge(history: &impl RememberedHistory, terminal: &EntityInstance) -
 }
 
 /// The bytes `value` encodes to as JSON, counted without keeping them.
-fn encoded_len(value: &impl serde::Serialize) -> usize {
+pub(super) fn encoded_len(value: &impl serde::Serialize) -> usize {
     struct Count(usize);
     impl std::io::Write for Count {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {

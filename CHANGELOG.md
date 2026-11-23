@@ -342,6 +342,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `SqliteStore` and `PostgresStore` read the next event position once per revision when they
   append a decision's events, instead of once per event (128 reads for 128 events), and
   PostgreSQL appends the events in one statement. Stored positions are unchanged.
+- An Eventlog write or import batch that would take the tenant past
+  `CaptureLimits::max_payload_bytes` is refused before anything is uploaded, with
+  `AsyncStoreError::BatchExceedsReadBounds { bound: "max_payload_bytes", .. }`
+  (`WriteFailure::NotCommitted` or `ImportAnchorFailure::NotCommitted`). Before, the payload cap
+  was not checked: such a write committed, its own verification then failed, and every later open
+  at the same limits was refused. The check counts the write's events, rows and new blobs as an
+  upper bound, so a write within a few hundred bytes of the cap can be refused although it would
+  have fitted.
 
 ## [0.32.0] — 2026-11-22
 
