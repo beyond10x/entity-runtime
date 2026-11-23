@@ -19,6 +19,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `Projector::fingerprint`. Another program, a changed file or a projector reporting another
   configuration replays once.
 
+### Fixed
+
+- A write whose commit Eventlog published but could not clean up after (Eventlog 0.10.0's
+  `EventLogError::Committed`, from the File provider) is answered as committed, once the recorded
+  history confirms it, instead of failing. Without that confirmation it is reported as uncertain,
+  as an unknown commit outcome is.
+
 ## [0.33.1] — 2026-11-23
 
 ### Fixed

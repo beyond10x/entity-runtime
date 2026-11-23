@@ -2482,6 +2482,21 @@ impl EventlogOperationStore<'_> {
                             .into(),
                 }),
             },
+            // The provider published the commit and only the cleanup after it failed (Eventlog
+            // 0.10.0 says so where it used to answer `UnknownCommit` or a backend error). The
+            // write must not be reported as failed, so it is answered from what was recorded, as
+            // an unknown outcome is; only a recovery that cannot confirm it is uncertain.
+            EventLogError::Committed { .. } => {
+                match recover_append(self.store, key, request).await {
+                    Ok(Some(outcome)) => Ok(Attempted::Settled(outcome)),
+                    Ok(None) | Err(_) => Err(WriteFailure::Uncertain {
+                        key: key.clone(),
+                        cause: "Eventlog published the commit but its cleanup failed, and \
+                                semantic recovery is unavailable"
+                            .into(),
+                    }),
+                }
+            }
             EventLogError::Conflict { .. } => match recover_append(self.store, key, request).await {
                 Ok(Some(outcome)) => Ok(Attempted::Settled(outcome)),
                 Ok(None) => Ok(Attempted::Contended),
@@ -2927,6 +2942,13 @@ struct GroupAttempt {
 /// decision, and it is taken here: every blob on its own path, in the order given, then the same
 /// guarded group. Same bytes, same keys, same guard, same receipts.
 ///
+/// Every provider this crate has a feature for implements the method — File, SQLite, Tree, and
+/// PostgreSQL since Eventlog 0.10.0 — so the slower path serves only a caller's own
+/// [`EventlogBackend`] that takes the port's default.
+///
+/// A commit the provider published but could not clean up after (`EventLogError::Committed`)
+/// bound its blobs as surely as one that returned its receipt.
+///
 /// A failed upload on that path is reported through `upload_failed`, the caller's own blob
 /// mapping, exactly as when each write uploaded its blobs itself. An error of the combined call
 /// cannot say which half failed and is returned in `settled` for the caller's group mapping;
@@ -2946,10 +2968,11 @@ async fn append_group_with_blobs<E>(
     {
         Err(EventLogError::Invalid(ref detail)) if detail == UNAVAILABLE => {
             for (digest, bytes) in blobs {
-                backend
-                    .put_blob(tenant, digest, bytes)
-                    .await
-                    .map_err(&upload_failed)?;
+                match backend.put_blob(tenant, digest, bytes).await {
+                    // The blob is bound; only the cleanup after it failed.
+                    Ok(()) | Err(EventLogError::Committed { .. }) => {}
+                    Err(error) => return Err(upload_failed(error)),
+                }
             }
             Ok(GroupAttempt {
                 settled: backend.append_group_guarded(group, guard).await,
@@ -2957,7 +2980,10 @@ async fn append_group_with_blobs<E>(
             })
         }
         settled => Ok(GroupAttempt {
-            blobs_bound: matches!(settled, Ok(_) | Err(EventLogError::UnknownCommit)),
+            blobs_bound: matches!(
+                settled,
+                Ok(_) | Err(EventLogError::UnknownCommit | EventLogError::Committed { .. })
+            ),
             settled,
         }),
     }
@@ -3038,6 +3064,16 @@ fn map_append_error(error: EventLogError) -> AsyncStoreError {
         }
         EventLogError::NotFound => integrity("provider lost required append authority"),
         EventLogError::Backend(v) => AsyncStoreError::Backend(v),
+        // Every write path answers a published commit from what was recorded before it gets
+        // here; one that reaches this mapping is a path that cannot, and says what happened.
+        EventLogError::Committed { cleanup } => integrity(format!(
+            "provider published a commit this path cannot confirm, then its cleanup failed: {cleanup}"
+        )),
+        // The recorded projections declare no indexed field, so no row of theirs can be too long
+        // to index; a provider that says one is has diverged from the declarations.
+        EventLogError::IndexedValueTooLarge { field, .. } => integrity(format!(
+            "provider refused an indexed value of field {field}, which no recorded projection declares"
+        )),
         other => integrity(other.to_string()),
     }
 }
@@ -3197,7 +3233,7 @@ impl AsyncBindingProvisioner for EventlogBindingProvisioner {
                     settled.replayed = result.deduplicated;
                     Ok(settled)
                 }
-                Err(EventLogError::UnknownCommit) => {
+                Err(EventLogError::UnknownCommit | EventLogError::Committed { .. }) => {
                     match self.recover_inner(authority.clone()).await {
                         Ok(Some(mut outcome)) => {
                             outcome.replayed = true;
@@ -3449,11 +3485,16 @@ impl entity_store::asynchronous::AsyncRefusalRecorder for EventlogOperationStore
                 json!({"authority": self.store.authority, "refusal": digest}),
             )?;
             let meta = self.context.meta(command_key, digest.clone())?;
-            self.store
+            match self
+                .store
                 .backend
                 .put_blob(&self.store.tenant, &digest, &bytes)
                 .await
-                .map_err(map_put_error)?;
+            {
+                // `Committed`: the blob is bound and only the cleanup after it failed.
+                Ok(()) | Err(EventLogError::Committed { .. }) => {}
+                Err(error) => return Err(map_put_error(error)),
+            }
             let event = NewEvent::new("er.refused_request", 1, json!({ "blob": digest }))
                 .map_err(input_eventlog)?;
             match self
@@ -3463,6 +3504,8 @@ impl entity_store::asynchronous::AsyncRefusalRecorder for EventlogOperationStore
                 .await
             {
                 Ok(result) => Ok(result.deduplicated),
+                // This call's append was published; only the cleanup after it failed.
+                Err(EventLogError::Committed { .. }) => Ok(false),
                 Err(EventLogError::Conflict { .. }) => Ok(true),
                 Err(error) => Err(AsyncStoreError::Backend(error.to_string())),
             }
@@ -3825,19 +3868,21 @@ impl EventlogOperationStore<'_> {
                     }),
                 }
             }
-            Err(EventLogError::UnknownCommit) => match self.store.capture_model().await {
-                Ok(model) if model.anchors.get(&history.subject) == Some(&bytes) => {
-                    self.keep_import_progress(sequence, &model);
-                    Ok(ImportAnchorOutcome {
-                        assurance: prepared.assurance,
-                        replayed: true,
-                    })
+            Err(EventLogError::UnknownCommit | EventLogError::Committed { .. }) => {
+                match self.store.capture_model().await {
+                    Ok(model) if model.anchors.get(&history.subject) == Some(&bytes) => {
+                        self.keep_import_progress(sequence, &model);
+                        Ok(ImportAnchorOutcome {
+                            assurance: prepared.assurance,
+                            replayed: true,
+                        })
+                    }
+                    _ => Err(ImportAnchorFailure::Uncertain {
+                        subject: history.subject,
+                        cause: ImportAnchorUncertainty::UnknownCommit,
+                    }),
                 }
-                _ => Err(ImportAnchorFailure::Uncertain {
-                    subject: history.subject,
-                    cause: ImportAnchorUncertainty::UnknownCommit,
-                }),
-            },
+            }
             Err(EventLogError::Conflict { .. } | EventLogError::IdempotencyMismatch { .. }) => {
                 match self.store.capture_model().await {
                     Ok(model) if model.anchors.get(&history.subject) == Some(&bytes) => {
@@ -4085,8 +4130,10 @@ impl EventlogOperationStore<'_> {
             subject: pending[0].subject.clone(),
             cause,
         };
-        // A provider without guarded blob-bearing groups takes the fallback `append_group_with_blobs`
-        // describes; what is lost there is only the single durability barrier.
+        // Every provider with a feature here, PostgreSQL included since Eventlog 0.10.0, commits
+        // the group with its blobs in one transaction. Only a caller's own backend without guarded
+        // blob-bearing groups takes the fallback `append_group_with_blobs` describes; what is lost
+        // there is only the single durability barrier.
         let attempted = append_group_with_blobs(
             &self.store.backend,
             &self.store.tenant,
@@ -4118,7 +4165,7 @@ impl EventlogOperationStore<'_> {
                 }
                 result.deduplicated
             }
-            Err(EventLogError::UnknownCommit) => {
+            Err(EventLogError::UnknownCommit | EventLogError::Committed { .. }) => {
                 match self.store.capture_model().await {
                     Ok(model)
                         if pending.iter().all(|item| {
@@ -5955,6 +6002,20 @@ mod tests {
             ),
             (EventLogError::NotFound, "integrity"),
             (EventLogError::Backend("backend".into()), "backend"),
+            (
+                EventLogError::Committed {
+                    cleanup: Box::new(EventLogError::Backend("cleanup".into())),
+                },
+                "integrity",
+            ),
+            (
+                EventLogError::IndexedValueTooLarge {
+                    field: "title",
+                    bytes: 4096,
+                    limit: 2048,
+                },
+                "integrity",
+            ),
         ];
         for (error, class) in cases {
             let mapped = map_append_error(error);
