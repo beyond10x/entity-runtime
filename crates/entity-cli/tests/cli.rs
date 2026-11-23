@@ -1899,6 +1899,27 @@ fn generated_rust_cli_compiles_and_executes_definition_specific_commands() {
     let value: serde_json::Value =
         serde_json::from_slice(&submitted.stdout).expect("recorded decision JSON");
     assert_eq!(value["instance"]["lifecycle_state"], "submitted");
+    // `--format yaml` writes the stored amount as a YAML number, not the private map serde_json
+    // serializes an exact number as.
+    let fetched = Command::new(&binary)
+        .arg("--store")
+        .arg(&store)
+        .args(["refund", "get", "--id", "one", "--format", "yaml"])
+        .output()
+        .expect("get runs");
+    assert!(
+        fetched.status.success(),
+        "{}",
+        String::from_utf8_lossy(&fetched.stderr)
+    );
+    let text = stdout(&fetched);
+    assert!(!text.contains("$serde_json::private::Number"), "{text}");
+    let read: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("plain YAML");
+    assert_eq!(
+        read["fields"]["amount_cents"],
+        serde_yaml_ng::Value::Number(2500.into()),
+        "{text}"
+    );
 
     let stale = Command::new(&binary)
         .arg("--store")

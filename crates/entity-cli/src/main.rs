@@ -754,6 +754,11 @@ fn provision_eventlog_file(
 
 const ENTITY_SKILL: &str = include_str!("../assets/entity-skill.md");
 
+/// The generated command's YAML writer is this command's own, copied into its crate as
+/// `src/yaml_output.rs`: it needs only `serde`, `serde_json` and `serde_yaml_ng`, which the
+/// generated manifest already lists, and one copy means one writer to keep right.
+const GENERATED_YAML_OUTPUT: &str = include_str!("yaml_output.rs");
+
 #[allow(clippy::too_many_arguments)]
 fn generate_rust_cli(
     definition_paths: &[PathBuf],
@@ -872,6 +877,8 @@ fn generate_rust_cli(
         generated_main(name, &definitions),
     )
     .map_err(|error| Failure::Usage(format!("cannot write generated Rust source: {error}")))?;
+    fs::write(build_dir.join("src/yaml_output.rs"), GENERATED_YAML_OUTPUT)
+        .map_err(|error| Failure::Usage(format!("cannot write generated Rust source: {error}")))?;
 
     // The target directory is named rather than inherited so the retained source stays
     // self-contained: a `CARGO_TARGET_DIR` in the environment or a `build.target-dir` in a parent
@@ -1018,7 +1025,9 @@ fn generated_main(name: &str, definitions: &[EntityDefinition]) -> String {
     }
     let mut source = String::new();
     source.push_str(
-        r#"use std::{fs, path::PathBuf, process::ExitCode};
+        r#"mod yaml_output;
+
+use std::{fs, path::PathBuf, process::ExitCode};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use entity_core::Registry;
 use entity_shell::StoredRuntime;
@@ -1238,7 +1247,7 @@ fn emit<T: Serialize>(value: &T, format: OutputFormat, text: &str) -> Result<(),
     match format {
         OutputFormat::Text => println!("{text}"),
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(value).map_err(|error| error.to_string())?),
-        OutputFormat::Yaml => print!("{}", serde_yaml_ng::to_string(value).map_err(|error| error.to_string())?),
+        OutputFormat::Yaml => print!("{}", yaml_output::to_string(value)?),
     }
     Ok(())
 }
