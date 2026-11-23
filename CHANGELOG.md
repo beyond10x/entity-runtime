@@ -305,9 +305,6 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   reader accepted, are refused with
   ``key is not decimal text: expected exact decimal text without `+`, leading zeroes or an exponent``;
   an integer with more digits than a binary64 can hold is now accepted.
-
-### Fixed
-
 - `PostgresStore` saves a document whose string field holds U+0000. Before, the GIN index
   `instances_document_query` on `document::jsonb` refused it (SQLSTATE 22P05) and a store with
   such a row could not build the index. `migrate` drops that index and creates
