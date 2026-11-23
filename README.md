@@ -48,6 +48,7 @@ otherwise.
 
 ```console
 task check                                   # the full gate
+task test-slow                               # the slow lane: builds and runs a generated Rust CLI (minutes)
 cargo run -p entity-cli --locked -- --help   # the entity command from this checkout
 task site-build                              # the documentation site (needs network for npm)
 ```

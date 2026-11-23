@@ -1,0 +1,17 @@
+[package]
+name = "refundctl"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+
+[workspace]
+
+[dependencies]
+entity-core = { path = "{runtime-source}/crates/entity-core" }
+entity-store = { path = "{runtime-source}/crates/entity-store" }
+entity-shell = { path = "{runtime-source}/crates/entity-shell" }
+entity-yaml = { path = "{runtime-source}/crates/entity-yaml" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+serde_yaml_ng = "0.10"
+clap = { version = "4.6", features = ["derive"] }

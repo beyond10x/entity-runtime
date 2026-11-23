@@ -77,6 +77,12 @@ tasks:
     cmds:
       - cargo test --workspace --locked
 
+  test-slow:
+    desc: the slow lane, not part of check, compiles and runs the Rust CLI that generate rust-cli writes (minutes)
+    cmds:
+      - cargo clippy -p entity-cli --all-targets --features slow-lane --locked -- -D warnings
+      - cargo test -p entity-cli --features slow-lane --locked --test cli -- slow_lane
+
   doc-check:
     desc: rustdoc with broken intra-doc links as errors
     env:

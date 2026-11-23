@@ -9,6 +9,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
+- The gate's test step no longer compiles a generated Rust CLI (about a minute to several on its
+  own). It holds `entity generate rust-cli` to a committed snapshot of the crate it writes, with
+  a stand-in for Cargo; `task test-slow` and the `Slow lane` workflow compile and run that crate
+  when the generator or a crate it builds on changes. `entity-cli` gains a test-only `slow-lane`
+  feature. No behaviour of `entity` changes.
 
 ### Fixed
 
