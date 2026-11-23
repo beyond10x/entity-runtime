@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-11-23
+
 ### Security
 
 - `RemoteStore::load` refuses an answer whose instance names another entity type or id than the
