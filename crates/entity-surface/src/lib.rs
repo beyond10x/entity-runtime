@@ -5,7 +5,7 @@
 //! OpenAPI, AsyncAPI and MCP so an argument cannot be documented one way and offered to an agent
 //! another way.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use entity_core::{DeclaredDefault, EntityDefinition, FieldDefinition, FieldKind, ObjectSchema};
@@ -23,13 +23,42 @@ pub type DocumentationBundle = BTreeMap<String, String>;
 const NUMBER_MARKER: &str = "entity-runtime-number-";
 
 /// Projects an entity object schema into JSON Schema 2020-12 vocabulary.
+///
+/// This is the stored shape: every `required` field is required, including one the kernel fills
+/// from its declared `default`. A schema for what a caller sends is [`input_object_schema`].
 #[must_use]
 pub fn object_schema(schema: &ObjectSchema) -> Value {
+    object_schema_as(schema, Requiredness::Stored)
+}
+
+/// Projects an object schema a caller sends to the kernel — creation fields, creation arguments
+/// or operation arguments.
+///
+/// The kernel fills a declared `default` before it validates, at every depth an object or array
+/// element the caller sent reaches, so a required field with a default is not required here. The
+/// stored shape keeps it required ([`object_schema`]). A map value or a union payload gets no
+/// defaults filled and keeps its stored requiredness.
+#[must_use]
+pub fn input_object_schema(schema: &ObjectSchema) -> Value {
+    object_schema_as(schema, Requiredness::Input)
+}
+
+/// Which `required` list an object schema publishes.
+#[derive(Clone, Copy, PartialEq)]
+enum Requiredness {
+    /// The materialized instance: every required field.
+    Stored,
+    /// Input before the kernel applies declared defaults: a field with a default may be omitted.
+    Input,
+}
+
+fn object_schema_as(schema: &ObjectSchema, requiredness: Requiredness) -> Value {
     let mut properties = Map::new();
     let mut required = Vec::new();
     for (name, field) in &schema.fields {
-        properties.insert(name.clone(), field_schema(field));
-        if field.required {
+        properties.insert(name.clone(), field_schema_as(field, requiredness));
+        let filled = requiredness == Requiredness::Input && field.default.as_value().is_some();
+        if field.required && !filled {
             required.push(Value::String(name.clone()));
         }
     }
@@ -51,12 +80,14 @@ pub fn object_schema(schema: &ObjectSchema) -> Value {
 /// A `service/1`, `service/2` or `service/3` definition that declares creation outcomes takes its
 /// declared creation arguments, and its selected branch writes the fields; every other definition
 /// takes the instance fields directly. This is the selection `entity_core::decide_create` makes.
+/// Either way a required member with a declared default may be omitted, because the kernel fills
+/// it before validating ([`input_object_schema`]).
 #[must_use]
 pub fn create_input_schema(definition: &EntityDefinition) -> Value {
     if has_branched_creation(definition) {
-        object_schema(&definition.create.arguments)
+        input_object_schema(&definition.create.arguments)
     } else {
-        object_schema(&definition.schema)
+        input_object_schema(&definition.schema)
     }
 }
 
@@ -71,17 +102,21 @@ pub fn openapi(definitions: &[EntityDefinition]) -> Value {
     let mut paths = Map::new();
     for definition in definitions {
         let key = schema_key(definition);
-        schemas.insert(format!("{key}Fields"), object_schema(&definition.schema));
-        schemas.insert(format!("{key}Instance"), instance_schema(definition, &key));
+        let stored = object_schema(&definition.schema);
+        let input = create_input_schema(definition);
+        // The create request names its own component only where it differs from the stored
+        // fields: branched creation takes arguments, and a default makes a field optional to send.
         let create_input = if has_branched_creation(definition) {
-            schemas.insert(
-                format!("{key}CreateArguments"),
-                create_input_schema(definition),
-            );
+            schemas.insert(format!("{key}CreateArguments"), input);
             format!("#/components/schemas/{key}CreateArguments")
+        } else if input != stored {
+            schemas.insert(format!("{key}CreateFields"), input);
+            format!("#/components/schemas/{key}CreateFields")
         } else {
             format!("#/components/schemas/{key}Fields")
         };
+        schemas.insert(format!("{key}Fields"), stored);
+        schemas.insert(format!("{key}Instance"), instance_schema(definition, &key));
 
         let collection = format!(
             "/entities/{}/versions/{}",
@@ -149,7 +184,7 @@ pub fn openapi(definitions: &[EntityDefinition]) -> Value {
                         "required": ["expected_revision", "arguments", "recording"],
                         "properties": {
                             "expected_revision": { "type": "integer", "minimum": 1 },
-                            "arguments": object_schema(&operation.arguments),
+                            "arguments": input_object_schema(&operation.arguments),
                             "recording": { "$ref": "#/components/schemas/Recording" }
                         }
                     }}}},
@@ -158,6 +193,7 @@ pub fn openapi(definitions: &[EntityDefinition]) -> Value {
             }));
         }
     }
+    reserve_unique_operation_ids(&mut paths);
     schemas.insert("Recording".into(), recording_schema());
     schemas.insert("DomainEvent".into(), domain_event_schema());
     schemas.insert(
@@ -185,6 +221,54 @@ pub fn openapi(definitions: &[EntityDefinition]) -> Value {
         },
         "x-entity-runtime-contract-only": true
     })
+}
+
+/// Makes every `operationId` of a generated OpenAPI document unique.
+///
+/// An id is built from names (`list_counter_v1`), so a domain operation named `list`, `get`,
+/// `events` or `create`, or two names that `safe_identifier` spells alike, collide with another
+/// method. An id already unique keeps its name. Of the methods sharing one id, the first in (path,
+/// method) order keeps it, and each later one takes the lowest `<id>_<n>`, `n >= 2`, that no method
+/// of the document holds yet. The order is sorted here, so the answer depends on nothing but the
+/// document.
+fn reserve_unique_operation_ids(paths: &mut Map<String, Value>) {
+    let mut methods: Vec<(String, String, String)> = Vec::new();
+    for (path, item) in paths.iter() {
+        let Value::Object(item) = item else { continue };
+        for (method, operation) in item {
+            if let Some(id) = operation.get("operationId").and_then(Value::as_str) {
+                methods.push((path.clone(), method.clone(), id.to_owned()));
+            }
+        }
+    }
+    methods.sort();
+    let mut holders: BTreeMap<&str, usize> = BTreeMap::new();
+    for (_, _, id) in &methods {
+        *holders.entry(id.as_str()).or_default() += 1;
+    }
+    let mut taken: BTreeSet<String> = holders.keys().map(|id| (*id).to_owned()).collect();
+    let mut renamed = Vec::new();
+    let mut kept = BTreeSet::new();
+    for (path, method, id) in &methods {
+        if holders[id.as_str()] < 2 || kept.insert(id.as_str()) {
+            continue;
+        }
+        let unique = (2..)
+            .map(|n| format!("{id}_{n}"))
+            .find(|candidate| !taken.contains(candidate))
+            .unwrap_or_else(|| id.clone());
+        taken.insert(unique.clone());
+        renamed.push((path.clone(), method.clone(), unique));
+    }
+    for (path, method, unique) in renamed {
+        if let Some(operation) = paths
+            .get_mut(&path)
+            .and_then(|item| item.get_mut(&method))
+            .and_then(Value::as_object_mut)
+        {
+            operation.insert("operationId".into(), Value::String(unique));
+        }
+    }
 }
 
 /// Generates the contract-only AsyncAPI 3.1 document for every emitted event type.
@@ -332,6 +416,10 @@ pub fn documentation(definitions: &[EntityDefinition]) -> Result<DocumentationBu
 }
 
 fn field_schema(field: &FieldDefinition) -> Value {
+    field_schema_as(field, Requiredness::Stored)
+}
+
+fn field_schema_as(field: &FieldDefinition, requiredness: Requiredness) -> Value {
     let mut out = Map::new();
     match field.kind {
         FieldKind::String => set_type(&mut out, "string"),
@@ -348,7 +436,7 @@ fn field_schema(field: &FieldDefinition) -> Value {
         FieldKind::Array => {
             set_type(&mut out, "array");
             if let Some(items) = &field.items {
-                out.insert("items".into(), field_schema(items));
+                out.insert("items".into(), field_schema_as(items, requiredness));
             }
         }
         FieldKind::Object => {
@@ -356,7 +444,7 @@ fn field_schema(field: &FieldDefinition) -> Value {
                 fields: field.properties.clone(),
                 additional_fields: field.additional_properties,
             };
-            return with_default(object_schema(&schema), &field.default);
+            return with_default(object_schema_as(&schema, requiredness), &field.default);
         }
         FieldKind::Json => {}
         FieldKind::Ref => {
@@ -1294,6 +1382,213 @@ mod tests {
         assert_eq!(
             create_fields_schema(&direct, "/entities/refund/versions/1"),
             object_schema(&self::definition().schema)
+        );
+    }
+
+    /// Every `operationId` of a document, keyed by `<METHOD> <path>`.
+    fn operation_ids(spec: &Value) -> BTreeMap<String, String> {
+        let mut out = BTreeMap::new();
+        for (path, item) in spec["paths"].as_object().expect("paths") {
+            for (method, operation) in item.as_object().expect("a path item") {
+                out.insert(
+                    format!("{} {path}", method.to_uppercase()),
+                    operation["operationId"].as_str().expect("an id").to_owned(),
+                );
+            }
+        }
+        out
+    }
+
+    /// The review's `round3/runtime/counter-list.yaml`: a domain operation named `list`, and two
+    /// required fields the kernel fills from their declared defaults.
+    fn counter() -> EntityDefinition {
+        serde_json::from_value(json!({
+            "entity": "counter",
+            "version": 1,
+            "schema": { "additional_fields": false, "fields": {
+                "name": { "type": "string", "required": true, "min_length": 1 },
+                "views": { "type": "integer", "required": true, "min": 0, "default": 0 },
+                "spent": { "type": "number", "required": true, "default": 0 }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+            "create": { "emit": {
+                "type": "CounterOpened",
+                "payload": { "name": "$fields.name", "views": "$fields.views" }
+            }},
+            "operations": {
+                "list": {
+                    "transitions": [{ "from": "open", "to": "open" }],
+                    "set": { "views": { "increment": 1 } },
+                    "emits": [{ "type": "Viewed", "payload": {
+                        "before": "$old_fields.views", "after": "$fields.views"
+                    }}]
+                },
+                "unview": {
+                    "transitions": [{ "from": "open", "to": "open" }],
+                    "set": { "views": { "increment": -1 } }
+                },
+                "charge": {
+                    "arguments": { "fields": {
+                        "amount": { "type": "number", "required": true, "min": 0 }
+                    }},
+                    "transitions": [{ "from": "open", "to": "open" }],
+                    "set": { "spent": { "increment": "$args.amount" } },
+                    "emits": [{ "type": "Charged", "payload": {
+                        "amount": "$args.amount", "spent": "$fields.spent"
+                    }}]
+                },
+                "close": { "transitions": [{ "from": "open", "to": "closed" }] }
+            }
+        }))
+        .expect("the fixture is a definition document")
+    }
+
+    #[test]
+    fn a_required_member_with_a_declared_default_is_optional_to_send_and_stays_stored() {
+        let mut counter = counter();
+        counter
+            .operations
+            .get_mut("charge")
+            .expect("charge")
+            .arguments
+            .fields
+            .insert(
+                "note".into(),
+                serde_json::from_value(
+                    json!({ "type": "string", "required": true, "default": "-" }),
+                )
+                .expect("a field"),
+            );
+        let spec = openapi(std::slice::from_ref(&counter));
+        let input = create_fields_schema(&spec, "/entities/counter/versions/1");
+        let sent = json!({ "name": "c" });
+        assert!(
+            jsonschema::is_valid(&input, &sent),
+            "the create request requires a field the kernel fills from its default: {input}"
+        );
+        assert!(
+            !jsonschema::is_valid(&input, &json!({})),
+            "name has no default: {input}"
+        );
+        assert!(
+            !jsonschema::is_valid(&input, &json!({ "name": "c", "views": -1 })),
+            "a sent defaulted field is still checked: {input}"
+        );
+
+        let mut registry = entity_core::Registry::new();
+        registry
+            .register(counter.clone())
+            .expect("the fixture registers");
+        let runtime = entity_core::Runtime::new(&registry);
+        let created = runtime
+            .create("counter", 1, "c-1", sent)
+            .expect("the kernel fills the defaults");
+        // The stored shape keeps every required field, and the instance it describes has them.
+        let stored = &spec["components"]["schemas"]["CounterV1Fields"];
+        assert_eq!(stored["required"], json!(["name", "spent", "views"]));
+        assert_eq!(
+            spec["components"]["schemas"]["CounterV1Instance"]["properties"]["fields"]["$ref"],
+            "#/components/schemas/CounterV1Fields"
+        );
+        assert!(jsonschema::is_valid(
+            stored,
+            &Value::Object(created.instance.fields.clone())
+        ));
+
+        let charge = &spec["paths"]["/entities/counter/versions/1/{id}/operations/charge"]["post"]
+            ["requestBody"]["content"]["application/json"]["schema"]["properties"]["arguments"];
+        assert_eq!(
+            charge["required"],
+            json!(["amount"]),
+            "an operation argument with a default is optional to send: {charge}"
+        );
+        runtime
+            .execute(&created.instance, "charge", json!({ "amount": 2 }))
+            .expect("the kernel fills the argument's default");
+    }
+
+    #[test]
+    fn every_operation_id_of_a_generated_document_is_unique_and_unique_names_are_kept() {
+        let counter = counter();
+        // Every generated verb taken by a domain operation.
+        let mut taken = self::definition();
+        taken.entity = "ticket".into();
+        let approve = taken.operations["approve"].clone();
+        for name in ["create", "get", "events", "list"] {
+            taken.operations.insert(name.into(), approve.clone());
+        }
+
+        let spec = openapi(&[counter, taken]);
+        let ids = operation_ids(&spec);
+        let distinct: BTreeSet<&String> = ids.values().collect();
+        assert_eq!(distinct.len(), ids.len(), "duplicate operationId: {ids:#?}");
+
+        let counter_ids: BTreeMap<&str, &str> = ids
+            .iter()
+            .filter(|(at, _)| at.contains("/entities/counter/"))
+            .map(|(at, id)| (at.as_str(), id.as_str()))
+            .collect();
+        assert_eq!(
+            counter_ids,
+            BTreeMap::from([
+                ("GET /entities/counter/versions/1", "list_counter_v1"),
+                ("POST /entities/counter/versions/1", "create_counter_v1"),
+                ("GET /entities/counter/versions/1/{id}", "get_counter_v1"),
+                (
+                    "GET /entities/counter/versions/1/{id}/events",
+                    "events_counter_v1"
+                ),
+                (
+                    "POST /entities/counter/versions/1/{id}/operations/charge",
+                    "charge_counter_v1"
+                ),
+                (
+                    "POST /entities/counter/versions/1/{id}/operations/close",
+                    "close_counter_v1"
+                ),
+                (
+                    "POST /entities/counter/versions/1/{id}/operations/list",
+                    "list_counter_v1_2"
+                ),
+                (
+                    "POST /entities/counter/versions/1/{id}/operations/unview",
+                    "unview_counter_v1"
+                ),
+            ]),
+            "the generated method keeps its name and the domain operation takes the suffix"
+        );
+        for verb in ["create", "get", "events", "list"] {
+            assert_eq!(
+                ids[&format!("POST /entities/ticket/versions/1/{{id}}/operations/{verb}")],
+                format!("{verb}_ticket_v1_2"),
+                "{ids:#?}"
+            );
+        }
+
+        // A document with no collision is unchanged.
+        let plain = operation_ids(&openapi(&[self::definition()]));
+        assert_eq!(
+            plain.values().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "list_refund_v1",
+                "get_refund_v1",
+                "events_refund_v1",
+                "create_refund_v1",
+                "approve_refund_v1"
+            ]
+        );
+
+        // A suffix another method already holds is skipped. No pair of generated names spells
+        // one today, so the document is written by hand.
+        let mut paths = Map::new();
+        for (path, id) in [("/a", "x"), ("/b", "x"), ("/c", "x_2")] {
+            paths.insert(path.into(), json!({ "get": { "operationId": id } }));
+        }
+        reserve_unique_operation_ids(&mut paths);
+        assert_eq!(
+            [&paths["/a"], &paths["/b"], &paths["/c"]]
+                .map(|item| item["get"]["operationId"].clone()),
+            [json!("x"), json!("x_3"), json!("x_2")]
         );
     }
 

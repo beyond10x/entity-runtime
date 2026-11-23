@@ -22,10 +22,21 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   declared creation arguments in `fields` (OpenAPI component `<Entity>V<n>CreateArguments`);
   before, both surfaces required the instance fields and refused the arguments the kernel accepts.
   A definition without creation outcomes still takes its instance fields.
+- Every `operationId` in the generated OpenAPI document is unique. A domain operation named
+  `list`, `create`, `get` or `events` took the id of the generated method (`list_counter_v1` on
+  both the collection GET and the operation's POST). The generated method keeps its id and the
+  later method in path order takes the lowest free `_2`, `_3`, … suffix; ids that were already
+  unique are unchanged.
 - Drawing a graph as Mermaid or SVG (`entity graph`, `entity generate docs`) looks up each edge's
   endpoints in an index built once per drawing instead of scanning every node per endpoint; a
   300-state chain no longer costs about 90,000 id comparisons. The output is byte-identical, and a
   duplicate node id still resolves to its last node.
+- Input schemas no longer require a field the kernel fills from its declared `default`: the
+  OpenAPI create request (component `<Entity>V<n>CreateFields` where it differs from the stored
+  fields), the creation and operation arguments, and the MCP `<entity>.create` tool. A counter
+  whose `views` and `spent` default to 0 is created with `name` alone, and its schemas required all
+  three. The stored `<Entity>V<n>Fields` and the instance schema still require every required
+  field.
 
 ## [0.32.0] — 2026-11-22
 

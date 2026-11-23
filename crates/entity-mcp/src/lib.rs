@@ -649,4 +649,49 @@ mod tests {
             "{created}"
         );
     }
+
+    /// The review's counter: `views` and `spent` are required and declare defaults the kernel
+    /// fills, so a create with `name` alone succeeds and the tool must admit it.
+    #[test]
+    fn a_create_tool_does_not_require_a_field_the_kernel_fills_from_its_default() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "counter",
+            "version": 1,
+            "schema": { "additional_fields": false, "fields": {
+                "name": { "type": "string", "required": true, "min_length": 1 },
+                "views": { "type": "integer", "required": true, "min": 0, "default": 0 },
+                "spent": { "type": "number", "required": true, "default": 0 }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+            "operations": { "close": { "transitions": [{ "from": "open", "to": "closed" }] } }
+        }))
+        .expect("definition");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("valid");
+        let schema = create_schema(registry.iter().map(|d| d.as_definition()).collect());
+        let recording =
+            json!({ "record_id": "one", "recorded_at": "2026-11-23T00:00:00Z", "actor": null });
+        let request = json!({ "id": "c-1", "fields": { "name": "c" }, "recording": recording });
+        assert!(
+            jsonschema::is_valid(&schema, &request),
+            "the tool requires a field the kernel fills from its default: {schema}"
+        );
+        let mut nameless = request.clone();
+        nameless["fields"] = json!({});
+        assert!(!jsonschema::is_valid(&schema, &nameless), "{schema}");
+
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let created = server
+            .handle(
+                json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                    "name": "counter.create", "arguments": request
+                }}),
+            )
+            .expect("response");
+        assert_eq!(created["result"]["isError"], false, "{created}");
+        assert_eq!(
+            created["result"]["structuredContent"]["instance"]["fields"]["views"], 0,
+            "{created}"
+        );
+    }
 }
