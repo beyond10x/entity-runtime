@@ -192,7 +192,8 @@ a moved copy and an unpinned file beside it) · `postgres-check` (the Postgres p
 against the server `ENTITY_POSTGRES_URL` names, or one printed line saying they did not run) ·
 `eventlog-runtime-check` (`entity-eventlog`'s tests and Clippy with `--all-features` on the
 `+1.91.0` toolchain, and an all-features build of `entity-sqlite`, whose `rust-version` is 1.91
-because rusqlite 0.41 needs Rust 1.89) · `notes-check` · `ess-check` (canonical regeneration, reviewed scenario
+because rusqlite 0.41 needs Rust 1.89) · `notes-check` · `ci-paths-check` (the CI path list, below)
+· `ess-check` (canonical regeneration, reviewed scenario
 contracts and complete execution against the selected libraries) · `provider-ess-check` (the
 separate SQLite tracking/facade contract on Rust 1.91). Every cargo step runs `--locked`, so the
 gate judges the dependency set the repository committed rather than one cargo re-resolved on the
@@ -238,6 +239,16 @@ requirements and the PostgreSQL provider against its service container; both `ch
 that hold the same checks run in its Test step, and `pages.yml` runs `generate --check` itself. If
 a local gate step should run in CI too, add it to both the Taskfile and `gate.yml` deliberately
 rather than assuming the two are identical.
+
+**A pull request of planning or prose only runs no build, test or KPI work.**
+`scripts/ci-paths.sh` is the one path list: `.engineering/` is planning, `website/` is the site,
+Markdown no code reads is prose, everything else is code. The first job of `check.yml`, `kpi.yml`
+and `pages.yml` classifies the pull request's merge commit; `check.yml` then calls `gate.yml`
+with `code: false`, whose jobs are skipped, and `Build Docusaurus` runs only for a change to the
+site or to code. A skipped job reports success to its required check. Never add `paths-ignore` to
+a workflow that carries a required check: the check then stays pending. `ci-paths-check`, also
+run by the `planning validate` job, holds both sides of the list and fails when code names a
+Markdown file the list calls prose; add such a file to the code lines of the list.
 
 Land nothing until `task check` itself exits zero. A change under `website/` must also pass
 `task site-build`. Read each command's own exit status, not a pipeline's:
@@ -398,7 +409,7 @@ locally; it is not a step of `task check`, which reaches no network.
 This repository uses `aep.project/5` with `store: {git: {}}`. Artifact files are the authority;
 transitions live in their frontmatter and evidence is stored under `.engineering/evidence/`.
 Use a current AEP CLI (at least 0.63.1); `.github/workflows/planning.yml` pins the exact compatible
-source revision for CI. The verified conversion from the retired Eventlog layout is recorded in
+release for CI (its binary, by SHA-256). The verified conversion from the retired Eventlog layout is recorded in
 `docs/ess/evidence/planning-migration/`. Do not recreate the removed Eventlog store or use the
 retired `validate --against` option.
 
