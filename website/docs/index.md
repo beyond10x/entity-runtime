@@ -7,9 +7,9 @@ description: A deterministic Rust kernel that decides lifecycle-governed state c
 
 # Entity Runtime
 
-Entity Runtime decides whether a proposed state change is legal. You declare an entity type as
-data — its fields, lifecycle states, named operations, rules and events — and a deterministic Rust
-kernel answers each request with the complete next decision or a typed refusal:
+Entity Runtime decides whether a proposed state change is legal. You declare an entity type's
+fields, lifecycle states, named operations, rules and events as data. A deterministic Rust kernel
+answers each request with the complete next decision or a typed refusal:
 
 <img
   src="/entity-runtime/img/decision-equation.svg"
@@ -22,33 +22,32 @@ checks that the operation exists, that it is legal from the current state, that 
 their schema and that every rule holds. A refusal changes nothing and emits no event.
 
 It ships as a workspace of Rust libraries and one command, `entity`. The current release is
-[0.27.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.27.0); the API is still in
-development and a minor release may change it.
+[0.27.0](https://github.com/beyond10x/entity-runtime/releases/tag/0.27.0). The API is still in
+development, and a minor release may change it.
 
 ## What it does
 
-- **Decides from data.** Definitions are YAML or JSON documents with closed keys. Rules are a
-  closed condition language with `true`, `false` and `unknown` results; there is no embedded code.
-- **Refuses with a reason.** Every refusal has a `kind` a program can match: `invalid_transition`,
-  `precondition_failed`, `precondition_unobservable`, `validation` and more
-  ([typed refusals](./reference/refusals.md)).
-- **Records what it decided.** A decision carries the normalized command, the definition snapshot,
-  the changes and the events, so a stored decision can be replayed and checked
-  ([storage and replay](./concepts/storage.md)).
-- **Keeps IO at the edges.** The kernel, `entity-core`, reads no clock, file, network or random
-  source. Storage lives in provider crates: File Store, SQLite, PostgreSQL, a remote protocol and
-  Eventlog-backed recorded stores.
-- **Projects one model into many surfaces.** The same definitions drive lifecycle graphs, entity
-  documentation with OpenAPI and AsyncAPI contracts, MCP tools and a generated Rust command.
+- Definitions are YAML or JSON documents with closed keys. Rules are a closed condition language
+  with `true`, `false` and `unknown` results and no embedded code.
+- Every refusal has a `kind` a program can match: `invalid_transition`, `precondition_failed`,
+  `precondition_unobservable`, `validation` and more ([typed refusals](./reference/refusals.md)).
+- A decision carries the normalized command, the definition snapshot, the changes and the events,
+  so a stored decision can be replayed and checked ([storage and replay](./concepts/storage.md)).
+- The kernel, `entity-core`, reads no clock, file, network or random source. Storage lives in
+  provider crates: File Store, SQLite, PostgreSQL, a remote protocol and Eventlog-backed recorded
+  stores.
+- The same definitions drive lifecycle graphs, entity documentation with OpenAPI and AsyncAPI
+  contracts, MCP tools and a generated Rust command.
 
 ## What it does not do
 
 Entity Runtime does not call a model, plan tasks, authenticate anyone, read a clock, mint
 identifiers, publish messages or perform the side effect an event describes. The application
-around it — the *trusted shell* — does those things and hands the kernel the facts as data. It is
+around it, the *trusted shell*, does those things and hands the kernel the facts as data. It is
 not a hosted service, a database server, a message bus, a workflow engine or a scripting runtime.
+
 [The decision boundary](./concepts/decision-boundary.md) explains why that split matters when the
-caller is an agent, and [guarantees and limits](./concepts/guarantees.md) lists what is promised.
+caller is an agent. [Guarantees and limits](./concepts/guarantees.md) lists what is promised.
 
 ## Where it sits
 
@@ -66,10 +65,7 @@ caller is an agent, and [guarantees and limits](./concepts/guarantees.md) lists 
 
 ## Start here
 
-1. [Getting started](./getting-started.md): install `entity` and watch a rule refuse an agent's
-   refund approval.
-2. [Model policy as data](./guides/model-policy-as-data.md): turn your own domain into a
-   definition.
-3. [Connect an agent](./guides/connect-an-agent.md): let a model propose operations without
-   letting it choose its own authority.
+1. [Getting started](./getting-started.md)
+2. [Model policy as data](./guides/model-policy-as-data.md)
+3. [Connect an agent](./guides/connect-an-agent.md)
 4. [Status](./status.md): what is shipped today and what is planned.

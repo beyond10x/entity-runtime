@@ -26,21 +26,21 @@ refund-reference/openapi.json
 refund-reference/openapi.yaml
 ```
 
-Open `refund-reference/index.html` in a browser; the bundle needs no server.
+Open `refund-reference/index.html` in a browser: the bundle needs no server.
 
 ## What an entity page shows
 
 Each entity page lists every registered version, the field types and constraints, the lifecycle
 graph, each operation's transitions and arguments, named rule messages, emitted events,
 projections and typed references. The index shows the relationships across the whole set. HTML
-pages embed SVG drawn by `entity-graph`; Markdown pages carry Mermaid diagrams, so they still work
+pages embed SVG drawn by `entity-graph`. Markdown pages carry Mermaid diagrams, so they still work
 when copied into another documentation system.
 
 ## What the API files mean
 
-`openapi.yaml` describes an HTTP facade an adopter can implement — create, get, list, events and one
+`openapi.yaml` describes an HTTP facade an adopter can implement: create, get, list, events and one
 call per operation. It is a contract, not a server: Entity Runtime opens no HTTP listener.
-Operation requests carry `expected_revision` and recording provenance; authentication and
+Operation requests carry `expected_revision` and recording provenance. Authentication and
 authorization belong to whoever implements the facade.
 
 `asyncapi.yaml` describes the domain events a successful decision produces. Event payload

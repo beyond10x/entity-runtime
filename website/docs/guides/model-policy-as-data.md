@@ -8,8 +8,8 @@ source: "crates/entity-core/src/definition.rs, crates/entity-cli (validate, insp
 
 # Model policy as data
 
-A useful definition says what a change *means*. It is not a JSON schema with a writable `status`
-field; it is the authority that owns every legal transition. This guide models a support ticket.
+A useful definition says what a change *means* and owns every legal transition. A JSON schema with
+a writable `status` field is not one. This guide models a support ticket.
 
 ## Start with the questions people ask
 
@@ -68,9 +68,9 @@ Every state change is a named operation. Prefer `close` over a generic `set_stat
 operation has its own arguments, rules, assignments and events, and gives an agent a small,
 inspectable vocabulary.
 
-A **precondition** asks whether this operation may run now; it sees the current fields, the
+A **precondition** asks whether this operation may run now and sees the current fields, the
 validated arguments and the transition. An **invariant** asks whether the resulting entity is valid
-in every state; it sees the next fields and state, but not the arguments. "A closed ticket records
+in every state and sees the next fields and state, but not the arguments. "A closed ticket records
 how it was resolved" is an invariant because it must hold however the ticket reaches `closed`.
 
 ## Validate and inspect it
@@ -99,8 +99,8 @@ active --close--> closed
 open --start--> active
 ```
 
-Keys are closed. A misspelled key is refused rather than silently weakening the policy — here
-`requried` in place of `required` on `title`:
+Keys are closed: a misspelled key is refused, so it cannot weaken the policy. Here `title` has
+`requried` in place of `required`:
 
 ```shell-session
 $ entity validate ticket-typo.yaml
@@ -127,9 +127,9 @@ $ entity execute --definition ticket.yaml --instance @t2.json \
 ticket T-1 is closed (revision 3); events: TicketClosed
 ```
 
-## Treat missing evidence deliberately
+## Missing evidence
 
-A comparison over a value nobody recorded answers `unknown`, not `false`, and the refusal names
+A comparison over an unrecorded value answers `unknown`, not `false`, and the refusal names
 every missing path. Use that when an absent observation should stop the workflow and say what to
 gather. Put an `exists` test beside the comparison when absence should be an ordinary failure:
 
@@ -140,11 +140,11 @@ assert:
     - gte: [$fields.review_score, 4]
 ```
 
-## Events are facts, not side effects
+## Events and side effects
 
-`TicketClosed` means the kernel accepted the operation. A shell may publish it after the decision
-is durably recorded. Keep imperative work out of templates; a template only fills data from the
-decision.
+`TicketClosed` means the kernel accepted the operation, and a shell may publish it after the
+decision is durably recorded. Keep imperative work out of templates: a template only fills data from
+the decision.
 
 When definitions reference each other with `type: ref`, validate the whole set together so a
 reference to an unregistered type is refused, and draw it with `entity graph --references`

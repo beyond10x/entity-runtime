@@ -2,13 +2,13 @@
 
 > Let agents propose. Let deterministic rules decide.
 
-Entity Runtime decides whether a proposed state change is legal. You declare an entity type as
-data — its fields, lifecycle states, named operations, rules and events — and a deterministic Rust
-kernel answers each request with the complete next decision or a typed refusal that changes
-nothing. The kernel reads no clock, file or network; storage, identity, time and side effects stay
-with the application around it. It ships as Rust libraries and one command, `entity`.
+Entity Runtime decides whether a proposed state change is legal. You declare an entity type's
+fields, lifecycle states, named operations, rules and events as data. A deterministic Rust kernel
+answers each request with the complete next decision or a typed refusal that changes nothing. The
+kernel reads no clock, file or network: storage, identity, time and side effects stay with the
+application around it. It ships as Rust libraries and one command, `entity`.
 
-**Documentation: <https://beyond10x.github.io/entity-runtime/>** —
+**Documentation: <https://beyond10x.github.io/entity-runtime/>** ·
 [getting started](https://beyond10x.github.io/entity-runtime/docs/getting-started) ·
 [guides](https://beyond10x.github.io/entity-runtime/docs/guides/model-policy-as-data) ·
 [CLI reference](https://beyond10x.github.io/entity-runtime/docs/reference/cli) ·
@@ -36,7 +36,7 @@ examples/refund.yaml: valid (refund v1)
 1 file(s), 0 invalid
 ```
 
-The libraries are not on a registry; depend on them by Git tag
+The libraries are not on a registry, so depend on them by Git tag
 ([embed the kernel](https://beyond10x.github.io/entity-runtime/docs/guides/embed-the-kernel)).
 
 ## Build from source
@@ -53,10 +53,10 @@ cargo run -p entity-cli --locked -- --help   # the entity command from this chec
 task site-build                              # the documentation site (needs network for npm)
 ```
 
-The documentation site's source is [`website/`](website/); the requirements register, designs,
+The documentation site's source is [`website/`](website/). The requirements register, designs,
 executable ESS contracts and reviews are the engineering record under [`docs/`](docs/) and
 [`ess/`](ess/). Contributors and coding agents read [`AGENTS.md`](AGENTS.md) before changing
-anything; the [changelog](CHANGELOG.md) records every change a user sees.
+anything, and the [changelog](CHANGELOG.md) records every change a user sees.
 
 ## License
 

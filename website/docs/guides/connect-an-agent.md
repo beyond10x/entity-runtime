@@ -8,9 +8,8 @@ source: "crates/entity-shell (StoredRuntime, ShellError::kind), crates/entity-cl
 
 # Connect an agent
 
-The safe integration boundary is small: the agent proposes an operation and domain arguments;
-trusted code decides everything about authority and durable state. [The decision
-boundary](../concepts/decision-boundary.md) explains why.
+[The decision boundary](../concepts/decision-boundary.md) explains why the safe integration
+boundary is this small.
 
 ## Divide the inputs by trust
 
@@ -23,8 +22,8 @@ boundary](../concepts/decision-boundary.md) explains why.
 | | the record id, timestamp, correlation and causation |
 
 Do not expose a tool that accepts an arbitrary instance, definition, actor or state patch. When a
-rule needs the caller's role — `actor_role` in the refund example — inject it into the operation
-arguments after authentication.
+rule needs the caller's role, such as `actor_role` in the refund example, inject it into the
+operation arguments after authentication.
 
 ## Write the tool handler
 
@@ -40,17 +39,17 @@ A tool input the model may fill:
 
 The handler:
 
-1. allows only the definitions and operations meant for this agent;
-2. loads the instance from the authoritative store by `id`;
-3. keeps the revision the proposal was based on, and injects trusted values such as `actor_role`;
-4. calls `StoredRuntime::execute` with that expected revision and a `Recording` it built;
-5. returns a refusal's JSON unchanged;
-6. reports success only after the recorded decision committed at the expected revision; and
-7. starts downstream work only after that commit.
+1. Allows only the definitions and operations meant for this agent.
+2. Loads the instance from the authoritative store by `id`.
+3. Keeps the revision the proposal was based on, and injects trusted values such as `actor_role`.
+4. Calls `StoredRuntime::execute` with that expected revision and a `Recording` it built.
+5. Returns a refusal's JSON unchanged.
+6. Reports success only after the recorded decision committed at the expected revision.
+7. Starts downstream work only after that commit.
 
 `StoredRuntime` (in `entity-shell`) performs the load, the retry check, the decision and the
-recorded commit; do not commit its result a second time. The [embed the kernel](./embed-the-kernel.md)
-guide shows the kernel calls underneath.
+recorded commit. Do not commit its result a second time. The
+[embed the kernel](./embed-the-kernel.md) guide shows the kernel calls underneath.
 
 ## Handle outcomes by kind
 
@@ -90,22 +89,22 @@ error: .agents/skills/entity/SKILL.md already exists; pass --force to replace th
 $ entity skill --out .agents/skills/entity/SKILL.md --force
 ```
 
-The skill teaches command use; it grants no authority. Repository instructions, tool allowlists,
+The skill teaches command use and grants no authority. Repository instructions, tool allowlists,
 authentication and trusted input injection still decide what the agent may do.
 
 For model evaluation, [`entity mcp`](./mount-mcp-tools.md) projects the same argument schemas into
 tools such as `refund.approve`. Its operation tools take recording metadata and the revision the
-model observed, so stale intent is refused rather than applied to newer state. The MCP server
+model observed, so stale intent against newer state is refused. The MCP server
 passes those fields through as the model wrote them: an untrusted agent needs a wrapper that sets
 or checks them first.
 
-## Test the boundary, not only the happy path
+## Test the boundary
 
 For every operation exposed to an agent, test:
 
-- a legal transition, and the same operation from an illegal state;
-- invalid and missing arguments;
-- every policy refusal, and missing evidence with every unresolved path;
-- a concurrent revision conflict;
-- retrying one record id with identical and with different bytes; and
-- that no refusal changed state or emitted an event.
+- a legal transition, and the same operation from an illegal state
+- invalid and missing arguments
+- every policy refusal, and missing evidence with every unresolved path
+- a concurrent revision conflict
+- retrying one record id with identical and with different bytes
+- that no refusal changed state or emitted an event

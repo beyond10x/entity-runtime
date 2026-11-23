@@ -9,15 +9,15 @@ source: "crates/entity-cli/src/main.rs and src/cli.rs, crates/entity-cli/tests/c
 # Use the entity command
 
 `entity` is the reference shell around the kernel, written in Rust with clap derive. Its verbs are
-the same for every definition set; a [generated CLI](./generate-a-rust-cli.md) is the variant whose
+the same for every definition set. A [generated CLI](./generate-a-rust-cli.md) is the variant whose
 subcommands come from your definitions. The [CLI reference](../reference/cli.md) lists every
-option; this page shows how they combine.
+option.
 
 ## Pass values three ways
 
 `--fields`, `--instance` and `--arguments` each accept inline JSON, `@path` (a JSON or YAML file) or
 `-` (standard input). Only one flag per invocation may read standard input. A `Decision` printed by
-`create` or `execute` can be passed back as `--instance`; the command takes its instance.
+`create` or `execute` can be passed back as `--instance`, and the command takes its instance.
 
 ## Pipe decisions without storing them
 
@@ -30,7 +30,7 @@ $ entity create --definition refund.yaml --id refund-104 \
 refund refund-104 is submitted (revision 2); events: RefundSubmitted
 ```
 
-That suits tests and pipelines. The caller is responsible for passing only trusted instances; the
+That suits tests and pipelines. The caller is responsible for passing only trusted instances. The
 kernel still refuses an instance of another type or one claiming an undeclared state.
 
 ## Store with provenance
@@ -46,7 +46,8 @@ must say who recorded it and when, because the kernel invents neither:
 | `--correlation ID`, `--causation ID` | no |
 | `--expected-revision N` (`execute` only) | no: defaults to the revision the store holds |
 
-The output is the exact `RecordedCommit` stored. Missing provenance is an invalid invocation:
+The output is the exact `RecordedCommit` stored. Missing provenance is an invalid invocation and
+exits 2:
 
 ```shell-session
 $ entity create --definition refund.yaml --id refund-200 \
@@ -62,8 +63,6 @@ Usage: entity create --definition <DEFINITIONS> --id <ID> --recorded-at <RECORDE
 For more information, try '--help'.
 ```
 
-That error exits 2.
-
 How `--expected-revision` makes a retry recoverable is shown in
 [getting started](../getting-started.md#retry-an-accepted-request) and explained in
 [storage and replay](../concepts/storage.md#retry-boundaries). `entity list --store DIR --entity
@@ -71,10 +70,11 @@ TYPE` prints the stored ids, sorted.
 
 ## Choose an output format
 
-`create`, `execute` and `list` take `--format json|yaml|text`; `create` and `execute` default to
-JSON and `list` to text. A JSON decision holds the new `instance`, the replay-verifiable `record`
-(command, definition, changes, result, events) and `events`, a compatibility view of the record's
-events. `inspect` prints text, JSON or YAML; `graph` prints text, Mermaid, DOT, SVG or HTML.
+`create`, `execute` and `list` take `--format json|yaml|text`. `create` and `execute` default to
+JSON, and `list` to text. A JSON decision holds the new `instance`, the replay-verifiable `record`
+and `events`. The record holds the command, definition, changes, result and events, and `events`
+is a compatibility view of the record's events. `inspect` prints text, JSON or YAML, and `graph`
+prints text, Mermaid, DOT, SVG or HTML.
 
 ## Read the exit code
 
@@ -85,15 +85,15 @@ events. `inspect` prints text, JSON or YAML; `graph` prints text, Mermaid, DOT, 
 | `2` | an invalid invocation, or an input that could not be read | standard error |
 
 `validate` reports every file and exits 1 when any is invalid, including a file it could not read
-or parse. A kernel refusal carries `kind`; a store refusal is
-`{"refused": true, "by": "store", "kind": …, "detail": …}` with the kinds the MCP tools use
-(`revision_conflict`, `record_conflict`, `not_found`, …). [Typed refusals](../reference/refusals.md)
+or parse. A kernel refusal carries `kind`. A store refusal is
+`{"refused": true, "by": "store", "kind": …, "detail": …}` with the kinds the MCP tools use, such as
+`revision_conflict`, `record_conflict` and `not_found`. [Typed refusals](../reference/refusals.md)
 lists them all.
 
 ## What the command does not do
 
 It contacts no model, publishes no events, performs no side effects, reads no clock, mints no ids,
-authenticates no one and chooses no provenance. The default build stores only into a File Store; a
+authenticates no one and chooses no provenance. The default build stores only into a File Store. A
 build with the `eventlog-providers` feature adds an Eventlog File store
 ([CLI reference](../reference/cli.md#what-an-eventlog-providers-build-adds)). SQLite and PostgreSQL
 are library integrations.
