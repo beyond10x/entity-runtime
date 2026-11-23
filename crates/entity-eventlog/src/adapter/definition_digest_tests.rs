@@ -21,8 +21,9 @@ use entity_executor::{BatchAction, CreateRequest, ExecuteRequest, Executor};
 use entity_store::{
     Recording,
     asynchronous::{
-        AsyncRecordedReader, AsyncStateReader, AsyncStoreError, BatchKey, RECORD_BY_DIGEST,
-        RecordLookup, Subject, record_framing, verify_complete_store,
+        AppendMember, AppendOutcome, AppendRequest, AsyncRecordedReader, AsyncRecordedWriter,
+        AsyncStateReader, AsyncStoreError, BatchKey, RECORD_BY_DIGEST, RecordLookup, Subject,
+        record_framing, verify_complete_store,
     },
 };
 use eventlog_core::{
@@ -326,6 +327,30 @@ fn a_store_written_before_records_named_their_definitions_opens_verifies_and_ser
             assert_eq!(batch.records.len(), 2, "{policy:?}");
             // The same command again: answered as the batch it already is, not as a conflict.
             write(&store, "old-two", vec![settle("a", 1), create("b")]).await;
+            // And by the store's own recovery, below the executor's replay: the stored members
+            // appended again are compared in the form the batch was written in.
+            let members = batch
+                .records
+                .iter()
+                .map(|record| {
+                    AppendMember::new(
+                        record.expect,
+                        record.entry.clone(),
+                        record.request_bytes.clone(),
+                    )
+                })
+                .collect();
+            let request = AppendRequest::new(BatchKey::Named("old-two".to_owned()), members)
+                .expect("request");
+            let outcome = store
+                .operation(context("old-two-again"))
+                .append(request)
+                .await
+                .expect("the stored batch appended again is replayed");
+            assert!(
+                matches!(outcome, AppendOutcome::Committed { replayed: true, .. }),
+                "{policy:?}: {outcome:?}"
+            );
         }
 
         let store = open(&path, &authority, CapturePolicy::FullVerification).await;
