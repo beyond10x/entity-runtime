@@ -465,6 +465,8 @@ impl<'a> Executor<'a> {
     fn prepare(&self, action: &BoundAction) -> Result<PreparedAction<'_>, ExecutionError> {
         match &action.action {
             BatchAction::Create(request) => {
+                #[cfg(feature = "kpi-counters")]
+                crate::kpi_counters::add(&crate::kpi_counters::KERNEL_CREATES, 1);
                 let creation = Runtime::new(self.registry).decide_create(
                     &request.subject.entity,
                     request.definition_version,
@@ -1027,6 +1029,8 @@ fn request_comparison_bytes(
     match (action, original) {
         (BatchAction::Create(request), RecordedEntry::Decision(commit)) => {
             let definition = saved_definition(original)?;
+            #[cfg(feature = "kpi-counters")]
+            crate::kpi_counters::add(&crate::kpi_counters::KERNEL_CREATES, 1);
             let decision = decide_create(
                 &definition,
                 request.subject.id.clone(),
@@ -1317,5 +1321,22 @@ fn first_recording(action: &BatchAction) -> entity_store::Recording {
             causation: observation.envelope.causation.clone(),
             actor: observation.envelope.actor.clone(),
         },
+    }
+}
+
+/// Event counters for the repository's KPI gate (`checks/kpi`), compiled only with the
+/// non-default `kpi-counters` feature. Not a supported API.
+///
+/// Review finding E06: how often one command runs the creation kernel.
+#[cfg(feature = "kpi-counters")]
+#[doc(hidden)]
+pub mod kpi_counters {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Creation decisions the executor asked the kernel for.
+    pub static KERNEL_CREATES: AtomicU64 = AtomicU64::new(0);
+
+    pub(crate) fn add(counter: &AtomicU64, amount: u64) {
+        counter.fetch_add(amount, Ordering::Relaxed);
     }
 }

@@ -27,3 +27,23 @@ pub use facade::{
     LegacyImportError, LegacyImportReport, RecordedProviderFacade, ScopedRecordedProviderFacade,
 };
 pub use projection::{ErRecordedProjector, projection_specs};
+
+/// Event counters for the repository's KPI gate (`checks/kpi`), compiled only with the
+/// non-default `kpi-counters` feature. Not a supported API.
+///
+/// Review finding E05: batch blob reads during an inline projection pass.
+#[cfg(feature = "kpi-counters")]
+#[doc(hidden)]
+pub mod kpi_counters {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Batch blobs the inline projector read from its projection store.
+    pub static BATCH_BLOB_FETCHES: AtomicU64 = AtomicU64::new(0);
+
+    /// Bytes of those batch blobs.
+    pub static BATCH_BLOB_BYTES: AtomicU64 = AtomicU64::new(0);
+
+    pub(crate) fn add(counter: &AtomicU64, amount: u64) {
+        counter.fetch_add(amount, Ordering::Relaxed);
+    }
+}

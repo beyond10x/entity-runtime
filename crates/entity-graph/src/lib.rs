@@ -59,3 +59,20 @@ pub mod render;
 
 pub use graph::{Edge, Emphasis, Graph, GraphKind, Node};
 pub use layout::Layout;
+
+/// Event counters for the repository's KPI gate (`checks/kpi`), compiled only with the
+/// non-default `kpi-counters` feature. Not a supported API.
+///
+/// Review finding E10: endpoint lookups while drawing.
+#[cfg(feature = "kpi-counters")]
+#[doc(hidden)]
+pub mod kpi_counters {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Node-id comparisons made while resolving edge endpoints.
+    pub static ENDPOINT_COMPARISONS: AtomicU64 = AtomicU64::new(0);
+
+    pub(crate) fn add(counter: &AtomicU64, amount: u64) {
+        counter.fetch_add(amount, Ordering::Relaxed);
+    }
+}

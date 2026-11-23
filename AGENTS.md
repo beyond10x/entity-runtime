@@ -240,6 +240,34 @@ Land nothing until `task check` itself exits zero. A change under `website/` mus
 **Prose states no count of the gate's suites or tests.** That number lives in exactly one place:
 the gate's output.
 
+## KPI gate
+
+`checks/kpi` (`er-kpi`, outside the workspace like `checks/ess-conformance`, built on Rust
+1.91 because it drives the Eventlog providers) holds the low bar for cost: `kpis.yaml` defines
+each KPI (id, what it measures, unit, better direction, scenario, tolerance) and `baseline.json`
+holds the recorded values. It is its own lane, not a step of `task check`.
+
+* **Counters** — bytes read and written, files opened (inotify), fsyncs, allocation bytes,
+  history loads, kernel calls, PostgreSQL plan rows — give the same number for the same tree on
+  any machine. `task kpi` compares them with `baseline.json` and fails on a counter that moved
+  the wrong way beyond its tolerance. Five crates carry a non-default `kpi-counters` feature for
+  the counters that need a hook; only `checks/kpi` turns it on.
+* **Timing** — latency per provider, throughput, CLI process wall time — is never compared with
+  a number from another machine. `task kpi-ab BASE=<rev>` builds both revisions with the current
+  harness and runs them interleaved, and compares the best round of each side; a gated KPI fails
+  above its `max_ratio` (2.0: an A/A run on a shared 20-CPU workstation at load 20-200 moved by
+  up to 1.94x). `task kpi -- --timing` adds one timing round beside the recorded local numbers,
+  for information only. `er-kpi list` prints every KPI.
+
+A change that moves a counter re-records in the same commit: `task kpi-record`, then commit
+`checks/kpi/baseline.json` (a ratchet; an improvement is reported until it is recorded, never
+written back by itself). Record on an idle machine: `baseline.json` keeps the host, CPU, load
+average and rustc with the numbers. PostgreSQL KPIs run only with `ENTITY_POSTGRES_URL` and say
+so when skipped. Run the KPI tasks without the `slot` prefix: they measure, and their `cargo`
+calls take a slot through the shim. CI's `KPI / KPI gate` job (`.github/workflows/kpi.yml`)
+runs the counters and, on a pull request, the A/B against the merge base; it is not a required
+check.
+
 ## Branch protection
 
 `main` carries a ruleset (`main: checks before merge`, id 21404415): `gate / Gate`,

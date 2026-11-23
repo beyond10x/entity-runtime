@@ -13,6 +13,11 @@ rust-version.workspace = true
 [dependencies]
 entity-core = { path = "../entity-core", version = "0.32.0" }
 
+[features]
+# Repository tooling only: the KPI gate (`checks/kpi`) reads the counters this enables. A relaxed
+# atomic add per counted event; no production build turns it on.
+kpi-counters = []
+
 [dev-dependencies]
 serde_json.workspace = true
 # The source scanner `tests/boundary.rs` reads this crate with. Shared rather than copied: the copy

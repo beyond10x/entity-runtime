@@ -15,6 +15,9 @@ sqlite = ["dep:eventlog-sqlite"]
 postgres = ["dep:eventlog-postgres"]
 # A store of immutable files that version control can merge: planning stores kept in Git.
 tree = ["dep:eventlog-tree"]
+# Repository tooling only: the KPI gate (`checks/kpi`) reads the counters this enables. A relaxed
+# atomic add per counted event; no production build turns it on.
+kpi-counters = []
 
 [dependencies]
 entity-core = { path = "../entity-core", version = "0.32.0" }

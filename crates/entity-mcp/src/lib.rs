@@ -182,6 +182,8 @@ where
     }
 
     fn tool(&self, name: &str, target: &ToolTarget) -> Value {
+        #[cfg(feature = "kpi-counters")]
+        crate::kpi_counters::add(&crate::kpi_counters::DESCRIPTORS_BUILT, 1);
         let (description, input, read_only, idempotent) = match target {
             ToolTarget::Create(entity) => (
                 format!("Create and durably record one {entity}."),
@@ -596,5 +598,22 @@ mod tests {
             stale["result"]["structuredContent"]["kind"],
             "revision_conflict"
         );
+    }
+}
+
+/// Event counters for the repository's KPI gate (`checks/kpi`), compiled only with the
+/// non-default `kpi-counters` feature. Not a supported API.
+///
+/// Review finding E20: tool descriptors built for discovery.
+#[cfg(feature = "kpi-counters")]
+#[doc(hidden)]
+pub mod kpi_counters {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Tool descriptors constructed.
+    pub static DESCRIPTORS_BUILT: AtomicU64 = AtomicU64::new(0);
+
+    pub(crate) fn add(counter: &AtomicU64, amount: u64) {
+        counter.fetch_add(amount, Ordering::Relaxed);
     }
 }

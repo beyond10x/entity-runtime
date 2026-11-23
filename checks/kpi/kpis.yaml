@@ -1,0 +1,394 @@
+version: 1
+
+counters:
+  - id: file.execute.read_bytes.prior8
+    finding: P14
+    measures: bytes read by one CLI-shaped execute on a native FileStore subject (fresh handle, revision lookup, shell execute)
+    unit: bytes
+    direction: lower
+    scenario: counter definition, one subject with 8 prior records
+    tolerance: 0.005
+    slack: 256
+  - id: file.execute.read_bytes.prior32
+    finding: P14
+    measures: bytes read by one CLI-shaped execute on a native FileStore subject
+    unit: bytes
+    direction: lower
+    scenario: counter definition, one subject with 32 prior records
+    tolerance: 0.005
+    slack: 256
+  - id: file.execute.write_bytes.prior8
+    finding: P14
+    measures: bytes written by one CLI-shaped execute on a native FileStore subject
+    unit: bytes
+    direction: lower
+    scenario: counter definition, one subject with 8 prior records
+    tolerance: 0.005
+    slack: 256
+  - id: file.execute.write_bytes.prior32
+    finding: P14
+    measures: bytes written by one CLI-shaped execute on a native FileStore subject
+    unit: bytes
+    direction: lower
+    scenario: counter definition, one subject with 32 prior records
+    tolerance: 0.005
+    slack: 256
+  - id: file.create.subject_read_opens.n9
+    finding: P6
+    measures: subject files opened read-only by a fresh FileStore handle creating one subject
+    unit: opens
+    direction: lower
+    scenario: counter definition, creating subject 9 beside 8 existing
+  - id: file.create.subject_read_opens.n33
+    finding: P6
+    measures: subject files opened read-only by a fresh FileStore handle creating one subject
+    unit: opens
+    direction: lower
+    scenario: counter definition, creating subject 33 beside 32 existing
+  - id: eventlog_file.list_empty.blob_read_opens.t8
+    finding: P2
+    measures: blob files opened read-only by an Eventlog File open, ids for an unstored type, and shutdown (the CLI's list)
+    unit: opens
+    direction: lower
+    scenario: ticket definition, 8 unrelated tickets
+  - id: eventlog_file.list_empty.blob_read_opens.t64
+    finding: P2
+    measures: blob files opened read-only by an Eventlog File open, ids for an unstored type, and shutdown
+    unit: opens
+    direction: lower
+    scenario: ticket definition, 64 unrelated tickets
+  - id: eventlog_file.list_empty.read_bytes.t8
+    finding: P2, P8
+    measures: bytes read by the same open, empty ids and shutdown
+    unit: bytes
+    direction: lower
+    scenario: ticket definition, 8 unrelated tickets
+    tolerance: 0.01
+    slack: 1024
+  - id: eventlog_file.list_empty.read_bytes.t64
+    finding: P2, P8
+    measures: bytes read by the same open, empty ids and shutdown
+    unit: bytes
+    direction: lower
+    scenario: ticket definition, 64 unrelated tickets
+    tolerance: 0.01
+    slack: 1024
+  - id: memory.query_one_row.alloc_bytes.n16
+    finding: E07
+    measures: bytes allocated by a one-row MemoryStore query_documents page
+    unit: bytes
+    direction: lower
+    scenario: 16 subjects with a 1 KiB title each, page size 1
+    tolerance: 0.01
+    slack: 64
+  - id: memory.query_one_row.alloc_bytes.n1024
+    finding: E07
+    measures: bytes allocated by a one-row MemoryStore query_documents page
+    unit: bytes
+    direction: lower
+    scenario: 1,024 subjects with a 1 KiB title each, page size 1
+    tolerance: 0.01
+    slack: 64
+  - id: memory.commit_batch_one.alloc_bytes.n16
+    finding: E08
+    measures: bytes allocated by a one-member MemoryStore commit_batch adding a new subject
+    unit: bytes
+    direction: lower
+    scenario: 16 existing subjects with a 1 KiB title each
+    tolerance: 0.01
+    slack: 64
+  - id: memory.commit_batch_one.alloc_bytes.n1024
+    finding: E08
+    measures: bytes allocated by a one-member MemoryStore commit_batch adding a new subject
+    unit: bytes
+    direction: lower
+    scenario: 1,024 existing subjects with a 1 KiB title each
+    tolerance: 0.01
+    slack: 64
+  - id: kernel.create.alloc_bytes
+    finding: P16
+    measures: bytes allocated by one kernel create (the definition snapshot is most of it)
+    unit: bytes
+    direction: lower
+    scenario: counter definition, second create on one Runtime
+    tolerance: 0.01
+    slack: 64
+  - id: executor.fresh_create.alloc_bytes
+    finding: E06
+    measures: bytes allocated by one fresh recorded create through the executor
+    unit: bytes
+    direction: lower
+    scenario: counter definition on MemoryRecordedStore
+    tolerance: 0.01
+    slack: 64
+  - id: executor.fresh_create.kernel_creates
+    finding: E06
+    measures: creation decisions the executor asks the kernel for during one fresh recorded create
+    unit: calls
+    direction: lower
+    scenario: counter definition on MemoryRecordedStore
+    hooked: true
+  - id: executor.batch_retry.history_loads.k8
+    finding: E04
+    measures: subject history loads while retrying a named batch that already committed
+    unit: loads
+    direction: lower
+    scenario: one subject, create plus 7 executes in one batch, retried once
+  - id: executor.batch_retry.history_loads.k32
+    finding: E04
+    measures: subject history loads while retrying a named batch that already committed
+    unit: loads
+    direction: lower
+    scenario: one subject, create plus 31 executes in one batch, retried once
+  - id: hybrid.catch_up.destination_observation_reads.n8
+    finding: E09
+    measures: destination observations() reads during one Hybrid catch-up
+    unit: reads
+    direction: lower
+    scenario: 8 contiguous revisions with one observation each, empty replica
+  - id: hybrid.catch_up.destination_observation_reads.n32
+    finding: E09
+    measures: destination observations() reads during one Hybrid catch-up
+    unit: reads
+    direction: lower
+    scenario: 32 contiguous revisions with one observation each, empty replica
+  - id: eventlog.projection.batch_blob_fetches.k8
+    finding: E05
+    measures: batch blob reads by the inline projector during one batch append
+    unit: reads
+    direction: lower
+    scenario: Eventlog SQLite, one named batch of 8 ticket creates
+    hooked: true
+  - id: eventlog.projection.batch_blob_fetches.k32
+    finding: E05
+    measures: batch blob reads by the inline projector during one batch append
+    unit: reads
+    direction: lower
+    scenario: Eventlog SQLite, one named batch of 32 ticket creates
+    hooked: true
+  - id: eventlog.projection.batch_blob_bytes.k8
+    finding: E05
+    measures: batch blob bytes the inline projector read during one batch append
+    unit: bytes
+    direction: lower
+    scenario: Eventlog SQLite, one named batch of 8 ticket creates
+    tolerance: 0.005
+    hooked: true
+  - id: eventlog.projection.batch_blob_bytes.k32
+    finding: E05
+    measures: batch blob bytes the inline projector read during one batch append
+    unit: bytes
+    direction: lower
+    scenario: Eventlog SQLite, one named batch of 32 ticket creates
+    tolerance: 0.005
+    hooked: true
+  - id: eventlog.append_conflict.attempts
+    finding: E19
+    measures: physical append attempts for one create while the provider answers every append with Conflict; the injector fails the 64th, so an unbounded retry reads 64
+    unit: attempts
+    direction: lower
+    scenario: counter definition on Eventlog File behind a conflict-injecting provider
+  - id: graph.mermaid.endpoint_comparisons.chain300
+    finding: E10
+    measures: node-id comparisons resolving edge endpoints while rendering Mermaid
+    unit: comparisons
+    direction: lower
+    scenario: the review's 300-state, 299-transition chain
+    hooked: true
+  - id: mcp.tools_list_x4.descriptors_built
+    finding: E20
+    measures: tool descriptors constructed for four tools/list requests on one server
+    unit: descriptors
+    direction: lower
+    scenario: counter definition (eight tools)
+    hooked: true
+  - id: mcp.tools_list_x4.alloc_bytes
+    finding: E20
+    measures: bytes allocated answering four tools/list requests on one server
+    unit: bytes
+    direction: lower
+    scenario: counter definition (eight tools)
+    tolerance: 0.01
+    slack: 64
+  - id: surface.asyncapi.outcome_messages
+    finding: E03
+    measures: messages the generated AsyncAPI document declares; the fixture's create outcome emits ParcelOpened, so the correct value is at least 1
+    unit: messages
+    direction: higher
+    scenario: the review's service/1 parcel outcome definition
+  - id: file.first_write.fsyncs
+    finding: E13
+    measures: file and directory syncs of the first write into an empty FileStore; the E13 fix is expected to raise it (parent directory syncs) and re-record it
+    unit: syncs
+    direction: none
+    scenario: counter definition, empty store
+    hooked: true
+  - id: file.first_write_of_type.fsyncs
+    finding: E13
+    measures: file and directory syncs of the first write of a second type
+    unit: syncs
+    direction: none
+    scenario: ticket after one counter
+    hooked: true
+  - id: file.later_write_of_type.fsyncs
+    finding: E13
+    measures: file and directory syncs of a later write of a type that exists
+    unit: syncs
+    direction: lower
+    scenario: second ticket
+    hooked: true
+  - id: postgres.query_mid_page.rows_sorted.n16384
+    finding: E18
+    measures: rows entering a Sort node in the plan of the provider's document page query (EXPLAIN ANALYZE)
+    unit: rows
+    direction: lower
+    scenario: 16,384 subjects, cursor at the midpoint, page size 2
+    postgres: true
+  - id: postgres.query_mid_page.shared_buffers.n16384
+    finding: E18
+    measures: shared buffers hit or read by that plan (EXPLAIN ANALYZE, BUFFERS, second run)
+    unit: buffers
+    direction: lower
+    scenario: 16,384 subjects, cursor at the midpoint, page size 2
+    tolerance: 0.05
+    slack: 2
+    postgres: true
+
+timing:
+  - id: "{store}.create.p50_us"
+    findings: [P1, P6, P16, E06]
+    measures: median latency of one create on an open provider
+    unit: us
+    direction: lower
+    scenario: 8 creates into a fresh provider
+    stores: [memory, file, sqlite, eventlog_file, eventlog_sqlite, postgres]
+    gate: true
+    max_ratio: 2.0
+  - id: "{store}.create.p95_us"
+    measures: 95th percentile of the same creates
+    unit: us
+    direction: lower
+    scenario: 8 creates into a fresh provider
+    stores: [memory, file, sqlite, eventlog_file, eventlog_sqlite, postgres]
+    gate: false
+  - id: "{store}.execute.prior8.p50_us"
+    findings: [P14, P9]
+    measures: median latency of one execute on a subject with 8 prior records
+    unit: us
+    direction: lower
+    scenario: 8 subjects with 8 records each, one execute each
+    stores: [memory, file, sqlite, eventlog_file, eventlog_sqlite, postgres]
+    gate: true
+    max_ratio: 2.0
+  - id: "{store}.execute.prior8.p95_us"
+    measures: 95th percentile of the same executes
+    unit: us
+    direction: lower
+    scenario: 8 subjects with 8 records each
+    stores: [memory, file, sqlite, eventlog_file, eventlog_sqlite, postgres]
+    gate: false
+  - id: "{store}.execute.prior32.p50_us"
+    findings: [P14, P9, E04]
+    measures: median latency of one execute on a subject with 32 prior records
+    unit: us
+    direction: lower
+    scenario: 2 subjects with 32 records each, one execute each
+    stores: [memory, file, sqlite, eventlog_file, eventlog_sqlite, postgres]
+    gate: true
+    max_ratio: 2.0
+  - id: "{store}.execute.prior32.p95_us"
+    measures: 95th percentile of the same executes
+    unit: us
+    direction: lower
+    scenario: 2 subjects with 32 records each
+    stores: [memory, file, sqlite, eventlog_file, eventlog_sqlite, postgres]
+    gate: false
+  - id: "{store}.commit.ops_per_s"
+    findings: [P1, P14]
+    measures: sequential commit throughput
+    unit: commands/s
+    direction: higher
+    scenario: 56 executes (8 subjects up to revision 8)
+    stores: [memory, file, sqlite, eventlog_file, eventlog_sqlite, postgres]
+    gate: true
+    max_ratio: 2.0
+  - id: "{store}.ids.n10.p50_us"
+    findings: [P2]
+    measures: median latency of ids for a type with 10 subjects
+    unit: us
+    direction: lower
+    scenario: 10 counter subjects
+    stores: [memory, file, sqlite, eventlog_file, eventlog_sqlite, postgres]
+    gate: true
+    max_ratio: 2.0
+  - id: "{store}.ids.n10.p95_us"
+    measures: 95th percentile of the same ids calls
+    unit: us
+    direction: lower
+    scenario: 10 counter subjects
+    stores: [memory, file, sqlite, eventlog_file, eventlog_sqlite, postgres]
+    gate: false
+  - id: "{store}.query_one_row.n10.p50_us"
+    findings: [E07, E18, P2]
+    measures: median latency of a one-row query_documents page
+    unit: us
+    direction: lower
+    scenario: 10 counter subjects, page size 1
+    stores: [memory, eventlog_file, eventlog_sqlite, postgres]
+    gate: true
+    max_ratio: 2.0
+  - id: "{store}.query_one_row.n10.p95_us"
+    measures: 95th percentile of the same pages
+    unit: us
+    direction: lower
+    scenario: 10 counter subjects, page size 1
+    stores: [memory, eventlog_file, eventlog_sqlite, postgres]
+    gate: false
+  - id: cli.file.create.wall_ms
+    findings: [P6, P16, E06]
+    measures: wall time of one release `entity create --store` process
+    unit: ms
+    direction: lower
+    scenario: native FileStore with 5 subjects, median of 5 processes
+    gate: true
+    max_ratio: 2.0
+  - id: cli.file.execute.prior8.wall_ms
+    findings: [P14]
+    measures: wall time of one release `entity execute --store` process
+    unit: ms
+    direction: lower
+    scenario: native FileStore subject with 8 prior records, median of 5 processes
+    gate: true
+    max_ratio: 2.0
+  - id: cli.eventlog_file.create.wall_ms
+    findings: [P2, P8, E06]
+    measures: wall time of one release `entity create --eventlog-config` process
+    unit: ms
+    direction: lower
+    scenario: Eventlog File with 5 subjects of 8 records, median of 5 processes
+    gate: true
+    max_ratio: 2.0
+  - id: cli.eventlog_file.execute.prior8.wall_ms
+    findings: [P2, P8, P9]
+    measures: wall time of one release `entity execute --eventlog-config` process
+    unit: ms
+    direction: lower
+    scenario: Eventlog File subject with 8 prior records, median of 5 processes
+    gate: true
+    max_ratio: 2.0
+  - id: cli.eventlog_file.list_empty.wall_ms
+    findings: [P2, P8]
+    measures: wall time of one release `entity list --eventlog-config` for a type nobody stored
+    unit: ms
+    direction: lower
+    scenario: Eventlog File with about 50 records, median of 5 processes
+    gate: true
+    max_ratio: 2.0
+  - id: cli.graph_text.chain300.wall_ms
+    findings: [P15]
+    measures: wall time of one release `entity graph --format text` process
+    unit: ms
+    direction: lower
+    scenario: the review's 300-state chain, median of 5 processes
+    gate: true
+    max_ratio: 2.0

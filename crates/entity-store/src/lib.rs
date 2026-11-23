@@ -479,3 +479,23 @@ pub fn check(
         found,
     })
 }
+
+/// Event counters for the repository's KPI gate (`checks/kpi`), compiled only with the
+/// non-default `kpi-counters` feature. Not a supported API.
+///
+/// Review finding E13: what a FileStore write flushes.
+#[cfg(feature = "kpi-counters")]
+#[doc(hidden)]
+pub mod kpi_counters {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// `sync_all` calls on FileStore files (lock epoch, format marker, subject).
+    pub static FILE_SYNCS: AtomicU64 = AtomicU64::new(0);
+
+    /// FileStore directory syncs.
+    pub static DIRECTORY_SYNCS: AtomicU64 = AtomicU64::new(0);
+
+    pub(crate) fn add(counter: &AtomicU64, amount: u64) {
+        counter.fetch_add(amount, Ordering::Relaxed);
+    }
+}

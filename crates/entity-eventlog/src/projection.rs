@@ -378,6 +378,11 @@ async fn verified_batch(
         .get_blob(digest)
         .await?
         .ok_or(EventLogError::NotFound)?;
+    #[cfg(feature = "kpi-counters")]
+    {
+        crate::kpi_counters::add(&crate::kpi_counters::BATCH_BLOB_FETCHES, 1);
+        crate::kpi_counters::add(&crate::kpi_counters::BATCH_BLOB_BYTES, bytes.len() as u64);
+    }
     verify_batch(digest, bytes, LAST_BATCH_LIMIT)
 }
 

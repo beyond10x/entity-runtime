@@ -1,0 +1,16 @@
+entity: parcel
+version: 1
+semantics: service/1
+schema:
+  fields: {}
+lifecycle:
+  initial: open
+  states: [open]
+create:
+  outcomes:
+    - name: opened
+      effect: creates
+      emits:
+        - type: ParcelOpened
+          payload: {}
+operations: {}

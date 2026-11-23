@@ -148,6 +148,8 @@ impl FileStore {
         }
         file.write_all(&[0])
             .map_err(|e| backend("advancing epoch", &path, &e))?;
+        #[cfg(feature = "kpi-counters")]
+        crate::kpi_counters::add(&crate::kpi_counters::FILE_SYNCS, 1);
         file.sync_all()
             .map_err(|e| backend("syncing epoch", &path, &e))?;
         self.epoch.store(epoch + 1, Ordering::Relaxed);
@@ -247,6 +249,8 @@ impl FileStore {
             .map_err(|error| backend("creating", &marker, &error))?;
         file.write_all(format!("{FORMAT}\n").as_bytes())
             .map_err(|error| backend("writing", &marker, &error))?;
+        #[cfg(feature = "kpi-counters")]
+        crate::kpi_counters::add(&crate::kpi_counters::FILE_SYNCS, 1);
         file.sync_all()
             .map_err(|error| backend("syncing", &marker, &error))?;
         drop(file);
@@ -312,6 +316,8 @@ impl FileStore {
                 .map_err(|error| backend("creating", &temporary, &error))?;
             file.write_all(format!("{text}\n").as_bytes())
                 .map_err(|error| backend("writing", &temporary, &error))?;
+            #[cfg(feature = "kpi-counters")]
+            crate::kpi_counters::add(&crate::kpi_counters::FILE_SYNCS, 1);
             file.sync_all()
                 .map_err(|error| backend("syncing", &temporary, &error))?;
             drop(file);
@@ -657,6 +663,8 @@ fn reject_symlink_components(path: &Path) -> Result<(), StoreError> {
 }
 
 fn sync_directory(path: &Path) -> Result<(), StoreError> {
+    #[cfg(feature = "kpi-counters")]
+    crate::kpi_counters::add(&crate::kpi_counters::DIRECTORY_SYNCS, 1);
     #[cfg(windows)]
     {
         // Windows cannot flush a directory through the ordinary File API.

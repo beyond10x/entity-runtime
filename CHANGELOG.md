@@ -10,6 +10,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
 
+### Added
+
+- `entity-store`, `entity-executor`, `entity-eventlog`, `entity-graph` and `entity-mcp` have a
+  non-default `kpi-counters` feature. It exists for the repository's KPI gate (`checks/kpi`),
+  adds a counter per measured event and is not a supported API; builds without it are unchanged.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security

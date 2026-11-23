@@ -1,0 +1,74 @@
+[package]
+name = "er-kpi"
+version = "0.1.0"
+edition = "2021"
+publish = false
+rust-version = "1.91"
+description = "The repository's KPI gate: deterministic counters against a committed baseline, timing by A/B on one runner."
+
+# Measurement tooling stays outside the production workspace and its dependency graph, like
+# checks/ess-conformance: nothing here is published and no library depends on it.
+[workspace]
+
+[[bin]]
+name = "er-kpi"
+path = "src/main.rs"
+
+[features]
+default = ["counters"]
+# The counters that need a hook inside a library crate. Each hook is a relaxed atomic add behind
+# that crate's non-default `kpi-counters` feature, so no production build carries it. `ab` builds
+# without this feature: timing needs no hook, and a base revision that predates the hooks builds.
+counters = [
+  "entity-executor/kpi-counters",
+  "entity-eventlog/kpi-counters",
+  "entity-graph/kpi-counters",
+  "entity-mcp/kpi-counters",
+  "entity-store/kpi-counters",
+]
+
+[dependencies]
+entity-core = { path = "../../crates/entity-core" }
+entity-store = { path = "../../crates/entity-store" }
+entity-executor = { path = "../../crates/entity-executor" }
+entity-shell = { path = "../../crates/entity-shell" }
+entity-query = { path = "../../crates/entity-query" }
+entity-remote = { path = "../../crates/entity-remote" }
+entity-graph = { path = "../../crates/entity-graph" }
+entity-surface = { path = "../../crates/entity-surface" }
+entity-mcp = { path = "../../crates/entity-mcp" }
+entity-yaml = { path = "../../crates/entity-yaml" }
+entity-sqlite = { path = "../../crates/entity-sqlite", features = ["eventlog-facade"] }
+entity-postgres = { path = "../../crates/entity-postgres" }
+entity-eventlog = { path = "../../crates/entity-eventlog", features = ["file", "sqlite", "sync-bridge"] }
+# The same Eventlog tag the adapter pins: the conflict-injecting backend (E19) wraps a native
+# provider through the eventlog-core traits, exactly as the adapter's own test doubles do.
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.9.4" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.9.4" }
+# The PostgreSQL plan counters (E18) run EXPLAIN on the provider's own query; the same client
+# entity-postgres uses, so no second PostgreSQL stack enters the lock.
+postgres = { version = "0.19", features = ["with-serde_json-1"] }
+clap = { version = "4.6", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+serde_yaml_ng = "0.10"
+time = { version = "0.3", features = ["parsing"] }
+tokio = { version = "1.53.1", default-features = false, features = ["rt"] }
+# Counts file opens with inotify (P2, P6) without strace and without a hook in the stores. Already
+# in the workspace lock through tempfile; `fs` is the feature that carries the safe inotify API.
+rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
+# Counts allocated bytes (E07, E08, E20). A global allocator is an `unsafe trait`, and
+# `unsafe_code = "forbid"` holds here as in the workspace; this crate wraps the system allocator
+# with no dependencies of its own, so the unsafe stays in one small audited place outside the repo.
+stats_alloc = "0.1.10"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = "warn"
+
+[profile.release]
+debug = 0
+incremental = false

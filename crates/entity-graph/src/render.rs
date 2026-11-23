@@ -365,7 +365,11 @@ fn places(graph: &Graph, layout: &Layout) -> Vec<Place> {
 /// and re-entered the same box. Duplicate ids are not reachable through the two constructors, but
 /// `Graph`'s fields are public and a caller can build one.
 fn find(graph: &Graph, id: &str) -> Option<usize> {
-    graph.nodes.iter().rposition(|node| node.id == id)
+    graph.nodes.iter().rposition(|node| {
+        #[cfg(feature = "kpi-counters")]
+        crate::kpi_counters::add(&crate::kpi_counters::ENDPOINT_COMPARISONS, 1);
+        node.id == id
+    })
 }
 
 /// A DOT string literal. A name carrying a quote or a backslash must not close the string it is
