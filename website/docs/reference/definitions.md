@@ -8,15 +8,15 @@ source: "Written by hand against crates/entity-core/src/definition.rs, validatio
 # Definition language
 
 A definition is a YAML or JSON document describing one entity type. Rules are a closed data AST,
-and templates are ordinary values containing checked references. There is no embedded code.
+templates are ordinary values containing checked references, and a definition embeds no code.
 
-This page describes the default rules, `kernel/1`, which a definition without a `semantics` key
-follows. [Service semantics](../concepts/service-semantics.md) describes what `semantics:
+The rules on this page are `kernel/1`, the default for a definition without a `semantics` key.
+[Service semantics](../concepts/service-semantics.md) describes what `semantics:
 service/1` to `service/3` add: named outcomes, identity, relations and more field kinds and
 operators.
 
-Every definition key is closed. A misspelled `requried`, an unknown condition operator, or a
-condition carrying two operators is refused rather than ignored.
+Definition keys are closed: a misspelled `requried`, an unknown condition operator or a condition
+carrying two operators is refused.
 
 ```yaml
 entity: refund
@@ -62,25 +62,25 @@ schema:
 
 Every field also accepts `required` and `default`. Defaults are applied before validation and are
 validated when the definition is registered. A nested default is applied when its containing object
-exists, inside an object field, an array element or a map value; it does not invent the containing
+exists, inside an object field, an array element or a map value. It does not invent the containing
 object or a map entry.
 
 Numeric comparisons do not pass through `f64`, so large integers and bounds retain their JSON
-precision. A constraint on the wrong type is a definition defect, not an ignored decoration.
+precision. A constraint on the wrong type is a definition defect.
 
 Validation accumulates independent value failures and returns a path for each one, such as
 `fields.amount_cents` or `arguments.items[2].sku`. Undeclared fields are refused unless the relevant
-object explicitly enables additional fields.
+object enables additional fields.
 
 ### Typed references
 
 A `ref` declares that a string identity points at another entity type. Register all related
-definitions together and call `Registry::validate_all`; an unknown target type is refused, whether
+definitions together and call `Registry::validate_all`. It refuses an unknown target type, whether
 the `ref` is declared in the schema, in a `create` argument or in an operation argument. The
-kernel is intentionally given one instance at a time and cannot prove that the referenced instance
-exists. The shell enforces existence and `acyclic` graph constraints.
+kernel is given one instance at a time and cannot prove that the referenced instance exists. The
+shell enforces existence and `acyclic` graph constraints.
 
-`inverse` names how readers describe the opposite direction; it does not create a second stored
+`inverse` is the name readers use for the opposite direction, and it creates no second stored
 edge. `acyclic` defaults to `false`.
 
 ## Lifecycle
@@ -92,9 +92,8 @@ lifecycle:
 ```
 
 States are an open vocabulary inside each definition. `states` must be non-empty, each state is
-non-empty and unique, and `initial` must be declared. Creation enters `initial`.
-
-Transitions live on operations. There is no generic status write.
+non-empty and unique, and `initial` must be declared. Creation enters `initial`. Transitions live
+on operations, and the format has no generic status write.
 
 ## Operations
 
@@ -119,32 +118,40 @@ operations:
 ```
 
 - `arguments` is an object schema. Defaults are applied and values validated before rules run.
+
 - `transitions` must contain at least one edge. Within an operation, at most one edge may start from
   any state.
+
 - `preconditions` run against the current fields, validated arguments, and selected transition.
+
 - `set` assigns fields from templates. Every assignment reads the pre-operation fields, so entry
   order has no meaning. The resulting fields are validated again.
+
 - A `set` value `{increment: n}`, a mapping whose only key is `increment`, adds `n` to the field's
   value before the operation instead of replacing it. `n` is a number or a template that resolves
-  to one, such as `$args.amount`; a negative `n` decrements. The field must be a required
-  `integer` or `number`, and the amount must always be present and of the field's kind. The sum is
-  exact: `0.1` plus `0.2` is `0.3`. A sum the field's kind cannot hold is refused as
-  `increment_overflow` rather than wrapped, and a sum past `min` or `max` is a `validation`
-  refusal. A mapping with any second key that is not `cleared` is an ordinary object template.
+  to one, such as `$args.amount`, and a negative `n` decrements. The field must be a required
+  `integer` or `number`, and the amount must always be present and of the field's kind.
+
+  The sum is exact: `0.1` plus `0.2` is `0.3`. A sum the field's kind cannot hold does not wrap:
+  it is refused as `increment_overflow`. A sum past `min` or `max` is a `validation` refusal. A
+  mapping with any second key that is not `cleared` is an ordinary object template.
+
 - A `set` value `{cleared: true}`, a mapping whose only key is `cleared`, leaves the field absent
-  after the operation. The field must be declared and not `required`; one with a `default` may be
-  cleared, and the default does not fill it again. Clearing a field that is already absent is
-  accepted. The decision and every event it emits name the field in `removed`, never in
-  `changed`, and the schema check, invariants, events and response see it absent: `$fields`
-  omits it and a template reading it is a `template` refusal. A creation cannot clear, and a
-  field takes one assignment, so `{cleared: true, increment: 1}`, or a cleared field that the
-  same outcome also names in `set_if_present` or `fulfills`, is refused.
-- `emits` contains zero or more event templates. `emit` is accepted as an alias for the same
-  list (under `create`, `emit` is a single template). Events see the post-operation fields and
-  are materialized last. An operation that emits nothing leaves no event, so an event-only
-  history cannot see that it ran: a fold stops short if it was the last decision and refuses
-  the next revision as a gap otherwise. Keep decision records if you need to rebuild such a
-  subject.
+  after the operation. The field must be declared and not `required`. A field with a `default` may
+  be cleared, and the default does not fill it again. Clearing a field that is already absent is
+  accepted.
+
+  The decision and every event it emits list the field in `removed`, not in `changed`. The schema
+  check, invariants, events and response see it absent: `$fields` omits it, and a template reading
+  it is a `template` refusal. A creation cannot clear, and a field takes one assignment, so
+  `{cleared: true, increment: 1}`, or a cleared field that the same outcome also names in
+  `set_if_present` or `fulfills`, is refused.
+
+- `emits` contains zero or more event templates. `emit` is an alias for the same list. Under
+  `create`, `emit` is a single template. Events see the post-operation fields and are materialized
+  last. An operation with no events leaves no trace in an event-only history: a fold stops short if
+  it was the last decision, and otherwise refuses the next revision as a gap. To rebuild such a
+  subject, keep decision records.
 
 Revision is `1` after creation and increases by one per accepted operation. Execution refuses before
 exceeding the supported signed 64-bit revision range.
@@ -176,7 +183,7 @@ References outside the rule's scope or outside a declared schema are refused at 
 
 ## Condition operators
 
-Every condition carries exactly one operator.
+A condition carries exactly one operator.
 
 | Operator | Meaning |
 |---|---|
@@ -192,20 +199,20 @@ Every condition carries exactly one operator.
 | `starts_with`, `ends_with: [text, affix]` | byte-wise, case-sensitive string prefix or suffix; `false` when a reference is not a string, and a non-string literal is refused at registration |
 | `before`, `after: [a, b]` | ordering of two caller-supplied ISO-8601 instants |
 
-There are no calls, loops, arithmetic expressions, clocks, random sources, or lookups. Time enters
-as a field or operation argument. `before` and `after` parse strict calendar dates or timestamps;
-equal instants satisfy neither operator. A literal operand of `before` or `after` must itself be a
-readable instant — an impossible date, an offset-bearing timestamp, a number or any other value the
-kernel cannot read is refused at registration, because it would leave the rule unobservable at every
-evaluation.
+Conditions have no calls, loops, arithmetic expressions, clocks, random sources or lookups. Time
+enters as a field or operation argument. `before` and `after` parse strict calendar dates or
+timestamps, and equal instants satisfy neither operator. A literal operand of `before` or `after`
+must be a readable instant. An impossible date, an offset-bearing timestamp, a number or any other
+value the kernel cannot read is refused at registration, because it would leave the rule
+unobservable at every evaluation.
 
 ### Three-valued results
 
 A condition answers `true`, `false`, or `unknown`, and a rule holds only on `true`.
 
-`exists` asks whether a value is present and is always answerable. Comparisons become `unknown` when
+`exists` asks whether a value is present and cannot be `unknown`. Comparisons become `unknown` when
 an operand cannot be observed. A YAML key with no value deserializes as null and is treated as
-unobserved. A literal null deliberately written inside the definition remains a literal value.
+unobserved. A null written as a literal inside the definition remains a literal value.
 
 `false` dominates `all`, `true` dominates `any`, and `not unknown` remains unknown. All operands are
 evaluated so an unobservable refusal can name every missing path.
@@ -236,14 +243,14 @@ resolve recursively. `$$` escapes a literal leading dollar.
 | `$fields`, `$fields.path` | pre-operation fields in `set`; post-operation fields in events |
 | `$old_fields`, `$old_fields.path` | pre-operation fields |
 
-There is no `$now` or `uuid()`. References are checked against their scope and schema at
-registration. A path inside a `json` field may remain a runtime check because its shape is
-deliberately undeclared; failure is a typed `template` refusal, never a silent null.
+Templates have no `$now` or `uuid()`. References are checked against their scope and schema at
+registration. A path inside a `json` field may remain a runtime check, because the field's shape is
+undeclared. A failed path is a typed `template` refusal and does not resolve to null.
 
 ## Refusals at registration
 
 Registering a definition refuses with **every** defect it has, so fixing a document takes one
-pass; `entity validate` prints them all. A check whose prerequisite already failed is skipped: a
+pass. `entity validate` prints them all. A check whose prerequisite already failed is skipped: a
 lifecycle with a duplicate state is one finding, not one per transition it invalidates.
 
 | Defect | `kind` |
@@ -287,7 +294,7 @@ next and leaves the caller's instance untouched:
 | 10 | events are materialized from their templates | `template` |
 | 11 | the `Decision` is returned | |
 
-The order is part of the contract: "you cannot do that from here" (`invalid_transition`) is never
-masked by a failed precondition, and an invariant judges the state that would be stored. A
-`service/1` definition inserts four steps — branch selection, a refusing branch's return, the
-identity check and the declared response — and moves nothing else.
+The order is part of the contract: a failed precondition does not mask "you cannot do that from
+here" (`invalid_transition`), and an invariant judges the state that would be stored. A
+`service/1` definition inserts four steps: branch selection, a refusing branch's return, the
+identity check and the declared response. The other steps keep their order.
