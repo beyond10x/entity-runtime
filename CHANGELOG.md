@@ -53,6 +53,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   replaces before any data is written. Before, every recorded write installed a new file with the
   default permissions, so a subject an operator had restricted became readable again after its
   next command.
+- The File Store's threat model is documented in the store design and on the storage concepts
+  page: paths under the root are resolved by following symlinks, so only the account the store
+  runs as may modify the root and its ancestors, and a root another account can modify is not
+  supported. No behaviour changes.
 
 ## [0.32.0] — 2026-11-22
 

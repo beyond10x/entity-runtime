@@ -35,6 +35,14 @@ Windows flushes file contents but does not promise directory-entry persistence a
 temporary files are ignored by enumeration and record-id scans. All existing path components,
 including the format marker, are checked on reads and writes.
 
+Threat model: the File Store trusts the directory it is rooted in. Every operation resolves its
+path under the root again, and the operating system follows symlinks while doing so. The symlink
+checks above refuse a symlink that is already in place; they cannot confine an open, create or
+rename against a directory another process replaces between the check and the call. Only the
+store's principal — the account its readers and writers run as — may modify the root and its
+ancestors. A root another principal can modify is not supported: the advisory store lock
+coordinates cooperating writers and is no defence against anyone else.
+
 An unmarked non-empty directory is never guessed to be v2. `entity store migrate-file --from OLD
 --to NEW` is the only supported v1 transition: it validates every state and complete JSONL record,
 rejects symlinks, nesting, orphan logs and partial trailing records, writes a sibling staging tree,
