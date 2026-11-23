@@ -358,13 +358,30 @@ impl PostgresStore {
     /// `CREATE INDEX CONCURRENTLY instances_id_byte_order ON instances (entity, id COLLATE "C")`
     /// first, and this statement then finds it and does nothing.
     ///
+    /// One statement is not additive: `DROP INDEX IF EXISTS instances_document_query`. That index
+    /// cast `document` to `jsonb`, and `jsonb` refuses the escaped U+0000 that a string field may
+    /// hold, so an insert of such a document failed (SQLSTATE 22P05). Its replacement,
+    /// `instances_document_index`, indexes `entity_index_document(document)`: the same `jsonb`
+    /// with every escaped U+0000 and U+0001 in the text rewritten to a pair starting with U+0001,
+    /// a one-to-one mapping of strings, so containment over it matches containment over the
+    /// document. Building it blocks writes to `instances` like the index above.
+    ///
     /// # Errors
     ///
     /// [`StoreError::Backend`] when the server refuses the statements.
     pub fn migrate(&mut self) -> Result<(), StoreError> {
         self.client()?
             .batch_execute(
-                "CREATE TABLE IF NOT EXISTS instances (
+                "CREATE OR REPLACE FUNCTION entity_index_document(document TEXT) RETURNS jsonb
+                     LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $f$
+                     SELECT CASE WHEN strpos(document, chr(92) || 'u') = 0 THEN document::jsonb
+                     ELSE replace(replace(replace(replace(document,
+                         chr(92) || chr(92), chr(1)),
+                         chr(92) || 'u0001', chr(92) || 'u0001' || chr(92) || 'u0001'),
+                         chr(92) || 'u0000', chr(92) || 'u0001' || chr(92) || 'u0002'),
+                         chr(1), chr(92) || chr(92))::jsonb END
+                 $f$;
+                 CREATE TABLE IF NOT EXISTS instances (
                      entity   TEXT   NOT NULL,
                      id       TEXT   NOT NULL,
                      revision BIGINT NOT NULL,
@@ -398,8 +415,9 @@ impl PostgresStore {
                      namespace  TEXT   PRIMARY KEY,
                      next_value BIGINT NOT NULL CHECK (next_value >= 0)
                  );
-                 CREATE INDEX IF NOT EXISTS instances_document_query
-                     ON instances USING GIN ((document::jsonb) jsonb_path_ops);
+                 DROP INDEX IF EXISTS instances_document_query;
+                 CREATE INDEX IF NOT EXISTS instances_document_index
+                     ON instances USING GIN (entity_index_document(document) jsonb_path_ops);
                  CREATE INDEX IF NOT EXISTS instances_id_byte_order
                      ON instances (entity, id COLLATE \"C\");",
             )
@@ -438,7 +456,7 @@ impl DocumentQueryProvider for PostgresStore {
 /// `instances_id_byte_order` index rather than a scan and a sort.
 const DOCUMENT_PAGE: &str = "SELECT document FROM instances
      WHERE entity = $1 AND id COLLATE \"C\" > $2
-       AND document::jsonb @> $3::text::jsonb
+       AND entity_index_document(document) @> entity_index_document($3::text)
      ORDER BY id COLLATE \"C\" LIMIT $4";
 
 fn query_documents(
@@ -1302,6 +1320,93 @@ mod tests {
             !nodes.iter().any(|node| node == "Sort"),
             "the page must come in index order, not from a sort: {nodes:?}"
         );
+        store.drop_schema(&schema).expect("dropped");
+    }
+
+    /// Review E23: a string field holding U+0000 (serialized as the escape `\u0000`) is admitted
+    /// by the kernel, and the old `document::jsonb` index refused to insert it (SQLSTATE 22P05).
+    #[test]
+    fn a_document_holding_u0000_saves_and_a_page_finds_exactly_the_documents_it_contains() {
+        let Some(url) = std::env::var("ENTITY_POSTGRES_URL")
+            .ok()
+            .filter(|url| !url.trim().is_empty())
+        else {
+            eprintln!("skipped: ENTITY_POSTGRES_URL unset, so no server to hold this provider to");
+            return;
+        };
+        let schema = format!("entity_test_{}_document_u0000", std::process::id());
+        let mut store = PostgresStore::connect_in_schema(&url, &schema).unwrap_or_else(|error| {
+            panic!("ENTITY_POSTGRES_URL is set and the server refused: {error}")
+        });
+        {
+            // A database from an older release still has the old index; migrate drops it.
+            let mut client = store.client().expect("connection");
+            client
+                .batch_execute(
+                    "CREATE INDEX instances_document_query
+                         ON instances USING GIN ((document::jsonb) jsonb_path_ops);",
+                )
+                .expect("old index");
+        }
+        store.migrate().expect("migrated");
+        let mut client = store.client().expect("connection");
+        let indexes: Vec<String> = client
+            .query(
+                "SELECT indexname::text FROM pg_indexes
+                 WHERE schemaname = current_schema() AND tablename = 'instances'",
+                &[],
+            )
+            .expect("indexes")
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+        assert!(
+            !indexes
+                .iter()
+                .any(|name| name == "instances_document_query"),
+            "{indexes:?}"
+        );
+        assert!(
+            indexes
+                .iter()
+                .any(|name| name == "instances_document_index"),
+            "{indexes:?}"
+        );
+        // Labels whose JSON text differs only around the escapes the index rewrites.
+        let labels = [
+            ("nul", r"a\u0000b"),
+            ("one-two", r"a\u0001\u0002b"),
+            ("one", r"a\u0001b"),
+            ("escaped-backslash", r"a\\u0000b"),
+            ("backslash-nul", r"a\\\u0000b"),
+            ("plain", "ab"),
+        ];
+        for (id, label) in labels {
+            let document = format!(r#"{{"fields":{{"label":"{label}"}}}}"#);
+            client
+                .execute(
+                    "INSERT INTO instances (entity, id, revision, document) VALUES ('c', $1, 1, $2)",
+                    &[&id, &document],
+                )
+                .unwrap_or_else(|error| panic!("{id} is saved: {error}"));
+        }
+        let page = client.prepare(DOCUMENT_PAGE).expect("prepared");
+        for (id, label) in labels {
+            let filter = format!(r#"{{"fields":{{"label":"{label}"}}}}"#);
+            let matched: Vec<String> = client
+                .query(&page, &[&"c", &"", &filter, &100_i64])
+                .expect("page")
+                .iter()
+                .map(|row| row.get::<_, String>(0))
+                .collect();
+            assert_eq!(matched.len(), 1, "{id}: {matched:?}");
+            assert!(matched[0].contains(label), "{id}: {matched:?}");
+        }
+        let everything = client
+            .query(&page, &[&"c", &"", &r#"{"fields":{}}"#, &100_i64])
+            .expect("page");
+        assert_eq!(everything.len(), labels.len());
+        drop(client);
         store.drop_schema(&schema).expect("dropped");
     }
 }

@@ -12,6 +12,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Fixed
 
+- `PostgresStore` saves a document whose string field holds U+0000. Before, the GIN index
+  `instances_document_query` on `document::jsonb` refused it (SQLSTATE 22P05) and a store with
+  such a row could not build the index. `migrate` drops that index and creates
+  `instances_document_index` on the new function `entity_index_document(document)`, which rewrites
+  each escaped U+0000 and U+0001 to a pair starting with U+0001; document pages filter through the
+  same function, so they match the same documents. This is the one statement in `migrate` that is
+  not additive: upgrade every service that opens a database (aep and aep-service) together.
+  Building the index blocks writes to `instances`.
 - `PostgresStore::events` and `PostgresSession::events` read bare events and recorded decisions
   in one statement. Before, they read them in two, each with its own snapshot, so a bare revision
   and then a recorded revision committing between the two reads produced a history that showed the
