@@ -2,8 +2,8 @@
 //! scale context, the four new operators and the two collection address forms.
 
 use entity_core::{
-    create, replay, CoreError, DefinitionError, DefinitionErrors, EntityDefinition, Registry,
-    Runtime, Truth, ValidatedDefinition,
+    create, replay, CoreError, DefinitionError, DefinitionErrors, EntityDefinition, Observed,
+    Registry, Runtime, Truth, ValidatedDefinition,
 };
 use serde_json::{json, Value};
 
@@ -275,6 +275,61 @@ fn integer_and_bytes_map_keys_follow_the_pinned_ess_key_grammar() {
         })
         .collect();
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// E52: a zero is zero at every exponent and is read without one step per place of it. Before,
+/// the exact reader scaled the zero first, so `0e100000000` took about 13 s and an exponent near
+/// `i64::MAX` would not end; a `service/1` bound is read that way at registration and at every
+/// value check. Runs on its own thread so a regression fails here instead of hanging the run.
+#[test]
+fn a_zero_literal_is_read_without_scaling_through_its_exponent() {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let literals: Vec<Option<String>> = [
+            "0e9223372036854775807",
+            "0e-9223372036854775807",
+            "-0.000e9223372036854775807",
+        ]
+        .into_iter()
+        .map(|text| Observed::of_literal(text).map(Observed::exact_text))
+        .collect();
+        let schema: Value = serde_json::from_str(
+            r#"{ "fields": { "amount": { "type": "number", "min": 0e9223372036854775807 } } }"#,
+        )
+        .expect("the schema parses");
+        let validated = ValidatedDefinition::new(definition(probe(
+            "service/1",
+            schema,
+            json!({}),
+            true.into(),
+        )))
+        .expect("a zero bound registers");
+        let verdict =
+            |amount: i64| match create(&validated, "p-1".to_owned(), json!({ "amount": amount })) {
+                Ok(_) => "accepted".to_owned(),
+                Err(CoreError::Validation(errors)) => errors[0].message.clone(),
+                Err(other) => other.to_string(),
+            };
+        let _ = sender.send((literals, verdict(0), verdict(-1)));
+    });
+    let (literals, zero, below) = receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("reading a zero with an exponent of 2^63 - 1 did not end within 10 s");
+    assert_eq!(literals, vec![Some("0".to_owned()); 3]);
+    assert_eq!(zero, "accepted");
+    assert!(below.contains("is below minimum"), "{below}");
+}
+
+/// E52: the scale of a nonzero literal is computed with checked arithmetic. `0.5e-(2^63 - 1)`
+/// overflowed the `i64` subtraction (a panic where overflow checks are on); it is now read as the
+/// binary64 the same text parses to, which is the answer a release build already gave.
+#[test]
+fn a_literal_whose_scale_overflows_i64_is_read_as_its_binary64() {
+    for text in ["0.5e-9223372036854775807", "-12.5e-9223372036854775807"] {
+        let observed = Observed::of_literal(text).expect("a finite literal is observable");
+        assert_eq!(observed.exact_text(), "0", "{text}");
+        assert!(observed.is_zero(), "{text} underflows to a zero binary64");
+    }
 }
 
 #[test]

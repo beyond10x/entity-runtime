@@ -258,9 +258,17 @@ fn exact_of_decimal_text(text: &str) -> Option<(i128, u8)> {
     };
 
     let mut units: i128 = format!("{whole}{fraction}").parse().ok()?;
-    // `fraction.len()` is a count of characters and `exponent` is bounded by the parse above, so
-    // this subtraction is taken in `i64` where neither can overflow.
-    let mut scale = i64::try_from(fraction.len()).ok()? - exponent;
+    // Zero is one value at every exponent, and its pair is answered before any scaling: shifting
+    // a zero changes nothing, so `0e9223372036854775807` would otherwise take one step per place.
+    if units == 0 {
+        return Some((0, 0));
+    }
+    // An exponent near `-i64::MAX` with a fractional part overflows the subtraction; such a nonzero
+    // value lies so far past `MAX_SCALE` places that no exact pair is read either way.
+    let mut scale = i64::try_from(fraction.len()).ok()?.checked_sub(exponent)?;
+    // Both loops are bounded for a nonzero `units`, whatever the exponent: an `i128` holds at most
+    // 39 digits, so the multiplication overflows within 39 steps and the trailing zeroes run out
+    // within 38.
     while scale < 0 {
         units = units.checked_mul(10)?;
         scale += 1;
@@ -269,9 +277,6 @@ fn exact_of_decimal_text(text: &str) -> Option<(i128, u8)> {
     while scale > 0 && units % 10 == 0 {
         units /= 10;
         scale -= 1;
-    }
-    if units == 0 {
-        scale = 0;
     }
     if scale > i64::from(MAX_SCALE) {
         return None;

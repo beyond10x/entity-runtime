@@ -19,6 +19,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - `entity-yaml` looks up repeated mapping keys in an ordered set instead of comparing each key
   with every key before it, so a definition with hundreds of fields parses in n log n rather than
   n² comparisons. Repeated keys and merge keys are refused as before, with the same message.
+- A `service/1` number literal or bound that is zero is read as zero at once, whatever its
+  exponent. `0e100000000` took about 13 seconds in a debug build at registration and again at each value check,
+  and an exponent near the `i64` limit did not finish. A literal such as
+  `0.5e-9223372036854775807` no longer overflows the scale arithmetic; it reads as zero, as a
+  release build already read it. No answer changes.
 
 ### Fixed
 
