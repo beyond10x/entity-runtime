@@ -794,9 +794,14 @@ fn lock_record(
     transaction: &mut postgres::Transaction<'_>,
     record_id: &str,
 ) -> Result<(), StoreError> {
+    // Advisory locks are database-wide, and record ids are unique per `history` table. The key
+    // is seeded with the identity of the `history` table this transaction resolves, so writers of
+    // one record id in different schemas do not wait on each other, and writers in one schema
+    // still do.
     transaction
         .query_one(
-            "SELECT pg_advisory_xact_lock(hashtextextended($1, 412731))",
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, \
+             hashtextextended('history'::regclass::oid::text, 412731)))",
             &[&record_id],
         )
         .map_err(|e| database("locking record identity", &e))?;

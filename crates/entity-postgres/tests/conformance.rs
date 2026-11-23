@@ -857,3 +857,112 @@ fn a_schema_name_that_resolves_to_another_schema_is_refused_and_leaves_nothing_b
         .get(0);
     assert_eq!(left, 0, "the refused schema's creation is rolled back");
 }
+
+/// A store in an existing `schema` whose lock waits end after `lock_timeout`, and the process id
+/// of its server backend.
+fn store_with_lock_timeout(url: &str, schema: &str, lock_timeout: &str) -> (PostgresStore, i32) {
+    let mut client = postgres::Client::connect(url, postgres::NoTls).expect("client");
+    client
+        .batch_execute(&format!(
+            "SET search_path TO \"{schema}\"; SET lock_timeout = '{lock_timeout}';"
+        ))
+        .expect("session configured");
+    let pid: i32 = client
+        .query_one("SELECT pg_backend_pid()", &[])
+        .expect("backend pid")
+        .get(0);
+    (PostgresStore::from_client(client).expect("store"), pid)
+}
+
+#[test]
+fn a_record_lock_serializes_one_record_id_within_a_schema_and_not_across_schemas() {
+    let Some(url) = url() else { return };
+    let (mut east, east_schema) = fresh(&url, "record_lock_east");
+    let (mut west, west_schema) = fresh(&url, "record_lock_west");
+    let registry = registry();
+    let runtime = Runtime::new(&registry);
+    let held = runtime
+        .create("ticket", 1, "held", json!({"title": "Held"}))
+        .expect("permitted");
+    east.commit(&held, Expect::Absent).expect("accepted");
+    let closed = runtime
+        .execute(&held.instance, "close", json!({}))
+        .expect("permitted");
+    let blocked = RecordedCommit::new(closed, &recording("shared-receipt")).expect("seals");
+    let receipt_for = |id: &str| {
+        let created = runtime
+            .create("ticket", 1, id, json!({"title": "Other"}))
+            .expect("permitted");
+        RecordedCommit::new(created, &recording("shared-receipt")).expect("seals")
+    };
+    let (west_commit, east_commit) = (receipt_for("west"), receipt_for("other"));
+
+    // A second connection holds the row of `held`, so the recorded write of it takes its record
+    // lock and then waits on the row, holding that lock until the row is released.
+    let mut row_holder = postgres::Client::connect(&url, postgres::NoTls).expect("row holder");
+    row_holder
+        .batch_execute(&format!(
+            "BEGIN; SET LOCAL search_path TO \"{east_schema}\";
+             SELECT 1 FROM instances WHERE entity = 'ticket' AND id = 'held' FOR UPDATE;"
+        ))
+        .expect("row held");
+    let (mut lock_holder, holder_pid) = store_with_lock_timeout(&url, &east_schema, "30s");
+    let (mut west_writer, _) = store_with_lock_timeout(&url, &west_schema, "5s");
+    let (mut east_writer, _) = store_with_lock_timeout(&url, &east_schema, "300ms");
+    let mut observer = postgres::Client::connect(&url, postgres::NoTls).expect("observer");
+
+    let (held_write, across, within) = std::thread::scope(|scope| {
+        let held_write = scope.spawn(|| lock_holder.commit_recorded(&blocked, Expect::Revision(1)));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let (holds, waits): (bool, bool) = {
+                let row = observer
+                    .query_one(
+                        "SELECT bool_or(locktype = 'advisory' AND granted), bool_or(NOT granted) \
+                         FROM pg_locks WHERE pid = $1",
+                        &[&holder_pid],
+                    )
+                    .expect("pg_locks answers");
+                (
+                    row.get::<_, Option<bool>>(0).unwrap_or(false),
+                    row.get::<_, Option<bool>>(1).unwrap_or(false),
+                )
+            };
+            if holds && waits {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the recorded write never held its record lock while waiting on the row"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        // Results are collected before any assertion, so the row is always released and the
+        // held write always ends.
+        let across = west_writer.commit_recorded(&west_commit, Expect::Absent);
+        let started = std::time::Instant::now();
+        let within = east_writer.commit_recorded(&east_commit, Expect::Absent);
+        let waited = started.elapsed();
+        row_holder.batch_execute("COMMIT").expect("row released");
+        (
+            held_write.join().expect("no panic"),
+            across,
+            (within, waited),
+        )
+    });
+
+    held_write.expect("the held write completes once the row is released");
+    across.expect("the same record id in another schema does not wait for this schema's lock");
+    let (within, waited) = within;
+    let refusal = within.expect_err("the same record id in the same schema waits for the lock");
+    // The driver's message says only "db error"; the step and the wait say it was the lock.
+    assert!(
+        matches!(&refusal, StoreError::Backend(message)
+            if message.starts_with("locking record identity: "))
+            && waited >= std::time::Duration::from_millis(300),
+        "the second writer in one schema waited out its 300 ms lock timeout on the record lock, \
+         not another step ({waited:?}): {refusal}"
+    );
+    west.drop_schema(&west_schema).expect("dropped");
+    east.drop_schema(&east_schema).expect("dropped");
+}

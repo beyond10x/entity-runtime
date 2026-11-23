@@ -32,6 +32,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   the longer name dropped the other's schema. `connect_in_schema` also refuses a name the session
   resolves to another schema (such as `$user`) and leaves nothing created. A deployment that used
   a longer name was working in the truncated schema; pass the truncated name to keep its data.
+- `PostgresStore::commit_recorded` and `PostgresStore::observe` key the lock on a record id by the
+  `history` table they write. Before, writers of one record id in different schemas of a database
+  waited on each other; writers in one schema still do. During a rolling upgrade an older and a
+  newer store writing the same record id in one schema take different locks: the unique
+  `record_id` still refuses the duplicate, as a backend error instead of a retry or a record
+  conflict. Upgrade every writer of one schema together.
 
 ## [0.32.0] — 2026-11-22
 
