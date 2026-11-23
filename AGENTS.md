@@ -212,6 +212,11 @@ over the manifest, and this host's own config turns it on), dependencies at `opt
 on. Unoptimised, `sha2` alone was half of `entity-eventlog`'s slowest unit test, and four of its
 tests ran 7 to 17 s (load 35-65); optimised they run 1 to 4 s.
 
+CI's Eventlog job runs the same script, with `timeout-minutes: 2` on that step and on the SQLite
+provider contract run, which the Taskfile bounds with `timeout 120`. Each is built in a step of
+its own before it, and the job caches the conformance checker's own `target/` beside the
+workspace's; it compiled the checker from nothing on every run before.
+
 Slow lane: `task test-slow` (and the `Slow lane` workflow, which runs when the generator, its
 snapshot under `crates/entity-cli/tests/fixtures/generated-rust-cli/` or a crate the generated
 command builds on changes) compiles and runs the Rust CLI `entity generate rust-cli` writes. It is
