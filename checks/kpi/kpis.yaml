@@ -422,3 +422,40 @@ timing:
     scenario: the review's 300-state chain, median of 5 processes
     gate: true
     max_ratio: 2.0
+  - id: eventlog_sqlite.read_invoke.cpu_us
+    measures: process CPU of one connectors-shaped read invoke (three single-action execute_batch calls, one lookup_batch, one read_history), every thread
+    unit: us
+    direction: lower
+    scenario: Eventlog SQLite read with ProviderTracked, nine definitions, 50 seeded records, mean of 30 invokes
+    gate: true
+    max_ratio: 2.0
+  - id: eventlog_sqlite.read_invoke.execute_batch.cpu_us
+    measures: process CPU of the three execute_batch calls of one read invoke
+    unit: us
+    direction: lower
+    scenario: as eventlog_sqlite.read_invoke.cpu_us
+    gate: false
+  - id: eventlog_sqlite.read_invoke.lookup_batch.cpu_us
+    measures: process CPU of the lookup_batch call of one read invoke
+    unit: us
+    direction: lower
+    scenario: as eventlog_sqlite.read_invoke.cpu_us
+    gate: false
+  - id: eventlog_sqlite.read_invoke.read_history.cpu_us
+    measures: process CPU of the read_history call of one read invoke
+    unit: us
+    direction: lower
+    scenario: as eventlog_sqlite.read_invoke.cpu_us
+    gate: false
+  - id: eventlog_sqlite.read_invoke.after.complete_snapshot.cpu_us
+    measures: process CPU of one complete_snapshot of the store the read invokes grew, outside the read invoke total
+    unit: us
+    direction: lower
+    scenario: as eventlog_sqlite.read_invoke.cpu_us, after its invokes, mean of 5
+    gate: false
+  - id: eventlog_sqlite.read_invoke.after.open.cpu_us
+    measures: process CPU of one fresh ProviderTracked open of the store the read invokes grew, shutdown included, outside the read invoke total
+    unit: us
+    direction: lower
+    scenario: as eventlog_sqlite.read_invoke.cpu_us, after its invokes, mean of 5
+    gate: false

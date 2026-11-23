@@ -585,6 +585,38 @@ fn remembered_definition(digest: &str, bytes: &[u8]) -> Option<EntityDefinition>
     Some((*held).clone())
 }
 
+/// The length of the definition document an `er.record/5` record names, read from the blob this
+/// process verified under that digest ([`DEFINITIONS`]); `None` for other bytes or a definition
+/// the process does not hold. Reads the digest alone: every other field of the record is skipped.
+pub(crate) fn named_definition_len(record_bytes: &[u8]) -> Option<usize> {
+    #[derive(Deserialize)]
+    struct Record {
+        definition: String,
+    }
+    #[derive(Deserialize)]
+    struct Envelope {
+        record: Record,
+    }
+    #[derive(Deserialize)]
+    struct Commit {
+        envelope: Envelope,
+    }
+    #[derive(Deserialize)]
+    struct Body {
+        commit: Commit,
+    }
+    let (framing, body): (String, Body) = serde_json::from_slice(record_bytes).ok()?;
+    if framing != RECORD_BY_DIGEST {
+        return None;
+    }
+    let memo = DEFINITIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    memo.decoded
+        .get(&body.commit.envelope.record.definition)
+        .map(|(bytes, _)| bytes.len())
+}
+
 fn remember_definition(digest: &str, bytes: &[u8], definition: &EntityDefinition) {
     if bytes.len() > DEFINITIONS_LIMIT {
         return;

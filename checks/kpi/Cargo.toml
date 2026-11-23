@@ -56,7 +56,7 @@ time = { version = "0.3", features = ["parsing"] }
 tokio = { version = "1.53.1", default-features = false, features = ["rt"] }
 # Counts file opens with inotify (P2, P6) without strace and without a hook in the stores. Already
 # in the workspace lock through tempfile; `fs` is the feature that carries the safe inotify API.
-rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
+rustix = { version = "1.1", default-features = false, features = ["std", "fs", "time"] }
 # Counts allocated bytes (E07, E08, E20). A global allocator is an `unsafe trait`, and
 # `unsafe_code = "forbid"` holds here as in the workspace; this crate wraps the system allocator
 # with no dependencies of its own, so the unsafe stays in one small audited place outside the repo.

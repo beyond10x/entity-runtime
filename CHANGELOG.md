@@ -73,6 +73,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `record_comparison_bytes_known` and `batch_comparison_bytes_known` for a caller that already
   holds the digests; the bytes are those `record_comparison_bytes_in` and
   `batch_comparison_bytes_in` write.
+- An Eventlog store handle charges a remembered `er.record/5` record's definition at the length of
+  the definition blob the process verified under the digest the record names, instead of
+  serializing the definition again for every record it remembers. A fresh open or a complete
+  read of a store whose records name large definitions no longer serializes one definition
+  document per record.
 
 ### Fixed
 

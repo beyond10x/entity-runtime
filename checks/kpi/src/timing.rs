@@ -26,12 +26,19 @@ const LONG_SUBJECTS: usize = 2;
 const READS: usize = 8;
 const SPAWNS: usize = 5;
 
-/// Every timing scenario once. `entity` is the release binary built with
+/// The environment variable that narrows a timing run to the scenarios whose name contains its
+/// value: the store passes by provider id, `read_invoke` and `cli`. `ab` rounds inherit it, so an
+/// A/B of one scenario runs only that scenario on both sides.
+pub const ONLY: &str = "ER_KPI_TIMING_ONLY";
+
+/// Every timing scenario once, or those [`ONLY`] names. `entity` is the release binary built with
 /// `eventlog-providers`; without it the CLI scenarios are skipped and say so.
 pub fn run(work: &Path, entity: Option<&Path>) -> Vec<Value> {
+    let only = std::env::var(ONLY).ok();
+    let wanted = |name: &str| only.as_deref().is_none_or(|only| name.contains(only));
     let mut values = Vec::new();
     for kind in Kind::ALL {
-        if kind == Kind::Postgres && postgres_url().is_none() {
+        if (kind == Kind::Postgres && postgres_url().is_none()) || !wanted(kind.id()) {
             continue;
         }
         let start = Instant::now();
@@ -42,7 +49,17 @@ pub fn run(work: &Path, entity: Option<&Path>) -> Vec<Value> {
             start.elapsed().as_secs_f64()
         );
     }
+    if wanted("read_invoke") {
+        let start = Instant::now();
+        values.extend(crate::invoke::read_invoke(work));
+        eprintln!(
+            "er-kpi: timing {:<40} {:>6.2} s",
+            "read_invoke",
+            start.elapsed().as_secs_f64()
+        );
+    }
     match entity {
+        Some(_) if !wanted("cli") => {}
         Some(entity) => {
             let start = Instant::now();
             values.extend(cli(work, entity));

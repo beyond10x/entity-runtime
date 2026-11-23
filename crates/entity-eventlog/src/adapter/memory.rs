@@ -60,13 +60,21 @@ fn decoded_charge(raw: usize) -> usize {
 /// What a record decoded from `bytes` holds beyond them: the definition an `er.record/5` record
 /// names by digest, which its decode holds in full. Such a record is charged as the record that
 /// embeds it, so a small record naming a large definition does not pass the cap uncounted.
+///
+/// The length is that of the definition blob this process verified under the digest the record
+/// names ([`crate::encoding::named_definition_len`]): serializing the definition again to learn
+/// it cost a whole definition document for every record a handle remembered. Only a definition
+/// the process does not hold is serialized.
 fn named_definition_bytes(bytes: &[u8], entry: &RecordedEntry) -> usize {
     if RecordForm::of_record(bytes) != RecordForm::DefinitionByDigest {
         return 0;
     }
-    record_definition(entry)
-        .and_then(|definition| definition_comparison_bytes(definition).ok())
-        .map_or(0, |document| document.len())
+    let Some(definition) = record_definition(entry) else {
+        return 0;
+    };
+    crate::encoding::named_definition_len(bytes).unwrap_or_else(|| {
+        definition_comparison_bytes(definition).map_or(0, |document| document.len())
+    })
 }
 
 impl Decoded {
@@ -779,5 +787,32 @@ mod tests {
             RecordedEntry::Decision(commit) => commit.instance.clone(),
             RecordedEntry::Observation(_) => panic!("a decision"),
         }
+    }
+
+    /// A record that names a definition this process verified is charged that definition blob's
+    /// length, read under the digest the record names rather than by serializing the definition
+    /// again; a record naming one the process does not hold is charged the same length, by
+    /// serializing it.
+    #[test]
+    fn a_record_naming_a_verified_definition_is_charged_its_blob_length() {
+        let entry = created(37);
+        let definition = record_definition(&entry).expect("a definition");
+        let document = definition_comparison_bytes(definition).expect("document");
+        let by_digest = record_comparison_bytes(&entry).expect("by-digest bytes");
+        let digest =
+            crate::encoding::framed_key(crate::encoding::DEFINITION_BLOB_DOMAIN, &document)
+                .expect("digest");
+        let unheld = named_definition_bytes(&by_digest, &entry);
+        crate::encoding::verify_definition(&digest, &document).expect("verified");
+        assert_eq!(
+            crate::encoding::named_definition_len(&by_digest),
+            Some(document.len()),
+            "the record's digest names the verified blob"
+        );
+        assert_eq!(named_definition_bytes(&by_digest, &entry), document.len());
+        assert_eq!(unheld, document.len(), "an unheld definition, serialized");
+        let embedded = record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry)
+            .expect("embedded bytes");
+        assert_eq!(crate::encoding::named_definition_len(&embedded), None);
     }
 }
