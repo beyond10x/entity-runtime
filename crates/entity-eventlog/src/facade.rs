@@ -26,6 +26,10 @@ use crate::{
     },
 };
 
+/// The number of the next legacy import, process-wide: each `import_legacy` call is its own
+/// import sequence, so one never reuses what another verified.
+static IMPORT_SEQUENCES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 /// Eventlog-backed File facade with complete recorded receipts and atomic groups.
 #[cfg(feature = "file")]
 #[derive(Debug)]
@@ -404,12 +408,18 @@ impl RecordedProviderFacade {
             .map_err(LegacyImportError::Source)?;
         let mut settled = Vec::with_capacity(snapshot.histories.len());
         let mut replayed = 0;
+        // Each subject is checked against the destination the subject before it verified rather
+        // than observing the destination again first: N subjects, N + 1 observations.
+        let sequence = IMPORT_SEQUENCES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         for history in &snapshot.histories {
-            match self.operation(context.clone()).import_source_anchor(
-                snapshot.source_id.clone(),
-                history.clone(),
-                wait,
-            ) {
+            match self
+                .operation(context.clone())
+                .import_source_anchor_in_sequence(
+                    snapshot.source_id.clone(),
+                    history.clone(),
+                    sequence,
+                    wait,
+                ) {
                 Ok(outcome) => {
                     replayed += usize::from(outcome.replayed);
                     settled.push(outcome.assurance);
@@ -795,3 +805,6 @@ impl ScopedRecordedProviderFacade<'_> {
         Ok(batch)
     }
 }
+
+#[cfg(all(test, feature = "sqlite"))]
+mod import_tests;

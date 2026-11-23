@@ -696,6 +696,13 @@ impl OwnedBackend {
     }
 }
 
+/// The acquisition source an import binds into its replay identity, if any, and the import
+/// sequence it is one step of, if any.
+struct ImportSource {
+    id: Option<String>,
+    sequence: Option<u64>,
+}
+
 trait WorkerDriver: Send {
     fn scoped<'a>(
         &'a self,
@@ -764,7 +771,7 @@ trait WorkerDriver: Send {
         &'a self,
         context: EventlogOperationContext,
         history: SubjectHistory,
-        source_id: Option<String>,
+        source: ImportSource,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>>;
     fn retire(&self) -> BoxFuture<'_, Result<(), AsyncStoreError>>;
     /// How the store's open verified its authority.
@@ -956,13 +963,24 @@ impl WorkerDriver for ProductionDriver {
         &'a self,
         context: EventlogOperationContext,
         history: SubjectHistory,
-        source_id: Option<String>,
+        source: ImportSource,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
         Box::pin(async move {
             let operation = self.store.operation(context);
-            match source_id {
-                Some(source_id) => operation.import_source_anchor(source_id, history).await,
-                None => operation.import_anchor(history).await,
+            match source {
+                ImportSource {
+                    id: Some(source_id),
+                    sequence: Some(sequence),
+                } => {
+                    operation
+                        .import_source_anchor_in_sequence(source_id, history, sequence)
+                        .await
+                }
+                ImportSource {
+                    id: Some(source_id),
+                    sequence: None,
+                } => operation.import_source_anchor(source_id, history).await,
+                ImportSource { id: None, .. } => operation.import_anchor(history).await,
             }
         })
     }
@@ -1308,7 +1326,7 @@ enum Request {
         SubjectHistory,
         Subject,
         Arc<Cell<Result<ImportAnchorOutcome, SyncImportError>>>,
-        Option<String>,
+        ImportSource,
     ),
     Administer(Administration, Arc<Cell<Result<bool, SyncReadError>>>),
     Wake,
@@ -2119,7 +2137,14 @@ impl SyncEventlogOperation<'_> {
         history: SubjectHistory,
         wait: CallWait,
     ) -> Result<ImportAnchorOutcome, SyncImportError> {
-        self.submit_import(history, None, wait)
+        self.submit_import(
+            history,
+            ImportSource {
+                id: None,
+                sequence: None,
+            },
+            wait,
+        )
     }
 
     /// Establishes a legacy boundary whose durable replay identity includes its acquisition source.
@@ -2129,13 +2154,39 @@ impl SyncEventlogOperation<'_> {
         history: SubjectHistory,
         wait: CallWait,
     ) -> Result<ImportAnchorOutcome, SyncImportError> {
-        self.submit_import(history, Some(source_id), wait)
+        self.submit_import(
+            history,
+            ImportSource {
+                id: Some(source_id),
+                sequence: None,
+            },
+            wait,
+        )
+    }
+
+    /// [`Self::import_source_anchor`] as one step of the import sequence numbered `sequence`; see
+    /// [`crate::EventlogOperationStore::import_source_anchor_in_sequence`].
+    pub(crate) fn import_source_anchor_in_sequence(
+        &self,
+        source_id: String,
+        history: SubjectHistory,
+        sequence: u64,
+        wait: CallWait,
+    ) -> Result<ImportAnchorOutcome, SyncImportError> {
+        self.submit_import(
+            history,
+            ImportSource {
+                id: Some(source_id),
+                sequence: Some(sequence),
+            },
+            wait,
+        )
     }
 
     fn submit_import(
         &self,
         history: SubjectHistory,
-        source_id: Option<String>,
+        source: ImportSource,
         wait: CallWait,
     ) -> Result<ImportAnchorOutcome, SyncImportError> {
         let subject = history.subject.clone();
@@ -2146,7 +2197,7 @@ impl SyncEventlogOperation<'_> {
                 history,
                 subject.clone(),
                 cell.clone(),
-                source_id,
+                source,
             ),
             &cell,
             wait,
@@ -2479,8 +2530,8 @@ fn drive_request(
                 runtime.block_on(driver.batch(context, key, v))
             })
         }
-        Request::Import(context, history, subject, c, source_id) => poll_import(c, subject, || {
-            runtime.block_on(driver.import_anchor(context, history, source_id))
+        Request::Import(context, history, subject, c, source) => poll_import(c, subject, || {
+            runtime.block_on(driver.import_anchor(context, history, source))
         }),
         Request::Administer(call, c) => poll_read(c, || runtime.block_on(driver.administer(&call))),
         Request::Wake => false,
@@ -2902,7 +2953,7 @@ mod tests {
             &'a self,
             context: EventlogOperationContext,
             history: SubjectHistory,
-            _source_id: Option<String>,
+            _source: ImportSource,
         ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
             Box::pin(async move {
                 self.state.contexts.lock().expect("contexts").push(context);

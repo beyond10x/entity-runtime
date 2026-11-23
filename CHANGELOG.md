@@ -26,6 +26,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `WriteFailure::NotCommitted(AsyncStoreError::Unreachable { provider: "eventlog", .. })`, whose
   detail starts `physical stream contention`; nothing was committed and the request can be
   retried. Before, it retried without a bound, holding one more future per attempt.
+- `RecordedProviderFacade::import_legacy` (`entity-eventlog`) observes its destination N + 1
+  times for N subjects, plus once for its closing equivalence check, instead
+  of 2N + 1: each subject is checked against the observation the subject before it verified its
+  commit with. Every subject is still appended, verified and reported on its own, and a failure
+  still leaves the subjects before it committed. An exact retry observes it twice instead of
+  N + 1 times.
 
 ### Fixed
 

@@ -63,6 +63,11 @@ use scoped::ReadScope;
 use scoped::ScopedModel;
 use shared::{ModelBatch, ModelHistory, ModelLookup};
 
+/// Calls of [`EventlogRecordedStore::capture_model`], by tenant, across every thread: a facade's
+/// handle runs on its bridge worker, not on the thread of the test that counts.
+#[cfg(test)]
+pub(crate) static CAPTURE_MODELS: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+
 #[cfg(test)]
 thread_local! {
     /// Blob bytes this file has put through SHA-256 on the current thread.
@@ -996,6 +1001,10 @@ pub struct EventlogRecordedStore {
     /// Whether a verification refused with `ProviderIntegrity` or `CorruptHistory` since the
     /// handle's last complete verification. Such a handle persists no open checkpoint.
     refused: std::sync::atomic::AtomicBool,
+    /// The verified model the last import of a legacy import sequence ended on, under that
+    /// sequence's number; see [`EventlogOperationStore::import_source_anchor_in_sequence`]. Weak:
+    /// it is reused only while this handle still holds it as its own observation.
+    import_progress: Mutex<Option<(u64, std::sync::Weak<CapturedModel>)>>,
 }
 
 /// What one write adds to the tenant: events, index rows, and the blobs it binds.
@@ -1101,6 +1110,7 @@ impl EventlogRecordedStore {
             checkpoint: Mutex::new(checkpoint::Loaded::Absent),
             opened: Mutex::new(OpenVerification::Complete),
             refused: std::sync::atomic::AtomicBool::new(false),
+            import_progress: Mutex::new(None),
         };
         if policy == CapturePolicy::FullVerification {
             let model = store.capture_model().await?;
@@ -1330,6 +1340,10 @@ impl EventlogRecordedStore {
     /// is the verified one plus events this handle's own appends returned is advanced by exactly
     /// those events; every other capture is built and verified whole, as before.
     async fn capture_model(&self) -> Result<Arc<CapturedModel>, AsyncStoreError> {
+        #[cfg(test)]
+        if let Ok(mut counts) = CAPTURE_MODELS.lock() {
+            *counts.entry(self.tenant.as_str().to_owned()).or_default() += 1;
+        }
         if self.policy == CapturePolicy::ProviderTracked {
             return self.tracked_model().await;
         }
@@ -3286,7 +3300,7 @@ impl AsyncImportedAnchorWriter for EventlogOperationStore<'_> {
         &'a self,
         history: SubjectHistory,
     ) -> BoxFuture<'a, Result<ImportAnchorOutcome, ImportAnchorFailure>> {
-        Box::pin(async move { self.import_inner(history, None).await })
+        Box::pin(async move { self.import_inner(history, None, None).await })
     }
 
     fn import_anchors<'a>(
@@ -3320,7 +3334,45 @@ impl EventlogOperationStore<'_> {
         source_id: String,
         history: SubjectHistory,
     ) -> Result<ImportAnchorOutcome, ImportAnchorFailure> {
-        self.import_inner(history, Some(source_id)).await
+        self.import_inner(history, Some(source_id), None).await
+    }
+
+    /// [`Self::import_source_anchor`] as one step of a sequence of imports numbered `sequence`.
+    ///
+    /// Each import verifies the destination it committed to with a fresh observation before it
+    /// reports success. The next import of the same sequence checks its subject against that
+    /// observation instead of taking another one first: the two would be taken back to back, and
+    /// what may happen between them may as well happen between a fresh check and the append, which
+    /// the destination guard decides inside the append. So N imports take N + 1 observations
+    /// instead of 2N. The observation is reused only while this handle still holds it as its
+    /// verified model, and only by the same sequence; anything else observes afresh. Outcomes,
+    /// refusals and the assurance of each subject are those of [`Self::import_source_anchor`].
+    #[cfg(feature = "sync-bridge")]
+    pub(crate) async fn import_source_anchor_in_sequence(
+        &self,
+        source_id: String,
+        history: SubjectHistory,
+        sequence: u64,
+    ) -> Result<ImportAnchorOutcome, ImportAnchorFailure> {
+        self.import_inner(history, Some(source_id), Some(sequence))
+            .await
+    }
+
+    /// The model the import before this one in `sequence` ended on, if this handle still holds
+    /// it. The slot is emptied either way: progress is handed to one import only.
+    fn import_progress(&self, sequence: Option<u64>) -> Option<Arc<CapturedModel>> {
+        let held = self.store.import_progress.lock().ok()?.take();
+        match (sequence, held) {
+            (Some(sequence), Some((number, model))) if number == sequence => model.upgrade(),
+            _ => None,
+        }
+    }
+
+    /// Hands `model`, which this import verified, to the next import of `sequence`.
+    fn keep_import_progress(&self, sequence: Option<u64>, model: &Arc<CapturedModel>) {
+        if let (Some(sequence), Ok(mut slot)) = (sequence, self.store.import_progress.lock()) {
+            *slot = Some((sequence, Arc::downgrade(model)));
+        }
     }
 
     fn prepare_import(
@@ -3434,20 +3486,28 @@ impl EventlogOperationStore<'_> {
         &self,
         history: SubjectHistory,
         source_id: Option<String>,
+        sequence: Option<u64>,
     ) -> Result<ImportAnchorOutcome, ImportAnchorFailure> {
         let subject = history.subject.clone();
         let prepared = self.prepare_import(&history, source_id.as_deref())?;
-        let model = self
-            .store
-            .capture_model()
-            .await
-            .map_err(ImportAnchorFailure::NotCommitted)?;
+        let model = match self.import_progress(sequence) {
+            Some(model) => model,
+            None => self
+                .store
+                .capture_model()
+                .await
+                .map_err(ImportAnchorFailure::NotCommitted)?,
+        };
         if Self::settled_against(&model, &prepared)? {
+            self.keep_import_progress(sequence, &model);
             return Ok(ImportAnchorOutcome {
                 assurance: prepared.assurance,
                 replayed: true,
             });
         }
+        // Released before the verification below, which advances this handle's model in place
+        // only when nothing else holds it.
+        drop(model);
         let digest = prepared.anchor_digest.clone();
         let bytes = prepared.anchor_bytes.clone();
         let command_key = key_for_value(
@@ -3534,6 +3594,7 @@ impl EventlogOperationStore<'_> {
                         if model.anchors.get(&history.subject) == Some(&bytes)
                             && model.anchor_physical.get(&history.subject) == Some(&returned) =>
                     {
+                        self.keep_import_progress(sequence, &model);
                         Ok(ImportAnchorOutcome {
                             assurance: prepared.assurance,
                             replayed: result.deduplicated,
@@ -3547,6 +3608,7 @@ impl EventlogOperationStore<'_> {
             }
             Err(EventLogError::UnknownCommit) => match self.store.capture_model().await {
                 Ok(model) if model.anchors.get(&history.subject) == Some(&bytes) => {
+                    self.keep_import_progress(sequence, &model);
                     Ok(ImportAnchorOutcome {
                         assurance: prepared.assurance,
                         replayed: true,
@@ -3560,6 +3622,7 @@ impl EventlogOperationStore<'_> {
             Err(EventLogError::Conflict { .. } | EventLogError::IdempotencyMismatch { .. }) => {
                 match self.store.capture_model().await {
                     Ok(model) if model.anchors.get(&history.subject) == Some(&bytes) => {
+                        self.keep_import_progress(sequence, &model);
                         Ok(ImportAnchorOutcome {
                             assurance: prepared.assurance,
                             replayed: true,
