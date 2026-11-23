@@ -17,9 +17,10 @@ use entity_executor::{BatchAction, CreateRequest, ExecuteRequest};
 use entity_store::{
     Expect, RecordedCommit, Recording,
     asynchronous::{
-        AppendMember, AsyncRecordedReader, BatchKey, RecordedEntry, Subject,
-        batch_comparison_bytes, canonical_domain_bytes, original_request_comparison_bytes,
-        read_record_in_domain, record_comparison_bytes, record_domain,
+        AppendMember, AsyncRecordedReader, BatchKey, DEFINITION_DIGEST_DOMAIN, RecordedEntry,
+        Subject, batch_comparison_bytes, canonical_domain_bytes, definition_comparison_bytes,
+        original_request_comparison_bytes, read_record_in_domain, record_comparison_bytes,
+        record_definition, record_domain,
     },
 };
 use eventlog_core::{
@@ -136,6 +137,14 @@ async fn seed_group(
             (request_digest, member.request_bytes.clone()),
             (wrapper_digest.clone(), wrapper),
         ]);
+        // The definition the record names by digest, once per group, as the adapter stores it.
+        if let Some(definition) = record_definition(&member.entry) {
+            let document = definition_comparison_bytes(definition).unwrap();
+            let digest = framed(DEFINITION_DIGEST_DOMAIN, &document);
+            if blobs.iter().all(|(bound, _)| bound != &digest) {
+                blobs.push((digest, document));
+            }
+        }
         let stream_key = key(
             "er.eventlog.subject-stream-key/1",
             json!({"authority":authority, "subject":[subject.entity, subject.id]}),

@@ -648,12 +648,13 @@ fn a_guard_refused_append_binds_no_blob_on_sqlite_and_file() {
 /// bound nothing, so counting its blobs as held would refuse a later write the tenant has room for.
 ///
 /// The rival writes through the same handle, so every blob the tenant binds is one the handle
-/// counted: one binding blob, four for the rival's append and four for the later one — nine, which
-/// is the bound. Counting the refused append's four as well would make it thirteen.
+/// counted: one binding blob, five for the rival's append (the fifth is the definition its record
+/// names) and four for the later one, whose definition the tenant already holds — ten, which is
+/// the bound. Counting the refused append's four as well would make it fourteen.
 #[test]
 fn a_refused_append_does_not_count_its_unbound_blobs_against_the_read_bound() {
     const TIGHT: CaptureLimits = CaptureLimits {
-        max_blobs: 9,
+        max_blobs: 10,
         ..LIMITS
     };
     block_on(async {
@@ -700,7 +701,7 @@ fn a_refused_append_does_not_count_its_unbound_blobs_against_the_read_bound() {
                 .expect("a write that fits the bound is admitted");
             assert_eq!(
                 bound(&destination.inner, &destination.tenant).await.len(),
-                9,
+                10,
                 "{provider:?}: the tenant holds exactly its read bound"
             );
         }
@@ -720,9 +721,9 @@ fn a_guard_refused_append_reports_the_same_refusal_through_the_fallback() {
             );
             assert_eq!(
                 interposed.puts.load(Ordering::SeqCst),
-                4,
-                "{provider:?}: the fallback uploads the batch, record, request and entry blobs \
-                 on their own path"
+                5,
+                "{provider:?}: the fallback uploads the batch, record, request, entry and definition \
+                 blobs on their own path"
             );
         }
     });
@@ -1022,10 +1023,11 @@ fn every_guarded_write_commits_through_the_fallback() {
                 .import_anchor(imported("imported", "imported-create"))
                 .await
                 .expect("the import commits through the fallback");
-            // One binding blob, four append blobs, one record and one anchor blob.
+            // One binding blob, five append blobs (the fifth is the definition the record names), one
+            // record and one anchor blob.
             assert_eq!(
                 interposed.puts.load(Ordering::SeqCst),
-                7,
+                8,
                 "{provider:?}: the fallback uploads every blob on its own path"
             );
             assert!(

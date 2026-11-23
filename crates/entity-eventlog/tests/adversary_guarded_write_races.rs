@@ -748,13 +748,14 @@ fn adversary_a_raced_import_through_the_override_reports_what_the_unraced_import
 }
 
 /// The mirror of `a_refused_append_does_not_count_its_unbound_blobs_against_the_read_bound`, on
-/// the fallback: there the refused append *did* bind its four blobs (orphans a capture reads), so
+/// the fallback: there the refused append *did* bind its four blobs (orphans a capture reads; the
+/// definition its record names is the rival's, bound already), so
 /// the handle must count them, and a later write that would take the tenant past its read bound is
 /// refused. Kills the mutant `blobs_bound: false` on the fallback arm, which the suite misses.
 #[test]
 fn adversary_a_fallback_refused_append_counts_its_orphaned_blobs_against_the_read_bound() {
     const TIGHT: CaptureLimits = CaptureLimits {
-        max_blobs: 9,
+        max_blobs: 10,
         ..LIMITS
     };
     block_on(async {
@@ -795,7 +796,7 @@ fn adversary_a_fallback_refused_append_counts_its_orphaned_blobs_against_the_rea
                 .expect_err("the destination guard refuses a record identity the rival holds");
             assert_eq!(
                 bound(&destination.inner, &destination.tenant).await.len(),
-                9,
+                10,
                 "{provider:?}: the fallback left the refused append's four blobs bound"
             );
             let fresh = Executor::new(&registry, &operation)

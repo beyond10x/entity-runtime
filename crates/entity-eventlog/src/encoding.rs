@@ -1,15 +1,19 @@
+use entity_core::EntityDefinition;
 use entity_store::{
     Expect,
     asynchronous::{
-        AppendMember, AsyncStoreError, BatchKey, HistoryOrigin, ImportedRecordEvidence,
-        KnownLegacyOrder, LegacyAnchor, LegacyCompleteness, LegacyEvidence, LegacyOrderDeclaration,
-        RecordedEntry, Subject, SubjectHistory, canonical_domain_bytes,
-        original_request_comparison_bytes, record_comparison_bytes,
+        AppendMember, AsyncStoreError, BatchKey, DEFINITION_DIGEST_DOMAIN, DEFINITION_FRAMING,
+        HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
+        LegacyEvidence, LegacyOrderDeclaration, RECORD_BY_DIGEST, RecordForm, RecordedEntry,
+        Subject, SubjectHistory, canonical_domain_bytes, definition_comparison_bytes,
+        original_request_comparison_bytes, record_comparison_bytes_in,
+        record_comparison_bytes_naming,
     },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 
 #[cfg(test)]
 thread_local! {
@@ -478,13 +482,186 @@ fn decode_record_body(document: Value) -> Result<RecordedEntry, AsyncStoreError>
     )
 }
 
-pub(crate) fn decode_record(bytes: &[u8]) -> Result<RecordedEntry, AsyncStoreError> {
-    let value: Value = parse_stored(bytes)?;
-    let entry = decode_record_body(value)?;
-    if record_comparison_bytes(&entry)? != bytes {
+/// Resolves the definition digest an `er.record/5` record names to the definition it names.
+pub(crate) type Resolve<'r> = dyn FnMut(&str) -> Result<EntityDefinition, AsyncStoreError> + 'r;
+
+/// The blob domain a definition document is stored under: the domain a record's definition digest
+/// is framed in, so the digest a record names is the blob's key.
+pub(crate) const DEFINITION_BLOB_DOMAIN: &str = DEFINITION_DIGEST_DOMAIN;
+
+/// The refusal for a record naming a definition the store does not hold.
+pub(crate) fn missing_definition(digest: &str) -> AsyncStoreError {
+    invalid(format!(
+        "a record names definition {digest}, which the store does not hold"
+    ))
+}
+
+/// The refusal for a definition blob whose bytes are not the ones its digest names.
+pub(crate) fn mismatched_definition(digest: &str) -> AsyncStoreError {
+    invalid(format!(
+        "definition blob {digest} does not hash to the digest the record names"
+    ))
+}
+
+/// A resolver that resolves nothing: for documents that cannot name a definition by digest, such
+/// as the envelopes of an import anchor, which are written with their definitions embedded.
+pub(crate) fn unresolvable(digest: &str) -> Result<EntityDefinition, AsyncStoreError> {
+    Err(missing_definition(digest))
+}
+
+/// A resolver over definitions already read, held to their digests and decoded.
+pub(crate) fn resolve_from(
+    definitions: &BTreeMap<String, EntityDefinition>,
+) -> impl FnMut(&str) -> Result<EntityDefinition, AsyncStoreError> + '_ {
+    |digest| {
+        definitions
+            .get(digest)
+            .cloned()
+            .ok_or_else(|| missing_definition(digest))
+    }
+}
+
+/// One definition document, decoded, refusing bytes that are not exactly its canonical rendering.
+///
+/// The caller has held the bytes to their digest in [`DEFINITION_BLOB_DOMAIN`]. The typed round
+/// trip is checked as well as canonicality, because a record re-encoded from the decoded
+/// definition must name the digest it was read under.
+pub(crate) fn decode_definition(bytes: &[u8]) -> Result<EntityDefinition, AsyncStoreError> {
+    let definition: EntityDefinition = decode_tagged(DEFINITION_FRAMING, bytes, |value| {
+        serde_json::from_value(value).map_err(enc)
+    })?;
+    if definition_comparison_bytes(&definition)? != bytes {
+        return Err(invalid("definition blob does not reproduce its definition"));
+    }
+    Ok(definition)
+}
+
+/// The definition digests one record or batch document names, read without decoding a record.
+///
+/// A reader that fetches blobs one at a time asks this first, reads exactly those definitions,
+/// and decodes the document with them.
+pub(crate) fn named_definitions(bytes: &[u8]) -> Result<BTreeSet<String>, AsyncStoreError> {
+    #[derive(Deserialize)]
+    struct Body {
+        commit: Option<Commit>,
+    }
+    #[derive(Deserialize)]
+    struct Commit {
+        envelope: EnvelopeScan,
+    }
+    #[derive(Deserialize)]
+    struct EnvelopeScan {
+        record: RecordScan,
+    }
+    #[derive(Deserialize)]
+    struct RecordScan {
+        definition: Value,
+    }
+    #[derive(Deserialize)]
+    struct Member {
+        record: (String, Body),
+    }
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Document {
+        Record(String, Body),
+        Batch(serde::de::IgnoredAny, serde::de::IgnoredAny, Vec<Member>),
+    }
+    let mut named = BTreeSet::new();
+    let mut add = |framing: &str, body: Body| {
+        if framing == RECORD_BY_DIGEST
+            && let Some(Value::String(digest)) =
+                body.commit.map(|commit| commit.envelope.record.definition)
+        {
+            named.insert(digest);
+        }
+    };
+    match scan_stored::<Document>(bytes)? {
+        Document::Record(framing, body) => add(&framing, body),
+        Document::Batch(_, _, members) => {
+            for Member {
+                record: (framing, body),
+            } in members
+            {
+                add(&framing, body);
+            }
+        }
+    }
+    Ok(named)
+}
+
+/// Takes the definition digest out of an `er.record/5` document, leaving `null` in its place, so
+/// that the rest decodes as the typed record it is.
+fn take_definition_digest(document: &mut Value) -> Result<Option<String>, AsyncStoreError> {
+    if document.get(0).and_then(Value::as_str) != Some(RECORD_BY_DIGEST) {
+        return Ok(None);
+    }
+    let slot = document
+        .get_mut(1)
+        .and_then(|body| body.pointer_mut("/commit/envelope/record/definition"))
+        .ok_or_else(|| invalid("an er.record/5 record is a decision that names a definition"))?;
+    match std::mem::take(slot) {
+        Value::String(digest) => Ok(Some(digest)),
+        _ => Err(invalid(
+            "an er.record/5 record names its definition by a digest string",
+        )),
+    }
+}
+
+/// One record decoded from its document, held to the bytes it was written as, in the form it was
+/// written in.
+///
+/// A record that embeds its definition is compared as it always was. A record that names its
+/// definition is compared with the digest it names — the definition is neither serialized nor
+/// hashed again — and then given the definition `resolve` reads under that digest, which the
+/// resolver has held to the digest.
+fn decode_record_written(
+    mut document: Value,
+    written: &[u8],
+    resolve: &mut Resolve<'_>,
+) -> Result<RecordedEntry, AsyncStoreError> {
+    let digest = take_definition_digest(&mut document)?;
+    let mut entry = decode_record_body(document)?;
+    let Some(digest) = digest else {
+        if record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry)? != written {
+            return Err(invalid("record bytes do not reproduce the complete record"));
+        }
+        return Ok(entry);
+    };
+    if record_comparison_bytes_naming(&entry, &digest)? != written {
         return Err(invalid("record bytes do not reproduce the complete record"));
     }
+    let definition = resolve(&digest)?;
+    if let RecordedEntry::Decision(commit) = &mut entry {
+        commit.envelope.record.definition = Some(definition);
+    }
     Ok(entry)
+}
+
+pub(crate) fn decode_record(
+    bytes: &[u8],
+    resolve: &mut Resolve<'_>,
+) -> Result<RecordedEntry, AsyncStoreError> {
+    let value: Value = parse_stored(bytes)?;
+    decode_record_written(value, bytes, resolve)
+}
+
+/// The subjects of a batch document's members, read to know which subjects a batch spans without
+/// resolving a definition. Not a verification: the build that follows decodes the batch in full.
+pub(crate) fn batch_subjects(bytes: &[u8]) -> Result<Vec<Subject>, AsyncStoreError> {
+    #[derive(Deserialize)]
+    struct Member {
+        record: Value,
+    }
+    let (_, _, members): (serde::de::IgnoredAny, serde::de::IgnoredAny, Vec<Member>) =
+        scan_stored(bytes)?;
+    members
+        .into_iter()
+        .map(|Member { mut record }| {
+            take_definition_digest(&mut record)?;
+            Ok(decode_record_body(record)?.subject())
+        })
+        .collect()
 }
 
 /// The expectation exactly as `batch_comparison_bytes` writes one.
@@ -507,13 +684,12 @@ fn expectation_value(expect: Expect) -> Value {
 /// second time to reach it — a second full decode of every record in the largest blob this store
 /// binds. The property established is the same one and against the same canonical form: the
 /// document reproduces the complete record it decoded to.
-fn decode_record_document(document: Value) -> Result<RecordedEntry, AsyncStoreError> {
+fn decode_record_document(
+    document: Value,
+    resolve: &mut Resolve<'_>,
+) -> Result<RecordedEntry, AsyncStoreError> {
     let written = serde_json::to_vec(&document).map_err(enc)?;
-    let entry = decode_record_body(document)?;
-    if record_comparison_bytes(&entry)? != written {
-        return Err(invalid("record bytes do not reproduce the complete record"));
-    }
-    Ok(entry)
+    decode_record_written(document, &written, resolve)
 }
 
 /// One committed batch, decoding each member record exactly once.
@@ -544,7 +720,10 @@ fn decode_record_document(document: Value) -> Result<RecordedEntry, AsyncStoreEr
 /// `the_batch_key_expectation_and_member_wires_admit_exactly_one_shape_each` in `adapter.rs` holds
 /// the first two to that, so widening one of them fails there rather than quietly needing a
 /// rebuild back.
-pub(crate) fn decode_batch(bytes: &[u8]) -> Result<(BatchKey, Vec<AppendMember>), AsyncStoreError> {
+pub(crate) fn decode_batch(
+    bytes: &[u8],
+    resolve: &mut Resolve<'_>,
+) -> Result<(BatchKey, Vec<AppendMember>), AsyncStoreError> {
     let value: Value = parse_stored(bytes)?;
     if serde_json::to_vec(&value).map_err(enc)? != bytes {
         return Err(invalid("batch bytes are not canonical"));
@@ -584,7 +763,7 @@ pub(crate) fn decode_batch(bytes: &[u8]) -> Result<(BatchKey, Vec<AppendMember>)
         if expectation_value(expectation) != expect {
             return Err(invalid("batch bytes are not canonical"));
         }
-        let entry = decode_record_document(record)?;
+        let entry = decode_record_document(record, resolve)?;
         let request_bytes = original_request_comparison_bytes(&entry)?;
         decoded.push(AppendMember::new(expectation, entry, request_bytes));
     }
@@ -736,7 +915,7 @@ pub(crate) fn history_from_anchor(
                     .ok_or_else(|| invalid("missing imported record bytes"))?;
                 record_index += 1;
                 LegacyEvidence::Envelope(ImportedRecordEvidence::new(
-                    decode_record(bytes)?,
+                    decode_record(bytes, &mut unresolvable)?,
                     source_id.clone(),
                     source_locator.clone(),
                     match known_order {

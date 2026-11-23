@@ -3,9 +3,9 @@
 use entity_core::{Registry, Runtime};
 use entity_store::{
     asynchronous::{
-        batch_comparison_bytes, original_request_comparison_bytes, read_record_in_domain,
-        record_comparison_bytes, record_domain, record_framing, request_domain, AppendMember,
-        BatchKey, RecordedEntry,
+        batch_comparison_bytes_in, original_request_comparison_bytes, read_record_in_domain,
+        record_comparison_bytes_in, record_domain, record_framing, request_domain, AppendMember,
+        BatchKey, RecordForm, RecordedEntry,
     },
     Expect, RecordedCommit, Recording,
 };
@@ -101,7 +101,8 @@ fn service_2_uses_literal_record_3_and_request_3_framing() {
     let entry = entry("service/2", "p-3", "r-3");
     assert_eq!(record_domain(&entry), "er.record/3");
     assert_eq!(request_domain(&entry), "er.request/3");
-    let record = record_comparison_bytes(&entry).expect("record vector");
+    let record =
+        record_comparison_bytes_in(RecordForm::DefinitionEmbedded, &entry).expect("record vector");
     let request = original_request_comparison_bytes(&entry).expect("request vector");
     assert!(read_record_in_domain("er.record/2", &record).is_err());
     assert!(read_record_in_domain("er.request/2", &request).is_err());
@@ -143,10 +144,28 @@ fn mixed_record_domains_remain_members_of_er_batch_1() {
         let request = original_request_comparison_bytes(&entry).unwrap();
         AppendMember::new(Expect::Absent, entry, request)
     });
-    let bytes = batch_comparison_bytes(&BatchKey::Named("mixed".to_owned()), &members).unwrap();
+    let bytes = batch_comparison_bytes_in(
+        RecordForm::DefinitionEmbedded,
+        &BatchKey::Named("mixed".to_owned()),
+        &members,
+    )
+    .unwrap();
     let text = String::from_utf8(bytes).unwrap();
     assert_eq!(record_framing(text.as_bytes()).unwrap(), "er.batch/1");
     for domain in ["er.record/1", "er.record/2", "er.record/3"] {
         assert!(text.contains(domain), "missing {domain}: {text}");
     }
+    let by_digest = batch_comparison_bytes_in(
+        RecordForm::DefinitionByDigest,
+        &BatchKey::Named("mixed".to_owned()),
+        &members,
+    )
+    .unwrap();
+    let by_digest = String::from_utf8(by_digest).unwrap();
+    assert_eq!(record_framing(by_digest.as_bytes()).unwrap(), "er.batch/1");
+    assert_eq!(
+        by_digest.matches("\"er.record/5\"").count(),
+        3,
+        "{by_digest}"
+    );
 }

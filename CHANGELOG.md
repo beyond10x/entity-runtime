@@ -4,6 +4,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-11-23
+
 ### Security
 
 - `RemoteStore::load` refuses an answer whose instance names another entity type or id than the
@@ -48,6 +50,19 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ### Changed
 
+- A decision record names its entity definition by digest instead of embedding it (issue 94). A
+  new record is framed `er.record/5`, with `commit.envelope.record.definition` replaced by the
+  digest of the definition document `["er.definition/1", definition]`; the Eventlog store keeps
+  that document once per tenant as a blob under the digest, uploaded in the same append group as
+  the record that names it. One `service/1` record of a 32-field definition appended 21,075 blob
+  bytes before and 4,373 after; its record blob went from 10,062 to 1,711 bytes, and the 8,444-byte
+  definition blob is stored once. Records written before keep their bytes and digests: a 0.32.0
+  store opens, verifies and serves without a rewrite, and a retry of one of its batches is still
+  the same batch. A record whose digest names no stored definition, or a definition that does not
+  hash to it, is refused as `ProviderIntegrity`. `record_comparison_bytes` and
+  `batch_comparison_bytes` now return the by-digest form; `record_comparison_bytes_in` and
+  `batch_comparison_bytes_in` take a `RecordForm`, and `RecordForm::of_record` and `of_batch` read
+  the form of stored bytes. The File, SQLite and PostgreSQL stores are unchanged.
 - `entity mcp` builds its `tools/list` catalogue once per server instead of on every request; the
   reply is unchanged.
 - `ValidatedDefinition::new` computes the definition snapshot a decision record carries once, and

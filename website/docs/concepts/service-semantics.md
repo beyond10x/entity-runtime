@@ -277,6 +277,13 @@ compare its response with the recorded one.
 record by name before reading its payload, so **a store holding records of a newer format must not
 be opened by a build that predates it**.
 
+Since 0.33.0 a decision record of any semantics names its definition by digest instead of carrying
+it: it is written as `er.record/5`, with `"definition":"sha256:…"` where the definition used to be,
+and an Eventlog store keeps the definition once, as a blob under that digest, written with the
+first record that names it. Records written by earlier releases keep their framing and bytes and
+are read as before, so a store needs no rewrite; a record whose definition is missing or does not
+match its digest is refused. A build before 0.33.0 refuses an `er.record/5` record.
+
 ## Limits
 
 - `rehydrate` refuses a `service/1` definition: an event-only fold cannot see which branch ran.

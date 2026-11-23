@@ -1,7 +1,7 @@
 //! Independent full-versus-incremental integrity probes.
 use super::*;
 use entity_executor::{CreateRequest, ExecuteRequest};
-use entity_store::asynchronous::RecordedEntry;
+use entity_store::asynchronous::{RecordedEntry, batch_comparison_bytes, record_comparison_bytes};
 use entity_store::{RecordedObservation, Recording};
 use eventlog_core::{CaptureUsage, CapturedBlob, CapturedProjectionDelta, CapturedRowChange};
 
