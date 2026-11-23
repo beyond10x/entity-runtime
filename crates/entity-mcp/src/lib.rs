@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 
-use entity_core::{EntityDefinition, OperationFieldActions, Registry, SetAssignment};
+use entity_core::{EntityDefinition, Registry};
 use entity_shell::{ShellError, StoredRuntime};
 use entity_store::{Recording, Store};
 use serde_json::{json, Map, Value};
@@ -298,7 +298,7 @@ where
         self.descriptor_builds.set(self.descriptor_builds.get() + 1);
         let destructive = match target {
             ToolTarget::Execute { entity, operation } => {
-                removes_fields(&self.definitions(entity), operation)
+                writes_fields(&self.definitions(entity), operation)
             }
             _ => false,
         };
@@ -433,31 +433,25 @@ where
     }
 }
 
-/// Whether any registered version of `operation` can remove a live field value: a
-/// `{cleared: true}` assignment in its `set` or in any outcome's `set`, or a fulfillment target
-/// whose actions admit `Remove`. Every outcome counts, accepted ones included, because the tool's
-/// annotation describes what a call may do before the branch is known. An MCP client may use
-/// `destructiveHint` to decide whether to ask for confirmation, so a removal must not be
-/// advertised as additive.
-fn removes_fields(definitions: &[&EntityDefinition], operation: &str) -> bool {
-    let clears = |set: &BTreeMap<String, Value>| {
-        set.values().any(|value| {
-            matches!(
-                SetAssignment::of(value),
-                SetAssignment::Cleared(Value::Bool(true))
-            )
-        })
-    };
+/// Whether any registered version of `operation` can overwrite or remove a live field value: any
+/// assignment in its `set` or in any outcome's `set` or `set_if_present` (a template, an
+/// increment or a clear), or any fulfillment target, whose actions admit `Set` and, when
+/// optional, `Remove`. Each of these can replace a value the field already holds; the definition
+/// cannot say the field is absent beforehand, so none of them is additive. An operation that
+/// writes no field — a transition, events, a response — stays non-destructive. Every outcome
+/// counts, refusing ones included, because the annotation describes what a call may do before the
+/// branch is known. MCP defines `destructiveHint: false` as "only additive updates", and a client
+/// may use it to skip a confirmation, so an overwrite must not be advertised as additive.
+fn writes_fields(definitions: &[&EntityDefinition], operation: &str) -> bool {
     definitions
         .iter()
         .filter_map(|definition| definition.operations.get(operation))
         .any(|declared| {
-            clears(&declared.set)
+            !declared.set.is_empty()
                 || declared.outcomes.iter().any(|outcome| {
-                    clears(&outcome.set)
-                        || outcome.fulfills.values().any(|requirement| {
-                            matches!(requirement.actions, OperationFieldActions::Optional)
-                        })
+                    !outcome.set.is_empty()
+                        || !outcome.set_if_present.is_empty()
+                        || !outcome.fulfills.is_empty()
                 })
         })
 }
@@ -807,9 +801,110 @@ mod tests {
             ("invoice.Discard", true),
             ("invoice.Annotate", true),
             ("snoozer.touch", false),
-            ("invoice.Issue", false),
+            // A required fulfillment cannot remove its field, but its `Set` overwrites it:
+            // `an_operation_that_overwrites_a_field_is_advertised_as_destructive`.
+            ("invoice.Issue", true),
             ("refund.approve", false),
             ("invoice.create", false),
+        ] {
+            assert_eq!(
+                hints[tool],
+                &json!(destructive),
+                "{tool} destructiveHint must be {destructive}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_operation_that_overwrites_a_field_is_advertised_as_destructive() {
+        let counter: EntityDefinition = serde_json::from_value(json!({
+            "entity": "counter",
+            "schema": { "fields": {
+                "name": { "type": "string" },
+                "count": { "type": "integer", "required": true, "default": 0 }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open", "closed"] },
+            "operations": {
+                "rename": {
+                    "arguments": { "fields": { "name": { "type": "string", "required": true } } },
+                    "transitions": [{ "from": "open", "to": "open" }],
+                    "set": { "name": "$args.name" }
+                },
+                "close": {
+                    "transitions": [{ "from": "open", "to": "closed" }],
+                    "emits": [{ "type": "Closed", "payload": { "count": "$fields.count" } }]
+                }
+            }
+        }))
+        .expect("definition");
+        let ticket: EntityDefinition = serde_json::from_value(json!({
+            "entity": "ticket", "version": 1, "semantics": "service/3",
+            "schema": { "fields": {
+                "count": { "type": "integer", "required": true, "default": 0 },
+                "label": { "type": "string" },
+                "issued_at": { "type": "string", "required": true }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "operations": {
+                "Bump": {
+                    "arguments": { "fields": { "accept": { "type": "boolean", "required": true } } },
+                    "outcomes": [
+                        { "name": "refused", "when": { "eq": ["$args.accept", false] },
+                          "refuses": { "error": "NotAccepted" } },
+                        { "name": "bumped", "effect": "updates",
+                          "set": { "count": { "increment": 1 } } }
+                    ]
+                },
+                "Label": {
+                    "arguments": { "fields": { "label": { "type": "string" } } },
+                    "outcomes": [{ "name": "labelled", "effect": "updates",
+                        "set_if_present": { "label": { "argument": "label" } } }]
+                },
+                "Issue": { "outcomes": [{
+                    "name": "issued", "effect": "updates",
+                    "fulfills": { "issued_at": { "actions": "required" } }
+                }]},
+                "Ping": { "outcomes": [{ "name": "pinged", "effect": "none",
+                    "emits": [{ "type": "Pinged", "payload": { "count": "$fields.count" } }] }] },
+                "Later": { "outcomes": [{ "name": "noted", "effect": "updates" }] }
+            }
+        }))
+        .expect("definition");
+        // A later version that starts writing a field makes the one tool for both versions
+        // destructive.
+        let mut later = ticket.clone();
+        later.version = 2;
+        later.operations.get_mut("Later").expect("Later").outcomes[0]
+            .set
+            .insert("label".to_owned(), json!("noted"));
+        let mut registry = registry();
+        registry.register(counter).expect("valid");
+        registry.register(ticket).expect("valid");
+        registry.register(later).expect("valid");
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let listed = server
+            .handle(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }))
+            .expect("response");
+        let hints: BTreeMap<&str, &Value> = listed["result"]["tools"]
+            .as_array()
+            .expect("tools")
+            .iter()
+            .map(|tool| {
+                (
+                    tool["name"].as_str().expect("name"),
+                    &tool["annotations"]["destructiveHint"],
+                )
+            })
+            .collect();
+        for (tool, destructive) in [
+            ("counter.rename", true),
+            ("ticket.Bump", true),
+            ("ticket.Label", true),
+            ("ticket.Issue", true),
+            ("ticket.Later", true),
+            ("counter.close", false),
+            ("ticket.Ping", false),
+            ("refund.approve", false),
         ] {
             assert_eq!(
                 hints[tool],

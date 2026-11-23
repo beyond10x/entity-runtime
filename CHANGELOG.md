@@ -16,10 +16,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   limit. Before, a peer could make the server buffer an unbounded line and keep that allocation.
   A line that is not UTF-8 is now answered with a `-32700` parse error instead of ending the
   session with an I/O error.
-- `entity mcp` advertises `destructiveHint: true` on an operation tool that can remove a field
-  value — a `{cleared: true}` assignment in the operation's or any outcome's `set`, or an
-  optional fulfillment target, which admits `Remove`. Before, every tool claimed
-  `destructiveHint: false`.
+- `entity mcp` advertises `destructiveHint: true` on an operation tool that can overwrite or
+  remove a field value in any registered version: any assignment in the operation's `set` or in
+  an outcome's `set` or `set_if_present` (a template, an increment or a clear), or any
+  fulfillment target, whose `Set` replaces the field and whose optional form admits `Remove`.
+  MCP defines `false` as "only additive updates"; an operation that writes no field keeps it.
+  Before, every tool claimed `destructiveHint: false`.
 
 ### Changed
 
