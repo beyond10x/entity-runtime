@@ -4,6 +4,16 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Fixed
+
+- An Eventlog store whose records name their definitions by digest (written by 0.33.0) no longer
+  decodes each definition blob again for every record, batch and read, and a handle no longer
+  serializes a record's definition again each time a read remembers its subject. Since 0.33.0
+  both ran on every append and read, and on a store of large definitions a batch cost about a
+  third more CPU than on 0.32.0. A definition blob is still read from the store and held to its
+  digest wherever it was before; the decode of exactly the bytes already verified under that
+  digest is reused, as a remembered record decode is.
+
 ## [0.33.0] — 2026-11-23
 
 ### Security
