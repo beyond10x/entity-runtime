@@ -27,5 +27,8 @@ time = { version = "0.3", optional = true }
 # in the composed workspace.
 rusqlite = { version = "=0.41.0", features = ["bundled"] }
 
+[dev-dependencies]
+rusqlite = { version = "=0.41.0", features = ["bundled", "trace"] }
+
 [lints]
 workspace = true

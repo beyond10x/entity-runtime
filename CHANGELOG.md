@@ -306,6 +306,46 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   ``key is not decimal text: expected exact decimal text without `+`, leading zeroes or an exponent``;
   an integer with more digits than a binary64 can hold is now accepted.
 
+### Fixed
+
+- `PostgresStore` saves a document whose string field holds U+0000. Before, the GIN index
+  `instances_document_query` on `document::jsonb` refused it (SQLSTATE 22P05) and a store with
+  such a row could not build the index. `migrate` drops that index and creates
+  `instances_document_index` on the new function `entity_index_document(document)`, which rewrites
+  each escaped U+0000 and U+0001 to a pair starting with U+0001; document pages filter through the
+  same function, so they match the same documents. This is the one statement in `migrate` that is
+  not additive: upgrade every service that opens a database (aep and aep-service) together.
+  Building the index blocks writes to `instances`.
+- `PostgresStore::events` and `PostgresSession::events` read bare events and recorded decisions
+  in one statement. Before, they read them in two, each with its own snapshot, so a bare revision
+  and then a recorded revision committing between the two reads produced a history that showed the
+  later recorded event and left out the bare event before it.
+- `PostgresStore` document pages after a cursor read an index instead of scanning and sorting the
+  entity's instances. `migrate` now creates `instances_id_byte_order` on
+  `(entity, id COLLATE "C")`, the order pages seek and sort by. An existing database gets it the
+  next time a store opens it. Building it blocks writes to `instances` while it builds; for a large
+  table, run `CREATE INDEX CONCURRENTLY instances_id_byte_order ON instances (entity, id COLLATE "C")`
+  first.
+- `acquire_legacy` on `SqliteStore` and `PostgresStore` reads a store in four statements, however
+  many subjects it holds. Before, it ran four statements per subject (4,097 for 1,024 subjects on
+  SQLite). The snapshot it returns is unchanged, and evidence without a terminal instance is still
+  refused.
+- `PostgresStore::connect_in_schema` and `PostgresStore::drop_schema` refuse a schema name longer
+  than the server's `max_identifier_length` (63 bytes by default). Before, PostgreSQL truncated it,
+  so two long names with the same first 63 bytes opened the same tables, and `drop_schema` with
+  the longer name dropped the other's schema. `connect_in_schema` also refuses a name the session
+  resolves to another schema (such as `$user`) and leaves nothing created. A deployment that used
+  a longer name was working in the truncated schema; pass the truncated name to keep its data.
+- `PostgresStore::commit_recorded` and `PostgresStore::observe` key the lock on a record id by the
+  `history` table they write. Before, writers of one record id in different schemas of a database
+  waited on each other; writers in one schema still do. During a rolling upgrade an older and a
+  newer store writing the same record id in one schema take different locks: the unique
+  `record_id` still refuses the duplicate, as a backend error instead of a retry or a record
+  conflict. Upgrade every writer of one schema together.
+- `SqliteStore` and `PostgresStore` read the next event position once per revision when they
+  append a decision's events, instead of once per event (128 reads for 128 events), and
+  PostgreSQL appends the events in one statement. Stored positions are unchanged.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security
