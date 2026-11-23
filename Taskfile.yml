@@ -17,6 +17,7 @@ tasks:
       - task: eventlog-runtime-check
       - task: notes-check
       - task: ci-paths-check
+      - task: test-step-check
       - task: ess-check
       - task: provider-ess-check
 
@@ -24,6 +25,11 @@ tasks:
     desc: The CI path list sends planning-only changes past the build and code changes through it
     cmds:
       - sh scripts/ci-paths-test.sh
+
+  test-step-check:
+    desc: The bounded test step fails past its budget and names the ten slowest tests
+    cmds:
+      - sh scripts/test-step-test.sh
 
   provider-ess-check:
     desc: SQLite tracked-provider contract against real facade calls and external SQL mutations
@@ -52,7 +58,7 @@ tasks:
   eventlog-runtime-check:
     desc: the Rust 1.91 Eventlog adapter closure with every native provider and synchronous bridge
     cmds:
-      - cargo +1.91.0 test -p entity-eventlog --all-features --locked
+      - sh scripts/test-step.sh -- +1.91.0 nextest run -p entity-eventlog --all-features --locked
       - cargo +1.91.0 clippy -p entity-eventlog --all-targets --all-features --no-deps --locked -- -D warnings
       - cargo +1.91.0 build -p entity-sqlite --all-features --locked
 
