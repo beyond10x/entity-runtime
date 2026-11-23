@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T17:30:00Z",
+  "actor": "human:timo",
+  "artifact": "story:file-store-v3-state-and-append-only-history",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "r1-file-store: entity-store 121 passed (98 before), entity-cli 61, docs 24, ESS 456/456; 7 of 7 mutants killed; er-kpi check 0 regressed, file.execute.write_bytes.prior32 207967 -> 928; 0.33.1 fixture migrated"
+  }
+}
