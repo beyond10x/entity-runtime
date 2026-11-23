@@ -12,12 +12,13 @@ It is ordinary control flow for an agent integration, not a partial failure: no 
 leaves assigned fields behind, no refused invariant emits events, no revision conflict overwrites
 the winning state and no failed atomic batch commits a prefix.
 
-Match the `kind` (or the Rust variant), never the message: messages may be reworded. The `entity`
-command prints a refusal as JSON on standard output with exit `1`.
+Match the `kind` or the Rust variant, because messages may be reworded. The `entity` command
+prints a refusal as JSON on standard output with exit `1`.
 
 ## Kernel refusals
 
-`CoreError` in Rust; in JSON, `kind` plus the fields named below.
+The Rust type is `CoreError`. In JSON, a refusal carries `kind` plus the fields in parentheses
+below.
 
 | `kind` | Meaning | Typical response |
 |---|---|---|
@@ -37,7 +38,7 @@ command prints a refusal as JSON on standard output with exit `1`.
 | `increment_overflow` | a `set` increment's exact sum is outside what the field's kind holds (`operation`, `field`, `value`, `amount`, `range`) | do not retry with the same amount; the field is not wrapped or rounded |
 | `definition` | the definition was refused; `defect` is the first defect's kind, `defects` all of them | fix the definition before exposing it |
 
-The service rules ([service semantics](../concepts/service-semantics.md)) add:
+The [service rules](../concepts/service-semantics.md) add:
 
 | `kind` | Meaning |
 |---|---|
@@ -51,7 +52,7 @@ The service rules ([service semantics](../concepts/service-semantics.md)) add:
 | `fulfillment_keys_mismatch` | the supplied field actions differ from the branch's (`missing`, `extra`) |
 | `required_field_removal` | a field action asked to remove a required field |
 
-`precondition_failed` and `precondition_unobservable` are deliberately different:
+`precondition_failed` and `precondition_unobservable` call for different responses:
 
 ```json
 { "kind": "precondition_failed", "rule": "large_refunds_need_a_human",
@@ -65,13 +66,12 @@ The facts were present and the policy said no.
   "unresolved": ["$fields.review_score"] }
 ```
 
-The policy could not answer, because the evidence is missing. An agent should not handle the two
-the same way.
+The policy could not answer, because the evidence is missing.
 
 ## Store refusals
 
-`entity-shell` (and with it the `entity` command, a generated CLI and the MCP tools) reports a store
-refusal with these kinds; Rust callers of a provider match `StoreError` variants.
+`entity-shell`, and with it the `entity` command, a generated CLI and the MCP tools, reports a
+store refusal with these kinds. Rust callers of a provider match `StoreError` variants.
 
 | `kind` | `StoreError` | Meaning | Response |
 |---|---|---|---|
@@ -83,14 +83,14 @@ refusal with these kinds; Rust callers of a provider match `StoreError` variants
 | `invalid_recording` | — | the recording envelope is incomplete or invalid | supply complete provenance |
 
 The `entity` command prints a store refusal as
-`{"refused": true, "by": "store", "kind": …, "detail": …}`; an `eventlog-providers` build adds
+`{"refused": true, "by": "store", "kind": …, "detail": …}`. An `eventlog-providers` build adds
 `eventlog_provider` for a refusal from the Eventlog File provider. MCP tool results carry the same
-`kind` with `by` naming the refusing boundary (`kernel`, `store` or `input`).
+`kind`, and `by` is the refusing boundary: `kernel`, `store` or `input`.
 
-The recorded stores of `entity-store`'s asynchronous ports add `AsyncStoreError::Forked` (a
-subject two merged branches both decided for; join its heads with `BatchAction::Merge`) and
-`BatchExceedsReadBounds` (the write would exceed the handle's read bounds; divide the batch).
-[Storage and replay](../concepts/storage.md) explains both.
+The recorded stores of `entity-store`'s asynchronous ports add two errors.
+`AsyncStoreError::Forked` means two merged branches both decided for one subject: join its heads
+with `BatchAction::Merge`. `BatchExceedsReadBounds` means the write would exceed the handle's read
+bounds: divide the batch. [Storage and replay](../concepts/storage.md) explains both.
 
 ## Definition defects
 
@@ -103,23 +103,28 @@ A refused definition reports every defect, each with one of these kinds.
   `unknown_set_field`, `empty_event_type`, `invalid_field`, `constraint_not_applicable`,
   `invalid_rule`, `unknown_relation_target`, `invalid_template`, `duplicate_definition`,
   `semantics_key_not_available`.
+
 - `set` increments and clears, under every semantics: `increment_target_invalid`,
   `increment_amount_invalid`, `increment_on_create`, `clear_target_invalid`, `clear_flag_invalid`,
   `clear_on_create`, `set_assignment_conflict`.
+
 - Service outcomes: `empty_outcome_name`, `duplicate_outcome`, `ambiguous_default_outcome`,
   `duplicate_wrong_state_outcome`, `wrong_state_on_create`, `wrong_state_with_selector`,
   `wrong_state_with_state_guard`, `wrong_state_unreachable`, `guard_state_outside_move`,
   `creates_effect_on_operation`, `missing_creates_effect`, `refusal_mutates_state`,
   `unobservable_outcome`, `unknown_outcome_state`, `response_field_unknown`,
   `outcome_response_incomplete`.
+
 - Service identity and relations: `identity_field_unknown`, `identity_field_not_addressable`,
   `relation_via_unknown`, `relation_via_wrong_shape`, `relation_carrier_optionality`,
   `relation_target_missing`, `relation_second_owner`, `relation_carrier_wrong`,
   `relation_field_claimed_twice`.
+
 - Service values and conditions: `map_key_not_text`, `map_value_missing`, `union_tag_collides`,
   `union_variant_missing`, `quantifier_bind_invalid`, `quantifier_over_not_collection`,
   `quantifier_body_scope`, `condition_too_deep`, `compare_operand_not_addressable`,
   `scale_unnamed`, `scale_empty`.
+
 - Optional values and field actions (`service/2`, `service/3`): `conditional_argument_invalid`,
   `conditional_target_invalid`, `conditional_target_conflict`, `fulfillment_on_create`,
   `fulfillment_field_unknown`, `fulfillment_identity_field`, `fulfillment_set_conflict`,

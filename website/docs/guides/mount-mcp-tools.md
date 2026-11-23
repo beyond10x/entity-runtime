@@ -9,7 +9,7 @@ source: "crates/entity-mcp/src/lib.rs, crates/entity-cli (mcp), run with entity 
 # Mount MCP tools
 
 `entity mcp` serves newline-delimited JSON-RPC on standard input and output. The definition set and
-the store path are operator configuration, never model input. A client configuration:
+the store path are operator configuration, and a model cannot set them. A client configuration:
 
 ```json
 {
@@ -23,13 +23,13 @@ the store path are operator configuration, never model input. A client configura
 ```
 
 The server answers `server/discover` with protocol versions `2026-07-28` and `2025-11-25`, and
-`initialize` with `2025-11-25`. Standard output carries protocol messages only; diagnostics go to
-standard error. A request line longer than 4 MiB is discarded without being buffered and answered
-with a JSON-RPC `-32600` error whose `id` is `null`; the server then reads the next line.
+`initialize` with `2025-11-25`. Standard output carries protocol messages only, and diagnostics go
+to standard error. A request line longer than 4 MiB is discarded without being buffered. The server
+answers it with a JSON-RPC `-32600` error whose `id` is `null` and then reads the next line.
 
 ## Drive it from a file
 
-To see exactly what a client sees, write the requests to `requests.jsonl`, one per line, with the
+To see what a client sees, write the requests to `requests.jsonl`, one per line, with the
 [getting-started](../getting-started.md) `refund.yaml` beside it:
 
 ```json
@@ -47,8 +47,8 @@ To see exactly what a client sees, write the requests to `requests.jsonl`, one p
 entity mcp --definition refund.yaml --store ./mcp-store < requests.jsonl > responses.jsonl
 ```
 
-The tools are one per entity type for `create`, `get`, `list` and `events`, and one per operation;
-each operation's input schema comes from its declared arguments:
+The tools are one per entity type for `create`, `get`, `list` and `events`, and one per operation,
+whose input schema comes from its declared arguments:
 
 ```shell-session
 $ jq -r 'select(.id==2) | .result.tools[].name' responses.jsonl
@@ -63,7 +63,7 @@ $ jq -c 'select(.id==2) | .result.tools[] | select(.name=="refund.approve") | .i
 ["id","expected_revision","arguments","recording"]
 ```
 
-The agent's approval of a refund above 5000 cents is refused by the rule; the human approval
+The rule refuses the agent's approval of a refund above 5000 cents. The human approval
 commits revision 3:
 
 ```shell-session
@@ -86,12 +86,12 @@ $ jq -c 'select(.id==8) | .result.structuredContent' responses.jsonl
 ## Security boundary
 
 - `actor` is recorded provenance, not authentication. The server writes what the call says, so
-  a model must not be able to set `actor_role` or the recording fields itself; put a wrapper that
+  a model must not be able to set `actor_role` or the recording fields itself. Put a wrapper that
   derives or checks them in front of an untrusted agent.
 - The server mints no identity, timestamp or authority.
-- Tool names are strict; a definition whose operation would collide with `create`, `get`, `list`
+- Tool names are strict. A definition whose operation would collide with `create`, `get`, `list`
   or `events` is refused at startup.
-- Reusing a record id for a different request is `record_conflict`; a new request on an old
+- Reusing a record id for a different request is `record_conflict`. A new request on an old
   revision is `revision_conflict`.
 
 ## Coverage

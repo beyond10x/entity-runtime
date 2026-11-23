@@ -8,9 +8,9 @@ source: "crates/entity-store/src/file.rs (migrate_file_store_v1), crates/entity-
 
 # Migrate a File Store to v2
 
-Entity 0.15 introduced File Store v2. Older stores used caller-chosen names as paths and kept state
-apart from an event log file per subject. v2 encodes path components and replaces one complete
-subject document atomically. The two formats are deliberately not opened interchangeably.
+Entity 0.15 introduced File Store v2, which encodes path components and replaces one complete
+subject document atomically. Older stores used caller-chosen names as paths and kept state apart
+from an event log file per subject. The two formats are not opened interchangeably.
 
 ## Prepare
 
@@ -36,7 +36,7 @@ A dry run reads and validates the whole source and creates no destination. It re
 state, incomplete event logs, orphan logs, nested directories, symlinks, a subject whose content
 disagrees with its path, an event later than its subject's saved revision, an existing destination,
 a destination inside the source and unsupported layouts. Resolve each reported
-problem; do not route around a refusal by deleting a record whose meaning is unclear.
+problem, and do not route around a refusal by deleting a record whose meaning is unclear.
 
 ## Migrate and verify
 
@@ -47,8 +47,8 @@ $ entity list --store ./entity-v2 --entity refund
 refund-104
 ```
 
-The migrator builds a sibling staging directory and publishes the complete destination with one
-rename; the source is not modified. A second run is refused because the destination now exists
+The migrator builds a sibling staging directory, publishes the complete destination with one
+rename and leaves the source unmodified. A second run is refused because the destination now exists
 (exit 2):
 
 ```shell-session
@@ -68,12 +68,12 @@ Check every expected entity type and id with `entity list` before pointing write
 
 ## Roll back
 
-Stop the writers and point them back at the retained v1 root with the pre-0.15 binary. Keep the v2
-directory for investigation. Writes accepted after the cutover are not migrated back: decide how
-to reconcile them before resuming either side, and never copy individual v2 documents into v1.
+Stop the writers and point them back at the retained v1 root with the pre-0.15 binary, and keep the
+v2 directory for investigation. Writes accepted after the cutover are not migrated back: decide how
+to reconcile them before resuming either side, and do not copy individual v2 documents into v1.
 
 ## Replay boundary
 
 Migrated events are kept and each subject is marked `legacy_snapshot`. Legacy records hold neither
 the normalized commands nor the definition snapshots, so replay verification starts with the
-complete records written after the migration; the imported prefix is not verified from genesis.
+complete records written after the migration, and the imported prefix is not verified from genesis.

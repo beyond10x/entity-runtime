@@ -31,7 +31,7 @@ entity 0.27.0
 
 The definition used here is
 [`examples/refund.yaml`](https://github.com/beyond10x/entity-runtime/blob/0.27.0/examples/refund.yaml).
-Download it into a fresh directory so nothing else collides with its files or store:
+Download it into a fresh directory, where no other file collides with its files or store:
 
 ```bash
 cd "$(mktemp -d)"
@@ -75,7 +75,7 @@ preconditions:
 ## Create and submit a refund
 
 The kernel generates no identity, so the caller supplies one. Without `--store`, each command
-prints a `Decision` and keeps nothing; the next command reads it back with `@file`:
+prints a `Decision` and keeps nothing. The next command reads it back with `@file`:
 
 ```bash
 entity create --definition refund.yaml --id refund-104 \
@@ -90,8 +90,8 @@ entity execute --definition refund.yaml --instance @draft.json \
 
 ## Let the agent propose approval
 
-The trusted shell sets `actor_role` from what it knows about the caller; it is not something the
-model gets to choose. Here the caller is an agent:
+The trusted shell sets `actor_role` from what it knows about the caller. The model does not choose
+it. Here the caller is an agent:
 
 ```shell-session
 $ entity execute --definition refund.yaml --instance @submitted.json \
@@ -107,7 +107,7 @@ $ entity execute --definition refund.yaml --instance @submitted.json \
 refused: precondition 'large_refunds_need_a_human' failed for operation 'approve': refunds above 5000 cents require a human actor
 ```
 
-The JSON goes to standard output and the sentence to standard error; the exit status is `1`. The
+The JSON goes to standard output and the sentence to standard error. The exit status is `1`. The
 request was understood and refused: `submitted.json` is still at revision 2, and no
 `RefundApproved` event exists.
 
@@ -146,7 +146,7 @@ actor and time, the normalized command, the exact definition, the changes and th
 ## Retry an accepted request
 
 To recover a lost response, repeat the request with the same record id and name the revision it
-was decided on. The original record comes back; nothing is written twice:
+was decided on. The original record comes back, and nothing is written twice:
 
 ```shell-session
 $ entity execute --definition refund.yaml --store ./refund-store \
@@ -157,8 +157,8 @@ $ entity execute --definition refund.yaml --store ./refund-store \
 refund refund-104 is approved (revision 3); record request-104-approved; events: RefundApproved
 ```
 
-Without `--expected-revision`, the command decides on the revision the store holds now — 3 — so
-the same record id names a different request and is refused:
+Without `--expected-revision`, the command decides on the revision the store holds now, 3. The
+same record id then names a different request and is refused:
 
 ```shell-session
 $ entity execute --definition refund.yaml --store ./refund-store \

@@ -9,17 +9,17 @@ source: "docs/design/service-semantics-v0.1.md, crates/entity-core/src/definitio
 # Service semantics
 
 A definition with no `semantics` key follows the original rules, `kernel/1`: an operation moves the
-instance along its transitions, and every refusal is one of the kernel's typed refusals. A
-definition may opt into a second set of rules with `semantics: service/1`, `service/2` or
-`service/3`. The newer rules add; a `kernel/1` definition keeps the bytes and the behaviour it had,
-and it is refused at registration if it uses a key only the service rules admit.
+instance along its transitions, and every refusal is one of the kernel's typed refusals.
+`semantics: service/1`, `service/2` or `service/3` opts into the service rules, which add to
+`kernel/1`. A `kernel/1` definition keeps the bytes and the behaviour it had. Registration refuses
+it if it uses a key only the service rules admit.
 
 ## Named outcomes
 
 Under the service rules a creation and an operation carry **outcomes**: ordered branches, each
 with its own guard (`when`), `effect`, `set`, `emits`, declared response (`responds`) and an
-optional declared refusal (`refuses`). The kernel selects the branch from the validated inputs; a
-caller asks for the operation and never names a branch.
+optional declared refusal (`refuses`). The kernel selects the branch from the validated inputs.
+A caller asks only for the operation.
 
 | `effect` | Means |
 |---|---|
@@ -88,7 +88,7 @@ operations:
 ```
 
 Under the service rules the `--fields` of `entity create` are the creation's arguments. The first
-branch whose guard holds is selected; the declared refusal is a value with the outcome's name and
+branch whose guard holds is selected. A declared refusal is a value with the outcome's name and
 error:
 
 ```shell-session
@@ -109,9 +109,9 @@ $ entity execute --definition invoice.yaml --instance @created.json \
 refused: outcome 'rejected' refuses with 'AmountNotPositive': an invoice total is positive
 ```
 
-The accepted decision's record names the outcome (`adjusted`), the effect (`updated`) and the
+The accepted decision's record carries the outcome (`adjusted`), the effect (`updated`) and the
 response (`{"new_total": 150}`). In Rust, `create` and `execute` return a declared refusal as
-`CoreError::Refused`; `decide` and `decide_create` return it as the value `Evaluation::Refused`.
+`CoreError::Refused`, and `decide` and `decide_create` return it as the value `Evaluation::Refused`.
 
 ## Identity and relations
 
@@ -135,38 +135,41 @@ refused: identity field 'invoice_id' addresses to 's:INV-1', but the instance is
 ```
 
 `create_derived` and `decide_create_derived` compute the address from the selected creation
-outcome's identity instead of taking it from the caller; both paths produce the same decision and
-record when the address agrees.
+outcome's identity instead of taking it from the caller. When the address agrees, both paths
+produce the same decision and record.
 
-**Relations** (`owns` or `references`, `one` or `many`, and the field that carries them) are
-checked at registration: the carrier's shape and optionality by `EntityDefinition::validate`, the
-target's identity kind, a second owner and a field claimed twice by `Registry::validate_all`.
-Both claims are counted within one version: a relation that version 2 repeats from version 1 is
-the same relation, so both versions load together. Whether a referenced instance exists is still
-the shell's to check.
+A **relation** is `owns` or `references`, `one` or `many`, and is carried by a field. Registration
+checks relations: `EntityDefinition::validate` checks the carrier's shape and optionality, and
+`Registry::validate_all` checks the target's identity kind, a second owner and a field claimed
+twice. Both claims are counted within one version: a relation that version 2 repeats from version
+1 is the same relation, so both versions load together. The shell still checks whether a
+referenced instance exists.
 
 ## Values and conditions
 
-The service rules add three field kinds — `map`, `union` (adjacently tagged) and `binary64` (a
-finite double kept as its token, so the sign of a zero survives) — and four condition operators:
-`compare` (an exact three-valued comparison), `truthy`, and the quantifiers `for_all` and
-`for_any` over an array's elements or a map's values. `scales:` declares the ordered value scales
-text comparison is answered in; without one, ordering two texts is `unknown`. The
-[definition language](../reference/definitions.md) lists the `kernel/1` keys these build on.
+The service rules add three field kinds: `map`, `union` (adjacently tagged) and `binary64`, a
+finite double kept as its token so that the sign of a zero survives. They add four condition
+operators: `compare` for an exact three-valued comparison, `truthy`, and the quantifiers `for_all`
+and `for_any` over an array's elements or a map's values.
+
+`scales:` declares the ordered value scales text comparison is answered in. Without one, ordering
+two texts is `unknown`. The [definition language](../reference/definitions.md) lists the
+`kernel/1` keys these build on.
 
 ## Text length and alphabets
 
-Since 0.27.0 the service rules read and constrain text:
+Since 0.27.0 the service rules read and constrain text.
 
-- **Length.** A rule may read the length of a declared `string` field, argument or nested property
-  as `<path>.count`, wherever an array's or a map's `count` may be read. Length is counted in
-  Unicode scalar values with no normalization: a composed `é` is 1, an `e` followed by a combining
-  accent is 2.
-- **Alphabet.** A `string` field, argument or nested property may declare
-  `alphabet: "<characters>"`. A value is valid only when every Unicode scalar value in it is one
-  of those characters; the empty text always is. There is no normalization and no case folding. A
-  value outside its alphabet is a `validation` error at its path naming the first offending
-  character, its code point and its position (counted from 1), beside the value's other errors.
+A rule may read the length of a declared `string` field, argument or nested property as
+`<path>.count`, wherever an array's or a map's `count` may be read. Length is counted in Unicode
+scalar values with no normalization: a composed `é` is 1, an `e` followed by a combining accent
+is 2.
+
+A `string` field, argument or nested property may declare `alphabet: "<characters>"`. A value is
+valid only when every Unicode scalar value in it is one of those characters, and the empty text is
+valid. Neither normalization nor case folding applies. A value outside its alphabet is a
+`validation` error at its path. The error gives the first offending character, its code point and
+its position (counted from 1), beside the value's other errors.
 
 This definition, `extension.yaml`, uses both:
 
@@ -224,7 +227,7 @@ $ entity create --definition extension.yaml --id s:1234567 --fields '{"number":"
 refused: invariant 'number_is_short' violated: an extension has at most six digits
 ```
 
-Registration refuses each misuse by path, with every other defect of the document:
+Registration refuses each misuse at its path, beside every other defect of the document:
 
 | Definition says | `entity validate` reports |
 |---|---|
@@ -236,17 +239,20 @@ Registration refuses each misuse by path, with every other defect of the documen
 | `default: "12x"` beside that alphabet | `invalid field definition at 'create.arguments.number': invalid default: character 'x' (U+0078) at position 3 is not in the alphabet` |
 | `alphabet` in a `kernel/1` definition | ``'alphabet' at 'schema.code.alphabet' is available only under `semantics: service/1`; a definition with older semantics would declare a rule nothing evaluates`` |
 
-Registration also refuses a length used as a projection key. Inside `for_all` and `for_any` a text
-element's length reads as any other: over a declared list of text, `$t.count` is each element's
-length, and `$t.name.count` reads a declared property of an object element. A path into a `json`
-field, a union payload or an undeclared member, and a quantifier over a list reached through one of
-them, still resolves to nothing, so recorded decisions replay unchanged, and a stored value under a
-declared `string` that is not a text has no length. A declared `map` inside a quantifier element is
-still read by its members: `$g.count` there reads a member named `count`, not the map's size. A
-definition without an alphabet keeps its bytes.
+Registration also refuses a length used as a projection key.
 
-`entity generate docs` carries an alphabet into the OpenAPI and AsyncAPI schemas as `x-alphabet`;
-in the `openapi.yaml` generated for `extension.yaml`:
+Inside `for_all` and `for_any` a text element's length reads as any other: over a declared list of
+text, `$t.count` is each element's length, and `$t.name.count` reads a declared property of an
+object element. A declared `map` inside a quantifier element is still read by its members:
+`$g.count` there reads a member named `count`, not the map's size.
+
+A path into a `json` field, a union payload or an undeclared member still resolves to nothing, and
+so does a quantifier over a list reached through one of them. Recorded decisions therefore replay
+unchanged. A stored value under a declared `string` that is not a text has no length. A definition
+without an alphabet keeps its bytes.
+
+`entity generate docs` carries an alphabet into the OpenAPI and AsyncAPI schemas as `x-alphabet`.
+In the `openapi.yaml` generated for `extension.yaml`:
 
 ```yaml
     ExtensionV1Fields:
@@ -257,13 +263,14 @@ in the `openapi.yaml` generated for `extension.yaml`:
           x-alphabet: '0123456789'
 ```
 
-An alphabet on a declared `response` field holds the value the branch answers, as `max_length` and
-every other constraint there do: the response is checked against its declaration before the
-decision is returned, and a member outside it refuses the creation or operation as `validation`,
-naming each offending member at `response.<field>`. Nothing is recorded. A decision recorded before
-responses were checked, whose response breaks its declaration, still replays, and a recorded store
-holding one still opens and verifies it: both recompute a stored decision without the check and
-compare its response with the recorded one.
+An alphabet on a declared `response` field constrains the value the branch answers, as `max_length`
+and every other constraint there do. The response is checked against its declaration before the
+decision is returned. A member outside it refuses the creation or operation as `validation`, and
+the error lists each offending member at `response.<field>`. Nothing is recorded.
+
+A decision recorded before responses were checked still replays when its response breaks its
+declaration, and a recorded store that contains one still opens and verifies it. Both recompute a
+stored decision without the check and compare its response with the recorded one.
 
 ## What each version adds
 
@@ -273,22 +280,24 @@ compare its response with the recorded one.
 | `service/2` | an optional argument copied into creation or operation state, events and responses keeps its absence through replay and retry; on an operation an absent argument leaves the field as it was | `er.record/3`, `er.request/3` |
 | `service/3` | after the loaded outcome is selected, an operation may ask the host for typed `Set`, `Preserve` and optional `Remove` actions on its fields; events, responses and replay use the resulting values | `er.record/4`, `er.request/4` |
 
-`kernel/1` records stay `er.record/1`. A reader that knows only an older framing refuses a newer
-record by name before reading its payload, so **a store holding records of a newer format must not
-be opened by a build that predates it**.
+`kernel/1` records stay `er.record/1`. A reader that knows only an older framing reads a newer
+record's framing name and refuses the record before reading its payload. **A store holding records
+of a newer format must not be opened by a build that predates it.**
 
-Since 0.33.0 a decision record of any semantics names its definition by digest instead of carrying
-it: it is written as `er.record/5`, with `"definition":"sha256:…"` where the definition used to be,
-and an Eventlog store keeps the definition once, as a blob under that digest, written with the
-first record that names it. Records written by earlier releases keep their framing and bytes and
-are read as before, so a store needs no rewrite; a record whose definition is missing or does not
-match its digest is refused. A build before 0.33.0 refuses an `er.record/5` record.
+Since 0.33.0 a decision record of any semantics identifies its definition by digest instead of
+carrying it. It is written as `er.record/5`, with `"definition":"sha256:…"` where the definition
+used to be. An Eventlog store keeps the definition once, as a blob under that digest, written with
+the first record that uses it.
+
+Records written by earlier releases keep their framing and bytes and are read as before, so a store
+needs no rewrite. A record whose definition is missing or does not match its digest is refused. A
+build before 0.33.0 refuses an `er.record/5` record.
 
 ## Limits
 
 - `rehydrate` refuses a `service/1` definition: an event-only fold cannot see which branch ran.
   Replay a service history from its decision records.
 - Under `service/1`, numeric predicates answer on the value the specification source would have
-  observed, while the authored token is stored unchanged; `kernel/1` numbers are untouched.
+  observed, while the authored token is stored unchanged, and `kernel/1` numbers are untouched.
 - Since 0.26.0 a declared refusal is returned even when a command supplies the fulfillment keys of
   a success outcome, and a declared creation refusal comes before an existing-subject conflict.

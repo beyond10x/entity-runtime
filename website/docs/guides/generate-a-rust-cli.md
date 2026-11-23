@@ -51,7 +51,7 @@ neither where the build lands nor where the result is found.
 
 ## Run a refund through it
 
-The actor names, roles and timestamps are sample data; in a real tool handler trusted code derives
+The actor names, roles and timestamps are sample data. In a real tool handler, trusted code derives
 them.
 
 ```bash
@@ -82,13 +82,13 @@ $ ./bin/refundctl --store ./refund-store refund events --id refund-104 | jq -c '
 {"type":"RefundApproved","revision":3}
 ```
 
-Every operation subcommand requires `--expected-revision`; `get` reads the current instance and
-`events` the emitted domain events, not the full history.
+Every operation subcommand requires `--expected-revision`. `get` reads the current instance, and
+`events` reads the emitted domain events, not the full history.
 
 ## Recover an accepted request
 
-Repeat the approval exactly — same revision, arguments and recording — and the original commit
-comes back; a new request on the old revision is refused:
+Repeat the approval exactly, with the same revision, arguments and recording, and the original
+commit comes back. A new request on the old revision is refused:
 
 ```shell-session
 $ ./bin/refundctl --store ./refund-store refund approve \
@@ -110,7 +110,7 @@ The refusal exits 1. `./bin/refundctl refund approve --help` lists the generated
 
 `--force` replaces a source directory that carries the generator's marker, and the output binary
 only when that marker records it as the binary the generator installed at that path. Any other
-file at `--out` is refused; remove it yourself or choose another path. Regeneration keeps the
+file at `--out` is refused. Remove it yourself or choose another path. Regeneration keeps the
 source directory's `target/`, so a changed definition recompiles the generated crate only.
 Editing the YAML beside an existing binary changes nothing: regenerate to change the embedded
 model.

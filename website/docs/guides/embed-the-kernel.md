@@ -8,9 +8,9 @@ source: "crates/entity-runtime-docs/tests/embed_the_kernel.rs (run by cargo test
 
 # Embed the kernel
 
-Entity Runtime is a workspace of narrow crates; use only the boundary your application needs. The
-[crate list](../reference/crates.md) says what each one is. The crates are not on a registry —
-depend on a release tag, and keep every Entity Runtime crate on the same tag:
+Entity Runtime is a workspace of narrow crates. Use only the boundary your application needs. The
+[crate list](../reference/crates.md) says what each one is. The crates are not on a registry.
+Depend on a release tag, and keep every Entity Runtime crate on the same tag:
 
 ```toml
 [dependencies]
@@ -92,7 +92,7 @@ fn a_refund_is_drafted_submitted_refused_for_an_agent_and_approved_for_a_human()
 
 `Registry::register` is the validation boundary: execution only ever receives a
 `ValidatedDefinition`. `validate_all` checks the references between registered types as a set. On
-a refusal the caller still owns the unchanged instance. Match `CoreError` variants in code; the
+a refusal the caller still owns the unchanged instance. Match `CoreError` variants in code. The
 `Display` text is for people and may be reworded.
 
 ## Build a trusted shell
@@ -105,16 +105,16 @@ Your shell owns every ambient and privileged fact:
   loading="lazy"
 />
 
-`EntityInstance` has public, serializable fields because providers round-trip it. That is not
-permission to trust any deserialized instance: load canonical instances from a trusted provider and
-let the kernel check the definition identity and the declared state.
+`EntityInstance` has public, serializable fields because providers round-trip it. These fields are
+not permission to trust any deserialized instance. Load canonical instances from a trusted provider
+and let the kernel check the definition identity and the declared state.
 
 `entity_shell::StoredRuntime` is that sequence for a synchronous store: it loads the subject,
 recognizes an exact retry, decides, and commits a `RecordedCommit` at the expected revision.
 
 ## Store atomically
 
-`RecordedCommit::new` binds a decision to a `Recording`; `Store::commit_recorded` checks
+`RecordedCommit::new` binds a decision to a `Recording`. `Store::commit_recorded` checks
 `Expect::Absent` or `Expect::Revision(n)` before writing state, history and events. For an ordered
 multi-subject command, `AtomicBatchStore::commit_batch` on the Memory, SQLite or PostgreSQL store
 lets every expectation see the earlier entries of the same batch, and rolls the whole batch back on
@@ -125,7 +125,7 @@ asynchronous `entity-executor` and the Eventlog-backed stores.
 
 `entity_core::replay` re-runs a complete decision record and compares the normalized input,
 definition, result, changes and events. `rehydrate` folds a legacy event-only history against the
-current definition and refuses any revision no operation could have produced; it is a migration
+current definition and refuses any revision no operation could have produced. It is a migration
 tool, not equivalent proof.
 
 ## Query documents
@@ -133,8 +133,8 @@ tool, not equivalent proof.
 `entity_query::DocumentQueryProvider` is implemented by the Memory and PostgreSQL stores and the
 Eventlog facades. A `DocumentQuery` selects one entity type, applies recursive JSON containment to
 its fields and returns an identity-ordered page. The default limit is 100 and the maximum 1,000. A
-cursor is bound to the query that issued it; one from another query is refused. Paging does not
-hold a snapshot across calls.
+cursor is bound to the query that issued it, and a cursor from another query is refused. Paging does
+not hold a snapshot across calls.
 
 `PostgresStore` also offers command sessions for transactional reads, writes, queries, events and
 identity-range reservation. The `entity` command's `list` only enumerates stored ids.
