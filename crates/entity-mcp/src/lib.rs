@@ -422,7 +422,7 @@ fn execute_schema(definitions: Vec<&EntityDefinition>, operation: &str) -> Value
     let schemas: Vec<Value> = definitions
         .iter()
         .filter_map(|definition| definition.operations.get(operation))
-        .map(|operation| entity_surface::object_schema(&operation.arguments))
+        .map(|operation| entity_surface::input_object_schema(&operation.arguments))
         .collect();
     let arguments = if schemas.len() == 1 {
         schemas.into_iter().next().unwrap_or_else(|| json!({}))
@@ -692,6 +692,88 @@ mod tests {
         assert_eq!(
             created["result"]["structuredContent"]["instance"]["fields"]["views"], 0,
             "{created}"
+        );
+    }
+
+    /// The kernel fills an operation argument's declared default before it validates, also inside
+    /// an object argument the caller sent, so the operation tool must not require it.
+    #[test]
+    fn an_operation_tool_does_not_require_an_argument_the_kernel_fills_from_its_default() {
+        let definition: EntityDefinition = serde_json::from_value(json!({
+            "entity": "counter",
+            "version": 1,
+            "schema": { "fields": {
+                "spent": { "type": "number", "required": true, "default": 0 },
+                "note": { "type": "string" },
+                "tag": { "type": "string" }
+            }},
+            "lifecycle": { "initial": "open", "states": ["open"] },
+            "operations": { "charge": {
+                "arguments": { "fields": {
+                    "amount": { "type": "number", "required": true, "min": 0 },
+                    "note": { "type": "string", "required": true, "default": "-" },
+                    "meta": { "type": "object", "required": true, "properties": {
+                        "tag": { "type": "string", "required": true, "default": "none" }
+                    }}
+                }},
+                "transitions": [{ "from": "open", "to": "open" }],
+                "set": {
+                    "spent": { "increment": "$args.amount" },
+                    "note": "$args.note",
+                    "tag": "$args.meta.tag"
+                }
+            }}
+        }))
+        .expect("definition");
+        let mut registry = Registry::new();
+        registry.register(definition).expect("valid");
+        let schema = execute_schema(
+            registry.iter().map(|d| d.as_definition()).collect(),
+            "charge",
+        );
+        let recording =
+            json!({ "record_id": "two", "recorded_at": "2026-11-23T00:01:00Z", "actor": null });
+        let request = json!({
+            "id": "c-1", "expected_revision": 1,
+            "arguments": { "amount": 2, "meta": {} }, "recording": recording
+        });
+        assert!(
+            jsonschema::is_valid(&schema, &request),
+            "the tool requires an argument the kernel fills from its default: {schema}"
+        );
+        let mut without_amount = request.clone();
+        without_amount["arguments"] = json!({ "meta": {} });
+        assert!(!jsonschema::is_valid(&schema, &without_amount), "{schema}");
+        let mut without_meta = request.clone();
+        without_meta["arguments"] = json!({ "amount": 2 });
+        assert!(
+            !jsonschema::is_valid(&schema, &without_meta),
+            "an object argument without a default is still required: {schema}"
+        );
+
+        let mut server = Server::new(&registry, MemoryStore::new()).expect("server");
+        let created = server
+            .handle(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                "name": "counter.create", "arguments": {
+                    "id": "c-1", "fields": {},
+                    "recording": { "record_id": "one", "recorded_at": "2026-11-23T00:00:00Z", "actor": null }
+                }
+            }}))
+            .expect("response");
+        assert_eq!(created["result"]["isError"], false, "{created}");
+        let charged = server
+            .handle(
+                json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+                    "name": "counter.charge", "arguments": request
+                }}),
+            )
+            .expect("response");
+        assert_eq!(charged["result"]["isError"], false, "{charged}");
+        let fields = &charged["result"]["structuredContent"]["instance"]["fields"];
+        assert_eq!(
+            (&fields["note"], &fields["tag"]),
+            (&json!("-"), &json!("none")),
+            "{charged}"
         );
     }
 }

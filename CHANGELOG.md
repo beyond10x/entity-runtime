@@ -37,6 +37,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   whose `views` and `spent` default to 0 is created with `name` alone, and its schemas required all
   three. The stored `<Entity>V<n>Fields` and the instance schema still require every required
   field.
+- The MCP operation tools (`<entity>.<operation>`) no longer require an argument the kernel fills
+  from its declared `default`, at the top level or inside an object argument the caller sends.
 - The lifecycle graph (`entity graph`, the diagrams of `entity generate docs`) draws the state
   changes a `service/*` operation makes through an outcome's `moves` effect, labelled with the
   operation. Before, only `transitions` were drawn, so a shipment `dispatch` from `pending` to
