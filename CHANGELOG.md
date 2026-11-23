@@ -26,6 +26,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   the histories it owns in place instead of copying every history and terminal state first (128
   subjects of 64 KiB: extra peak heap from 17.1 MB to 0.1 MB). Refusals are unchanged.
 
+### Fixed
+
+- `rehydrate` runs `create`'s own rules on a legacy creation event's fields and identity, and
+  refuses a creation event that lacks a declared default or carries a blank identity: `create`
+  never records either, so such a history folded to a genesis no `create` call produced. Every
+  history `create` and `execute` wrote still folds.
+
 ## [0.32.0] — 2026-11-22
 
 ### Security
