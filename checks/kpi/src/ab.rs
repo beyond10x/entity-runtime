@@ -50,6 +50,38 @@ fn copy_tree(from: &Path, to: &Path) {
     }
 }
 
+const EVENTLOG_GIT: &str = "https://github.com/beyond10x/eventlog\"";
+
+/// The Eventlog tag a manifest pins, read from its first `git = <eventlog>` line with a `tag`.
+fn eventlog_tag(manifest: &str) -> Option<String> {
+    manifest
+        .lines()
+        .filter(|line| line.contains(EVENTLOG_GIT))
+        .find_map(|line| {
+            let rest = &line[line.find("tag = \"")? + "tag = \"".len()..];
+            Some(rest[..rest.find('"')?].to_owned())
+        })
+}
+
+/// The harness manifest with every Eventlog git dependency pinned to `tag`, so a side whose
+/// crates pin another Eventlog release builds one copy of `eventlog-core` and not two.
+fn retag_eventlog(manifest: &str, tag: &str) -> String {
+    let mut out = String::with_capacity(manifest.len());
+    for line in manifest.split_inclusive('\n') {
+        match (line.contains(EVENTLOG_GIT), line.find("tag = \"")) {
+            (true, Some(start)) => {
+                let value = start + "tag = \"".len();
+                let end = value + line[value..].find('"').unwrap_or(0);
+                out.push_str(&line[..value]);
+                out.push_str(tag);
+                out.push_str(&line[end..]);
+            }
+            _ => out.push_str(line),
+        }
+    }
+    out
+}
+
 /// One side: a source tree and the two binaries built from it.
 struct Side {
     label: String,
@@ -102,11 +134,17 @@ fn prepare(repository: &Path, revision: &str, label: &str, toolchain: &str, dir:
     let text = std::fs::read_to_string(&manifest).expect("harness manifest");
     let start = text.find("counters = [").expect("counters feature");
     let end = start + text[start..].find(']').expect("feature list end") + 1;
-    std::fs::write(
-        &manifest,
-        format!("{}counters = []{}", &text[..start], &text[end..]),
-    )
-    .expect("harness manifest written");
+    let mut text = format!("{}counters = []{}", &text[..start], &text[end..]);
+    // The harness names Eventlog itself; a revision whose crates pin another Eventlog release
+    // gets the harness on that release, or the build holds two `eventlog-core` and fails.
+    let adapter = source.join("crates/entity-eventlog/Cargo.toml");
+    if let Some(tag) = std::fs::read_to_string(&adapter)
+        .ok()
+        .and_then(|adapter| eventlog_tag(&adapter))
+    {
+        text = retag_eventlog(&text, &tag);
+    }
+    std::fs::write(&manifest, text).expect("harness manifest written");
 
     // One target directory per side. Cargo names a path package's artifacts by its path relative
     // to the workspace root, so two trees sharing a target directory share `entity-core` and the
@@ -279,5 +317,39 @@ pub fn run(base: &str, head: &str, rounds: usize, toolchain: &str, dir: &Path) -
             eprintln!("er-kpi ab: {failure}");
         }
         ExitCode::FAILURE
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{eventlog_tag, retag_eventlog};
+
+    const HARNESS: &str = r#"[dependencies]
+entity-eventlog = { path = "../../crates/entity-eventlog", features = ["file"] }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.10.0" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.10.0" }
+serde = "1"
+"#;
+
+    #[test]
+    fn the_base_side_harness_builds_against_the_eventlog_tag_of_the_base_crates() {
+        let base_adapter = r#"eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.9.4" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.9.4", optional = true }
+"#;
+        let tag = eventlog_tag(base_adapter).expect("the base adapter pins an Eventlog tag");
+        assert_eq!(tag, "0.9.4");
+        let rewritten = retag_eventlog(HARNESS, &tag);
+        assert_eq!(
+            rewritten.matches(r#"tag = "0.9.4""#).count(),
+            2,
+            "{rewritten}"
+        );
+        assert!(!rewritten.contains("0.10.0"), "{rewritten}");
+        assert!(rewritten.contains(r#"serde = "1""#), "{rewritten}");
+    }
+
+    #[test]
+    fn a_harness_on_the_same_tag_is_unchanged() {
+        assert_eq!(retag_eventlog(HARNESS, "0.10.0"), HARNESS);
     }
 }
