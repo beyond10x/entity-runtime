@@ -80,6 +80,10 @@ pub fn run(work: &Path) -> Vec<Value> {
         values.extend(step("hooked::eventlog_batch_projection(work)", || {
             hooked::eventlog_batch_projection(work)
         }));
+        values.extend(step(
+            "hooked::eventlog_warm_definition_decodes(work)",
+            || hooked::eventlog_warm_definition_decodes(work),
+        ));
         values.extend(step("hooked::graph_mermaid()", hooked::graph_mermaid));
         values.extend(step(
             "hooked::executor_kernel_creates()",
@@ -715,6 +719,50 @@ mod hooked {
             );
         }
         values
+    }
+
+    /// Definition blobs decoded by two single-create batches on an Eventlog SQLite handle that has
+    /// already written one: the handle's reads and the inline projector each meet the definition
+    /// the records name. Every one decoded it again until the decode was remembered by its bytes
+    /// (0.33.0 slowdown, connectors).
+    pub fn eventlog_warm_definition_decodes(work: &Path) -> Vec<Value> {
+        use entity_eventlog::kpi_counters::DEFINITION_DECODES;
+        let registry = registry(&[TICKET]);
+        let directory = fresh(work, "definitions");
+        let mut store = entity_sqlite::EventlogSqliteStore::provision(
+            crate::stores::path_string(&directory.join("eventlog.sqlite")),
+            "er_kpi",
+            registry,
+            crate::stores::authority("definitions"),
+            context("provision"),
+            crate::fixture::LIMITS,
+            bridge(),
+        )
+        .expect("provisioned");
+        let create = |store: &entity_sqlite::EventlogSqliteStore, at: usize| {
+            let outcome = store.recorded().execute_batch(
+                context(&format!("create-{at}")),
+                BatchKey::Named(format!("create-{at}")),
+                vec![BatchAction::Create(entity_executor::CreateRequest {
+                    subject: subject("ticket", &format!("t{at}")),
+                    definition_version: 1,
+                    fields: json!({ "title": format!("t{at}") }),
+                    recording: recording(&format!("t{at}-create")),
+                })],
+                CallWait::Forever,
+            );
+            assert!(matches!(outcome, Ok(AppendOutcome::Committed { .. })));
+        };
+        create(&store, 0);
+        let before = read(&DEFINITION_DECODES);
+        create(&store, 1);
+        create(&store, 2);
+        let decoded = read(&DEFINITION_DECODES) - before;
+        assert_eq!(
+            store.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+        vec![(id("eventlog.warm_batch.definition_decodes.b2"), decoded)]
     }
 
     /// E10: endpoint comparisons drawing the 300-state chain as Mermaid.
