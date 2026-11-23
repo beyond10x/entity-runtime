@@ -8,9 +8,9 @@ use serde_json::{Value, json};
 
 use crate::encoding::{
     ANCHOR_BLOB_DOMAIN, Authority, BATCH_BLOB_DOMAIN, BINDING_BLOB_DOMAIN, ENTRY_BLOB_DOMAIN,
-    PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, SubjectWire, authority_subject_value,
-    decode_anchor, decode_batch, decode_binding, decode_entry, decode_record, framed_key,
-    key_for_value,
+    PhysicalRef, RECORD_BLOB_DOMAIN, REQUEST_BLOB_DOMAIN, RecordedEntryWrapper, SubjectWire,
+    authority_subject_value, decode_anchor, decode_batch, decode_binding, decode_entry,
+    decode_record, framed_key, key_for_value,
 };
 
 pub(crate) const PROJECTOR_NAME: &str = "er_recorded_v1";
@@ -192,13 +192,7 @@ async fn apply_recorded_entry(
     validate_revision(&entry)?;
     let physical = physical(event);
     let row_key = record_key(&wrapper.authority, entry.record_id()).map_err(store_error)?;
-    let record_row = json!(["er.eventlog.record-index/1", {"entry": {
-        "kind":"committed", "authority":wrapper.authority, "record_id":entry.record_id(),
-        "subject":SubjectWire::from(&subject), "record_kind":kind(entry.kind()), "revision":entry.revision(),
-        "batch_key":wrapper.batch_key, "member_index":wrapper.member_index,
-        "record_blob":wrapper.record_blob, "request_blob":wrapper.request_blob,
-        "batch_blob":wrapper.batch_blob, "physical":physical,
-    }}]);
+    let record_row = committed_record_row(&wrapper, &entry, &physical);
     upsert_once(store, record_spec(), &event.tenant, &row_key, &record_row).await?;
 
     let subject_row_key = subject_key(&wrapper.authority, &subject).map_err(store_error)?;
@@ -207,10 +201,14 @@ async fn apply_recorded_entry(
         .await?;
     let (origin, state_source, prior_revision) =
         fold_subject_source(prior.as_ref(), &entry, &wrapper.record_blob)?;
-    let subject_row = json!(["er.eventlog.subject-index/1", {
-        "authority":wrapper.authority, "subject":SubjectWire::from(&subject), "origin":origin,
-        "revision":prior_revision, "state_source":state_source, "physical_head":physical,
-    }]);
+    let subject_row = subject_row(
+        &wrapper.authority,
+        &subject,
+        &origin,
+        prior_revision,
+        &state_source,
+        &physical,
+    );
     store
         .upsert(
             subject_spec(),
@@ -239,15 +237,17 @@ async fn apply_recorded_entry(
                     "batch member row does not reproduce its membership",
                 ));
             }
-            saved.push(json!({
-                "member_index":index,"record_id":member.entry.record_id(),"record_key":key,
-                "subject":SubjectWire::from(&member.entry.subject()),"record_kind":kind(member.entry.kind()),
-                "revision":member.entry.revision(),"record_blob":body["record_blob"],
-                "request_blob":body["request_blob"],"physical":body["physical"],
-            }));
+            saved.push(batch_member_row(
+                index,
+                &member.entry,
+                &key,
+                &body["record_blob"],
+                &body["request_blob"],
+                &body["physical"],
+            ));
         }
         let key = batch_key(&wrapper.authority, decoded_key).map_err(store_error)?;
-        let row = json!(["er.eventlog.batch-index/1", {"authority":wrapper.authority,"batch_key":crate::encoding::BatchKeyWire::from(decoded_key),"batch_blob":wrapper.batch_blob,"members":saved}]);
+        let row = batch_row(&wrapper.authority, decoded_key, &wrapper.batch_blob, saved);
         upsert_once(store, batch_spec(), &event.tenant, &key, &row).await?;
     }
     let _ = entry_digest;
@@ -281,21 +281,25 @@ async fn apply_import_anchor(
             }
             validate_revision(&entry)?;
             let key = record_key(&wrapper.authority, entry.record_id()).map_err(store_error)?;
-            let row = json!(["er.eventlog.record-index/1", {"entry": {
-                "kind":"imported","authority":wrapper.authority,"record_id":entry.record_id(),
-                "subject":SubjectWire::from(&subject),"record_kind":kind(entry.kind()),"revision":entry.revision(),
-                "anchor_blob":anchor_digest,"evidence_index":index,"record_blob":record_blob,"anchor_physical":physical(event),
-            }}]);
+            let row = imported_record_row(
+                &wrapper.authority,
+                &entry,
+                &anchor_digest,
+                index,
+                record_blob,
+                &physical(event),
+            );
             upsert_once(store, record_spec(), &event.tenant, &key, &row).await?;
         }
     }
     let key = subject_key(&wrapper.authority, &subject).map_err(store_error)?;
-    let row = json!(["er.eventlog.subject-index/1", {
-        "authority":wrapper.authority,"subject":SubjectWire::from(&subject),
-        "origin":{"kind":"imported","anchor_blob":anchor_digest,"anchor_physical":physical(event)},
-        "revision":wrapper.instance.revision,"state_source":{"kind":"anchor","anchor_blob":anchor_digest},
-        "physical_head":physical(event),
-    }]);
+    let row = imported_subject_row(
+        &wrapper.authority,
+        &subject,
+        &anchor_digest,
+        wrapper.instance.revision,
+        &physical(event),
+    );
     upsert_once(store, subject_spec(), &event.tenant, &key, &row).await
 }
 
@@ -509,11 +513,9 @@ fn fold_subject_source(
     record_blob: &str,
 ) -> Result<(Value, Value, u64), EventLogError> {
     match (prior, entry) {
-        (None, RecordedEntry::Decision(_)) if entry.revision() == 1 => Ok((
-            json!({"kind":"genesis"}),
-            json!({"kind":"decision","record_blob":record_blob}),
-            1,
-        )),
+        (None, RecordedEntry::Decision(_)) if entry.revision() == 1 => {
+            Ok((genesis_origin(), decision_state_source(record_blob), 1))
+        }
         (None, _) => Err(invalid(
             "subject history does not begin with creation or anchor",
         )),
@@ -521,7 +523,7 @@ fn fold_subject_source(
             let body = tagged_body(row, "er.eventlog.subject-index/1")?;
             Ok((
                 body["origin"].clone(),
-                json!({"kind":"decision","record_blob":record_blob}),
+                decision_state_source(record_blob),
                 entry.revision(),
             ))
         }
@@ -578,6 +580,108 @@ fn require_tenant(event: &RecordedEvent, authority: &Authority) -> Result<(), Ev
     } else {
         Err(invalid("authority tenant differs from event tenant"))
     }
+}
+
+// The row bodies the projector writes. The adapter builds the same bodies before a write, with
+// the widest physical reference, to bound the payload bytes the write adds (see `admit_growth`).
+
+pub(crate) fn committed_record_row(
+    wrapper: &RecordedEntryWrapper,
+    entry: &RecordedEntry,
+    physical: &PhysicalRef,
+) -> Value {
+    json!(["er.eventlog.record-index/1", {"entry": {
+        "kind":"committed", "authority":wrapper.authority, "record_id":entry.record_id(),
+        "subject":SubjectWire::from(&entry.subject()), "record_kind":kind(entry.kind()),
+        "revision":entry.revision(), "batch_key":wrapper.batch_key,
+        "member_index":wrapper.member_index, "record_blob":wrapper.record_blob,
+        "request_blob":wrapper.request_blob, "batch_blob":wrapper.batch_blob, "physical":physical,
+    }}])
+}
+
+pub(crate) fn imported_record_row(
+    authority: &Authority,
+    entry: &RecordedEntry,
+    anchor_blob: &str,
+    evidence_index: usize,
+    record_blob: &str,
+    physical: &PhysicalRef,
+) -> Value {
+    json!(["er.eventlog.record-index/1", {"entry": {
+        "kind":"imported","authority":authority,"record_id":entry.record_id(),
+        "subject":SubjectWire::from(&entry.subject()),"record_kind":kind(entry.kind()),
+        "revision":entry.revision(),"anchor_blob":anchor_blob,"evidence_index":evidence_index,
+        "record_blob":record_blob,"anchor_physical":physical,
+    }}])
+}
+
+pub(crate) fn subject_row(
+    authority: &Authority,
+    subject: &Subject,
+    origin: &Value,
+    revision: u64,
+    state_source: &Value,
+    physical: &PhysicalRef,
+) -> Value {
+    json!(["er.eventlog.subject-index/1", {
+        "authority":authority, "subject":SubjectWire::from(subject), "origin":origin,
+        "revision":revision, "state_source":state_source, "physical_head":physical,
+    }])
+}
+
+pub(crate) fn imported_subject_row(
+    authority: &Authority,
+    subject: &Subject,
+    anchor_blob: &str,
+    revision: u64,
+    physical: &PhysicalRef,
+) -> Value {
+    subject_row(
+        authority,
+        subject,
+        &json!({"kind":"imported","anchor_blob":anchor_blob,"anchor_physical":physical}),
+        revision,
+        &json!({"kind":"anchor","anchor_blob":anchor_blob}),
+        physical,
+    )
+}
+
+/// The origin of a subject whose history begins with its creation.
+pub(crate) fn genesis_origin() -> Value {
+    json!({"kind":"genesis"})
+}
+
+/// The state source a decision leaves on its subject's row.
+pub(crate) fn decision_state_source(record_blob: &str) -> Value {
+    json!({"kind":"decision","record_blob":record_blob})
+}
+
+pub(crate) fn batch_member_row(
+    index: usize,
+    entry: &RecordedEntry,
+    record_key: &str,
+    record_blob: &Value,
+    request_blob: &Value,
+    physical: &Value,
+) -> Value {
+    json!({
+        "member_index":index,"record_id":entry.record_id(),"record_key":record_key,
+        "subject":SubjectWire::from(&entry.subject()),"record_kind":kind(entry.kind()),
+        "revision":entry.revision(),"record_blob":record_blob,
+        "request_blob":request_blob,"physical":physical,
+    })
+}
+
+pub(crate) fn batch_row(
+    authority: &Authority,
+    key: &BatchKey,
+    batch_blob: &str,
+    members: Vec<Value>,
+) -> Value {
+    json!(["er.eventlog.batch-index/1", {
+        "authority":authority,"batch_key":crate::encoding::BatchKeyWire::from(key),
+        "batch_blob":batch_blob,"members":members,
+    }])
 }
 
 pub(crate) fn physical(event: &RecordedEvent) -> PhysicalRef {

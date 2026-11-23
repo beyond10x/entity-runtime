@@ -41,6 +41,14 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   a 1 MiB field charged 33,024 bytes and now about 6.3 MB. A blob, decode or history that could
   not fit even in an empty memory is no longer remembered, and no longer makes the memory forget
   everything else first.
+- An Eventlog write or import batch that would take the tenant past
+  `CaptureLimits::max_payload_bytes` is refused before anything is uploaded, with
+  `AsyncStoreError::BatchExceedsReadBounds { bound: "max_payload_bytes", .. }`
+  (`WriteFailure::NotCommitted` or `ImportAnchorFailure::NotCommitted`). Before, the payload cap
+  was not checked: such a write committed, its own verification then failed, and every later open
+  at the same limits was refused. The check counts the write's events, rows and new blobs as an
+  upper bound, so a write within a few hundred bytes of the cap can be refused although it would
+  have fitted.
 
 ## [0.32.0] — 2026-11-22
 

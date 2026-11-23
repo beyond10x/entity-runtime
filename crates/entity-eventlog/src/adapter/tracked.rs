@@ -234,9 +234,13 @@ impl EventlogRecordedStore {
         {
             return Err(integrity("native capture substituted tenant generation"));
         }
+        // A tracked handle keeps no capture to count its payload from later, so it counts it now,
+        // once per complete verification; the suffixes after it carry the provider's count.
+        let payload = capture_payload(&capture);
         // The model takes the record and batch blobs; what this handle keeps of the capture is
         // every other blob, which is all an advance reads again.
-        let model = build_model_owning(&self.authority, &mut capture)?;
+        let mut model = build_model_owning(&self.authority, &mut capture)?;
+        model.held.payload = Some(payload);
         if model.binding.is_none() {
             return Err(integrity("the tenant has no authoritative binding"));
         }
@@ -453,6 +457,8 @@ impl EventlogRecordedStore {
                     bounds.events = verified.model.held.events;
                     bounds.blobs = verified.model.held.blobs;
                     bounds.rows = verified.model.held.rows;
+                    bounds.payload = verified.model.held.payload;
+                    bounds.payload_added = verified.model.held.payload_added;
                 }
                 cache.held.as_ref().map(|h| Arc::clone(&h.model))
             };
@@ -900,6 +906,8 @@ fn advance(
     model.held.events = usage.events;
     model.held.blobs = usage.blobs;
     model.held.rows = usage.projection_rows;
+    model.held.payload = Some(usage.payload_bytes);
+    model.held.payload_added = 0;
     for digest in &held_by_model {
         blobs.remove(digest);
     }
