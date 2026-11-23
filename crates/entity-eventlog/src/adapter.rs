@@ -2111,19 +2111,17 @@ impl EventlogOperationStore<'_> {
     /// writes, so a request a rival or an earlier attempt committed is answered as that commit. An
     /// observation moves a subject's physical head without moving its revision, so sustained
     /// contention can refuse a request that is still valid on every attempt; the budget ends that
-    /// with a retryable refusal instead of retrying, and holding the request, without end.
+    /// with the retryable [`AsyncStoreError::Contended`] instead of retrying, and holding the
+    /// request, without end.
     async fn append_inner(&self, request: AppendRequest) -> Result<AppendOutcome, WriteFailure> {
         for _ in 0..PHYSICAL_CONFLICT_ATTEMPTS {
             if let Attempted::Settled(outcome) = self.append_attempt(&request).await? {
                 return Ok(outcome);
             }
         }
-        Err(WriteFailure::NotCommitted(AsyncStoreError::Unreachable {
+        Err(WriteFailure::NotCommitted(AsyncStoreError::Contended {
             provider: "eventlog".to_owned(),
-            detail: format!(
-                "physical stream contention: {PHYSICAL_CONFLICT_ATTEMPTS} attempts each met a \
-                 concurrent write and none committed this request; retrying it later is safe"
-            ),
+            attempts: PHYSICAL_CONFLICT_ATTEMPTS as u64,
         }))
     }
 

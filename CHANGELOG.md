@@ -4,6 +4,16 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Breaking
+
+- `entity-store`: `AsyncStoreError` has a new variant, `Contended { provider, attempts }`. A
+  `match` on `AsyncStoreError` without a wildcard arm no longer compiles until it handles it. An
+  Eventlog append whose every attempt met a concurrent write now refuses with
+  `WriteFailure::NotCommitted(AsyncStoreError::Contended { provider: "eventlog", attempts: 8 })`
+  instead of `Unreachable` with a detail that began "physical stream contention". Nothing of the
+  request is committed; take it again later. The synchronous `entity-eventlog` stores still
+  report it as `StoreError::Unreachable`.
+
 ### Added
 
 - File Store v3 (`entity.file-store/3`) keeps a subject's current state apart from its

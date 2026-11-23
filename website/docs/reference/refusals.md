@@ -87,10 +87,12 @@ The `entity` command prints a store refusal as
 `eventlog_provider` for a refusal from the Eventlog File provider. MCP tool results carry the same
 `kind`, and `by` is the refusing boundary: `kernel`, `store` or `input`.
 
-The recorded stores of `entity-store`'s asynchronous ports add two errors.
+The recorded stores of `entity-store`'s asynchronous ports add three errors.
 `AsyncStoreError::Forked` means two merged branches both decided for one subject: join its heads
 with `BatchAction::Merge`. `BatchExceedsReadBounds` means the write would exceed the handle's read
 bounds: divide the batch. [Storage and replay](../concepts/storage.md) explains both.
+`Contended` means every attempt of a write met a concurrent write and none committed it: take the
+same request again later.
 
 ## Definition defects
 

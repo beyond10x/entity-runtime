@@ -84,8 +84,8 @@ struct Interposed {
     puts: AtomicUsize,
     /// The event ids each blob-bearing submission returned, in submission order.
     submissions: Mutex<Vec<Vec<String>>>,
-    /// Answers every group with a physical stream conflict, writing nothing.
-    contended: bool,
+    /// Answers this many groups with a physical stream conflict, writing nothing, then forwards.
+    contended: usize,
     /// Groups answered with that conflict.
     conflicts: AtomicUsize,
     /// Commits every blob-bearing group, then answers it as Eventlog answers a commit whose
@@ -104,7 +104,7 @@ impl Interposed {
             fail_next_put: Mutex::new(None),
             puts: AtomicUsize::new(0),
             submissions: Mutex::new(Vec::new()),
-            contended: false,
+            contended: 0,
             conflicts: AtomicUsize::new(0),
             cleanup_fails: false,
         }
@@ -117,16 +117,18 @@ impl Interposed {
         }
     }
 
-    fn contended(inner: Arc<dyn EventlogBackend>) -> Self {
+    fn contended(inner: Arc<dyn EventlogBackend>, groups: usize) -> Self {
         Self {
-            contended: true,
+            contended: groups,
             ..Self::new(inner, Offer::Override)
         }
     }
 
-    /// The physical stream conflict a contended provider answers every group with, counted.
+    /// The physical stream conflict a contended provider answers its first groups with, counted.
     fn conflict(&self) -> Option<EventLogError> {
-        self.contended.then(|| {
+        // One append's attempts reach the provider one after another, so a load and an add
+        // count them exactly.
+        (self.conflicts.load(Ordering::SeqCst) < self.contended).then(|| {
             self.conflicts.fetch_add(1, Ordering::SeqCst);
             EventLogError::Conflict {
                 expected: 1,
@@ -1238,14 +1240,15 @@ fn a_failed_fallback_upload_keeps_each_writes_blob_error() {
 }
 
 /// A provider that answers every group with a physical stream conflict ends an append after the
-/// adapter's attempt budget with a retryable refusal that commits nothing, instead of retrying
-/// it, and holding it, without end. Every attempt read and reconciled before it wrote.
+/// adapter's attempt budget with the typed, retryable `Contended` refusal that commits nothing,
+/// instead of retrying it, and holding it, without end. Every attempt read and reconciled before
+/// it wrote.
 #[test]
 fn an_append_that_meets_physical_conflicts_on_every_attempt_refuses_after_its_budget() {
     block_on(async {
         let destination = destination(Provider::Sqlite, "contended").await;
         destination.bind().await;
-        let interposed = Arc::new(Interposed::contended(destination.inner.clone()));
+        let interposed = Arc::new(Interposed::contended(destination.inner.clone(), usize::MAX));
         let erased: Arc<dyn EventlogBackend> = interposed.clone();
         let store = EventlogRecordedStore::open(erased, destination.authority.clone(), LIMITS)
             .await
@@ -1261,8 +1264,8 @@ fn an_append_that_meets_physical_conflicts_on_every_attempt_refuses_after_its_bu
             matches!(
                 &refused,
                 entity_executor::ExecutionError::Write(WriteFailure::NotCommitted(
-                    AsyncStoreError::Unreachable { provider, detail }
-                )) if provider == "eventlog" && detail.starts_with("physical stream contention: 8 attempts")
+                    AsyncStoreError::Contended { provider, attempts }
+                )) if provider == "eventlog" && *attempts == 8
             ),
             "{refused:?}"
         );
@@ -1280,6 +1283,49 @@ fn an_append_that_meets_physical_conflicts_on_every_attempt_refuses_after_its_bu
             AsyncStateReader::load(&store, &subject).await,
             Ok(None),
             "nothing of the request committed"
+        );
+    });
+}
+
+/// The budget counts attempts, not refusals: an append whose first seven attempts meet a physical
+/// stream conflict and whose eighth, its last allowed, meets none commits and returns `Ok`.
+#[test]
+fn an_append_that_commits_on_its_last_allowed_attempt_returns_ok() {
+    block_on(async {
+        let destination = destination(Provider::Sqlite, "last-attempt").await;
+        destination.bind().await;
+        let interposed = Arc::new(Interposed::contended(destination.inner.clone(), 7));
+        let erased: Arc<dyn EventlogBackend> = interposed.clone();
+        let store = EventlogRecordedStore::open(erased, destination.authority.clone(), LIMITS)
+            .await
+            .expect("bound store");
+        let operation = store.operation(context("last-attempt"));
+        let registry = registry();
+        let created = Executor::new(&registry, &operation)
+            .create(create("last-attempt", "last-attempt-create"))
+            .await;
+        assert!(
+            matches!(
+                &created,
+                Ok(AppendOutcome::Committed {
+                    replayed: false,
+                    ..
+                })
+            ),
+            "the eighth attempt commits: {created:?}"
+        );
+        assert_eq!(
+            interposed.conflicts.load(Ordering::SeqCst),
+            7,
+            "seven attempts met a conflict before the one that committed"
+        );
+        let subject = Subject::new("ticket", "last-attempt").expect("subject");
+        assert!(
+            matches!(
+                AsyncStateReader::load(&store, &subject).await,
+                Ok(Some(ref instance)) if instance.revision == 1
+            ),
+            "the request committed once"
         );
     });
 }

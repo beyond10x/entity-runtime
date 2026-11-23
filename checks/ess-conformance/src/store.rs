@@ -107,6 +107,10 @@ impl From<a::AsyncStoreError> for Failure {
             | a::AsyncStoreError::ProviderIntegrity { provider, .. } => {
                 failure.value["provider"] = json!(provider)
             }
+            a::AsyncStoreError::Contended { provider, attempts } => {
+                failure.value["provider"] = json!(provider);
+                failure.value["attempts"] = json!(attempts);
+            }
             a::AsyncStoreError::PositionExhausted { domain } => {
                 failure.value["domain"] = json!(domain)
             }
