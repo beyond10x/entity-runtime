@@ -1,9 +1,10 @@
 //! Adversary case: the member-doubling bound of `batch_cost.rs`, held on the File provider.
 //!
 //! The File provider is the one `entity-cli` builds with (`eventlog-providers` enables `file`).
-//! The projector calls `ProjectionStore::get_blob` for the batch blob once per member. Since
-//! Eventlog 0.8.2 the File provider hashes each distinct blob content once per handle, so those
-//! reads no longer cost a full hash each.
+//! The projector reads the batch blob with `ProjectionStore::get_blob` once per projection pass
+//! of a group, and for a later member only when the view does not hold its predecessor's row.
+//! Since Eventlog 0.8.2 the File provider hashes each distinct blob content once per handle, so
+//! such a read no longer costs a full hash.
 #![cfg(all(feature = "file", feature = "sync-bridge", target_os = "linux"))]
 
 use std::{num::NonZeroU16, path::Path, time::Duration};

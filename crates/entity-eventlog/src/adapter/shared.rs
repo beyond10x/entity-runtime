@@ -70,6 +70,8 @@ impl ModelHistory {
 
     /// The public answer, owning a copy of every record.
     pub(super) fn to_public(&self) -> SubjectHistory {
+        #[cfg(test)]
+        super::HISTORIES_COPIED.with(|copied| copied.set(copied.get() + 1));
         SubjectHistory {
             subject: self.subject.clone(),
             origin: self.origin.clone(),

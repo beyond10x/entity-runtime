@@ -84,6 +84,14 @@ thread_local! {
     /// record blob had already taken, on the current thread: only a store whose events name one
     /// record blob twice reaches that path, and a parity test shows it ran by reading this.
     static REUSED_RECORD_BYTES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+
+    /// Anchor evidence entries [`ImportedEvidencePositions`] visited on the current thread while
+    /// locating imported records for their index rows.
+    static EVIDENCE_ENTRIES_SCANNED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+
+    /// Subject histories copied out of a verified model into a public answer on the current
+    /// thread. Charged by `ModelHistory::to_public`, the only such copy.
+    static HISTORIES_COPIED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// This file's only path to [`crate::encoding::framed_key`].
@@ -805,6 +813,87 @@ mod batch_read_tests {
             elapsed[elapsed.len() / 2],
             elapsed.iter().sum::<std::time::Duration>()
         );
+    }
+
+    /// An identifier or state listing of one entity type reads the complete snapshot's verified
+    /// observation, one capture per listing, and copies no subject history out of it: a history
+    /// cannot contribute an identifier. The answers equal what the snapshot itself lists.
+    #[tokio::test]
+    async fn an_entity_listing_copies_no_history_out_of_its_verified_observation() {
+        let store = store().await;
+        let registry = registry();
+        let seeded: Vec<_> = (0..4)
+            .map(|i| create(&format!("listed-{i}"), &format!("listed-record-{i}")))
+            .collect();
+        store
+            .operation(context("listed"))
+            .execute_batch(&registry, BatchKey::Named("listed".into()), seeded)
+            .await
+            .expect("four subjects commit");
+        let scope = "batch-read-scope";
+        let expected: Vec<String> = (0..4).map(|i| format!("listed-{i}")).collect();
+
+        HISTORIES_COPIED.with(|copied| copied.set(0));
+        let before = reads(&store);
+        let absent = store.entity_ids(scope, "absent").await.expect("ids");
+        let ids = store.entity_ids(scope, "ticket").await.expect("ids");
+        let states = store.entity_states(scope, "ticket").await.expect("states");
+        let no_states = store.entity_states(scope, "absent").await.expect("states");
+        assert_eq!(
+            HISTORIES_COPIED.with(std::cell::Cell::get),
+            0,
+            "a listing copied subject histories out of the verified model"
+        );
+        assert_eq!(
+            since(&store, before),
+            (4, 0),
+            "each listing takes exactly one complete capture"
+        );
+        assert!(
+            absent.is_empty() && no_states.is_empty(),
+            "no subject of another type is listed"
+        );
+        assert_eq!(ids, expected);
+        assert_eq!(
+            states
+                .iter()
+                .map(|state| state.id.clone())
+                .collect::<Vec<_>>(),
+            expected
+        );
+
+        let snapshot = store.complete_snapshot(scope).await.expect("snapshot");
+        assert_eq!(
+            HISTORIES_COPIED.with(std::cell::Cell::get),
+            4,
+            "the snapshot copies each history, which the counter sees"
+        );
+        assert_eq!(
+            snapshot
+                .histories
+                .iter()
+                .map(|entry| entry.history.subject.id.clone())
+                .collect::<Vec<_>>(),
+            ids
+        );
+        assert_eq!(
+            snapshot
+                .histories
+                .into_iter()
+                .map(|entry| entry.terminal)
+                .collect::<Vec<_>>(),
+            states
+        );
+        assert!(matches!(
+            store.entity_ids("another-scope", "ticket").await,
+            Err(AsyncStoreError::InvalidInput(reason))
+                if reason == "requested scope differs from bound authority"
+        ));
+        assert!(matches!(
+            store.entity_states("another-scope", "ticket").await,
+            Err(AsyncStoreError::InvalidInput(reason))
+                if reason == "requested scope differs from bound authority"
+        ));
     }
 }
 
@@ -1655,6 +1744,71 @@ impl AsyncRecordedWriter for BatchReadStore<'_> {
     }
 }
 
+/// Listings of one entity type, projected from the observation a complete snapshot reads.
+///
+/// A listing still takes one complete verified observation, exactly as
+/// [`AsyncRecordedReader::complete_snapshot`] does, and refuses what it refuses: another scope, any
+/// capture that does not verify, and any subject history without a terminal state. What it does
+/// not do is copy every subject's history and state into a public snapshot only to discard every
+/// subject of another type afterwards.
+impl EventlogRecordedStore {
+    /// The identifiers of every subject of `entity`, in the order a complete snapshot lists them.
+    ///
+    /// # Errors
+    /// The refusals of [`AsyncRecordedReader::complete_snapshot`].
+    pub async fn entity_ids(
+        &self,
+        scope: &str,
+        entity: &str,
+    ) -> Result<Vec<String>, AsyncStoreError> {
+        let model = self.listing_model(scope).await?;
+        Ok(model
+            .histories
+            .keys()
+            .filter(|subject| subject.entity == entity)
+            .map(|subject| subject.id.clone())
+            .collect())
+    }
+
+    /// The terminal state of every subject of `entity`, in the order a complete snapshot lists
+    /// them.
+    ///
+    /// # Errors
+    /// The refusals of [`AsyncRecordedReader::complete_snapshot`].
+    pub async fn entity_states(
+        &self,
+        scope: &str,
+        entity: &str,
+    ) -> Result<Vec<EntityInstance>, AsyncStoreError> {
+        let model = self.listing_model(scope).await?;
+        Ok(model
+            .histories
+            .keys()
+            .filter_map(|subject| model.terminals.get(subject))
+            .filter(|terminal| terminal.entity == entity)
+            .cloned()
+            .collect())
+    }
+
+    /// One verified observation of the bound scope, held to the complete snapshot's boundary.
+    async fn listing_model(&self, scope: &str) -> Result<Arc<CapturedModel>, AsyncStoreError> {
+        if scope != self.authority.logical_scope {
+            return Err(AsyncStoreError::InvalidInput(
+                "requested scope differs from bound authority".into(),
+            ));
+        }
+        let model = self.capture_model().await?;
+        if model
+            .histories
+            .keys()
+            .any(|subject| !model.terminals.contains_key(subject))
+        {
+            return Err(integrity("subject history has no terminal state"));
+        }
+        Ok(model)
+    }
+}
+
 impl AsyncStateReader for EventlogRecordedStore {
     fn load<'a>(
         &'a self,
@@ -1809,6 +1963,20 @@ impl AsyncRecordedReader for EventlogOperationStore<'_> {
     }
 }
 
+/// How many times one append is attempted against physical stream conflicts before it refuses.
+const PHYSICAL_CONFLICT_ATTEMPTS: usize = 8;
+
+/// What one append attempt settled.
+///
+/// Not boxed: it lives only between one attempt and the loop that reads it, and is moved once.
+#[allow(clippy::large_enum_variant)]
+enum Attempted {
+    /// The request's outcome: committed, replayed or empty.
+    Settled(AppendOutcome),
+    /// A concurrent write moved a stream this attempt expected, and the request did not commit.
+    Contended,
+}
+
 impl AsyncRecordedWriter for EventlogOperationStore<'_> {
     fn append<'a>(
         &'a self,
@@ -1834,12 +2002,36 @@ impl EventlogOperationStore<'_> {
         Executor::new(registry, &reads).batch(key, actions).await
     }
 
+    /// Appends `request`, taking it again from a fresh read after each physical stream conflict
+    /// that did not commit it, at most [`PHYSICAL_CONFLICT_ATTEMPTS`] times.
+    ///
+    /// Every attempt reads the scope again and reconciles against what is committed before it
+    /// writes, so a request a rival or an earlier attempt committed is answered as that commit. An
+    /// observation moves a subject's physical head without moving its revision, so sustained
+    /// contention can refuse a request that is still valid on every attempt; the budget ends that
+    /// with a retryable refusal instead of retrying, and holding the request, without end.
     async fn append_inner(&self, request: AppendRequest) -> Result<AppendOutcome, WriteFailure> {
+        for _ in 0..PHYSICAL_CONFLICT_ATTEMPTS {
+            if let Attempted::Settled(outcome) = self.append_attempt(&request).await? {
+                return Ok(outcome);
+            }
+        }
+        Err(WriteFailure::NotCommitted(AsyncStoreError::Unreachable {
+            provider: "eventlog".to_owned(),
+            detail: format!(
+                "physical stream contention: {PHYSICAL_CONFLICT_ATTEMPTS} attempts each met a \
+                 concurrent write and none committed this request; retrying it later is safe"
+            ),
+        }))
+    }
+
+    /// One attempt of [`Self::append_inner`].
+    async fn append_attempt(&self, request: &AppendRequest) -> Result<Attempted, WriteFailure> {
         request.validate().map_err(WriteFailure::NotCommitted)?;
         let Some(key) = request.key.clone() else {
-            return Ok(AppendOutcome::Empty);
+            return Ok(Attempted::Settled(AppendOutcome::Empty));
         };
-        let scope = ReadScope::of_request(&key, &request);
+        let scope = ReadScope::of_request(&key, request);
         let model = self
             .store
             .scoped_model(&scope)
@@ -1847,9 +2039,9 @@ impl EventlogOperationStore<'_> {
             .map_err(WriteFailure::NotCommitted)?
             .model;
         if let Some(outcome) =
-            recover_from(&model, &key, &request).map_err(WriteFailure::NotCommitted)?
+            recover_from(&model, &key, request).map_err(WriteFailure::NotCommitted)?
         {
-            return Ok(outcome);
+            return Ok(Attempted::Settled(outcome));
         }
         // The expected heads come from the capture recovery just verified. Uploading this call's
         // blobs moves no head, and a head another writer moves in the meantime is refused by the
@@ -2056,6 +2248,7 @@ impl EventlogOperationStore<'_> {
                 }
                 committed_outcome(self.store, &scope, &key, false, &result)
                     .await
+                    .map(Attempted::Settled)
                     .map_err(|_| {
                     WriteFailure::Uncertain {
                         key,
@@ -2064,10 +2257,7 @@ impl EventlogOperationStore<'_> {
                     }
                 })
             }
-            Err(error) => {
-                self.resolve_append_error(error, &key, &request, &slot)
-                    .await
-            }
+            Err(error) => self.resolve_append_error(error, &key, request, &slot).await,
         }
     }
 
@@ -2077,7 +2267,7 @@ impl EventlogOperationStore<'_> {
         key: &BatchKey,
         request: &AppendRequest,
         slot: &Arc<Mutex<Option<GuardRefusal>>>,
-    ) -> Result<AppendOutcome, WriteFailure> {
+    ) -> Result<Attempted, WriteFailure> {
         match error {
             EventLogError::GuardRefused { code } => {
                 let refusal = slot
@@ -2099,7 +2289,7 @@ impl EventlogOperationStore<'_> {
                 }
             }
             EventLogError::UnknownCommit => match recover_append(self.store, key, request).await {
-                Ok(Some(outcome)) => Ok(outcome),
+                Ok(Some(outcome)) => Ok(Attempted::Settled(outcome)),
                 Ok(None) | Err(_) => Err(WriteFailure::Uncertain {
                     key: key.clone(),
                     cause:
@@ -2108,8 +2298,8 @@ impl EventlogOperationStore<'_> {
                 }),
             },
             EventLogError::Conflict { .. } => match recover_append(self.store, key, request).await {
-                Ok(Some(outcome)) => Ok(outcome),
-                Ok(None) => Box::pin(self.append_inner(request.clone())).await,
+                Ok(Some(outcome)) => Ok(Attempted::Settled(outcome)),
+                Ok(None) => Ok(Attempted::Contended),
                 Err(_) => Err(WriteFailure::Uncertain {
                     key: key.clone(),
                     cause:
@@ -2119,7 +2309,7 @@ impl EventlogOperationStore<'_> {
             },
             EventLogError::IdempotencyMismatch { .. } => {
                 match recover_append(self.store, key, request).await {
-                    Ok(Some(outcome)) => Ok(outcome),
+                    Ok(Some(outcome)) => Ok(Attempted::Settled(outcome)),
                     Ok(None) => Err(WriteFailure::NotCommitted(integrity(
                         "Eventlog command identity exists without matching ER authority",
                     ))),
@@ -4921,6 +5111,7 @@ fn expected_projection_rows(
     }
 
     let mut records = BTreeMap::new();
+    let mut evidence_positions = ImportedEvidencePositions::default();
     for (record_id, lookup) in &model.records {
         let physical = model
             .record_physical
@@ -4966,7 +5157,7 @@ fn expected_projection_rows(
                     "record_kind":record_kind_name(saved.entry.kind()),
                     "revision":saved.entry.revision(),
                     "anchor_blob":anchor,
-                    "evidence_index":imported_evidence_index(model, &subject, record_id)?,
+                    "evidence_index":evidence_positions.index(model, &subject, record_id)?,
                     "record_blob":digests.record,
                     "anchor_physical":physical,
                 }}])
@@ -5066,23 +5257,48 @@ fn expected_projection_rows(
     Ok([binding, records, batches, subjects])
 }
 
-fn imported_evidence_index(
-    model: &CapturedModel,
-    subject: &Subject,
-    record_id: &str,
-) -> Result<usize, AsyncStoreError> {
-    let history = model
-        .histories
-        .get(subject)
-        .ok_or_else(|| integrity("imported record has no subject history"))?;
-    let HistoryOrigin::Imported(anchor) = &history.origin else {
-        return Err(integrity("imported record belongs to a genesis history"));
-    };
-    anchor
-        .evidence
-        .iter()
-        .position(|item| matches!(item, entity_store::asynchronous::LegacyEvidence::Envelope(saved) if saved.entry.record_id() == record_id))
-        .ok_or_else(|| integrity("imported record is absent from its anchor evidence"))
+/// Where each imported record stands in its subject's anchor evidence, indexed once per subject.
+///
+/// Every imported record's index row names that position. Searching the anchor's evidence from
+/// its start for each record cost n(n+1)/2 entry comparisons for an anchor of n records, on every
+/// complete verification; one pass per subject indexes all of them. The first envelope carrying a
+/// record identity is its position, as the search found it.
+#[derive(Default)]
+struct ImportedEvidencePositions<'m> {
+    subjects: BTreeMap<&'m Subject, BTreeMap<&'m str, usize>>,
+}
+
+impl<'m> ImportedEvidencePositions<'m> {
+    fn index(
+        &mut self,
+        model: &'m CapturedModel,
+        subject: &Subject,
+        record_id: &str,
+    ) -> Result<usize, AsyncStoreError> {
+        if !self.subjects.contains_key(subject) {
+            let (subject, history) = model
+                .histories
+                .get_key_value(subject)
+                .ok_or_else(|| integrity("imported record has no subject history"))?;
+            let HistoryOrigin::Imported(anchor) = &history.origin else {
+                return Err(integrity("imported record belongs to a genesis history"));
+            };
+            let mut positions = BTreeMap::new();
+            for (position, item) in anchor.evidence.iter().enumerate() {
+                #[cfg(test)]
+                EVIDENCE_ENTRIES_SCANNED.with(|scanned| scanned.set(scanned.get() + 1));
+                if let entity_store::asynchronous::LegacyEvidence::Envelope(saved) = item {
+                    positions.entry(saved.entry.record_id()).or_insert(position);
+                }
+            }
+            self.subjects.insert(subject, positions);
+        }
+        self.subjects
+            .get(subject)
+            .and_then(|positions| positions.get(record_id))
+            .copied()
+            .ok_or_else(|| integrity("imported record is absent from its anchor evidence"))
+    }
 }
 
 fn record_kind_name(kind: entity_store::asynchronous::RecordKind) -> &'static str {
@@ -5564,6 +5780,16 @@ mod seeded_open {
     /// this crate's suite anchors exactly one envelope, so taking the first envelope for every
     /// record passes all of them — measured, not assumed.
     fn imported_fixture(subjects: usize) -> (Authority, TenantCapture) {
+        imported_fixture_with(subjects, 2)
+    }
+
+    /// One binding and `subjects` import anchors, each carrying `records` evidence envelopes: a
+    /// creation and `records - 1` touches, in that order.
+    fn imported_fixture_with(subjects: usize, records: usize) -> (Authority, TenantCapture) {
+        assert!(
+            records >= 2,
+            "an anchor of this fixture holds a creation and a touch"
+        );
         let authority = authority();
         let tenant = TenantId::new(TENANT.to_owned()).expect("fixture tenant");
         let registry = registry();
@@ -5601,15 +5827,23 @@ mod seeded_open {
                 &recording(&format!("imported-{index:06}-create")),
             )
             .expect("first record");
-            let touched = runtime
-                .execute(&first.instance, "touch", json!({}))
-                .expect("execution decision");
-            let second = entity_store::RecordedCommit::new(
-                touched,
-                &recording(&format!("imported-{index:06}-touch")),
-            )
-            .expect("second record");
-            let terminal = second.instance.clone();
+            let mut commits = vec![first];
+            for touch in 1..records {
+                let previous = &commits.last().expect("a creation precedes").instance;
+                let touched = runtime
+                    .execute(previous, "touch", json!({}))
+                    .expect("execution decision");
+                let record_id = if touch == 1 {
+                    format!("imported-{index:06}-touch")
+                } else {
+                    format!("imported-{index:06}-touch-{touch}")
+                };
+                commits.push(
+                    entity_store::RecordedCommit::new(touched, &recording(&record_id))
+                        .expect("touch record"),
+                );
+            }
+            let terminal = commits.last().expect("records").instance.clone();
             let history = SubjectHistory {
                 subject: Subject::new("ticket", format!("imported-{index:06}"))
                     .expect("imported subject"),
@@ -5618,10 +5852,11 @@ mod seeded_open {
                     completeness:
                         entity_store::asynchronous::LegacyCompleteness::AvailableEvidenceOnly,
                     order: entity_store::asynchronous::LegacyOrderDeclaration::PerKindOnly,
-                    evidence: vec![
-                        envelope(RecordedEntry::Decision(first), 0),
-                        envelope(RecordedEntry::Decision(second), 1),
-                    ],
+                    evidence: commits
+                        .into_iter()
+                        .zip(0..)
+                        .map(|(commit, order)| envelope(RecordedEntry::Decision(commit), order))
+                        .collect(),
                 }),
                 records: Vec::new(),
             };
@@ -5771,6 +6006,228 @@ mod seeded_open {
         assert!(
             hashed <= bytes,
             "build_model hashed {hashed} bytes of a {bytes}-byte capture"
+        );
+    }
+
+    /// Rebuilding the expected index rows of one anchor of n imported records visits each of its
+    /// n evidence entries once, not n(n+1)/2 times by searching from the start per record, and
+    /// every row still names the record's own position.
+    #[test]
+    fn imported_index_rows_visit_each_anchor_evidence_entry_once() {
+        const RECORDS: usize = 64;
+        let (authority, capture) = imported_fixture_with(1, RECORDS);
+        let model = build_model(&authority, &capture).expect("imported model builds");
+        EVIDENCE_ENTRIES_SCANNED.with(|scanned| scanned.set(0));
+        let [_, records, _, _] =
+            expected_projection_rows(&authority, &model).expect("expected index rows");
+        let scanned = EVIDENCE_ENTRIES_SCANNED.with(Cell::get);
+        assert_eq!(
+            scanned, RECORDS as u64,
+            "locating {RECORDS} imported records visited {scanned} evidence entries"
+        );
+        let mut positions: Vec<(String, u64)> = records
+            .values()
+            .map(|row| {
+                let entry = &row[1]["entry"];
+                (
+                    entry["record_id"].as_str().expect("record id").to_owned(),
+                    entry["evidence_index"].as_u64().expect("evidence index"),
+                )
+            })
+            .collect();
+        positions.sort_by_key(|(_, position)| *position);
+        let expected: Vec<(String, u64)> = (0..RECORDS)
+            .map(|touch| {
+                let record_id = match touch {
+                    0 => "imported-000000-create".to_owned(),
+                    1 => "imported-000000-touch".to_owned(),
+                    touch => format!("imported-000000-touch-{touch}"),
+                };
+                (record_id, touch as u64)
+            })
+            .collect();
+        assert_eq!(
+            positions, expected,
+            "each row names its record's own position"
+        );
+    }
+
+    /// A projection view over a capture's blobs that counts every blob read by digest.
+    struct CountingView<'c> {
+        blobs: BTreeMap<&'c str, &'c [u8]>,
+        rows: BTreeMap<(&'static str, String), Value>,
+        fetches: BTreeMap<String, usize>,
+    }
+
+    impl<'c> CountingView<'c> {
+        fn over(capture: &'c TenantCapture) -> Self {
+            Self {
+                blobs: capture_blobs(capture),
+                rows: BTreeMap::new(),
+                fetches: BTreeMap::new(),
+            }
+        }
+
+        fn rows_of(&self, name: &str) -> Vec<(String, Value)> {
+            self.rows
+                .iter()
+                .filter(|((projection, _), _)| *projection == name)
+                .map(|((_, key), row)| (key.clone(), row.clone()))
+                .collect()
+        }
+    }
+
+    impl eventlog_core::ProjectionStore for CountingView<'_> {
+        fn get_blob<'a>(
+            &'a mut self,
+            digest: &'a str,
+        ) -> eventlog_core::BoxFuture<'a, Result<Option<Vec<u8>>, EventLogError>> {
+            *self.fetches.entry(digest.to_owned()).or_default() += 1;
+            let bytes = self.blobs.get(digest).map(|bytes| bytes.to_vec());
+            Box::pin(async move { Ok(bytes) })
+        }
+        fn upsert<'a>(
+            &'a mut self,
+            projection: &'a eventlog_core::ProjectionSpec,
+            _tenant: &'a TenantId,
+            key: &'a str,
+            body: &'a Value,
+        ) -> eventlog_core::BoxFuture<'a, Result<(), EventLogError>> {
+            self.rows
+                .insert((projection.name, key.to_owned()), body.clone());
+            Box::pin(async { Ok(()) })
+        }
+        fn delete<'a>(
+            &'a mut self,
+            projection: &'a eventlog_core::ProjectionSpec,
+            _tenant: &'a TenantId,
+            key: &'a str,
+        ) -> eventlog_core::BoxFuture<'a, Result<(), EventLogError>> {
+            self.rows.remove(&(projection.name, key.to_owned()));
+            Box::pin(async { Ok(()) })
+        }
+        fn get<'a>(
+            &'a mut self,
+            projection: &'a eventlog_core::ProjectionSpec,
+            _tenant: &'a TenantId,
+            key: &'a str,
+        ) -> eventlog_core::BoxFuture<'a, Result<Option<Value>, EventLogError>> {
+            let row = self.rows.get(&(projection.name, key.to_owned())).cloned();
+            Box::pin(async move { Ok(row) })
+        }
+        fn get_for_update<'a>(
+            &'a mut self,
+            projection: &'a eventlog_core::ProjectionSpec,
+            tenant: &'a TenantId,
+            key: &'a str,
+        ) -> eventlog_core::BoxFuture<'a, Result<Option<Value>, EventLogError>> {
+            self.get(projection, tenant, key)
+        }
+        fn find<'a>(
+            &'a mut self,
+            _projection: &'a eventlog_core::ProjectionSpec,
+            _tenant: &'a TenantId,
+            _field: &'a str,
+            _value: &'a str,
+            _limit: usize,
+        ) -> eventlog_core::BoxFuture<'a, Result<Vec<Value>, EventLogError>> {
+            Box::pin(async {
+                Err(EventLogError::Invalid(
+                    "the recorded projections declare no indexed field".into(),
+                ))
+            })
+        }
+    }
+
+    /// One binding and one named group of `members` creations, with its projection rows, and the
+    /// digest of the group's batch blob.
+    fn group_fixture(members: usize) -> (Authority, TenantCapture, String) {
+        let (authority, mut capture) = fixture(0, 16);
+        push_batch(
+            &authority,
+            &mut capture,
+            &BatchKey::Named("group".into()),
+            (0..members)
+                .map(|index| {
+                    (
+                        decided(
+                            None,
+                            &format!("member-{index}"),
+                            &format!("member-record-{index}"),
+                        ),
+                        Expect::Absent,
+                        1,
+                    )
+                })
+                .collect(),
+        );
+        let events = capture.events.len();
+        let whole = prefix_of(&authority, &capture, events);
+        let batch_rows = &whole.projections[2].rows;
+        assert_eq!(batch_rows.len(), 1, "the fixture holds one batch");
+        let digest = batch_rows[0].1[1]["batch_blob"]
+            .as_str()
+            .expect("batch blob digest")
+            .to_owned();
+        (authority, whole, digest)
+    }
+
+    fn project(view: &mut CountingView<'_>, events: &[RecordedEvent]) {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+        let projector = crate::ErRecordedProjector::new();
+        for event in events {
+            runtime
+                .block_on(eventlog_core::Projector::apply(&projector, event, view))
+                .expect("event projects");
+        }
+    }
+
+    /// The inline projector reads a group's batch blob once per projection pass, not once per
+    /// member, and still writes exactly the rows a verified capture expects.
+    #[test]
+    fn a_group_is_projected_from_one_read_of_its_batch_blob() {
+        const MEMBERS: usize = 8;
+        let (_, whole, batch) = group_fixture(MEMBERS);
+        let mut view = CountingView::over(&whole);
+        project(&mut view, &whole.events);
+        assert_eq!(
+            view.fetches.get(&batch),
+            Some(&1),
+            "a {MEMBERS}-member group read its batch blob {:?} times",
+            view.fetches.get(&batch)
+        );
+        for projection in &whole.projections {
+            assert_eq!(
+                view.rows_of(projection.specification.name),
+                projection.rows,
+                "projected rows of {} differ from the verified capture's",
+                projection.specification.name
+            );
+        }
+    }
+
+    /// A member whose predecessor's row this view does not hold reads and verifies the batch
+    /// blob from the provider again: reuse rests on the view, not on what the thread last saw.
+    #[test]
+    fn a_member_whose_predecessor_row_is_absent_reads_its_batch_blob_again() {
+        let (authority, whole, batch) = group_fixture(4);
+        // Binding, then member 0 of the group.
+        let first_member = 1;
+        let mut view = CountingView::over(&whole);
+        project(&mut view, &whole.events[..=first_member]);
+        assert_eq!(view.fetches.get(&batch), Some(&1));
+        let key = record_key(&authority, "member-record-0").expect("record key");
+        view.rows.remove(&(crate::projection::RECORDS_NAME, key));
+        project(
+            &mut view,
+            &whole.events[first_member + 1..=first_member + 1],
+        );
+        assert_eq!(
+            view.fetches.get(&batch),
+            Some(&2),
+            "member 1 reused the batch blob without its predecessor's row in the view"
         );
     }
 

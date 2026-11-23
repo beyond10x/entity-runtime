@@ -9,6 +9,23 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 - The ESS conformance checker pins ESS 0.97.4 instead of 0.77.0. The regenerated suites stay
   `ess-conformance/35` with the same scenarios; ESS 0.84.0 adds an `expect_no_error` check to each
   authored success step. No library API or behaviour changes.
+- Listing the ids of one entity type, and document queries, on an Eventlog-backed store (the
+  `entity list` command over `--eventlog-config`, and the File, SQLite and PostgreSQL facades)
+  no longer copy every subject's history and state out of the verified capture before filtering
+  by type. They still take one complete verified capture and refuse what a complete snapshot
+  refuses. New: `EventlogRecordedStore::entity_ids`, `entity_states` and
+  `RecordedEventlogBridge::entity_ids`, `entity_states`.
+- Full verification of an Eventlog store with imported history locates each imported record in
+  its anchor's evidence with one pass per subject instead of a search from the start per record
+  (n(n+1)/2 comparisons for an anchor of n records).
+- The inline Eventlog projector reads a group's batch blob once per projection pass instead of
+  once per member; a later member reuses it only when the projection already holds the previous
+  member's row for that blob. Batch blobs over 32 MiB are still read and decoded per member.
+- An Eventlog append that meets a physical stream conflict without committing is attempted at
+  most 8 times in all, each attempt reading and reconciling afresh, and then refuses with
+  `WriteFailure::NotCommitted(AsyncStoreError::Unreachable { provider: "eventlog", .. })`, whose
+  detail starts `physical stream contention`; nothing was committed and the request can be
+  retried. Before, it retried without a bound, holding one more future per attempt.
 
 ## [0.32.0] — 2026-11-22
 

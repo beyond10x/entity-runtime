@@ -553,16 +553,11 @@ impl StateProvider for RecordedProviderFacade {
             .map_err(sync_read_error)
     }
 
+    /// Lists from the complete snapshot's verified observation without copying any history out.
     fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
-        let snapshot = self
-            .complete_snapshot(CallWait::Forever)
-            .map_err(sync_read_error)?;
-        Ok(snapshot
-            .histories
-            .into_iter()
-            .filter(|entry| entry.history.subject.entity == entity)
-            .map(|entry| entry.history.subject.id)
-            .collect())
+        self.bridge
+            .entity_ids(&self.authority.logical_scope, entity, CallWait::Forever)
+            .map_err(sync_read_error)
     }
 }
 
@@ -656,19 +651,19 @@ impl HistoryProvider for RecordedProviderFacade {
 }
 
 impl DocumentQueryProvider for RecordedProviderFacade {
+    /// Filters by entity type over the complete snapshot's verified observation before any state
+    /// is copied out; no history is.
     fn query_documents(&self, query: &DocumentQuery) -> Result<DocumentPage, QueryError> {
-        let snapshot = self
-            .complete_snapshot(CallWait::Forever)
+        let states = self
+            .bridge
+            .entity_states(
+                &self.authority.logical_scope,
+                &query.entity,
+                CallWait::Forever,
+            )
             .map_err(sync_read_error)
             .map_err(QueryError::Store)?;
-        query_ordered_instances(
-            query,
-            snapshot
-                .histories
-                .into_iter()
-                .filter(|entry| entry.terminal.entity == query.entity)
-                .map(|entry| entry.terminal),
-        )
+        query_ordered_instances(query, states)
     }
 }
 
