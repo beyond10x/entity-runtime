@@ -2,11 +2,17 @@
 format: aep.planning-md/3
 id: story:entity-eventlog-tests-under-budget
 kind: story
-status: draft
+status: implemented
 title: entity-eventlog tests run under 5 s each, killed at 60 s
 summary: provider_facades publication crash 23.1 s, small_store_cost owning build 18.2 s, seeded_open advanced model 15.2 s, small_store_cost warm handle 14.2 s; no nextest kill at 60 s
 owner: entity-runtime
-revision: 1
+relations:
+- serves: vision:O2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-23T21:53:44Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-23T21:53:45Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-23T21:53:45Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

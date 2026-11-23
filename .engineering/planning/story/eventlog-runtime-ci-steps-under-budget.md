@@ -2,13 +2,17 @@
 format: aep.planning-md/3
 id: story:eventlog-runtime-ci-steps-under-budget
 kind: story
-status: draft
+status: active
 title: The Eventlog runtime CI job's test steps end within 120 s
 summary: 'Forge: provider contracts step 156 s on main e21de938; local gate: eventlog-runtime-test 391 s, provider-ess-run 303 s'
 owner: entity-runtime
 relations:
 - informed_by: story:entity-eventlog-tests-under-budget
-revision: 1
+- serves: vision:O2
+revision: 3
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-23T21:53:45Z", actor: "human:timo", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-23T21:53:45Z", actor: "human:timo", revision: 3}
 ---
 ## Outcome
 
