@@ -43,6 +43,8 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   adds a counter per measured event and is not a supported API; builds without it are unchanged.
   CI runs the gate as two jobs: `KPI / KPI counters` (meant to become a required check) and
   `KPI / KPI timing` (the A/B on pull requests, informational only).
+- `MemoryStore::instances_after(entity, after)` borrows one entity type's instances after an
+  identity, in identity order, for keyset paging.
 
 ### Changed
 
@@ -108,6 +110,29 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   commit with. Every subject is still appended, verified and reported on its own, and a failure
   still leaves the subjects before it committed. An exact retry observes it twice instead of
   N + 1 times.
+- `Hybrid::catch_up` reads the destination's observations once per restore pass. It read them
+  again for every eligible observation before each missing decision: 10 reads to restore 4
+  revisions with one observation each, N(N+1)/2 in general.
+- `MemoryStore` document queries seek past the cursor and copy only the documents a page returns.
+  A one-document page over 1,024 documents with a 1 KiB title allocated 2,007,992 bytes; it now
+  allocates 3,824 bytes.
+- A document-query cursor is now `v1.<digest>.<last id>`, with a 128-bit FNV-1a digest of the
+  query in place of the whole hex-encoded query, so its length no longer grows with the predicate
+  (a 64 KiB filter made a 131,121-byte cursor; every cursor for the id `id-1` is now 44 bytes).
+  A cursor of the earlier form still continues its own query, checked without decoding the cursor
+  or serialising the query into a buffer; a cursor of another query is refused as before.
+- Document-query array containment indexes a stored array's scalars once when a query names more
+  of them than the logarithm of its length, instead of searching from the start for each member
+  (131,328 comparisons for 512 tags, now under 20,000). Numbers still match by exact value.
+- `MemoryStore::commit_batch` stages only the subjects a batch touches instead of copying the
+  whole store, and still applies every member or none. A one-member batch beside 1,024 subjects
+  with a 1 KiB title allocated 2,033,234 bytes; it now allocates 3,727 bytes.
+- `Hybrid::catch_up` reads a source subject's recorded history once per pass and reconciles a
+  subject once per direction, still checking every divergence's own record. 32 writes made while
+  the replica was down read the source's 32 events 32 times; they are now read once, and a pass
+  over a replica that is already level reads no events.
+- `MemoryStore` lists one entity type's identities by seeking to that type in its ordered map
+  instead of filtering every key, so listing a type it does not hold no longer walks the others.
 
 ### Fixed
 
@@ -177,6 +202,10 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   a 1 MiB field charged 33,024 bytes and now about 6.3 MB. A blob, decode or history that could
   not fit even in an empty memory is no longer remembered, and no longer makes the memory forget
   everything else first.
+- `Hybrid::catch_up` keeps a divergence when a legacy replica that is behind holds events up to
+  its revision that are not the source's. It used to append only the source's later events and
+  clear the divergence, leaving the replica with the source's state over a history the source
+  never produced. The divergence now says the replica's history is not the source's.
 
 ## [0.32.0] — 2026-11-22
 

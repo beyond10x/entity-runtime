@@ -107,7 +107,10 @@ Catch-up transfers exact recorded envelopes and observations, inserting observat
 beyond their revisions. Equal state alone cannot establish that evidence was replicated. Missing
 legacy prefixes, missing records behind the destination revision, or observations whose revision
 the destination has already passed retain the divergence for explicit repair. Catch-up never
-converts those records into event-only legacy imports or silently clears their divergence.
+converts those records into event-only legacy imports or silently clears their divergence. A
+legacy import appends only the source's events above the destination's revision, so it runs only
+when the destination's events up to that revision are exactly the source's; a destination whose
+earlier events differ moved independently and keeps its divergence.
 
 `Store::history` advertises optional recorded-history access without changing the remote wire
 contract. The shipped providers expose it. Custom wrappers must forward this capability to support

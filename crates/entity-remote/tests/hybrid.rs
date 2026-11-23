@@ -657,6 +657,103 @@ fn catch_up_refuses_to_overwrite_a_replica_that_moved_on_its_own() {
     );
 }
 
+/// A ticket that stays open and is renamed, emitting the new title, at every revision.
+fn renamable() -> Registry {
+    let definition = serde_json::from_value(json!({
+        "entity": "ticket",
+        "version": 1,
+        "schema": { "fields": { "title": { "type": "string", "required": true } } },
+        "lifecycle": { "initial": "open", "states": ["open"] },
+        "create": { "emit": { "type": "TicketOpened", "payload": { "ticket": "$id" } } },
+        "operations": {
+            "rename": {
+                "arguments": { "fields": { "title": { "type": "string", "required": true } } },
+                "transitions": [{ "from": "open", "to": "open" }],
+                "set": { "title": "$args.title" },
+                "emits": [{ "type": "TicketRenamed", "payload": { "title": "$args.title" } }]
+            }
+        }
+    }))
+    .expect("parses");
+    let mut registry = Registry::new();
+    registry.register(definition).expect("validates");
+    registry
+}
+
+#[test]
+fn catch_up_keeps_a_divergence_whose_replica_is_behind_with_an_earlier_event_of_its_own() {
+    // A legacy replica took its own revision 2 while the authority went on to revision 3. The
+    // replay appended only the authority's events above 2, kept the replica's own revision-2 event
+    // under the authority's revision-3 state, and cleared the divergence.
+    let registry = renamable();
+    let runtime = Runtime::new(&registry);
+    let rename = |instance: &EntityInstance, title: &str| {
+        runtime
+            .execute(instance, "rename", json!({ "title": title }))
+            .expect("permitted")
+    };
+    let mut store = Hybrid::new(
+        MemoryStore::new(),
+        remote(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+
+    store.remote().transport().go_dark("on a train");
+    let created = opened(&registry);
+    store.commit(&created, Expect::Absent).expect("accepted");
+    let second = rename(&created.instance, "Ours");
+    store
+        .commit(&second, Expect::Revision(1))
+        .expect("accepted");
+    let third = rename(&second.instance, "Ours again");
+    store.commit(&third, Expect::Revision(2)).expect("accepted");
+
+    let theirs = rename(&created.instance, "Theirs");
+    {
+        let transport = store.remote().transport();
+        transport.come_back();
+        transport
+            .store_mut()
+            .commit(&created, Expect::Absent)
+            .expect("accepted");
+        transport
+            .store_mut()
+            .commit(&theirs, Expect::Revision(1))
+            .expect("accepted");
+    }
+
+    assert_eq!(store.catch_up(), 3, "every divergence stays outstanding");
+    assert!(
+        store.divergences().iter().all(|divergence| divergence
+            .detail
+            .contains("history up to revision 2 is not the source's")),
+        "each says why: {:?}",
+        store.divergences()
+    );
+    assert_eq!(
+        store.remote().load("ticket", "one").expect("answers"),
+        Some(theirs.instance),
+        "the replica keeps its own version"
+    );
+    let titles: Vec<serde_json::Value> = store
+        .remote()
+        .events("ticket", "one")
+        .expect("events")
+        .into_iter()
+        .map(|event| event.payload)
+        .collect();
+    assert_eq!(
+        titles,
+        vec![json!({ "ticket": "one" }), json!({ "title": "Theirs" })],
+        "and only its own history"
+    );
+}
+
 #[test]
 fn catch_up_appends_only_what_the_replica_has_not_seen() {
     // Replaying the whole local log appended events the replica already had, and a log with an
@@ -1087,4 +1184,225 @@ fn missing_evidence_behind_the_destination_keeps_its_divergence_for_repair() {
         .observations("ticket", "one")
         .unwrap()
         .is_empty());
+}
+
+/// A store that counts how often its state, its events and its recorded history are read.
+#[derive(Debug, Default)]
+struct Counting {
+    inner: MemoryStore,
+    state_reads: std::cell::Cell<usize>,
+    event_reads: std::cell::Cell<usize>,
+    record_reads: std::cell::Cell<usize>,
+    observation_reads: std::cell::Cell<usize>,
+}
+
+fn count(reads: &std::cell::Cell<usize>) {
+    reads.set(reads.get() + 1);
+}
+
+impl StateProvider for Counting {
+    fn load(&self, entity: &str, id: &str) -> Result<Option<EntityInstance>, StoreError> {
+        count(&self.state_reads);
+        self.inner.load(entity, id)
+    }
+    fn ids(&self, entity: &str) -> Result<Vec<String>, StoreError> {
+        self.inner.ids(entity)
+    }
+}
+
+impl EventProvider for Counting {
+    fn events(&self, entity: &str, id: &str) -> Result<Vec<DomainEvent>, StoreError> {
+        count(&self.event_reads);
+        self.inner.events(entity, id)
+    }
+}
+
+impl entity_store::HistoryProvider for Counting {
+    fn records(
+        &self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Vec<entity_store::Envelope<entity_core::DecisionRecord>>, StoreError> {
+        count(&self.record_reads);
+        entity_store::HistoryProvider::records(&self.inner, entity, id)
+    }
+    fn observations(
+        &self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Vec<entity_store::RecordedObservation>, StoreError> {
+        count(&self.observation_reads);
+        entity_store::HistoryProvider::observations(&self.inner, entity, id)
+    }
+}
+
+impl Store for Counting {
+    fn history(&self) -> Option<&dyn entity_store::HistoryProvider> {
+        Some(self)
+    }
+    fn commit(&mut self, decision: &Decision, expect: Expect) -> Result<(), StoreError> {
+        self.inner.commit(decision, expect)
+    }
+    fn commit_recorded(
+        &mut self,
+        commit: &entity_store::RecordedCommit,
+        expect: Expect,
+    ) -> Result<(), StoreError> {
+        self.inner.commit_recorded(commit, expect)
+    }
+    fn observe(
+        &mut self,
+        observation: &entity_store::RecordedObservation,
+    ) -> Result<(), StoreError> {
+        self.inner.observe(observation)
+    }
+}
+
+#[test]
+fn catch_up_reads_the_replicas_observations_once_however_many_revisions_it_restores() {
+    // Before each missing decision, and once after the last, catch-up re-read the replica's whole
+    // observation history for every observation at or below the revision it had reached: four
+    // revisions with one observation each cost 0 + 1 + 2 + 3 + 4 = 10 reads.
+    use entity_store::{HistoryProvider, RecordedCommit, RecordedObservation};
+    let registry = renamable();
+    let runtime = Runtime::new(&registry);
+    let mut local = MemoryStore::new();
+    let mut observed = Vec::new();
+    let mut decision = opened(&registry);
+    for revision in 1..=4_u64 {
+        if revision > 1 {
+            decision = runtime
+                .execute(
+                    &decision.instance,
+                    "rename",
+                    json!({ "title": format!("Title {revision}") }),
+                )
+                .expect("permitted");
+        }
+        let commit =
+            RecordedCommit::new(decision.clone(), &recording(&format!("r{revision}"))).unwrap();
+        let expect = if revision == 1 {
+            Expect::Absent
+        } else {
+            Expect::Revision(revision - 1)
+        };
+        local.commit_recorded(&commit, expect).expect("accepted");
+        let observation = RecordedObservation {
+            entity: "ticket".into(),
+            id: "one".into(),
+            revision,
+            envelope: recording(&format!("o{revision}"))
+                .seal(json!({ "seen": revision }))
+                .unwrap(),
+        };
+        local.observe(&observation).expect("accepted");
+        observed.push(observation);
+    }
+    let mut store = Hybrid::new(
+        local,
+        Counting::default(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    store.remember(Divergence {
+        entity: "ticket".into(),
+        id: "one".into(),
+        local_revision: 4,
+        source: StoreSide::Local,
+        destination: StoreSide::Remote,
+        record_id: Some("r4".into()),
+        detail: "the replica was down".into(),
+    });
+
+    assert_eq!(store.catch_up(), 0, "{:?}", store.divergences());
+    assert_eq!(
+        store.remote().inner.observations("ticket", "one").unwrap(),
+        observed,
+        "every observation arrives, exactly"
+    );
+    assert_eq!(
+        store.remote().observation_reads.get(),
+        1,
+        "one read of the replica's observations for the whole pass"
+    );
+}
+
+#[test]
+fn catch_up_reads_the_sources_history_once_for_many_offline_writes_to_one_subject() {
+    // Every write made while the replica was down records a divergence, and each divergence read
+    // the source's whole history and event list again: 8 writes read the 8 events 8 times, and a
+    // later pass over the same divergences read them 8 times more although nothing was missing.
+    let registry = renamable();
+    let runtime = Runtime::new(&registry);
+    let mut local = Counting::default();
+    let mut offline = Vec::new();
+    let mut decision = opened(&registry);
+    for revision in 1..=8_u64 {
+        if revision > 1 {
+            decision = runtime
+                .execute(
+                    &decision.instance,
+                    "rename",
+                    json!({ "title": format!("Title {revision}") }),
+                )
+                .expect("permitted");
+        }
+        let expect = if revision == 1 {
+            Expect::Absent
+        } else {
+            Expect::Revision(revision - 1)
+        };
+        local.commit(&decision, expect).expect("accepted");
+        offline.push(Divergence {
+            entity: "ticket".into(),
+            id: "one".into(),
+            local_revision: revision,
+            source: StoreSide::Local,
+            destination: StoreSide::Remote,
+            record_id: None,
+            detail: "the replica was down".into(),
+        });
+    }
+    let mut store = Hybrid::new(
+        local,
+        MemoryStore::new(),
+        Policy::new(
+            Authority::Local,
+            ReadPath::LocalFirst,
+            WhenUnreachable::ServeStale,
+            OnDivergence::RecordDivergence,
+        ),
+    );
+    for divergence in offline.iter().cloned() {
+        store.remember(divergence);
+    }
+
+    assert_eq!(store.catch_up(), 0, "{:?}", store.divergences());
+    assert_eq!(
+        store.remote().load("ticket", "one").expect("answers"),
+        Some(decision.instance)
+    );
+    assert_eq!(
+        store.remote().events("ticket", "one").expect("events"),
+        store.local().inner.events("ticket", "one").expect("events"),
+        "every event once"
+    );
+    assert_eq!(store.local().record_reads.get(), 1, "one history read");
+    assert_eq!(store.local().state_reads.get(), 1, "one state read");
+    assert_eq!(store.local().event_reads.get(), 1, "one event read");
+
+    // A later process hands the same divergences back; the replica is already level.
+    for divergence in offline {
+        store.remember(divergence);
+    }
+    assert_eq!(store.catch_up(), 0, "{:?}", store.divergences());
+    assert_eq!(
+        store.local().event_reads.get(),
+        1,
+        "a level replica needs no events"
+    );
 }
