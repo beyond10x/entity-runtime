@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-23T22:23:24Z",
+  "actor": "human:timo",
+  "artifact": "story:eventlog-runtime-ci-steps-under-budget",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "CI run 45277382818, main 29de5694 (merge of #103), job Eventlog runtime (Rust 1.91)",
+    "reference": "https://github.com/beyond10x/entity-runtime/actions/runs/45277382818/job/138052710439"
+  }
+}

@@ -2,17 +2,18 @@
 format: aep.planning-md/3
 id: story:eventlog-runtime-ci-steps-under-budget
 kind: story
-status: active
+status: implemented
 title: The Eventlog runtime CI job's test steps end within 120 s
 summary: 'Forge: provider contracts step 156 s on main e21de938; local gate: eventlog-runtime-test 391 s, provider-ess-run 303 s'
 owner: entity-runtime
 relations:
 - informed_by: story:entity-eventlog-tests-under-budget
 - serves: vision:O2
-revision: 3
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-23T21:53:45Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-23T21:53:45Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-24T07:04:08Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 
@@ -45,3 +46,13 @@ id.
 On a CI run of `main` after the change, the steps "Test every Eventlog provider and bridge" and
 "Executable SQLite provider contracts" (or the steps that replace them) each take at most 120 s,
 and each carries a bound that fails it past 120 s.
+
+## Result
+
+CI run 45277382818 (main `29de5694`, the merge of #103), job "Eventlog runtime (Rust 1.91)":
+"Test every Eventlog provider and bridge" 22:16:26 -> 22:16:33 UTC, 7 s; "Executable SQLite
+provider contracts" 22:23:11 -> 22:23:12 UTC, 1 s. Each step carries `timeout-minutes: 2`
+(`.github/workflows/gate.yml:191` and `:207`), and the test step runs `scripts/test-step.sh`, which
+fails it past 120 s. The same two steps on main `f08eda98` (#105, run 45326703964): 6 s and 1 s.
+The compile steps before them are separate: "Lint and build the SQLite provider contract checker"
+took 332 s on a cold cache in the first run and 32 s in the second.
