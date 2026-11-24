@@ -4,6 +4,13 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-11-24
+
+This release builds on Eventlog 0.10.0 and does not move to a later Eventlog release. Two changes
+cannot be undone by running an older release on the same data: a new File Store root is created as
+v3, and a SQLite or PostgreSQL store this release opened names its definitions by digest. Both are
+described below, with what an operator runs.
+
 ### Breaking
 
 - `entity-store`: `AsyncStoreError` has a new variant, `Contended { provider, attempts }`. A
@@ -121,6 +128,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `min: 1.0000000000000001` there was read as `1.0` and `rate: 1` was admitted; it is now refused.
   A number a binary64 already holds (`0.50`, `0.1`, `1e3`) reads as before, so those definitions
   keep their bytes and digests.
+
+### Development
+
+- `entity-eventlog`'s tests run under nextest and any one of them is killed at 60 s; CI's Eventlog
+  test and contract steps end within 120 s.
+- The repository's `.cargo/config.toml` no longer sets `debug`, so a dev build on a machine
+  without its own cargo config carries Cargo's default debug information.
+- `checks/kpi` gains a read-invoke probe: process CPU per invoke of a read shaped like a typical
+  embedding application's, gated in the A/B at a ratio of 2.0.
 
 ## [0.33.1] — 2026-11-23
 

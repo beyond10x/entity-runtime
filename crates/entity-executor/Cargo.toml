@@ -13,8 +13,8 @@ repository.workspace = true
 kpi-counters = []
 
 [dependencies]
-entity-core = { path = "../entity-core", version = "0.33.1" }
-entity-store = { path = "../entity-store", version = "0.33.1" }
+entity-core = { path = "../entity-core", version = "0.34.0" }
+entity-store = { path = "../entity-store", version = "0.34.0" }
 serde_json.workspace = true
 
 [lints]
