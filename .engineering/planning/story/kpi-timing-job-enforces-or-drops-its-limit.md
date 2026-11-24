@@ -40,7 +40,7 @@ shared 20-CPU workstation moved by up to 1.94x. A CI runner's own noise has not 
 - `max_ratio` per KPI is set from that measurement, and the job either fails on a ratio above it
   (with `continue-on-error` removed) or is documented as informational with its limit removed.
 - A planted slowdown of one gated KPI turns the job red on CI.
-- Making the job a required check is a ruleset change and stays with Timo.
+- Making the job a required check is a ruleset change and stays with the owner.
 
 ## Scope
 

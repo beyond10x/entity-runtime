@@ -530,6 +530,10 @@ rules still apply; historical brand exemptions do not authorize new public assoc
   `b10x-gates bot`, which supplies the `b10x-bot[bot]` identity from protected local credentials;
   this repository carries no credential, no token-minting machinery and no bot-authenticated git
   wrapper, and needs no Atlas checkout to commit.
+* **Every `aep` write sets `AEP_ACTOR`.** `aep` records `human:$USER` when `AEP_ACTOR` is unset, and
+  that puts a person's login into a public planning record. Run `AEP_ACTOR=agent:entity-runtime aep
+  plan artifact <verb>` for every write (`new`, `move`, `evidence`, `body`, `relate`, `scope`).
+  Prose names the role ("the owner"), never a person.
 * Conventional prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 * Title, blank line, then a body explaining what changed and why. No title-only commits.
 * Ticket references go in a `Refs:` tagline at the end of the body, never in the title.

@@ -1,6 +1,6 @@
 {
   "at": "2026-11-24T08:10:10Z",
-  "actor": "human:timo",
+  "actor": "agent:entity-runtime",
   "artifact": "story:file-store-v3-migration-guide",
   "kind": "story",
   "revision": 1,

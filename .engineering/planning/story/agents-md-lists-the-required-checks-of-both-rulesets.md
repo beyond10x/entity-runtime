@@ -39,7 +39,7 @@ Read with `gh api repos/beyond10x/entity-runtime/rules/branches/main` on 2026-11
   by their exact context strings.
 - A script or task compares that list with `gh api repos/beyond10x/entity-runtime/rules/branches/main`
   and fails on a difference, or the section says the comparison is by hand and names the command.
-- No ruleset is changed by this story: the rulesets are Timo's.
+- No ruleset is changed by this story: the rulesets are the owner's.
 
 ## Scope
 

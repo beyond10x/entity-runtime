@@ -1,9 +1,9 @@
 {
   "at": "2026-11-23T22:23:24Z",
-  "actor": "human:timo",
+  "actor": "agent:entity-runtime",
   "artifact": "story:eventlog-runtime-ci-steps-under-budget",
   "kind": "story",
-  "revision": 3,
+  "revision": 4,
   "change": {
     "change": "evidence",
     "kind": "test_result",
