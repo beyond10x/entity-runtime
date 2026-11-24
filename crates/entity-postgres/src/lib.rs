@@ -540,10 +540,16 @@ impl PostgresSession<'_> {
     }
 
     /// Serializes contenders for an identity that may not have a row yet.
+    ///
+    /// The lock is a transaction-scoped advisory lock. Advisory locks are database-wide, so its key
+    /// is seeded with the identity of the `instances` table this transaction resolves: contenders
+    /// in one schema serialize, and contenders in two schemas of one database do not wait on each
+    /// other.
     pub fn lock_identity(&mut self, namespace: &str, identity: &str) -> Result<(), StoreError> {
         self.transaction
             .query_one(
-                "SELECT pg_advisory_xact_lock(hashtextextended($2, hashtextextended($1, 0)))",
+                "SELECT pg_advisory_xact_lock(hashtextextended($2, hashtextextended($1, \
+                 hashtextextended('instances'::regclass::oid::text, 0))))",
                 &[&namespace, &identity],
             )
             .map_err(|error| database("locking an absent identity", &error))?;

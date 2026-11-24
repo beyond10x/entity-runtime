@@ -94,6 +94,12 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   once a write commits, the handle holds what the write added, counted from the rows it wrote, so
   after any number of its own writes it holds what a fresh capture counts. Before, a long-lived
   handle drifted above the store's real payload and refused writes the cap admitted.
+- `PostgresSession::lock_identity` keys its advisory lock by the `instances` table of the schema
+  the session resolves, as well as by the namespace and identity. Before, contenders for one
+  identity in two schemas of one database waited on each other; contenders in one schema still do.
+  During a rolling upgrade an older and a newer binary locking the same identity in one schema take
+  different locks and no longer serialize against each other. Upgrade every caller of one schema
+  together.
 
 ## [0.33.1] — 2026-11-23
 

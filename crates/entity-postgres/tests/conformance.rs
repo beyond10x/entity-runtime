@@ -967,6 +967,80 @@ fn a_record_lock_serializes_one_record_id_within_a_schema_and_not_across_schemas
     east.drop_schema(&east_schema).expect("dropped");
 }
 
+/// `lock_identity` guards an identity that has no row yet in one store. Advisory locks are
+/// database-wide, so the key carries the store's schema: a contender in another schema of the
+/// database is granted at once, and a contender in the same schema waits.
+#[test]
+fn an_identity_lock_serializes_one_identity_within_a_schema_and_not_across_schemas() {
+    let Some(url) = url() else { return };
+    let (mut east, east_schema) = fresh(&url, "identity_lock_east");
+    let (mut west, west_schema) = fresh(&url, "identity_lock_west");
+    let (mut holder, holder_pid) = store_with_lock_timeout(&url, &east_schema, "30s");
+    let (mut west_contender, _) = store_with_lock_timeout(&url, &west_schema, "5s");
+    let (mut east_contender, _) = store_with_lock_timeout(&url, &east_schema, "300ms");
+    let mut observer = postgres::Client::connect(&url, postgres::NoTls).expect("observer");
+    let (namespace, identity) = ("aep.locator", "ep://beyond10x/plan/story/absent");
+    let (release, released) = std::sync::mpsc::channel::<()>();
+
+    let (held, across, within) = std::thread::scope(|scope| {
+        let held = scope.spawn(move || {
+            holder.with_transaction(|session| {
+                session.lock_identity(namespace, identity)?;
+                released.recv().expect("the test releases the lock");
+                Ok(())
+            })
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let holds: Option<bool> = observer
+                .query_one(
+                    "SELECT bool_or(locktype = 'advisory' AND granted) FROM pg_locks WHERE pid = $1",
+                    &[&holder_pid],
+                )
+                .expect("pg_locks answers")
+                .get(0);
+            if holds == Some(true) {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the holder never took its identity lock"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        // Results are collected before any assertion, so the holder is always released.
+        let started = std::time::Instant::now();
+        let across = west_contender
+            .with_transaction(|session| session.lock_identity(namespace, identity))
+            .map(|()| started.elapsed());
+        let started = std::time::Instant::now();
+        let within = east_contender
+            .with_transaction(|session| session.lock_identity(namespace, identity))
+            .map_err(|error| (error, started.elapsed()));
+        release.send(()).expect("the holder waits");
+        (held.join().expect("no panic"), across, within)
+    });
+
+    held.expect("the holder commits once released");
+    let across =
+        across.expect("the same identity in another schema does not wait for this schema's lock");
+    assert!(
+        across < std::time::Duration::from_secs(5),
+        "granted within its lock timeout: {across:?}"
+    );
+    let (refusal, waited) =
+        within.expect_err("the same identity in the same schema waits for the held lock");
+    assert!(
+        matches!(&refusal, StoreError::Backend(message)
+            if message.starts_with("locking an absent identity: "))
+            && waited >= std::time::Duration::from_millis(300),
+        "the contender in the held schema waited out its 300 ms lock timeout on the identity \
+         lock ({waited:?}): {refusal}"
+    );
+    west.drop_schema(&west_schema).expect("dropped");
+    east.drop_schema(&east_schema).expect("dropped");
+}
+
 /// A creation of `id` whose record carries `count` events at revision 1, each numbered in its
 /// `changed` map so their stored order can be read back.
 fn creation_with_events(id: &str, count: usize) -> entity_core::Decision {
