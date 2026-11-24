@@ -83,6 +83,9 @@ use postgres::{Client, GenericClient, IsolationLevel, NoTls};
 /// connection is anyway. A caller that wants parallel readers opens more stores.
 pub struct PostgresStore {
     client: Mutex<Client>,
+    /// Definitions a read of this handle has fetched and checked, by digest. A digest names one
+    /// document, so a definition checked once is not fetched again by this handle.
+    definitions: Mutex<DefinitionCache>,
 }
 
 /// Eventlog-backed PostgreSQL facade with complete recorded receipts and atomic groups.
@@ -263,6 +266,7 @@ impl PostgresStore {
     pub fn from_client(client: Client) -> Result<Self, StoreError> {
         let mut store = Self {
             client: Mutex::new(client),
+            definitions: Mutex::new(DefinitionCache::new()),
         };
         store.migrate()?;
         Ok(store)
@@ -341,6 +345,7 @@ impl PostgresStore {
             .map_err(|error| database("committing schema selection", &error))?;
         let mut store = Self {
             client: Mutex::new(client),
+            definitions: Mutex::new(DefinitionCache::new()),
         };
         store.migrate()?;
         Ok(store)
@@ -973,15 +978,6 @@ impl Store for PostgresStore {
             });
         }
         write_decision(&mut transaction, &commit.decision(), expect, false)?;
-        if let Some(definition) = &stored.definition {
-            transaction
-                .execute(
-                    "INSERT INTO definitions (digest, document) VALUES ($1, $2) \
-                     ON CONFLICT (digest) DO NOTHING",
-                    &[&definition.digest, &definition.document],
-                )
-                .map_err(|error| database("keeping the definition", &error))?;
-        }
         let position: i64 = transaction
             .query_one(
                 "SELECT COALESCE(MAX(position) + 1, 0) FROM history WHERE entity = $1 AND id = $2",
@@ -989,9 +985,25 @@ impl Store for PostgresStore {
             )
             .map_err(|error| database("reading the history position", &error))?
             .get(0);
+        let (digest, definition) = stored
+            .definition
+            .as_ref()
+            .map_or((None, None), |definition| {
+                (
+                    Some(definition.digest.as_str()),
+                    Some(definition.document.as_str()),
+                )
+            });
+        // The definition is kept by the statement that appends the record, so naming it by digest
+        // costs no round trip of its own.
         transaction
             .execute(
-                "INSERT INTO history (entity, id, position, kind, record_id, document) \
+                "WITH kept AS ( \
+                     INSERT INTO definitions (digest, document) \
+                     SELECT $6::TEXT, $7::TEXT WHERE $6::TEXT IS NOT NULL \
+                     ON CONFLICT (digest) DO NOTHING \
+                 ) \
+                 INSERT INTO history (entity, id, position, kind, record_id, document) \
                  VALUES ($1, $2, $3, 'decision', $4, $5)",
                 &[
                     &commit.instance.entity,
@@ -999,6 +1011,8 @@ impl Store for PostgresStore {
                     &position,
                     &commit.envelope.record_id,
                     &stored.document,
+                    &digest,
+                    &definition,
                 ],
             )
             .map_err(|error| database("appending the decision record", &error))?;
@@ -1302,7 +1316,13 @@ impl PostgresStore {
         let documents = history_documents(&mut *client, entity, id, "decision")?;
         // A definition is written in the transaction of the first record that names it and never
         // removed, so every definition a record read here names is visible to the reads below.
-        let mut definitions = DefinitionCache::new();
+        // The handle keeps what it checked, so a subject's next read fetches no definition.
+        let mut definitions = self.definitions.lock().map_err(|_| {
+            StoreError::Backend(
+                "the definition cache is poisoned: a previous call panicked while holding it"
+                    .to_owned(),
+            )
+        })?;
         documents
             .iter()
             .map(|document| {

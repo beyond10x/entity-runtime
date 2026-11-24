@@ -324,3 +324,43 @@ fn a_definition_changed_or_missing_under_its_digest_is_refused_on_read() {
     drop(client);
     store.drop_schema(&schema).expect("dropped");
 }
+
+/// A read fetches and checks a definition once per handle: the next read of the subject costs no
+/// definition query. Removing the definition behind the handle's back shows it: the handle that
+/// checked it still reads, and a handle that never did refuses.
+#[test]
+fn a_handle_fetches_and_checks_a_definition_once() {
+    let Some(url) = url() else { return };
+    let (mut store, schema) = fresh(&url, "by_digest_once");
+    let registry = registry();
+    let created = Runtime::new(&registry)
+        .create("ticket", 1, "one", json!({"title": "T"}))
+        .expect("permitted");
+    store
+        .commit_recorded(
+            &RecordedCommit::new(created, &recording("r-one")).expect("seals"),
+            Expect::Absent,
+        )
+        .expect("accepted");
+    let first = store.records("ticket", "one").expect("reads");
+    let mut client = raw(&url, &schema);
+    client
+        .execute("DELETE FROM definitions", &[])
+        .expect("removed");
+    assert_eq!(
+        store
+            .records("ticket", "one")
+            .expect("read again without a definition query"),
+        first
+    );
+    let other = PostgresStore::connect_in_schema(&url, &schema).expect("second handle");
+    let Err(StoreError::Backend(message)) = other.records("ticket", "one") else {
+        panic!("a handle that never checked the definition fetches it");
+    };
+    assert!(
+        message.contains("which this store does not hold"),
+        "{message}"
+    );
+    drop((client, other));
+    store.drop_schema(&schema).expect("dropped");
+}
