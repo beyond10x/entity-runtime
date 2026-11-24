@@ -99,10 +99,11 @@ check "nextest ends a test at 60 s" "1" \
 check "nextest writes the report the step reads" "1" \
     "$(grep -c '^path = "junit.xml"' "$config" || true)"
 
-# The test builds the step times: no debug information, optimised dependencies and hot crates.
+# The test builds the step times: optimised dependencies and hot crates. The repository sets no
+# `debug` value; the host's own cargo config sets `debug = false` for every build on it.
 profile=$(awk '/^\[/ { section = $0; next } NF { print section " " $0 }' "$here/../.cargo/config.toml")
-check "test builds carry no debug information" "1" \
-    "$(printf '%s\n' "$profile" | grep -c '^\[profile.dev\] debug = false$' || true)"
+check "the repository config sets no debug value" "0" \
+    "$(printf '%s\n' "$profile" | grep -c '^\[profile.dev\] debug' || true)"
 check "test builds optimise every dependency" "1" \
     "$(printf '%s\n' "$profile" | grep -c '^\[profile.dev.package."\*"\] opt-level = 2$' || true)"
 for crate in entity-core entity-store entity-eventlog; do
