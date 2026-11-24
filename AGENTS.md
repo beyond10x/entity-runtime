@@ -206,9 +206,9 @@ tests from nextest's JUnit report either way. Nextest runs every test in a proce
 `static` in a test binary is not shared between its tests, and `CARGO_MANIFEST_PATH` is unset. Run
 the step as a gate, under one pool job (`slot task eventlog-runtime-check`): started bare, its
 `cargo` waits in the pool's queue inside the 120 s. `.cargo/config.toml` sets the `dev` profile,
-test builds included, for CI and every local build: no debug information (a cargo config file wins
-over the manifest, and this host's own config turns it on), dependencies at `opt-level` 2, and
-`entity-core`, `entity-store` and `entity-eventlog` at 1. Debug assertions and overflow checks stay
+test builds included, for CI and every local build: dependencies at `opt-level` 2, and
+`entity-core`, `entity-store` and `entity-eventlog` at 1. It sets no `debug` value: this host's
+`~/.cargo/config.toml` sets `debug = false` for every build on it. Debug assertions and overflow checks stay
 on. Unoptimised, `sha2` alone was half of `entity-eventlog`'s slowest unit test, and four of its
 tests ran 7 to 17 s (load 35-65); optimised they run 1 to 4 s.
 
