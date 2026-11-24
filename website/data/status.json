@@ -151,6 +151,13 @@
     },
     {
       "area": "Storage",
+      "detail": "A new File Store root is created as v3, which keeps each subject's state apart from its append-only history; entity store migrate-file-v3 copies a v2 store into v3 out of place, and --dry-run writes nothing (0.34.0).",
+      "href": "/docs/guides/migrate-a-file-store",
+      "label": "File Store v3 and its migration",
+      "status": "shipped"
+    },
+    {
+      "area": "Storage",
       "detail": "State, history and events commit in one SQLite transaction.",
       "href": "/docs/concepts/storage",
       "label": "SQLite provider",

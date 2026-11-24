@@ -6,7 +6,7 @@ status: draft
 title: Eventlog Tree copy() hands an inline projector a redacted event as redacted
 summary: 'L43 remainder: the cold-replay fix (Eventlog 158a3e1f) leaves copy() into a target with inline projectors handing a tombstone as live'
 owner: entity-runtime
-revision: 1
+revision: 2
 ---
 ## Outcome
 
@@ -41,3 +41,13 @@ redacted event marked live."
 An Eventlog Tree test copies a history holding a redacted event into a target with an inline
 projector that refuses a live event whose body is a tombstone, and the copy completes with the
 projector having received that event with its redaction mark.
+
+## Check on main f08eda98
+
+Entity Runtime now pins Eventlog `0.10.0` (`c0f961dc`). At that tag the cold-replay fix has a test,
+`crates/eventlog-tree/tests/branches.rs:1240`
+`a_cold_replay_hands_an_inline_projector_a_redacted_event_as_redacted`. `copy` has none:
+`crates/eventlog-tree/tests/copy.rs` and `copy_adversary.rs` never name a projector, and
+`crates/eventlog-tree/src/copy.rs` appends each event through `replay` (`lib.rs:1043`) with
+`EventRecord::new_event` and redacts it afterwards (`copy.rs:88`), so the acceptance is not met
+and the story stays draft. Entity Runtime still has no `.copy(` call.

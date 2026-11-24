@@ -221,6 +221,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Storage",
+        "File Store v3 and its migration",
+        "A new File Store root is created as v3, which keeps each subject's state apart from its append-only history; entity store migrate-file-v3 copies a v2 store into v3 out of place, and --dry-run writes nothing (0.34.0).",
+        "crates/entity-cli/tests/cli.rs::a_0_33_1_file_store_migrates_to_v3_out_of_place_and_keeps_taking_commands",
+        "/docs/guides/migrate-a-file-store",
+    ),
+    shipped(
+        "Storage",
         "SQLite provider",
         "State, history and events commit in one SQLite transaction.",
         "crates/entity-sqlite/tests/conformance.rs::the_sqlite_provider_conforms",
