@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T23:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:read-invoke-cpu-at-or-under-0-32-0",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "r1-eventlog-adapter: read_invoke probe, 5 interleaved rounds, CPU per invoke 0.32.0 63.1 ms vs head 28.6 ms (0.45x), fresh open 611 -> 177 ms; probe shape does not reproduce connectors' +25 %, rerun filed as story:connectors-read-invoke-cpu-rerun-on-0-34-0"
+  }
+}

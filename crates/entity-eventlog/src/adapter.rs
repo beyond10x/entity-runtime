@@ -16,11 +16,12 @@ use entity_store::{
     asynchronous::{
         AppendMember, AppendOutcome, AppendRequest, AsyncRecordedReader, AsyncRecordedWriter,
         AsyncStateReader, AsyncStoreError, BatchKey, BatchReceipt, BoxFuture, CommitReceipt,
-        CompleteStoreSnapshot, HistoryOrigin, RecordForm, RecordLookup, RecordPosition,
-        RecordReceipt, StoreCoverage, StoredBatch, StoredRecord, Subject, SubjectAssurance,
-        SubjectHistory, SubjectSnapshot, WriteFailure, batch_comparison_bytes_in,
-        branch_tips_of_records, definition_comparison_bytes, original_request_comparison_bytes,
-        record_comparison_bytes_in, record_definition, validate_entry_against_state,
+        CompleteStoreSnapshot, HistoryOrigin, KnownDefinitions, RecordForm, RecordLookup,
+        RecordPosition, RecordReceipt, StoreCoverage, StoredBatch, StoredRecord, Subject,
+        SubjectAssurance, SubjectHistory, SubjectSnapshot, WriteFailure, batch_comparison_bytes_in,
+        batch_comparison_bytes_known, branch_tips_of_records, definition_comparison_bytes,
+        original_request_comparison_bytes, record_comparison_bytes_in,
+        record_comparison_bytes_known, record_definition, validate_entry_against_state,
         verify_shared_subject_history_with_checked_bytes, verify_subject_history,
     },
 };
@@ -989,6 +990,8 @@ pub struct EventlogRecordedStore {
     model_advances: AtomicUsize,
     records_decoded: AtomicUsize,
     scoped_reads: AtomicUsize,
+    /// Numbers the payload charges of this handle's own writes (`held.charges`).
+    charges_issued: std::sync::atomic::AtomicU64,
     /// The last capture this handle verified, and the model it verified it into.
     verified: Mutex<Option<Verified>>,
     /// What the tenant holds, as far as this handle knows: its last complete capture's counts
@@ -1030,6 +1033,57 @@ struct Growth {
 /// One member of a group being written: its entry wrapper, the wrapper's bytes and digest, and
 /// its record's bytes and digest.
 type MemberBlobs = (RecordedEntryWrapper, Vec<u8>, String, Vec<u8>, String);
+
+/// What one recorded append writes besides its blobs and its subjects' rows: one event per
+/// member, the member's record row, and the batch row.
+struct GroupRows<'a> {
+    key: &'a BatchKey,
+    batch_digest: &'a str,
+    wrappers: &'a [MemberBlobs],
+    request: &'a AppendRequest,
+}
+
+impl GroupRows<'_> {
+    /// Their payload bytes as the projector writes them, each member's physical reference as
+    /// `physical` names it from the member's index and its subject's stream id.
+    fn payload(
+        &self,
+        authority: &Authority,
+        physical: impl Fn(usize, &str) -> Result<PhysicalRef, AsyncStoreError>,
+    ) -> Result<u64, AsyncStoreError> {
+        let mut payload = 0u64;
+        let mut members = Vec::with_capacity(self.wrappers.len());
+        for (index, ((wrapper, _, wrapper_digest, _, _), member)) in
+            self.wrappers.iter().zip(&self.request.members).enumerate()
+        {
+            let reference = physical(
+                index,
+                &subject_stream_id(authority, &member.entry.subject())?,
+            )?;
+            payload = payload
+                .saturating_add(payload_len(&json!({ "blob": wrapper_digest })))
+                .saturating_add(payload_len(&committed_record_row(
+                    wrapper,
+                    &member.entry,
+                    &reference,
+                )));
+            members.push(batch_member_row(
+                index,
+                &member.entry,
+                &record_key(authority, member.entry.record_id())?,
+                &json!(wrapper.record_blob),
+                &json!(wrapper.request_blob),
+                &json!(reference),
+            ));
+        }
+        Ok(payload.saturating_add(payload_len(&batch_row(
+            authority,
+            self.key,
+            self.batch_digest,
+            members,
+        ))))
+    }
+}
 
 /// One verified capture and the model built from it.
 ///
@@ -1118,6 +1172,7 @@ impl EventlogRecordedStore {
             model_advances: AtomicUsize::new(0),
             records_decoded: AtomicUsize::new(0),
             scoped_reads: AtomicUsize::new(0),
+            charges_issued: std::sync::atomic::AtomicU64::new(0),
             verified: Mutex::new(None),
             held: Mutex::new(CaptureHeld::default()),
             own_events: Mutex::new(BTreeSet::new()),
@@ -1590,11 +1645,17 @@ impl EventlogRecordedStore {
             .map_err(|_| integrity("read bound lock poisoned"))?;
         held.payload = model.held.payload;
         held.payload_added = model.held.payload_added;
+        held.charges.clear();
         Ok(())
     }
 
     /// Adds what one of this handle's own writes put in the tenant to what it knows it holds.
-    fn grow(&self, growth: &Growth) {
+    ///
+    /// `growth.payload` is the bound the write was admitted with. It is charged under the number
+    /// this returns until [`Self::settle`] replaces it with the exact count, or an observation
+    /// that counts the write replaces every charge.
+    fn grow(&self, growth: &Growth) -> u64 {
+        let charge = self.charges_issued.fetch_add(1, Ordering::Relaxed);
         if let Ok(mut held) = self.held.lock() {
             held.events = held.events.saturating_add(growth.events);
             held.rows = held.rows.saturating_add(growth.rows);
@@ -1606,6 +1667,30 @@ impl EventlogRecordedStore {
                 }
             }
             held.payload_added = held.payload_added.saturating_add(payload);
+            if growth.payload > 0 {
+                held.charges.insert(charge, growth.payload);
+            }
+        }
+        charge
+    }
+
+    /// Whether `charge` is still held at the bound its write was admitted with.
+    fn charge_pending(&self, charge: u64) -> bool {
+        self.held
+            .lock()
+            .is_ok_and(|held| held.charges.contains_key(&charge))
+    }
+
+    /// Replaces the bound `charge` holds with `exact`, what its committed write added. A charge an
+    /// observation already replaced is left alone: that observation counted the write.
+    fn settle(&self, charge: u64, exact: u64) {
+        if let Ok(mut held) = self.held.lock()
+            && let Some(bound) = held.charges.remove(&charge)
+        {
+            held.payload_added = held
+                .payload_added
+                .saturating_sub(bound)
+                .saturating_add(exact);
         }
     }
 
@@ -2111,19 +2196,17 @@ impl EventlogOperationStore<'_> {
     /// writes, so a request a rival or an earlier attempt committed is answered as that commit. An
     /// observation moves a subject's physical head without moving its revision, so sustained
     /// contention can refuse a request that is still valid on every attempt; the budget ends that
-    /// with a retryable refusal instead of retrying, and holding the request, without end.
+    /// with the retryable [`AsyncStoreError::Contended`] instead of retrying, and holding the
+    /// request, without end.
     async fn append_inner(&self, request: AppendRequest) -> Result<AppendOutcome, WriteFailure> {
         for _ in 0..PHYSICAL_CONFLICT_ATTEMPTS {
             if let Attempted::Settled(outcome) = self.append_attempt(&request).await? {
                 return Ok(outcome);
             }
         }
-        Err(WriteFailure::NotCommitted(AsyncStoreError::Unreachable {
+        Err(WriteFailure::NotCommitted(AsyncStoreError::Contended {
             provider: "eventlog".to_owned(),
-            detail: format!(
-                "physical stream contention: {PHYSICAL_CONFLICT_ATTEMPTS} attempts each met a \
-                 concurrent write and none committed this request; retrying it later is safe"
-            ),
+            attempts: PHYSICAL_CONFLICT_ATTEMPTS as u64,
         }))
     }
 
@@ -2135,53 +2218,28 @@ impl EventlogOperationStore<'_> {
     /// its authority, subject and origin do not change. The row of a subject the store holds is
     /// therefore counted with a `null` origin and the largest revision, which bounds that growth;
     /// a new subject's row is counted whole, with the genesis origin it begins with.
+    ///
+    /// Every physical reference is counted with `event_id` ([`widest_event_id`]).
     fn write_payload_bound(
         &self,
-        key: &BatchKey,
-        batch_digest: &str,
-        wrappers: &[MemberBlobs],
-        request: &AppendRequest,
+        group: &GroupRows<'_>,
         new_subjects: &BTreeSet<Subject>,
+        event_id: &str,
     ) -> Result<u64, AsyncStoreError> {
         let authority = &self.store.authority;
-        let mut payload = 0u64;
+        let mut payload =
+            group.payload(authority, |_, stream| Ok(widest_physical(stream, event_id)))?;
         let mut state_sources: BTreeMap<Subject, &str> = BTreeMap::new();
-        let mut members = Vec::with_capacity(wrappers.len());
-        for (index, ((wrapper, _, wrapper_digest, _, _), member)) in
-            wrappers.iter().zip(&request.members).enumerate()
-        {
-            let subject = member.entry.subject();
-            let widest = widest_physical(&subject_stream_id(authority, &subject)?);
-            payload = payload
-                .saturating_add(payload_len(&json!({ "blob": wrapper_digest })))
-                .saturating_add(payload_len(&committed_record_row(
-                    wrapper,
-                    &member.entry,
-                    &widest,
-                )));
-            members.push(batch_member_row(
-                index,
-                &member.entry,
-                &record_key(authority, member.entry.record_id())?,
-                &json!(wrapper.record_blob),
-                &json!(wrapper.request_blob),
-                &json!(widest),
-            ));
-            state_sources.insert(subject, &wrapper.record_blob);
+        for ((wrapper, _, _, _, _), member) in group.wrappers.iter().zip(&group.request.members) {
+            state_sources.insert(member.entry.subject(), &wrapper.record_blob);
         }
-        payload = payload.saturating_add(payload_len(&batch_row(
-            authority,
-            key,
-            batch_digest,
-            members,
-        )));
         for (subject, record_blob) in state_sources {
             let origin = if new_subjects.contains(&subject) {
                 genesis_origin()
             } else {
                 Value::Null
             };
-            let widest = widest_physical(&subject_stream_id(authority, &subject)?);
+            let widest = widest_physical(&subject_stream_id(authority, &subject)?, event_id);
             payload = payload.saturating_add(payload_len(&subject_row(
                 authority,
                 &subject,
@@ -2259,15 +2317,33 @@ impl EventlogOperationStore<'_> {
             .filter(|subject| !model.histories.contains_key(*subject))
             .cloned()
             .collect();
+        // What the write's bound counts each physical reference with, and the subject rows it
+        // replaces, which the exact charge it settles at commit subtracts. A row this model cannot
+        // give leaves the write charged at its bound until the next observation counts it.
+        let event_id = widest_event_id(&model).to_owned();
+        let replaced =
+            subject_rows_payload(&self.store.authority, &model, heads.keys(), false).ok();
         // Released before the commit, so the post-commit verification advances the model in place.
         drop(model);
-        let batch_bytes = batch_comparison_bytes_in(write_form(), &key, &request.members)
-            .map_err(WriteFailure::NotCommitted)?;
+        // Each definition the records name is serialized once, for the blob bound with them; the
+        // batch and every record then name it by that digest without serializing it again.
+        let (named, definitions) = if write_form() == RecordForm::DefinitionByDigest {
+            definition_blobs(&request.members).map_err(WriteFailure::NotCommitted)?
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let mut known = KnownDefinitions::new();
+        for (definition, digest) in &named {
+            known.insert(definition, digest);
+        }
+        let batch_bytes =
+            batch_comparison_bytes_known(write_form(), &key, &request.members, &known)
+                .map_err(WriteFailure::NotCommitted)?;
         let batch_digest =
             framed_key(BATCH_BLOB_DOMAIN, &batch_bytes).map_err(WriteFailure::NotCommitted)?;
         let mut wrappers = Vec::with_capacity(request.members.len());
         for (index, member) in request.members.iter().enumerate() {
-            let record_bytes = record_comparison_bytes_in(write_form(), &member.entry)
+            let record_bytes = record_comparison_bytes_known(write_form(), &member.entry, &known)
                 .map_err(WriteFailure::NotCommitted)?;
             let record_digest = framed_key(RECORD_BLOB_DOMAIN, &record_bytes)
                 .map_err(WriteFailure::NotCommitted)?;
@@ -2300,11 +2376,6 @@ impl EventlogOperationStore<'_> {
         // One event and one record row per member, one batch row, one subject row per subject the
         // store does not yet hold, and every blob not already bound. Counted before a byte is
         // uploaded, so a refusal costs nothing and leaves nothing.
-        let definitions = if write_form() == RecordForm::DefinitionByDigest {
-            definition_blobs(&request.members).map_err(WriteFailure::NotCommitted)?
-        } else {
-            Vec::new()
-        };
         let mut digests = BTreeMap::new();
         for (digest, bytes) in &definitions {
             digests.insert(digest.clone(), bytes.len() as u64);
@@ -2320,11 +2391,17 @@ impl EventlogOperationStore<'_> {
             );
             digests.insert(wrapper_digest.clone(), wrapper_bytes.len() as u64);
         }
+        let rows = GroupRows {
+            key: &key,
+            batch_digest: &batch_digest,
+            wrappers: &wrappers,
+            request,
+        };
         let growth = Growth {
             events: wrappers.len() as u64,
             rows: wrappers.len() as u64 + 1 + new_subjects.len() as u64,
             payload: self
-                .write_payload_bound(&key, &batch_digest, &wrappers, request, &new_subjects)
+                .write_payload_bound(&rows, &new_subjects, &event_id)
                 .map_err(WriteFailure::NotCommitted)?,
             digests,
         };
@@ -2425,25 +2502,58 @@ impl EventlogOperationStore<'_> {
                     });
                 }
                 self.store.remember_own(&result);
-                if !result.deduplicated {
+                let charge = (!result.deduplicated).then(|| {
                     self.store.grow(&Growth {
                         digests: BTreeMap::new(),
                         ..growth
-                    });
-                }
-                committed_outcome(self.store, &scope, &key, false, &result)
-                    .await
-                    .map(Attempted::Settled)
-                    .map_err(|_| {
-                    WriteFailure::Uncertain {
+                    })
+                });
+                match committed_outcome_and_model(self.store, &scope, &key, false, &result).await {
+                    Ok((outcome, model)) => {
+                        // The write was charged at its bound. A handle whose read-back counted it
+                        // already holds the exact count; any other replaces the bound with what
+                        // the write added, from the references the provider returned.
+                        if let (Some(charge), Some(replaced)) = (charge, replaced)
+                            && self.store.charge_pending(charge)
+                            && let Ok(exact) =
+                                self.exact_payload(&rows, &result, &model, &heads, replaced)
+                        {
+                            self.store.settle(charge, exact);
+                        }
+                        Ok(Attempted::Settled(outcome))
+                    }
+                    Err(_) => Err(WriteFailure::Uncertain {
                         key,
                         cause: "Eventlog reported a commit but authoritative verification is unavailable"
                             .into(),
-                    }
-                })
+                    }),
+                }
             }
             Err(error) => self.resolve_append_error(error, &key, request, &slot).await,
         }
+    }
+
+    /// What a committed group added to the tenant's payload, blobs apart: its events, record rows
+    /// and batch row with the references the provider returned, and each subject's row as the
+    /// read-back `model` holds it in place of the rows it replaced (`replaced`).
+    fn exact_payload(
+        &self,
+        rows: &GroupRows<'_>,
+        result: &eventlog_core::AppendGroupResult,
+        model: &CapturedModel,
+        heads: &BTreeMap<Subject, Option<u64>>,
+        replaced: u64,
+    ) -> Result<u64, AsyncStoreError> {
+        let added = rows.payload(&self.store.authority, |index, _| {
+            result
+                .appends
+                .get(index)
+                .and_then(|append| append.events.first())
+                .map(physical)
+                .ok_or_else(|| integrity("committed group result has no event for a member"))
+        })?;
+        let subjects = subject_rows_payload(&self.store.authority, model, heads.keys(), true)?;
+        Ok(added.saturating_add(subjects).saturating_sub(replaced))
     }
 
     async fn resolve_append_error(
@@ -2634,14 +2744,14 @@ fn recover_from(
 }
 
 /// The receipt of a group the provider reported committed, verified from a fresh per-entity read
-/// of the request's own subjects, record ids and key.
-async fn committed_outcome(
+/// of the request's own subjects, record ids and key, and the model of that read.
+async fn committed_outcome_and_model(
     store: &EventlogRecordedStore,
     scope: &ReadScope,
     key: &BatchKey,
     replayed: bool,
     result: &eventlog_core::AppendGroupResult,
-) -> Result<AppendOutcome, AsyncStoreError> {
+) -> Result<(AppendOutcome, Arc<CapturedModel>), AsyncStoreError> {
     let model = store.scoped_model(scope).await?.model;
     let batch = model
         .batches
@@ -2658,10 +2768,11 @@ async fn committed_outcome(
             ));
         }
     }
-    Ok(AppendOutcome::Committed {
+    let outcome = AppendOutcome::Committed {
         receipt: batch.receipt.clone(),
         replayed,
-    })
+    };
+    Ok((outcome, model))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3549,8 +3660,11 @@ struct PreparedImport {
     uploads: Vec<(String, Vec<u8>)>,
     anchor_bytes: Vec<u8>,
     anchor_digest: String,
-    /// An upper bound on the payload bytes the anchor's event and index rows add; blobs apart.
+    /// An upper bound on the payload bytes the anchor's event and index rows add, blobs apart,
+    /// for an event id as long as a UUID.
     payload: u64,
+    /// How many physical references those rows name: each grows by what a longer event id adds.
+    references: u64,
 }
 
 impl EventlogOperationStore<'_> {
@@ -3648,12 +3762,18 @@ impl EventlogOperationStore<'_> {
         let anchor_digest = framed_key(ANCHOR_BLOB_DOMAIN, &anchor_bytes)
             .map_err(ImportAnchorFailure::NotCommitted)?;
         // The anchor's event body, one record row per envelope and the subject's row, as the
-        // projector writes them, with the widest physical reference of the subject's stream.
+        // projector writes them, with the widest physical reference of the subject's stream. The
+        // event id is a UUID's length here; the batch that admits this import widens each
+        // reference to the longest id its observation holds (`PreparedImport::references`).
         let authority = &self.store.authority;
         let widest = widest_physical(
             &subject_stream_id(authority, &history.subject)
                 .map_err(ImportAnchorFailure::NotCommitted)?,
+            UUID_EVENT_ID,
         );
+        // The subject row names the anchor's reference twice (origin and head); each record row
+        // names it once.
+        let mut references = 2u64;
         let mut payload = payload_len(&json!({ "blob": anchor_digest })).saturating_add(
             payload_len(&imported_subject_row(
                 authority,
@@ -3676,6 +3796,7 @@ impl EventlogOperationStore<'_> {
                     record_blob,
                     &widest,
                 )));
+                references += 1;
             }
         }
         Ok(PreparedImport {
@@ -3686,6 +3807,7 @@ impl EventlogOperationStore<'_> {
             anchor_bytes,
             anchor_digest,
             payload,
+            references,
         })
     }
 
@@ -3995,6 +4117,7 @@ impl EventlogOperationStore<'_> {
         }
         drop(claimed);
         let mut held = model.held.clone();
+        let widening = event_id_widening(&model);
         drop(model);
         if held.payload.is_none() {
             held.payload = self
@@ -4036,9 +4159,10 @@ impl EventlogOperationStore<'_> {
                 .iter()
                 .map(|item| 1 + item.record_ids.len() as u64)
                 .sum(),
-            payload: pending
-                .iter()
-                .fold(0u64, |sum, item| sum.saturating_add(item.payload)),
+            payload: pending.iter().fold(0u64, |sum, item| {
+                sum.saturating_add(item.payload)
+                    .saturating_add(item.references.saturating_mul(widening))
+            }),
             digests: pending
                 .iter()
                 .flat_map(|item| {
@@ -4431,9 +4555,11 @@ struct CaptureHeld {
     rows: u64,
     /// The exact payload of the observation these counts come from; `None` until counted.
     payload: Option<u64>,
-    /// What this handle's own writes since that observation added, as the upper bound
-    /// `admit_growth` admitted each with.
+    /// What this handle's own writes since that observation added: the exact count of each
+    /// write that settled, and the bound `admit_growth` admitted it with until then.
     payload_added: u64,
+    /// The bounds in `payload_added` of writes not settled yet, by charge number.
+    charges: BTreeMap<u64, u64>,
     /// Which blobs are already bound, so a batch counts only the ones it would add.
     digests: BTreeSet<String>,
     /// Whether `digests` is only what this handle has seen bound, not every bound digest: a
@@ -4692,6 +4818,7 @@ fn capture_held(capture: &TenantCapture, blobs: &BTreeMap<&str, &[u8]>, rows: u6
         rows,
         payload: None,
         payload_added: 0,
+        charges: BTreeMap::new(),
         digests: blobs.keys().map(|digest| (*digest).to_owned()).collect(),
         partial: false,
     }
@@ -4764,16 +4891,66 @@ fn payload_len(body: &Value) -> u64 {
     memory::encoded_len(body) as u64
 }
 
-/// The widest physical reference a provider returns for an event of `stream_id`: an event id as
-/// long as the UUID every Eventlog provider mints, and the largest positions. A row built with it
-/// encodes to at least as many bytes as the row the projector writes with the real one.
-fn widest_physical(stream_id: &str) -> PhysicalRef {
+/// The event id a bound assumes when it knows no longer one: as long as the UUID every Eventlog
+/// provider of this workspace's Eventlog release mints.
+const UUID_EVENT_ID: &str = "00000000-0000-0000-0000-000000000000";
+
+/// The widest physical reference a provider returns for an event of `stream_id`: `event_id`, and
+/// the largest positions. A row built with it encodes to at least as many bytes as the row the
+/// projector writes with a real reference whose id encodes to no more than `event_id` does.
+fn widest_physical(stream_id: &str, event_id: &str) -> PhysicalRef {
     PhysicalRef {
-        event_id: "0".repeat(36),
+        event_id: event_id.to_owned(),
         global_seq: u64::MAX,
         stream_id: stream_id.to_owned(),
         stream_version: u64::MAX,
     }
+}
+
+/// The event id a write's bound counts each physical reference with: of every reference `model`
+/// holds, the one whose id encodes longest, and at least a UUID.
+///
+/// Eventlog names no bound on the length of an event id. The provider that minted every id the
+/// observation holds — its binding's at least — mints the next one too, so the longest of them is
+/// what its next id is held to. A provider that then mints a longer id than any before can take
+/// one write past the bound; the exact charge that write leaves on the handle
+/// (`EventlogRecordedStore::settle`) refuses the next.
+fn widest_event_id(model: &CapturedModel) -> &str {
+    model
+        .binding
+        .iter()
+        .chain(model.record_physical.values())
+        .chain(model.anchor_physical.values())
+        .map(|physical| physical.event_id.as_str())
+        .fold(UUID_EVENT_ID, |widest, id| {
+            if encoded_str_len(id) > encoded_str_len(widest) {
+                id
+            } else {
+                widest
+            }
+        })
+}
+
+/// What each physical reference of a bound counted with a UUID's id grows by when it is counted
+/// with [`widest_event_id`] instead.
+fn event_id_widening(model: &CapturedModel) -> u64 {
+    encoded_str_len(widest_event_id(model)).saturating_sub(encoded_str_len(UUID_EVENT_ID))
+}
+
+/// The compact JSON length of `text` as a string, quotes and escapes included, as `serde_json`
+/// writes it, without building it.
+fn encoded_str_len(text: &str) -> u64 {
+    let escapes: u64 = text
+        .bytes()
+        .map(|byte| match byte {
+            b'"' | b'\\' | b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t' => 1,
+            0..=0x1f => 5,
+            _ => 0,
+        })
+        .sum();
+    (text.len() as u64)
+        .saturating_add(escapes)
+        .saturating_add(2)
 }
 
 fn projection_rows(capture: &TenantCapture) -> u64 {
@@ -5660,56 +5837,89 @@ fn expected_projection_rows(
 
     let mut subjects = BTreeMap::new();
     for (subject, history) in &model.histories {
-        let terminal = model
-            .terminals
-            .get(subject)
-            .ok_or_else(|| integrity("subject has no terminal state"))?;
-        let anchor = model.anchor_blob_digests.get(subject);
-        let anchor_physical = model.anchor_physical.get(subject);
-        let origin = match (&history.origin, anchor, anchor_physical) {
-            (HistoryOrigin::Genesis, None, None) => json!({"kind":"genesis"}),
-            (HistoryOrigin::Imported(_), Some(digest), Some(physical)) => json!({
-                "kind":"imported", "anchor_blob":digest,
-                "anchor_physical":physical,
-            }),
-            _ => {
-                return Err(integrity(
-                    "subject origin does not match its authoritative anchor",
-                ));
-            }
-        };
-        let last_decision = history.records.iter().rev().find(|saved| {
-            matches!(
-                saved.entry,
-                entity_store::asynchronous::RecordedEntry::Decision(_)
-            )
-        });
-        let state_source = if let Some(saved) = last_decision {
-            json!({"kind":"decision", "record_blob":model.record_blob_digests
-                .get(saved.entry.record_id())
-                .ok_or_else(|| integrity("subject head has no admitted record blob"))?
-                .record})
-        } else if let Some(digest) = anchor {
-            json!({"kind":"anchor", "anchor_blob":digest})
-        } else {
-            return Err(integrity("subject has no authoritative state source"));
-        };
-        let physical_head = history
-            .records
-            .last()
-            .and_then(|saved| model.record_physical.get(saved.entry.record_id()))
-            .or(anchor_physical)
-            .ok_or_else(|| integrity("subject has no authoritative physical head"))?;
         subjects.insert(
             subject_key(authority, subject)?,
-            json!(["er.eventlog.subject-index/1", {
-                "authority":authority, "subject":SubjectWire::from(subject), "origin":origin,
-                "revision":terminal.revision, "state_source":state_source,
-                "physical_head":physical_head,
-            }]),
+            expected_subject_row(authority, model, subject, history)?,
         );
     }
     Ok([binding, records, batches, subjects])
+}
+
+/// The index row `model` holds `subject`'s `history` to.
+fn expected_subject_row(
+    authority: &Authority,
+    model: &CapturedModel,
+    subject: &Subject,
+    history: &ModelHistory,
+) -> Result<Value, AsyncStoreError> {
+    let terminal = model
+        .terminals
+        .get(subject)
+        .ok_or_else(|| integrity("subject has no terminal state"))?;
+    let anchor = model.anchor_blob_digests.get(subject);
+    let anchor_physical = model.anchor_physical.get(subject);
+    let origin = match (&history.origin, anchor, anchor_physical) {
+        (HistoryOrigin::Genesis, None, None) => json!({"kind":"genesis"}),
+        (HistoryOrigin::Imported(_), Some(digest), Some(physical)) => json!({
+            "kind":"imported", "anchor_blob":digest,
+            "anchor_physical":physical,
+        }),
+        _ => {
+            return Err(integrity(
+                "subject origin does not match its authoritative anchor",
+            ));
+        }
+    };
+    let last_decision = history.records.iter().rev().find(|saved| {
+        matches!(
+            saved.entry,
+            entity_store::asynchronous::RecordedEntry::Decision(_)
+        )
+    });
+    let state_source = if let Some(saved) = last_decision {
+        json!({"kind":"decision", "record_blob":model.record_blob_digests
+            .get(saved.entry.record_id())
+            .ok_or_else(|| integrity("subject head has no admitted record blob"))?
+            .record})
+    } else if let Some(digest) = anchor {
+        json!({"kind":"anchor", "anchor_blob":digest})
+    } else {
+        return Err(integrity("subject has no authoritative state source"));
+    };
+    let physical_head = history
+        .records
+        .last()
+        .and_then(|saved| model.record_physical.get(saved.entry.record_id()))
+        .or(anchor_physical)
+        .ok_or_else(|| integrity("subject has no authoritative physical head"))?;
+    Ok(json!(["er.eventlog.subject-index/1", {
+        "authority":authority, "subject":SubjectWire::from(subject), "origin":origin,
+        "revision":terminal.revision, "state_source":state_source,
+        "physical_head":physical_head,
+    }]))
+}
+
+/// The payload bytes of the index rows `model` holds `subjects` to. A subject the model does not
+/// hold counts nothing, unless `every` asks for each of them, when it is refused.
+fn subject_rows_payload<'a>(
+    authority: &Authority,
+    model: &CapturedModel,
+    subjects: impl IntoIterator<Item = &'a Subject>,
+    every: bool,
+) -> Result<u64, AsyncStoreError> {
+    let mut payload = 0u64;
+    for subject in subjects {
+        match model.histories.get(subject) {
+            Some(history) => {
+                payload = payload.saturating_add(payload_len(&expected_subject_row(
+                    authority, model, subject, history,
+                )?));
+            }
+            None if every => return Err(integrity("a written subject is absent from its read")),
+            None => {}
+        }
+    }
+    Ok(payload)
 }
 
 /// Where each imported record stands in its subject's anchor evidence, indexed once per subject.
@@ -5797,24 +6007,36 @@ fn write_form() -> RecordForm {
 
 /// The definition blobs one group's records name: each distinct definition once, as its canonical
 /// document under the digest the records name it by.
-fn definition_blobs(members: &[AppendMember]) -> Result<Vec<(String, Vec<u8>)>, AsyncStoreError> {
+///
+/// With them, each distinct definition and its digest, so the group's records name it by that
+/// digest without serializing it again.
+#[allow(clippy::type_complexity)]
+fn definition_blobs(
+    members: &[AppendMember],
+) -> Result<
+    (
+        Vec<(&entity_core::EntityDefinition, String)>,
+        Vec<(String, Vec<u8>)>,
+    ),
+    AsyncStoreError,
+> {
+    let mut named: Vec<(&entity_core::EntityDefinition, String)> = Vec::new();
     let mut blobs: Vec<(String, Vec<u8>)> = Vec::new();
-    let mut seen: Vec<&entity_core::EntityDefinition> = Vec::new();
     for definition in members
         .iter()
         .filter_map(|member| record_definition(&member.entry))
     {
-        if seen.contains(&definition) {
+        if named.iter().any(|(seen, _)| *seen == definition) {
             continue;
         }
-        seen.push(definition);
         let bytes = definition_comparison_bytes(definition)?;
         let digest = framed_key(DEFINITION_BLOB_DOMAIN, &bytes)?;
+        named.push((definition, digest.clone()));
         if blobs.iter().all(|(held, _)| *held != digest) {
             blobs.push((digest, bytes));
         }
     }
-    Ok(blobs)
+    Ok((named, blobs))
 }
 
 fn verify_digest(domain: &str, digest: &str, bytes: &[u8]) -> Result<(), AsyncStoreError> {

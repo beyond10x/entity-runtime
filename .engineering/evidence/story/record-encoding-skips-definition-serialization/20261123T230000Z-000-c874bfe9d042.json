@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T23:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:record-encoding-skips-definition-serialization",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "r1-eventlog-adapter: encoding_a_record_by_digest_serializes_no_definition_document 0 by digest, 1 unhashed, 1 embedded, equal bytes; KPI eventlog.by_digest.record_definition_serializations.b1 = 0 gated; mutation red"
+  }
+}

@@ -2,11 +2,17 @@
 format: aep.planning-md/3
 id: story:eventlog-append-contention-is-a-typed-error
 kind: story
-status: draft
+status: implemented
 title: An append out of its physical-conflict budget refuses with a typed contention error
 summary: 'E19 follow-up: the 8-attempt budget ends in Unreachable with a detail string; a typed variant is a breaking entity-store change'
 owner: entity-runtime
-revision: 1
+relations:
+- serves: vision:O2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-23T23:19:46Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-23T23:19:47Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-23T23:19:47Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

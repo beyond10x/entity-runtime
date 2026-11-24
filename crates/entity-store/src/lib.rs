@@ -530,6 +530,10 @@ pub mod kpi_counters {
     /// FileStore directory syncs.
     pub static DIRECTORY_SYNCS: AtomicU64 = AtomicU64::new(0);
 
+    /// Definition documents serialized to encode a record that names its definition by digest
+    /// (`er.record/5`), because the encoding was not given the digest.
+    pub static BY_DIGEST_DEFINITION_SERIALIZATIONS: AtomicU64 = AtomicU64::new(0);
+
     pub(crate) fn add(counter: &AtomicU64, amount: u64) {
         counter.fetch_add(amount, Ordering::Relaxed);
     }

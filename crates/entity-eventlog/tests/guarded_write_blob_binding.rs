@@ -7,7 +7,7 @@
 //! it first. These cases hold the three other guarded writes to the same contract: a recorded
 //! append, a binding and a singular import.
 //!
-//! [`Interposed`] forwards every call to a real provider and adds five knobs. It can run a rival
+//! [`Interposed`] forwards every call to a real provider and adds six knobs. It can run a rival
 //! write immediately before this handle's first write reaches the provider, which is how a refusal
 //! the adapter's own pre-read cannot see is reached deterministically. It can take the port's
 //! default — refuse the blob-bearing group with `UNAVAILABLE` — which is what a caller's own
@@ -15,7 +15,8 @@
 //! fallback is exercised. It can submit every blob-bearing group twice, which is the retry the port
 //! describes as admitted again. It can fail the next `put_blob`, which is how the fallback's own
 //! error mapping is held. And it can commit a group and then answer it as a commit whose cleanup
-//! failed (`EventLogError::Committed`).
+//! failed (`EventLogError::Committed`). And it can answer every event id longer than the UUID
+//! the provider minted, in events and index rows alike, which is a provider that mints longer ids.
 //!
 //! The refusal recorder is not here: it appends with `EventStore::append`, unguarded, to a stream
 //! named by the digest of the one blob it writes, so nothing can refuse it after that blob is bound
@@ -84,14 +85,20 @@ struct Interposed {
     puts: AtomicUsize,
     /// The event ids each blob-bearing submission returned, in submission order.
     submissions: Mutex<Vec<Vec<String>>>,
-    /// Answers every group with a physical stream conflict, writing nothing.
-    contended: bool,
+    /// Answers this many groups with a physical stream conflict, writing nothing, then forwards.
+    contended: usize,
     /// Groups answered with that conflict.
     conflicts: AtomicUsize,
     /// Commits every blob-bearing group, then answers it as Eventlog answers a commit whose
     /// cleanup failed: `EventLogError::Committed`.
     cleanup_fails: bool,
+    /// Answers every event id the provider minted [`LONG_ID_SUFFIX`] longer, wherever this handle
+    /// reads one: in events, in append results and in index rows.
+    long_ids: bool,
 }
+
+/// What a provider that mints ids longer than a UUID's adds to each one.
+const LONG_ID_SUFFIX: &str = "-a-provider-whose-event-ids-are-longer-than-the-uuid-every-eventlog-provider-of-this-release-mints-carries-them-to-every-reader";
 
 impl Interposed {
     fn new(inner: Arc<dyn EventlogBackend>, offer: Offer) -> Self {
@@ -104,9 +111,60 @@ impl Interposed {
             fail_next_put: Mutex::new(None),
             puts: AtomicUsize::new(0),
             submissions: Mutex::new(Vec::new()),
-            contended: false,
+            contended: 0,
             conflicts: AtomicUsize::new(0),
             cleanup_fails: false,
+            long_ids: false,
+        }
+    }
+
+    fn long_ids(inner: Arc<dyn EventlogBackend>) -> Self {
+        Self {
+            long_ids: true,
+            ..Self::new(inner, Offer::Override)
+        }
+    }
+
+    fn widen_event(&self, event: &mut RecordedEvent) {
+        if self.long_ids {
+            event.event_id.push_str(LONG_ID_SUFFIX);
+        }
+    }
+
+    fn widen_events(&self, events: &mut [RecordedEvent]) {
+        for event in events {
+            self.widen_event(event);
+        }
+    }
+
+    fn widen_append(&self, mut result: AppendResult) -> AppendResult {
+        self.widen_events(&mut result.events);
+        result
+    }
+
+    fn widen_group(&self, mut result: AppendGroupResult) -> AppendGroupResult {
+        for append in &mut result.appends {
+            self.widen_events(&mut append.events);
+        }
+        result
+    }
+
+    /// Every `event_id` an index row names, as the provider would have written it.
+    fn widen_row(&self, row: &mut Value) {
+        if !self.long_ids {
+            return;
+        }
+        match row {
+            Value::Object(object) => {
+                for (key, value) in object.iter_mut() {
+                    match value {
+                        Value::String(id) if key == "event_id" => id.push_str(LONG_ID_SUFFIX),
+                        _ => self.widen_row(value),
+                    }
+                }
+            }
+            Value::Array(values) => values.iter_mut().for_each(|value| self.widen_row(value)),
+            _ => {}
         }
     }
 
@@ -117,16 +175,18 @@ impl Interposed {
         }
     }
 
-    fn contended(inner: Arc<dyn EventlogBackend>) -> Self {
+    fn contended(inner: Arc<dyn EventlogBackend>, groups: usize) -> Self {
         Self {
-            contended: true,
+            contended: groups,
             ..Self::new(inner, Offer::Override)
         }
     }
 
-    /// The physical stream conflict a contended provider answers every group with, counted.
+    /// The physical stream conflict a contended provider answers its first groups with, counted.
     fn conflict(&self) -> Option<EventLogError> {
-        self.contended.then(|| {
+        // One append's attempts reach the provider one after another, so a load and an add
+        // count them exactly.
+        (self.conflicts.load(Ordering::SeqCst) < self.contended).then(|| {
             self.conflicts.fetch_add(1, Ordering::SeqCst);
             EventLogError::Conflict {
                 expected: 1,
@@ -188,7 +248,7 @@ impl AtomicEventStore for Interposed {
             }
             self.run_rival(&group.tenant).await;
             let committed = self.inner.append_group_guarded(group, admission).await?;
-            self.after_commit(committed)
+            self.after_commit(self.widen_group(committed))
         })
     }
 
@@ -210,6 +270,7 @@ impl AtomicEventStore for Interposed {
                 .inner
                 .append_group_guarded_with_blobs(group, admission.clone(), blobs)
                 .await?;
+            let first = self.widen_group(first);
             self.record(&first);
             if self.cleanup_fails {
                 return self.after_commit(first);
@@ -221,6 +282,7 @@ impl AtomicEventStore for Interposed {
                 .inner
                 .append_group_guarded_with_blobs(group, admission, blobs)
                 .await?;
+            let second = self.widen_group(second);
             self.record(&second);
             Ok(second)
         })
@@ -246,7 +308,19 @@ impl ConsistentTenantCapture for Interposed {
         projections: &'a [ProjectionSpec],
         limits: CaptureLimits,
     ) -> BoxFuture<'a, Result<TenantCapture, CaptureError>> {
-        self.inner.capture_tenant(tenant, projections, limits)
+        Box::pin(async move {
+            let mut capture = self
+                .inner
+                .capture_tenant(tenant, projections, limits)
+                .await?;
+            self.widen_events(&mut capture.events);
+            for projection in &mut capture.projections {
+                for (_, row) in &mut projection.rows {
+                    self.widen_row(row);
+                }
+            }
+            Ok(capture)
+        })
     }
 }
 
@@ -276,7 +350,7 @@ impl EventStore for Interposed {
     ) -> BoxFuture<'a, Result<AppendResult, EventLogError>> {
         Box::pin(async move {
             let appended = self.inner.append(stream, expected, events, meta).await?;
-            self.after_commit(appended)
+            self.after_commit(self.widen_append(appended))
         })
     }
     fn recorded_claim<'a>(
@@ -292,8 +366,13 @@ impl EventStore for Interposed {
         idempotency_key: &'a str,
         request_hash: &'a str,
     ) -> BoxFuture<'a, Result<Option<AppendResult>, EventLogError>> {
-        self.inner
-            .recorded_command(stream, idempotency_key, request_hash)
+        Box::pin(async move {
+            Ok(self
+                .inner
+                .recorded_command(stream, idempotency_key, request_hash)
+                .await?
+                .map(|result| self.widen_append(result)))
+        })
     }
     fn read_stream<'a>(
         &'a self,
@@ -301,7 +380,11 @@ impl EventStore for Interposed {
         after_version: u64,
         limit: usize,
     ) -> BoxFuture<'a, Result<StreamSlice, EventLogError>> {
-        self.inner.read_stream(stream, after_version, limit)
+        Box::pin(async move {
+            let mut slice = self.inner.read_stream(stream, after_version, limit).await?;
+            self.widen_events(&mut slice.events);
+            Ok(slice)
+        })
     }
     fn stream_version<'a>(
         &'a self,
@@ -352,8 +435,13 @@ impl EventStore for Interposed {
         meta: &'a CommandMeta,
         guard: Arc<dyn Guard>,
     ) -> BoxFuture<'a, Result<AppendResult, EventLogError>> {
-        self.inner
-            .append_guarded(stream, expected, events, meta, guard)
+        Box::pin(async move {
+            let appended = self
+                .inner
+                .append_guarded(stream, expected, events, meta, guard)
+                .await?;
+            Ok(self.widen_append(appended))
+        })
     }
     fn create_projections(
         &self,
@@ -391,7 +479,13 @@ impl EventStore for Interposed {
         tenant: &'a TenantId,
         key: &'a str,
     ) -> BoxFuture<'a, Result<Option<Value>, EventLogError>> {
-        self.inner.projection_get(projection, tenant, key)
+        Box::pin(async move {
+            let mut row = self.inner.projection_get(projection, tenant, key).await?;
+            if let Some(row) = &mut row {
+                self.widen_row(row);
+            }
+            Ok(row)
+        })
     }
     fn projection_find<'a>(
         &'a self,
@@ -401,8 +495,14 @@ impl EventStore for Interposed {
         value: &'a str,
         limit: usize,
     ) -> BoxFuture<'a, Result<Vec<Value>, EventLogError>> {
-        self.inner
-            .projection_find(projection, tenant, field, value, limit)
+        Box::pin(async move {
+            let mut rows = self
+                .inner
+                .projection_find(projection, tenant, field, value, limit)
+                .await?;
+            rows.iter_mut().for_each(|row| self.widen_row(row));
+            Ok(rows)
+        })
     }
     fn projection_list<'a>(
         &'a self,
@@ -411,8 +511,14 @@ impl EventStore for Interposed {
         after_key: Option<&'a str>,
         limit: usize,
     ) -> BoxFuture<'a, Result<Vec<(String, Value)>, EventLogError>> {
-        self.inner
-            .projection_list(projection, tenant, after_key, limit)
+        Box::pin(async move {
+            let mut rows = self
+                .inner
+                .projection_list(projection, tenant, after_key, limit)
+                .await?;
+            rows.iter_mut().for_each(|(_, row)| self.widen_row(row));
+            Ok(rows)
+        })
     }
     fn stream_identity<'a>(
         &'a self,
@@ -1238,14 +1344,15 @@ fn a_failed_fallback_upload_keeps_each_writes_blob_error() {
 }
 
 /// A provider that answers every group with a physical stream conflict ends an append after the
-/// adapter's attempt budget with a retryable refusal that commits nothing, instead of retrying
-/// it, and holding it, without end. Every attempt read and reconciled before it wrote.
+/// adapter's attempt budget with the typed, retryable `Contended` refusal that commits nothing,
+/// instead of retrying it, and holding it, without end. Every attempt read and reconciled before
+/// it wrote.
 #[test]
 fn an_append_that_meets_physical_conflicts_on_every_attempt_refuses_after_its_budget() {
     block_on(async {
         let destination = destination(Provider::Sqlite, "contended").await;
         destination.bind().await;
-        let interposed = Arc::new(Interposed::contended(destination.inner.clone()));
+        let interposed = Arc::new(Interposed::contended(destination.inner.clone(), usize::MAX));
         let erased: Arc<dyn EventlogBackend> = interposed.clone();
         let store = EventlogRecordedStore::open(erased, destination.authority.clone(), LIMITS)
             .await
@@ -1261,8 +1368,8 @@ fn an_append_that_meets_physical_conflicts_on_every_attempt_refuses_after_its_bu
             matches!(
                 &refused,
                 entity_executor::ExecutionError::Write(WriteFailure::NotCommitted(
-                    AsyncStoreError::Unreachable { provider, detail }
-                )) if provider == "eventlog" && detail.starts_with("physical stream contention: 8 attempts")
+                    AsyncStoreError::Contended { provider, attempts }
+                )) if provider == "eventlog" && *attempts == 8
             ),
             "{refused:?}"
         );
@@ -1281,5 +1388,145 @@ fn an_append_that_meets_physical_conflicts_on_every_attempt_refuses_after_its_bu
             Ok(None),
             "nothing of the request committed"
         );
+    });
+}
+
+/// The budget counts attempts, not refusals: an append whose first seven attempts meet a physical
+/// stream conflict and whose eighth, its last allowed, meets none commits and returns `Ok`.
+#[test]
+fn an_append_that_commits_on_its_last_allowed_attempt_returns_ok() {
+    block_on(async {
+        let destination = destination(Provider::Sqlite, "last-attempt").await;
+        destination.bind().await;
+        let interposed = Arc::new(Interposed::contended(destination.inner.clone(), 7));
+        let erased: Arc<dyn EventlogBackend> = interposed.clone();
+        let store = EventlogRecordedStore::open(erased, destination.authority.clone(), LIMITS)
+            .await
+            .expect("bound store");
+        let operation = store.operation(context("last-attempt"));
+        let registry = registry();
+        let created = Executor::new(&registry, &operation)
+            .create(create("last-attempt", "last-attempt-create"))
+            .await;
+        assert!(
+            matches!(
+                &created,
+                Ok(AppendOutcome::Committed {
+                    replayed: false,
+                    ..
+                })
+            ),
+            "the eighth attempt commits: {created:?}"
+        );
+        assert_eq!(
+            interposed.conflicts.load(Ordering::SeqCst),
+            7,
+            "seven attempts met a conflict before the one that committed"
+        );
+        let subject = Subject::new("ticket", "last-attempt").expect("subject");
+        assert!(
+            matches!(
+                AsyncStateReader::load(&store, &subject).await,
+                Ok(Some(ref instance)) if instance.revision == 1
+            ),
+            "the request committed once"
+        );
+    });
+}
+
+/// What a capture through `backend` holds as Eventlog's `CaptureBudget` charges it: compact event
+/// bodies, blob bytes and compact index row bodies.
+async fn payload_through(backend: &Arc<dyn EventlogBackend>, tenant: &TenantId) -> u64 {
+    let capture = backend
+        .capture_tenant(tenant, projection_specs(), LIMITS)
+        .await
+        .expect("capture");
+    let compact = |value: &Value| serde_json::to_vec(value).expect("encodes").len() as u64;
+    capture
+        .events
+        .iter()
+        .map(|event| compact(&event.data))
+        .sum::<u64>()
+        + capture
+            .blobs
+            .iter()
+            .map(|blob| blob.bytes.len() as u64)
+            .sum::<u64>()
+        + capture
+            .projections
+            .iter()
+            .flat_map(|projection| &projection.rows)
+            .map(|(_, row)| compact(row))
+            .sum::<u64>()
+}
+
+/// A provider whose event ids are longer than a UUID's. Each index row names an event's physical
+/// reference, so its ids weigh on the payload a write adds. The write's bound counts each
+/// reference with the longest id the handle has observed, so a write that would take the store
+/// past `max_payload_bytes` is refused; a bound that assumed a UUID admitted it. Two stores take
+/// the same writes: the first shows what the write adds, and the second is held to a cap one byte
+/// below that.
+#[test]
+fn a_write_past_the_payload_cap_is_refused_on_a_provider_whose_event_ids_outgrow_a_uuid() {
+    block_on(async {
+        let registry = registry();
+        let mut twins = Vec::new();
+        for label in ["long-ids-a", "long-ids-b"] {
+            let destination = destination(Provider::Sqlite, label).await;
+            destination.bind().await;
+            let erased: Arc<dyn EventlogBackend> =
+                Arc::new(Interposed::long_ids(destination.inner.clone()));
+            let seeded =
+                EventlogRecordedStore::open(erased.clone(), destination.authority.clone(), LIMITS)
+                    .await
+                    .expect("bound store");
+            Executor::new(&registry, &seeded.operation(context(label)))
+                .create(create("seed", "seed-create"))
+                .await
+                .expect("the seed commits");
+            let before = payload_through(&erased, &destination.tenant).await;
+            twins.push((destination, erased, before));
+        }
+        let ((first, first_backend, first_before), (second, second_backend, second_before)) =
+            (&twins[0], &twins[1]);
+        assert_eq!(
+            first_before, second_before,
+            "the twins hold the same payload"
+        );
+
+        let wide =
+            EventlogRecordedStore::open(first_backend.clone(), first.authority.clone(), LIMITS)
+                .await
+                .expect("bound store");
+        Executor::new(&registry, &wide.operation(context("next")))
+            .create(create("next", "next-create"))
+            .await
+            .expect("the write commits under a wide cap");
+        let adds = payload_through(first_backend, &first.tenant).await - first_before;
+
+        let limits = CaptureLimits {
+            max_payload_bytes: second_before + adds - 1,
+            ..LIMITS
+        };
+        let tight =
+            EventlogRecordedStore::open(second_backend.clone(), second.authority.clone(), limits)
+                .await
+                .expect("the store fits its cap");
+        let outcome = Executor::new(&registry, &tight.operation(context("next")))
+            .create(create("next", "next-create"))
+            .await;
+        let holds = payload_through(second_backend, &second.tenant).await;
+        assert!(
+            matches!(
+                &outcome,
+                Err(entity_executor::ExecutionError::Write(WriteFailure::NotCommitted(
+                    AsyncStoreError::BatchExceedsReadBounds { bound, limit, .. }
+                ))) if bound == "max_payload_bytes" && *limit == limits.max_payload_bytes
+            ),
+            "a write adding {adds} payload bytes to {second_before}, past max_payload_bytes={}, \
+             was not refused: {outcome:?}; the store now holds {holds}",
+            limits.max_payload_bytes
+        );
+        assert_eq!(holds, *second_before, "the refusal left nothing");
     });
 }

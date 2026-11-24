@@ -819,6 +819,18 @@ pub enum AsyncStoreError {
         /// What the destination would hold if this write committed.
         would_hold: u64,
     },
+    /// Every attempt of a write met a concurrent write to a stream it expected, and none
+    /// committed it. Nothing of the request is committed, and taking it again later is safe.
+    ///
+    /// Retryable, unlike a [`Self::RevisionConflict`]: the request may still be valid, because a
+    /// write that moves a stream's physical head (an observation) need not move its revision. The
+    /// provider gives up after its own attempt budget rather than holding the request without end.
+    Contended {
+        /// Provider name.
+        provider: String,
+        /// How many attempts met a concurrent write.
+        attempts: u64,
+    },
     /// The named authority could not be reached, which proves neither absence nor rollback.
     Unreachable {
         /// Provider name.
@@ -901,6 +913,11 @@ impl fmt::Display for AsyncStoreError {
                 formatter,
                 "committing this batch would hold {would_hold} against a {bound} of {limit}, \
                  which is the bound this caller reads the destination with"
+            ),
+            Self::Contended { provider, attempts } => write!(
+                formatter,
+                "{provider} met a concurrent write on each of {attempts} attempts and committed \
+                 none of this request; taking it again later is safe"
             ),
             Self::Unreachable { provider, detail } => {
                 write!(formatter, "{provider} could not be reached: {detail}")

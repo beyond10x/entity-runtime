@@ -20,7 +20,7 @@ use crate::{
     EventlogRecordedStore, ImportAnchorFailure, OpenVerification, projection_specs,
 };
 use entity_core::{Registry, Runtime};
-use entity_executor::{BatchAction, CreateRequest, ExecutionError, Executor};
+use entity_executor::{BatchAction, CreateRequest, ExecuteRequest, ExecutionError, Executor};
 use entity_store::{
     RecordedCommit, Recording,
     asynchronous::{
@@ -102,6 +102,18 @@ fn create(id: &str) -> BatchAction {
         definition_version: 1,
         fields: json!({ "title": id }),
         recording: recording(&format!("create-{id}")),
+    })
+}
+
+/// `touch` on the subject `id` at `revision`: its row is replaced, not added.
+fn touch(id: &str, revision: u64) -> BatchAction {
+    BatchAction::Execute(ExecuteRequest {
+        subject: ticket(id),
+        expected_revision: revision,
+        operation: "touch".to_owned(),
+        arguments: json!({}),
+        fulfillments: std::collections::BTreeMap::new(),
+        recording: recording(&format!("touch-{id}-{revision}")),
     })
 }
 
@@ -468,8 +480,8 @@ fn an_estimated_payload_is_counted_exactly_before_it_refuses_a_write() {
             .expect("the seed commits");
         let exact = held(&path).await.3;
         {
-            // The handle's own write left the bound it was admitted with, not the exact count;
-            // here that estimate is grown to the cap, as a run of such writes would grow it.
+            // The handle's own write is charged; here that charge is grown to the cap, as the
+            // bounds of writes still in flight, not yet settled to their exact count, grow it.
             let mut held = store.held.lock().expect("held");
             let total = held.payload.unwrap_or_default() + held.payload_added;
             assert!(
@@ -489,4 +501,43 @@ fn an_estimated_payload_is_counted_exactly_before_it_refuses_a_write() {
         );
         assert!(store.load(&ticket("b")).await.expect("load").is_some());
     });
+}
+
+/// A handle's own write leaves it holding the payload the write added, not the bound it was
+/// admitted with: after each of 32 writes on one handle — creates, updates that replace a
+/// subject's row, and batches of both — what the handle holds is what a fresh capture of the
+/// store counts, to the byte. Before, the difference grew by every write until an observation
+/// counted it again.
+#[test]
+fn the_held_payload_is_a_fresh_count_after_each_of_32_own_writes() {
+    for policy in [
+        CapturePolicy::FullVerification,
+        CapturePolicy::ProviderTracked,
+    ] {
+        let directory = directory();
+        let path = directory.path().join("store.sqlite3");
+        block_on(async {
+            let authority = provisioned(&path).await;
+            let store = open(&path, &authority, WIDE, policy).await.expect("open");
+            for at in 0..32usize {
+                let actions = match at % 3 {
+                    0 => vec![create(&format!("t{at}"))],
+                    1 => vec![touch(&format!("t{}", at - 1), 1)],
+                    _ => vec![create(&format!("t{at}")), touch(&format!("t{}", at - 2), 2)],
+                };
+                write(&store, &format!("write-{at}"), actions)
+                    .await
+                    .expect("the write commits");
+                store.count_payload().await.expect("counted");
+                let (counted, added) = payload(&store);
+                let exact = held(&path).await.3;
+                assert_eq!(
+                    counted.expect("counted") + added,
+                    exact,
+                    "{policy:?}: after own write {at} the handle holds {counted:?} + {added} \
+                     payload bytes; a fresh capture counts {exact}"
+                );
+            }
+        });
+    }
 }

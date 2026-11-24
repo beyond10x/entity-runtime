@@ -696,6 +696,14 @@ fn async_store_error(error: AsyncStoreError) -> StoreError {
         AsyncStoreError::Unreachable { provider, detail } => {
             StoreError::Unreachable { provider, detail }
         }
+        // The synchronous error has no contention kind. Unreachable is the one it reads as
+        // retryable, and it is what this refusal was before the asynchronous port named it.
+        ref contended @ AsyncStoreError::Contended { ref provider, .. } => {
+            StoreError::Unreachable {
+                provider: provider.clone(),
+                detail: contended.to_string(),
+            }
+        }
         other => StoreError::Backend(other.to_string()),
     }
 }
@@ -808,3 +816,27 @@ impl ScopedRecordedProviderFacade<'_> {
 
 #[cfg(all(test, feature = "sqlite"))]
 mod import_tests;
+
+#[cfg(test)]
+mod error_tests {
+    use entity_store::{StoreError, asynchronous::AsyncStoreError};
+
+    /// The synchronous stores have no contention kind; a contended write reaches their callers
+    /// as the retryable `Unreachable` it was before the asynchronous port named it.
+    #[test]
+    fn a_contended_write_reaches_a_synchronous_caller_as_unreachable() {
+        let mapped = super::async_store_error(AsyncStoreError::Contended {
+            provider: "eventlog".to_owned(),
+            attempts: 8,
+        });
+        assert!(
+            matches!(
+                &mapped,
+                StoreError::Unreachable { provider, detail }
+                    if provider == "eventlog" && detail.contains("each of 8 attempts")
+            ),
+            "{mapped:?}"
+        );
+        assert!(mapped.is_unreachable());
+    }
+}

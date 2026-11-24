@@ -84,6 +84,10 @@ pub fn run(work: &Path) -> Vec<Value> {
             "hooked::eventlog_warm_definition_decodes(work)",
             || hooked::eventlog_warm_definition_decodes(work),
         ));
+        values.extend(step(
+            "hooked::eventlog_by_digest_definition_serializations(work)",
+            || hooked::eventlog_by_digest_definition_serializations(work),
+        ));
         values.extend(step("hooked::graph_mermaid()", hooked::graph_mermaid));
         values.extend(step(
             "hooked::executor_kernel_creates()",
@@ -763,6 +767,64 @@ mod hooked {
             ShutdownOutcome::Joined { provider: Ok(()) }
         );
         vec![(id("eventlog.warm_batch.definition_decodes.b2"), decoded)]
+    }
+
+    /// Definitions serialized to encode records that name their definition by digest
+    /// (`er.record/5`): one single-create batch on an Eventlog SQLite handle that has already
+    /// written one, then the batch's lookup and its subject's history. The writer hashes each
+    /// definition once, for the definition blob, and names it by that digest in the batch and the
+    /// record; a read names it by the digest it read the definition under. Neither serializes the
+    /// definition to encode a record.
+    pub fn eventlog_by_digest_definition_serializations(work: &Path) -> Vec<Value> {
+        use entity_store::kpi_counters::BY_DIGEST_DEFINITION_SERIALIZATIONS;
+        let registry = registry(&[TICKET]);
+        let directory = fresh(work, "by-digest");
+        let mut store = entity_sqlite::EventlogSqliteStore::provision(
+            crate::stores::path_string(&directory.join("eventlog.sqlite")),
+            "er_kpi",
+            registry,
+            crate::stores::authority("by-digest"),
+            context("provision"),
+            crate::fixture::LIMITS,
+            bridge(),
+        )
+        .expect("provisioned");
+        let create = |store: &entity_sqlite::EventlogSqliteStore, at: usize| {
+            let outcome = store.recorded().execute_batch(
+                context(&format!("create-{at}")),
+                BatchKey::Named(format!("create-{at}")),
+                vec![BatchAction::Create(entity_executor::CreateRequest {
+                    subject: subject("ticket", &format!("t{at}")),
+                    definition_version: 1,
+                    fields: json!({ "title": format!("t{at}") }),
+                    recording: recording(&format!("t{at}-create")),
+                })],
+                CallWait::Forever,
+            );
+            assert!(matches!(outcome, Ok(AppendOutcome::Committed { .. })));
+        };
+        create(&store, 0);
+        let before = read(&BY_DIGEST_DEFINITION_SERIALIZATIONS);
+        create(&store, 1);
+        let batch = store
+            .recorded()
+            .lookup_batch(&BatchKey::Named("create-1".to_owned()), CallWait::Forever)
+            .expect("lookup");
+        assert!(batch.is_some(), "the batch is found");
+        let history = store
+            .recorded()
+            .read_history(&subject("ticket", "t1"), CallWait::Forever)
+            .expect("history");
+        assert_eq!(history.records.len(), 1, "the subject has its create");
+        let serialized = read(&BY_DIGEST_DEFINITION_SERIALIZATIONS) - before;
+        assert_eq!(
+            store.shutdown(ShutdownMode::Drain, CallWait::Forever),
+            ShutdownOutcome::Joined { provider: Ok(()) }
+        );
+        vec![(
+            id("eventlog.by_digest.record_definition_serializations.b1"),
+            serialized,
+        )]
     }
 
     /// E10: endpoint comparisons drawing the 300-state chain as Mermaid.

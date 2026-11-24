@@ -14,6 +14,7 @@ mod conflict;
 mod counters;
 mod defs;
 mod fixture;
+mod invoke;
 mod pg;
 mod probe;
 mod stores;

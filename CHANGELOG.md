@@ -4,6 +4,16 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+### Breaking
+
+- `entity-store`: `AsyncStoreError` has a new variant, `Contended { provider, attempts }`. A
+  `match` on `AsyncStoreError` without a wildcard arm no longer compiles until it handles it. An
+  Eventlog append whose every attempt met a concurrent write now refuses with
+  `WriteFailure::NotCommitted(AsyncStoreError::Contended { provider: "eventlog", attempts: 8 })`
+  instead of `Unreachable` with a detail that began "physical stream contention". Nothing of the
+  request is committed; take it again later. The synchronous `entity-eventlog` stores still
+  report it as `StoreError::Unreachable`.
+
 ### Added
 
 - File Store v3 (`entity.file-store/3`) keeps a subject's current state apart from its
@@ -55,6 +65,19 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   under `.cache/state/` instead of replaying every file: `ErRecordedProjector` now reports a
   `Projector::fingerprint`. Another program, a changed file or a projector reporting another
   configuration replays once.
+- Encoding a record that names its definition by digest (`er.record/5`) no longer serializes the
+  definition. An Eventlog write serializes each definition once, for its blob, and names it by
+  that digest in the batch and every record; reading a batch or a record back names it by the
+  digest it was read under. Before, each write serialized and hashed every definition two more
+  times, and each read once per record. `entity-store` adds `KnownDefinitions`,
+  `record_comparison_bytes_known` and `batch_comparison_bytes_known` for a caller that already
+  holds the digests; the bytes are those `record_comparison_bytes_in` and
+  `batch_comparison_bytes_in` write.
+- An Eventlog store handle charges a remembered `er.record/5` record's definition at the length of
+  the definition blob the process verified under the digest the record names, instead of
+  serializing the definition again for every record it remembers. A fresh open or a complete
+  read of a store whose records name large definitions no longer serializes one definition
+  document per record.
 
 ### Fixed
 
@@ -62,6 +85,15 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `EventLogError::Committed`, from the File provider) is answered as committed, once the recorded
   history confirms it, instead of failing. Without that confirmation it is reported as uncertain,
   as an unknown commit outcome is.
+- An Eventlog store's `max_payload_bytes` holds for a provider whose event ids are longer than a
+  UUID: a write's bound counts each physical reference with the longest event id the store has
+  seen, where it counted 36 characters, so such a provider can no longer take the store past the
+  cap. A provider that mints an id longer than any before can still pass it by that one write; the
+  next write is refused.
+- An Eventlog store handle's own writes no longer add their upper bound to the payload it holds:
+  once a write commits, the handle holds what the write added, counted from the rows it wrote, so
+  after any number of its own writes it holds what a fresh capture counts. Before, a long-lived
+  handle drifted above the store's real payload and refused writes the cap admitted.
 
 ## [0.33.1] — 2026-11-23
 

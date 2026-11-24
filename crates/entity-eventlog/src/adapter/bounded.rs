@@ -56,6 +56,19 @@ struct SubjectRow {
     state: EntityInstance,
 }
 
+/// The definitions a document names, each under the digest it was read and held to.
+type Definitions = BTreeMap<String, entity_core::EntityDefinition>;
+
+/// `definitions` as digests an encoding may name them by without serializing them again: each
+/// was read under its digest and held to it ([`verify_definition`]).
+fn known_definitions(definitions: &Definitions) -> KnownDefinitions<'_> {
+    let mut known = KnownDefinitions::new();
+    for (digest, definition) in definitions {
+        known.insert(definition, digest);
+    }
+    known
+}
+
 fn row_error(error: EventLogError) -> AsyncStoreError {
     integrity(format!("a verified index row is malformed: {error}"))
 }
@@ -91,6 +104,7 @@ impl EventlogRecordedStore {
             rows: usage.projection_rows,
             payload: Some(usage.payload_bytes),
             payload_added: 0,
+            charges: std::collections::BTreeMap::new(),
             digests: BTreeSet::new(),
             partial: true,
         };
@@ -113,6 +127,7 @@ impl EventlogRecordedStore {
         held.rows = suffix.usage.projection_rows;
         held.payload = Some(suffix.usage.payload_bytes);
         held.payload_added = 0;
+        held.charges.clear();
         held.digests
             .extend(delta.blobs.iter().map(|blob| blob.digest.clone()));
         self.model_advances.fetch_add(1, Ordering::Relaxed);
@@ -226,10 +241,7 @@ impl EventlogRecordedStore {
     }
 
     /// Every definition a record or batch document names, read, held to its digest and decoded.
-    async fn definitions(
-        &self,
-        document: &[u8],
-    ) -> Result<BTreeMap<String, entity_core::EntityDefinition>, AsyncStoreError> {
+    async fn definitions(&self, document: &[u8]) -> Result<Definitions, AsyncStoreError> {
         let mut definitions = BTreeMap::new();
         for digest in named_definitions(document)? {
             let bytes = self
@@ -339,10 +351,11 @@ impl EventlogRecordedStore {
     /// One committed member as a stored record, from the batch blob that holds it and the row
     /// coordinates that place it. The row's record and request digests must be the digests of
     /// exactly the member's canonical bytes, in the form of the batch blob that holds it, so the
-    /// record blob itself need not be read.
+    /// record blob itself need not be read. A member names each definition of `known`, the ones
+    /// its batch blob was decoded with, by its digest without serializing it again.
     fn stored_member(
         &self,
-        (key, form): (&BatchKey, RecordForm),
+        (key, form, known): (&BatchKey, RecordForm, &KnownDefinitions<'_>),
         member_index: u64,
         member: AppendMember,
         record_blob: &str,
@@ -350,7 +363,7 @@ impl EventlogRecordedStore {
         physical: &PhysicalRef,
     ) -> Result<StoredRecord, AsyncStoreError> {
         let subject = member.entry.subject();
-        let record_bytes = record_comparison_bytes_in(form, &member.entry)?;
+        let record_bytes = record_comparison_bytes_known(form, &member.entry, known)?;
         if framed_key(RECORD_BLOB_DOMAIN, &record_bytes)? != record_blob
             || framed_key(REQUEST_BLOB_DOMAIN, &member.request_bytes)? != request_blob
             || physical.stream_id != subject_stream_id(&self.authority, &subject)?
@@ -388,14 +401,14 @@ impl EventlogRecordedStore {
         &self,
         digest: &str,
         key: &BatchKey,
-    ) -> Result<(Vec<u8>, Vec<AppendMember>), AsyncStoreError> {
+    ) -> Result<(Vec<u8>, Vec<AppendMember>, Definitions), AsyncStoreError> {
         let bytes = self.bound_blob(digest, BATCH_BLOB_DOMAIN).await?;
         let definitions = self.definitions(&bytes).await?;
         let (decoded, members) = decode_batch(&bytes, &mut resolve_from(&definitions))?;
         if decoded != *key {
             return Err(integrity("a verified index row names another batch's blob"));
         }
-        Ok((bytes, members))
+        Ok((bytes, members, definitions))
     }
 
     /// A record lookup, from its row and its batch's blob. An imported record is read per entity.
@@ -429,10 +442,11 @@ impl EventlogRecordedStore {
         if authority != self.authority || text(entry, "record_id")? != id {
             return Err(integrity("a record row names another authority or record"));
         }
-        let (batch_bytes, mut members) = self
+        let (batch_bytes, mut members, definitions) = self
             .batch_members(text(entry, "batch_blob")?, &batch_key)
             .await?;
         let form = RecordForm::of_batch(&batch_bytes);
+        let known = known_definitions(&definitions);
         let index = usize::try_from(member_index)
             .ok()
             .filter(|index| *index < members.len())
@@ -445,7 +459,7 @@ impl EventlogRecordedStore {
             return Err(integrity("a record row and its batch member disagree"));
         }
         Ok(Some(RecordLookup::Committed(self.stored_member(
-            (&batch_key, form),
+            (&batch_key, form, &known),
             member_index,
             member,
             text(entry, "record_blob")?,
@@ -474,12 +488,13 @@ impl EventlogRecordedStore {
             .get("members")
             .and_then(Value::as_array)
             .ok_or_else(|| integrity("a batch row has no members"))?;
-        let (comparison_bytes, members) =
+        let (comparison_bytes, members, definitions) =
             self.batch_members(text(body, "batch_blob")?, key).await?;
         if rows.len() != members.len() || members.is_empty() {
             return Err(integrity("a batch row and its blob have different members"));
         }
         let form = RecordForm::of_batch(&comparison_bytes);
+        let known = known_definitions(&definitions);
         let mut records = Vec::with_capacity(members.len());
         let mut prior_position = 0;
         for (index, (member, row)) in members.into_iter().zip(rows).enumerate() {
@@ -499,7 +514,7 @@ impl EventlogRecordedStore {
             }
             prior_position = physical.global_seq;
             records.push(self.stored_member(
-                (key, form),
+                (key, form, &known),
                 member_index,
                 member,
                 text(row, "record_blob")?,
