@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T03:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:definition-floats-exact-in-fragments-and-tags",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "r1-pg-yaml: entity-yaml bound digits kept in fragments and beside tagged keys; libs lane 207 passed, entity-cli 62 passed"
+  }
+}
