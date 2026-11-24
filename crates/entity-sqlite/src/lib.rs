@@ -54,7 +54,9 @@ use entity_store::{
         HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
         LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
     },
-    check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
+    check,
+    stored_record::{read_decision, same_record, store_decision, DefinitionCache},
+    AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
     LegacyStoreSnapshot, LegacyStoreSource, RecordedCommit, RecordedObservation, StateProvider,
     Store, StoreError,
 };
@@ -292,8 +294,47 @@ impl SqliteStore {
                  );",
             )
             .map_err(|error| backend("establishing the schema", &error))?;
+        connection
+            .execute_batch(DEFINITIONS_BY_DIGEST)
+            .map_err(|error| backend("establishing the definition table", &error))?;
         Ok(Self { connection })
     }
+}
+
+/// Since 0.34.0 a decision record names its definition by digest and the definition is kept once
+/// in `definitions` ([`entity_store::stored_record`]). Both statements are additive and run on
+/// every open, so a database written by an older release gains them the first time this release
+/// opens it, and its records keep their bytes.
+///
+/// The trigger is the fence. An older release reads a by-digest record as a parse error rather
+/// than misreading it, but it would still write decision records that embed their definition, and
+/// a retry of one of its records would compare against the other form. Once this release has
+/// opened a database, a decision record in the embedded form is refused at insert, so an older
+/// writer fails with this message instead of mixing forms.
+const DEFINITIONS_BY_DIGEST: &str = "CREATE TABLE IF NOT EXISTS definitions (
+         digest   TEXT NOT NULL PRIMARY KEY,
+         document TEXT NOT NULL
+     );
+     CREATE TRIGGER IF NOT EXISTS history_names_definitions_by_digest
+     BEFORE INSERT ON history
+     WHEN NEW.kind = 'decision'
+          AND substr(NEW.document, 1, 22) <> '[\"er.stored-record/1\",'
+     BEGIN
+         SELECT RAISE(ABORT, 'this store names definitions by digest (entity-sqlite 0.34.0 or \
+             later); a decision record that embeds its definition comes from an older writer: \
+             upgrade every writer of this store');
+     END;";
+
+/// The definition document stored under `digest`, read in `connection`'s current view.
+fn fetch_definition(connection: &Connection, digest: &str) -> Result<Option<String>, StoreError> {
+    connection
+        .query_row(
+            "SELECT document FROM definitions WHERE digest = ?1",
+            params![digest],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| backend("reading a definition", &error))
 }
 
 impl StateProvider for SqliteStore {
@@ -373,20 +414,44 @@ impl EventProvider for SqliteStore {
 
 impl HistoryProvider for SqliteStore {
     fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
-        read_history(&self.connection, entity, id, "decision")
+        // One read transaction, so the definitions are read in the same view as the records that
+        // name them.
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(|error| backend("beginning the history read", &error))?;
+        let mut definitions = DefinitionCache::new();
+        let records = history_documents(&transaction, entity, id, "decision")?
+            .iter()
+            .map(|document| {
+                read_decision(document, &mut definitions, |digest| {
+                    fetch_definition(&transaction, digest)
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        transaction
+            .commit()
+            .map_err(|error| backend("ending the history read", &error))?;
+        Ok(records)
     }
 
     fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
-        read_history(&self.connection, entity, id, "observation")
+        history_documents(&self.connection, entity, id, "observation")?
+            .iter()
+            .map(|text| {
+                serde_json::from_str(text)
+                    .map_err(|error| backend("parsing a history record", &error))
+            })
+            .collect()
     }
 }
 
-fn read_history<T: serde::de::DeserializeOwned>(
+fn history_documents(
     connection: &Connection,
     entity: &str,
     id: &str,
     kind: &str,
-) -> Result<Vec<T>, StoreError> {
+) -> Result<Vec<String>, StoreError> {
     let mut statement = connection
         .prepare(
             "SELECT document FROM history WHERE entity = ?1 AND id = ?2 AND kind = ?3 \
@@ -396,11 +461,8 @@ fn read_history<T: serde::de::DeserializeOwned>(
     let rows = statement
         .query_map(params![entity, id, kind], |row| row.get::<_, String>(0))
         .map_err(|error| backend("reading history", &error))?;
-    rows.map(|row| {
-        let text = row.map_err(|error| backend("reading a history record", &error))?;
-        serde_json::from_str(&text).map_err(|error| backend("parsing a history record", &error))
-    })
-    .collect()
+    rows.map(|row| row.map_err(|error| backend("reading a history record", &error)))
+        .collect()
 }
 
 fn next_history_position(
@@ -534,10 +596,9 @@ impl Store for SqliteStore {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| backend("beginning the recorded transaction", &error))?;
-        let document = serde_json::to_string(&commit.envelope)
-            .map_err(|error| backend("serialising the decision envelope", &error))?;
+        let stored = store_decision(&commit.envelope)?;
         if let Some(existing) = existing_record(&transaction, &commit.envelope.record_id)? {
-            if existing == document {
+            if same_record(&existing, &commit.envelope, &stored)? {
                 transaction
                     .commit()
                     .map_err(|error| backend("committing the retry", &error))?;
@@ -548,6 +609,15 @@ impl Store for SqliteStore {
             });
         }
         write_decision(&transaction, &commit.decision(), expect, false)?;
+        if let Some(definition) = &stored.definition {
+            transaction
+                .execute(
+                    "INSERT INTO definitions (digest, document) VALUES (?1, ?2) \
+                     ON CONFLICT (digest) DO NOTHING",
+                    params![definition.digest, definition.document],
+                )
+                .map_err(|error| backend("keeping the definition", &error))?;
+        }
         let position =
             next_history_position(&transaction, &commit.instance.entity, &commit.instance.id)?;
         transaction
@@ -559,7 +629,7 @@ impl Store for SqliteStore {
                     commit.instance.id,
                     position,
                     commit.envelope.record_id,
-                    document
+                    stored.document
                 ],
             )
             .map_err(|error| backend("appending the decision record", &error))?;
@@ -712,6 +782,7 @@ impl LegacyStoreSource for SqliteStore {
             },
         )?;
 
+        let mut definitions = DefinitionCache::new();
         let mut histories = Vec::with_capacity(coordinates.len());
         for (entity, id, stored_revision, document) in coordinates {
             let (Some(stored_revision), Some(document)) = (stored_revision, document) else {
@@ -755,8 +826,9 @@ impl LegacyStoreSource for SqliteStore {
                 })?;
                 let (entry, per_kind_position) = match kind.as_str() {
                     "decision" => {
-                        let envelope: Envelope<DecisionRecord> = serde_json::from_str(&document)
-                            .map_err(|error| backend("parsing a legacy decision", &error))?;
+                        let envelope = read_decision(&document, &mut definitions, |digest| {
+                            fetch_definition(&transaction, digest)
+                        })?;
                         if envelope.record_id != record_id {
                             return Err(StoreError::Backend(format!(
                                 "legacy SQLite decision at {entity:?}/{id:?}/{position} substitutes record identity"

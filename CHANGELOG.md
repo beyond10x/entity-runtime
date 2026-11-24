@@ -58,6 +58,22 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `entity store migrate-file-v3 --from <v2 root> --to <new root> --dry-run`, the same command
   without `--dry-run`, check `entity list --store <new root> --entity <type>`, and point the
   writers at the new root; keep the v2 root to roll back to with the older release.
+- `SqliteStore` and `PostgresStore` write a new decision record with its definition named by
+  digest, `["er.stored-record/1", "sha256:…", <envelope with "definition": null>]`, and keep each
+  definition document once, in a new `definitions` table, under the digest the Eventlog adapter
+  uses for `er.record/5`. 32 records of one entity type now hold the definition once instead of 32
+  times. Records written before keep their bytes and are read, retried and replayed as before; a
+  record whose definition is missing or does not hash to its digest is refused as
+  `StoreError::Backend`. `entity_store::stored_record` holds the shared encoding.
+  **What an operator runs:** nothing extra for SQLite: `SqliteStore::open` adds the table and a
+  trigger the first time it opens a database. For PostgreSQL, `PostgresStore::migrate` (which
+  `connect_no_tls`, `connect_in_schema` and `from_client` run) adds them; where the application's
+  role may not run DDL, run `migrate` once as the schema owner before the upgraded application
+  starts. **The upgrade is one way:** once a store has been opened by this release, a decision
+  record written by 0.33.x or older is refused at insert ("this store names definitions by digest
+  …"), and 0.33.x refuses to read a new record ("parsing a history record: invalid type:
+  map, expected a string") instead of misreading it. Upgrade every writer and reader of one store
+  together.
 
 ### Performance
 
@@ -94,6 +110,17 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   once a write commits, the handle holds what the write added, counted from the rows it wrote, so
   after any number of its own writes it holds what a fresh capture counts. Before, a long-lived
   handle drifted above the store's real payload and refused writes the cap admitted.
+- `PostgresSession::lock_identity` keys its advisory lock by the `instances` table of the schema
+  the session resolves, as well as by the namespace and identity. Before, contenders for one
+  identity in two schemas of one database waited on each other; contenders in one schema still do.
+  During a rolling upgrade an older and a newer binary locking the same identity in one schema take
+  different locks and no longer serialize against each other. Upgrade every caller of one schema
+  together.
+- A number in a definition that a binary64 cannot hold is now read as written in a document with
+  a root `$defs` or `$ref` and in a document with a tagged mapping key (`!x rate: …`) too. Before,
+  `min: 1.0000000000000001` there was read as `1.0` and `rate: 1` was admitted; it is now refused.
+  A number a binary64 already holds (`0.50`, `0.1`, `1e3`) reads as before, so those definitions
+  keep their bytes and digests.
 
 ## [0.33.1] — 2026-11-23
 

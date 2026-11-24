@@ -2,11 +2,17 @@
 format: aep.planning-md/3
 id: story:definition-floats-exact-in-fragments-and-tags
 kind: story
-status: draft
+status: implemented
 title: Definition bounds keep their written digits in $defs/$ref documents and tagged nodes
 summary: 'E31 remainder: the fragment resolver and tagged nodes still round a bound to binary64'
 owner: entity-runtime
-revision: 1
+relations:
+- serves: vision:O2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-24T03:20:02Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-24T03:20:02Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-24T03:20:03Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

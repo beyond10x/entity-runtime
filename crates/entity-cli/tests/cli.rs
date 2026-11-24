@@ -2444,3 +2444,74 @@ fn a_stored_subject_executes_with_its_own_version_when_several_versions_are_regi
         );
     }
 }
+
+/// Review E31's remainder, through the command: a bound in a `$defs` fragment and a bound under a
+/// tagged mapping key, in a YAML file and in a `.json` file, is shown by `inspect` as written, and
+/// `create` refuses `rate = 1` below it.
+#[test]
+fn inspect_shows_a_fragment_or_tagged_bound_as_written_and_create_refuses_below_it() {
+    const BOUND: &str = "1.0000000000000001";
+    let documents = [
+        (
+            "quote-defs.yaml",
+            format!(
+                "$defs:\n  rate: {{ type: number, required: true, min: {BOUND} }}\n\
+                 entity: quote\nversion: 1\nschema:\n  fields:\n    rate: {{ $ref: '#/$defs/rate' }}\n\
+                 lifecycle: {{ initial: open, states: [open] }}\n"
+            ),
+        ),
+        (
+            "quote-defs.json",
+            format!(
+                r##"{{"$defs": {{"rate": {{"type": "number", "required": true, "min": {BOUND}}}}},
+ "entity": "quote", "version": 1,
+ "schema": {{"fields": {{"rate": {{"$ref": "#/$defs/rate"}}}}}},
+ "lifecycle": {{"initial": "open", "states": ["open"]}}}}"##
+            ),
+        ),
+        (
+            "quote-tagged.yaml",
+            format!(
+                "entity: quote\nversion: 1\nschema:\n  fields:\n    !field rate: {{ type: number, \
+                 required: true, min: {BOUND} }}\nlifecycle: {{ initial: open, states: [open] }}\n"
+            ),
+        ),
+    ];
+    for (name, text) in documents {
+        let path = scratch(name, &text);
+        let path = path.to_str().unwrap();
+        let inspected = run(&["inspect", path, "--format", "json"], None);
+        assert_eq!(
+            inspected.status.code(),
+            Some(0),
+            "{name}: {}",
+            stderr(&inspected)
+        );
+        assert!(
+            stdout(&inspected).contains(BOUND),
+            "{name}: inspect shows the bound as written:\n{}",
+            stdout(&inspected)
+        );
+        let refused = run(
+            &[
+                "create",
+                "--definition",
+                path,
+                "--id",
+                "q",
+                "--fields",
+                r#"{"rate": 1}"#,
+            ],
+            None,
+        );
+        assert_eq!(
+            refused.status.code(),
+            Some(1),
+            "{name}: {}",
+            stdout(&refused)
+        );
+        let refusal = refusal_of(&refused);
+        assert_eq!(refusal["kind"], "validation", "{name}");
+        assert_eq!(refusal["errors"][0]["path"], "fields.rate", "{name}");
+    }
+}

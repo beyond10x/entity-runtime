@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T03:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:sync-stores-name-definition-by-digest",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "r1-pg-yaml: SQLite and PostgreSQL name the definition by digest; a_handle_fetches_and_checks_a_definition_once; 2 mutations red; er-kpi ab vs e925ce78, 8 rounds: postgres.create 1.10x, commit 1.06x, execute 0.95/1.02x, sqlite 0.81-1.08x; counters no regression"
+  }
+}

@@ -2,11 +2,17 @@
 format: aep.planning-md/3
 id: story:postgres-lock-identity-keyed-by-schema
 kind: story
-status: draft
+status: implemented
 title: PostgreSQL lock_identity keys its advisory lock by schema
 summary: 'E57 shape in lock_identity: the key omits the schema, so two schemas of one database serialize on one identity'
 owner: entity-runtime
-revision: 1
+relations:
+- serves: vision:O2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-24T03:20:00Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-24T03:20:01Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-24T03:20:01Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

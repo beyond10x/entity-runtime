@@ -10,9 +10,14 @@ fn error(message: impl std::fmt::Display) -> YamlError {
     YamlError(serde_yaml_ng::Error::custom(message))
 }
 
-pub(super) fn parse(input: &str) -> Result<EntityDefinition, YamlError> {
+/// Expands `input`, or `exact` when the caller has already read `input` with every float at its
+/// written value and that reading differs from the binary64 one.
+pub(super) fn parse(input: &str, exact: Option<Value>) -> Result<EntityDefinition, YamlError> {
     // JSON's value representation preserves the same exact numbers as kernel literals.
-    let mut document: Value = serde_yaml_ng::from_str(input).map_err(YamlError)?;
+    let mut document: Value = match exact {
+        Some(document) => document,
+        None => serde_yaml_ng::from_str(input).map_err(YamlError)?,
+    };
     let definitions = document
         .as_object_mut()
         .and_then(|object| object.remove("$defs"))

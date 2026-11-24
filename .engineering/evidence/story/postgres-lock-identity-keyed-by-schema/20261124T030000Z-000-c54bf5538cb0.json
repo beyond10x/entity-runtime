@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T03:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:postgres-lock-identity-keyed-by-schema",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "r1-pg-yaml: identity locks keyed by schema, entity-postgres lib tests with PostgreSQL 207 passed (4 libs), clippy -D warnings, fmt clean on e925ce78 + 4 commits"
+  }
+}

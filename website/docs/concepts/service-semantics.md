@@ -293,6 +293,13 @@ Records written by earlier releases keep their framing and bytes and are read as
 needs no rewrite. A record whose definition is missing or does not match its digest is refused. A
 build before 0.33.0 refuses an `er.record/5` record.
 
+Since 0.34.0 the SQLite and PostgreSQL stores name the definition by the same digest. A new
+decision record is stored as `["er.stored-record/1", "sha256:…", <envelope>]` with
+`"definition": null` in the envelope, and the definition document is kept once, in the store's
+`definitions` table. Records written before keep their bytes and are read as before. Once a store
+has been opened by 0.34.0 it refuses a decision record written by an older build, and an older
+build refuses to read a new record, so every writer and reader of one store is upgraded together.
+
 ## Limits
 
 - `rehydrate` refuses a `service/1` definition: an event-only fold cannot see which branch ran.
