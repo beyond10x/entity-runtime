@@ -55,7 +55,7 @@ newer revision, so the same record id names a different request and is refused a
 | Provider | Crate | For | Boundary |
 |---|---|---|---|
 | `MemoryStore` | `entity-store` | tests and process-local work | nothing survives the process |
-| `FileStore` | `entity-store` | the `entity` command and local single-root storage | one subject document is replaced atomically; v2 format only |
+| `FileStore` | `entity-store` | the `entity` command and local single-root storage | a new root is v3, which appends each record to the subject's history; a v2 root stays v2 until [migrated](../guides/migrate-a-file-store.md) |
 | `SqliteStore` | `entity-sqlite` | embedded durable applications | state, history and events share one database transaction |
 | `PostgresStore` | `entity-postgres` | centralized multi-process deployments | the caller opens the connection and chooses transport and TLS |
 | `RemoteStore` | `entity-remote` | a store behind an application-owned transport | a versioned JSON protocol, not an HTTP client |
@@ -74,7 +74,7 @@ may modify the root and its ancestors. A root another account can modify is not 
 
 Subject data is flushed before replacement. Unix also flushes directories, including the parent of
 each directory a first write creates, while Windows does not promise directory entries survive
-power loss. A store written before 0.15 must be migrated first:
+power loss. A store written before 0.15 must be migrated first, and a v2 store can be moved to v3:
 [migrate a File Store](../guides/migrate-a-file-store.md).
 
 ## Eventlog-backed recorded stores
