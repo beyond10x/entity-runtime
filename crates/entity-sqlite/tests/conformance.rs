@@ -6,6 +6,9 @@ use entity_sqlite::SqliteStore;
 use entity_store::{conformance, EventProvider, Expect, StateProvider, Store, StoreError};
 use serde_json::json;
 
+#[path = "conformance/by_digest.rs"]
+mod by_digest;
+
 /// The one definition these tests use.
 fn registry() -> Registry {
     let definition = serde_json::from_value(json!({

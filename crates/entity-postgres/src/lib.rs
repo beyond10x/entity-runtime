@@ -68,7 +68,9 @@ use entity_store::{
         HistoryOrigin, ImportedRecordEvidence, KnownLegacyOrder, LegacyAnchor, LegacyCompleteness,
         LegacyEvidence, LegacyOrderDeclaration, RecordedEntry, Subject, SubjectHistory,
     },
-    check, AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
+    check,
+    stored_record::{decision_events, read_decision, same_record, store_decision, DefinitionCache},
+    AtomicBatchStore, AtomicCommit, Envelope, EventProvider, Expect, HistoryProvider,
     LegacyStoreSnapshot, LegacyStoreSource, RecordedCommit, RecordedObservation, StateProvider,
     Store, StoreError,
 };
@@ -421,7 +423,10 @@ impl PostgresStore {
                  CREATE INDEX IF NOT EXISTS instances_id_byte_order
                      ON instances (entity, id COLLATE \"C\");",
             )
-            .map_err(|error| database("establishing the schema", &error))
+            .map_err(|error| database("establishing the schema", &error))?;
+        self.client()?
+            .batch_execute(DEFINITIONS_BY_DIGEST)
+            .map_err(|error| database("establishing the definition table", &error))
     }
 
     /// Drops everything under `schema`. For a test cleaning up after itself; a deployment does not
@@ -444,6 +449,76 @@ impl PostgresStore {
             ))
             .map_err(|error| database("dropping the schema", &error))
     }
+}
+
+/// Since 0.34.0 a decision record names its definition by digest and the definition is kept once
+/// per schema in `definitions` ([`entity_store::stored_record`]). Every statement is additive and
+/// runs with [`PostgresStore::migrate`], so a schema written by an older release gains them the
+/// first time this release opens it, and its records keep their bytes.
+///
+/// The trigger is the fence. An older release reads a by-digest record as a parse error rather
+/// than misreading it, but it would still write decision records that embed their definition, and
+/// a retry of one of its records would compare against the other form. Once this release has
+/// migrated a schema, a decision record in the embedded form is refused at insert
+/// (SQLSTATE `23514`), so an older writer fails with this message instead of mixing forms.
+const DEFINITIONS_BY_DIGEST: &str = "CREATE TABLE IF NOT EXISTS definitions (
+         digest   TEXT PRIMARY KEY,
+         document TEXT NOT NULL
+     );
+     CREATE OR REPLACE FUNCTION entity_history_names_definitions_by_digest() RETURNS trigger
+         LANGUAGE plpgsql AS $f$
+     BEGIN
+         IF NEW.kind = 'decision' AND left(NEW.document, 22) <> '[\"er.stored-record/1\",' THEN
+             RAISE EXCEPTION USING ERRCODE = 'check_violation', MESSAGE =
+                 'this store names definitions by digest '
+                 || '(entity-postgres 0.34.0 or later); a decision record that embeds its '
+                 || 'definition comes from an older writer: upgrade every writer of this schema';
+         END IF;
+         RETURN NEW;
+     END
+     $f$;
+     DO $d$ BEGIN
+         IF NOT EXISTS (
+             SELECT 1 FROM pg_trigger
+             WHERE tgrelid = 'history'::regclass
+               AND tgname = 'history_names_definitions_by_digest'
+         ) THEN
+             CREATE TRIGGER history_names_definitions_by_digest BEFORE INSERT ON history
+                 FOR EACH ROW EXECUTE FUNCTION entity_history_names_definitions_by_digest();
+         END IF;
+     END $d$;";
+
+/// The documents of one subject's `kind` rows of `history`, in position order.
+fn history_documents(
+    client: &mut impl GenericClient,
+    entity: &str,
+    id: &str,
+    kind: &str,
+) -> Result<Vec<String>, StoreError> {
+    Ok(client
+        .query(
+            "SELECT document FROM history WHERE entity = $1 AND id = $2 AND kind = $3 \
+             ORDER BY position",
+            &[&entity, &id, &kind],
+        )
+        .map_err(|error| database("reading history", &error))?
+        .into_iter()
+        .map(|row| row.get(0))
+        .collect())
+}
+
+/// The definition document stored under `digest`, read in `client`'s current view.
+fn fetch_definition(
+    client: &mut impl GenericClient,
+    digest: &str,
+) -> Result<Option<String>, StoreError> {
+    Ok(client
+        .query_opt(
+            "SELECT document FROM definitions WHERE digest = $1",
+            &[&digest],
+        )
+        .map_err(|error| database("reading a definition", &error))?
+        .map(|row| row.get(0)))
 }
 
 impl DocumentQueryProvider for PostgresStore {
@@ -706,9 +781,7 @@ fn read_events(
                 serde_json::from_str(&text).map_err(|error| backend("parsing an event", &error))?,
             );
         } else {
-            let envelope: Envelope<DecisionRecord> = serde_json::from_str(&text)
-                .map_err(|error| backend("parsing a history record", &error))?;
-            events.extend(envelope.record.events);
+            events.extend(decision_events(&text)?);
         }
     }
     events.sort_by_key(|event| event.revision);
@@ -717,11 +790,11 @@ fn read_events(
 
 impl HistoryProvider for PostgresStore {
     fn records(&self, entity: &str, id: &str) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
-        self.read_history(entity, id, "decision")
+        self.read_records(entity, id)
     }
 
     fn observations(&self, entity: &str, id: &str) -> Result<Vec<RecordedObservation>, StoreError> {
-        self.read_history(entity, id, "observation")
+        self.read_observations(entity, id)
     }
 }
 
@@ -879,8 +952,7 @@ impl Store for PostgresStore {
         let mut transaction = client
             .transaction()
             .map_err(|error| database("beginning the recorded transaction", &error))?;
-        let document = serde_json::to_string(&commit.envelope)
-            .map_err(|error| backend("serialising the decision envelope", &error))?;
+        let stored = store_decision(&commit.envelope)?;
         lock_record(&mut transaction, &commit.envelope.record_id)?;
         if let Some(row) = transaction
             .query_opt(
@@ -890,7 +962,7 @@ impl Store for PostgresStore {
             .map_err(|error| database("checking the record id", &error))?
         {
             let existing: String = row.get(0);
-            if existing == document {
+            if same_record(&existing, &commit.envelope, &stored)? {
                 transaction
                     .commit()
                     .map_err(|error| database("committing the retry", &error))?;
@@ -901,6 +973,15 @@ impl Store for PostgresStore {
             });
         }
         write_decision(&mut transaction, &commit.decision(), expect, false)?;
+        if let Some(definition) = &stored.definition {
+            transaction
+                .execute(
+                    "INSERT INTO definitions (digest, document) VALUES ($1, $2) \
+                     ON CONFLICT (digest) DO NOTHING",
+                    &[&definition.digest, &definition.document],
+                )
+                .map_err(|error| database("keeping the definition", &error))?;
+        }
         let position: i64 = transaction
             .query_one(
                 "SELECT COALESCE(MAX(position) + 1, 0) FROM history WHERE entity = $1 AND id = $2",
@@ -917,7 +998,7 @@ impl Store for PostgresStore {
                     &commit.instance.id,
                     &position,
                     &commit.envelope.record_id,
-                    &document,
+                    &stored.document,
                 ],
             )
             .map_err(|error| database("appending the decision record", &error))?;
@@ -1053,6 +1134,7 @@ impl LegacyStoreSource for PostgresStore {
              ORDER BY entity, id, position",
             "acquiring legacy history",
         )?;
+        let mut definitions = DefinitionCache::new();
         let mut histories = Vec::with_capacity(coordinates.len());
         for row in coordinates {
             let entity: String = row.get(0);
@@ -1100,8 +1182,9 @@ impl LegacyStoreSource for PostgresStore {
                 let document: String = row.get(5);
                 let (entry, per_kind_position) = match kind.as_str() {
                     "decision" => {
-                        let envelope: Envelope<DecisionRecord> = serde_json::from_str(&document)
-                            .map_err(|error| backend("parsing a legacy decision", &error))?;
+                        let envelope = read_decision(&document, &mut definitions, |digest| {
+                            fetch_definition(&mut transaction, digest)
+                        })?;
                         if envelope.record_id != record_id {
                             return Err(StoreError::Backend(format!(
                                 "legacy PostgreSQL decision at {entity:?}/{id:?}/{position} substitutes record identity"
@@ -1210,24 +1293,35 @@ fn grouped(
 }
 
 impl PostgresStore {
-    fn read_history<T: serde::de::DeserializeOwned>(
+    fn read_records(
         &self,
         entity: &str,
         id: &str,
-        kind: &str,
-    ) -> Result<Vec<T>, StoreError> {
+    ) -> Result<Vec<Envelope<DecisionRecord>>, StoreError> {
         let mut client = self.client()?;
-        let rows = client
-            .query(
-                "SELECT document FROM history WHERE entity = $1 AND id = $2 AND kind = $3 \
-                 ORDER BY position",
-                &[&entity, &id, &kind],
-            )
-            .map_err(|error| database("reading history", &error))?;
-        rows.into_iter()
-            .map(|row| {
-                let text: String = row.get(0);
-                serde_json::from_str(&text)
+        let documents = history_documents(&mut *client, entity, id, "decision")?;
+        // A definition is written in the transaction of the first record that names it and never
+        // removed, so every definition a record read here names is visible to the reads below.
+        let mut definitions = DefinitionCache::new();
+        documents
+            .iter()
+            .map(|document| {
+                read_decision(document, &mut definitions, |digest| {
+                    fetch_definition(&mut *client, digest)
+                })
+            })
+            .collect()
+    }
+
+    fn read_observations(
+        &self,
+        entity: &str,
+        id: &str,
+    ) -> Result<Vec<RecordedObservation>, StoreError> {
+        history_documents(&mut *self.client()?, entity, id, "observation")?
+            .iter()
+            .map(|text| {
+                serde_json::from_str(text)
                     .map_err(|error| backend("parsing a history record", &error))
             })
             .collect()

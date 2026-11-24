@@ -56,6 +56,7 @@ pub mod file;
 pub mod legacy;
 pub mod memory;
 pub mod projection;
+pub mod stored_record;
 
 pub use envelope::{Envelope, EnvelopeError, Recording};
 pub use file::{migrate_file_store_v1, migrate_file_store_v2, FileMigrationReport, FileStore};

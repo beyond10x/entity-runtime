@@ -19,6 +19,9 @@ use entity_store::{
 };
 use serde_json::json;
 
+#[path = "conformance/by_digest.rs"]
+mod by_digest;
+
 static SCHEMAS: AtomicUsize = AtomicUsize::new(0);
 
 /// The server, or `None` after saying why the test is not running.
@@ -646,13 +649,21 @@ fn assert_events_read_survives_commits_between_its_sources(
             &[&serde_json::to_string(&reopened.instance).expect("serialises")],
         )
         .expect("instance at revision 3");
+        let stored =
+            entity_store::stored_record::store_decision(&recorded.envelope).expect("serialises");
+        let definition = stored
+            .definition
+            .as_ref()
+            .expect("the record names a definition");
+        lock.execute(
+            "INSERT INTO definitions (digest, document) VALUES ($1, $2)",
+            &[&definition.digest, &definition.document],
+        )
+        .expect("definition kept");
         lock.execute(
             "INSERT INTO history (entity, id, position, kind, record_id, document) \
              VALUES ('ticket', 'raced', 0, 'decision', $1, $2)",
-            &[
-                &recorded.envelope.record_id,
-                &serde_json::to_string(&recorded.envelope).expect("serialises"),
-            ],
+            &[&recorded.envelope.record_id, &stored.document],
         )
         .expect("recorded revision 3");
         lock.commit().expect("revisions 2 and 3 committed");

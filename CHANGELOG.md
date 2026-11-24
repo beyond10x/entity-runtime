@@ -58,6 +58,22 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   `entity store migrate-file-v3 --from <v2 root> --to <new root> --dry-run`, the same command
   without `--dry-run`, check `entity list --store <new root> --entity <type>`, and point the
   writers at the new root; keep the v2 root to roll back to with the older release.
+- `SqliteStore` and `PostgresStore` write a new decision record with its definition named by
+  digest, `["er.stored-record/1", "sha256:…", <envelope with "definition": null>]`, and keep each
+  definition document once, in a new `definitions` table, under the digest the Eventlog adapter
+  uses for `er.record/5`. 32 records of one entity type now hold the definition once instead of 32
+  times. Records written before keep their bytes and are read, retried and replayed as before; a
+  record whose definition is missing or does not hash to its digest is refused as
+  `StoreError::Backend`. `entity_store::stored_record` holds the shared encoding.
+  **What an operator runs:** nothing extra for SQLite: `SqliteStore::open` adds the table and a
+  trigger the first time it opens a database. For PostgreSQL, `PostgresStore::migrate` (which
+  `connect_no_tls`, `connect_in_schema` and `from_client` run) adds them; where the application's
+  role may not run DDL, run `migrate` once as the schema owner before the upgraded application
+  starts. **The upgrade is one way:** once a store has been opened by this release, a decision
+  record written by 0.33.x or older is refused at insert ("this store names definitions by digest
+  …"), and 0.33.x refuses to read a new record ("parsing a history record: invalid type:
+  map, expected a string") instead of misreading it. Upgrade every writer and reader of one store
+  together.
 
 ### Performance
 
