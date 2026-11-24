@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T08:10:10Z",
+  "actor": "human:timo",
+  "artifact": "story:file-store-v3-migration-guide",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "CI runs 45348968206 and 45348968138 on PR 106 at acf16b5f: Build Docusaurus pass, b10x-docs-check pass; local task docs-check and task site-build pass",
+    "reference": "https://github.com/beyond10x/entity-runtime/pull/106"
+  }
+}
