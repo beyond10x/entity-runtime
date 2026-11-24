@@ -18,7 +18,8 @@ use std::fmt;
 
 /// Reads `input` with every float scalar at its source value, or `None` when no float in it
 /// would have been rounded, or the document holds a construct this reading does not follow (a
-/// tagged node, a key that is not a scalar). `None` leaves the caller's reading as it was.
+/// tagged value, which the definition reader refuses before this runs, or a key that is a mapping
+/// or a sequence). `None` leaves the caller's reading as it was.
 pub(super) fn exact_value(input: &str) -> Result<Option<Value>, serde_yaml_ng::Error> {
     let shape: Yaml = serde_yaml_ng::from_str(input)?;
     let mut rounded = false;
@@ -97,8 +98,14 @@ impl<'de> Visitor<'de> for ExactMap<'_, '_> {
         // Duplicate and merge keys were refused before this reading, so the n-th key read here is
         // the n-th entry of the shape.
         for (key, shape) in self.shape {
+            // A key is read as a string, and the string reader takes a tagged scalar's text and
+            // ignores its tag, as the definition reader does: `!x rate:` names the field `rate`.
+            let scalar = match key {
+                Yaml::Tagged(tagged) => &tagged.value,
+                untagged => untagged,
+            };
             if !matches!(
-                key,
+                scalar,
                 Yaml::Null | Yaml::Bool(_) | Yaml::Number(_) | Yaml::String(_)
             ) {
                 return Err(A::Error::custom(

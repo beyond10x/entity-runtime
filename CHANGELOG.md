@@ -100,6 +100,11 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
   During a rolling upgrade an older and a newer binary locking the same identity in one schema take
   different locks and no longer serialize against each other. Upgrade every caller of one schema
   together.
+- A number in a definition that a binary64 cannot hold is now read as written in a document with
+  a root `$defs` or `$ref` and in a document with a tagged mapping key (`!x rate: …`) too. Before,
+  `min: 1.0000000000000001` there was read as `1.0` and `rate: 1` was admitted; it is now refused.
+  A number a binary64 already holds (`0.50`, `0.1`, `1e3`) reads as before, so those definitions
+  keep their bytes and digests.
 
 ## [0.33.1] — 2026-11-23
 

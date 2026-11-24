@@ -76,7 +76,15 @@ pub fn from_str(input: &str) -> Result<EntityDefinition, YamlError> {
     let keys: std::collections::BTreeMap<String, serde::de::IgnoredAny> =
         serde_yaml_ng::from_str(input).map_err(YamlError)?;
     if keys.contains_key("$defs") || keys.contains_key("$ref") {
-        return fragments::parse(input);
+        // The fragment resolver works on the document as JSON values, and reading YAML into one
+        // takes every float as a binary64. It starts from the exact reading below whenever that
+        // reading changed a value, so a bound in a fragment keeps its digits as one outside does.
+        let exact = if floats.get() {
+            exact::exact_value(input).map_err(YamlError)?
+        } else {
+            None
+        };
+        return fragments::parse(input, exact);
     }
     // A data-carrying variant, `effect: { moves: { from: open, to: paid } }`, is a mapping with one
     // key, as JSON writes it. The YAML reader on its own takes such a variant only as a `!moves`

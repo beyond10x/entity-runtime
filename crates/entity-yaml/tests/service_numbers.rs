@@ -209,6 +209,122 @@ fn a_bound_finer_than_a_binary64_keeps_its_digits_and_refuses_the_value_below_it
     }
 }
 
+/// `definition`'s bound on `rate` is `bound` as written, and the kernel refuses `rate = 1` below it.
+fn assert_the_bound_is_enforced(case: &str, definition: EntityDefinition, bound: &str) {
+    assert_eq!(
+        definition.schema.fields["rate"]
+            .min
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref(),
+        Some(bound),
+        "{case}: the bound is read as written, not as the binary64 1.0"
+    );
+    let validated = ValidatedDefinition::new(definition).expect("registers");
+    let create_at = |rate: &str| {
+        let fields: Value =
+            serde_json::from_str(&format!(r#"{{"rate": {rate}}}"#)).expect("JSON fields");
+        create(&validated, "q".to_owned(), fields)
+    };
+    let Err(CoreError::Validation(errors)) = create_at("1") else {
+        panic!("{case}: 1 is below the bound {bound}");
+    };
+    assert_eq!(errors.len(), 1, "{case}: {errors:?}");
+    assert_eq!(errors[0].path, "fields.rate", "{case}");
+    create_at(bound).expect("the bound itself is admitted");
+}
+
+/// The bounded definition with `rate` declared by a root `$defs` fragment, as YAML text.
+fn fragment_yaml(min: &str) -> String {
+    format!(
+        "$defs:\n  rate: {{ type: number, required: true, min: {min} }}\nentity: quote\n\
+         version: 1\nschema:\n  fields:\n    rate: {{ $ref: '#/$defs/rate' }}\n\
+         lifecycle: {{ initial: open, states: [open] }}\n"
+    )
+}
+
+/// The same document as JSON text.
+fn fragment_json(min: &str) -> String {
+    format!(
+        r##"{{"$defs": {{ "rate": {{ "type": "number", "required": true, "min": {min} }} }},
+  "entity": "quote", "version": 1,
+  "schema": {{ "fields": {{ "rate": {{ "$ref": "#/$defs/rate" }} }} }},
+  "lifecycle": {{ "initial": "open", "states": ["open"] }}}}"##
+    )
+}
+
+/// A document whose root is a `$ref` to a base definition in `$defs` that declares the bound.
+fn root_reference_yaml(min: &str) -> String {
+    format!(
+        "$defs:\n  base:\n    entity: quote\n    version: 1\n    schema:\n      fields:\n        \
+         rate: {{ type: number, required: true, min: {min} }}\n    \
+         lifecycle: {{ initial: open, states: [open] }}\n$ref: '#/$defs/base'\n"
+    )
+}
+
+/// Review E31's remainder: a document with a root `$defs` or `$ref` was read by the fragment
+/// resolver, which took every float as a binary64, so `1.0000000000000001` became `1.0` there
+/// while the same bound outside a fragment document kept its digits.
+#[test]
+fn a_bound_in_a_fragment_document_keeps_its_digits_and_refuses_the_value_below_it() {
+    const BOUND: &str = "1.0000000000000001";
+    for (case, text) in [
+        ("$defs in yaml", fragment_yaml(BOUND)),
+        ("$defs in json", fragment_json(BOUND)),
+        ("root $ref in yaml", root_reference_yaml(BOUND)),
+        (
+            "bound beside $defs",
+            bounded_yaml(BOUND).replace("entity: quote", "$defs: {}\nentity: quote"),
+        ),
+    ] {
+        let definition = entity_yaml::from_str(&text)
+            .unwrap_or_else(|error| panic!("{case}: the document is a definition: {error}"));
+        assert_the_bound_is_enforced(case, definition, BOUND);
+    }
+}
+
+/// The other remainder: a document with a tagged node. The definition reader refuses a tagged
+/// value, but reads a tagged mapping key as its text (`!field rate` names the field `rate`), and
+/// the exact reading gave up on such a key, so the bounds beside it kept their binary64 reading.
+#[test]
+fn a_bound_beside_a_tagged_key_keeps_its_digits_and_refuses_the_value_below_it() {
+    const BOUND: &str = "1.0000000000000001";
+    for (case, text) in [
+        (
+            "tagged key in yaml",
+            bounded_yaml(BOUND).replace("    rate:", "    !field rate:"),
+        ),
+        (
+            "tagged key in json",
+            bounded_json(BOUND).replace("\"rate\":", "!field \"rate\":"),
+        ),
+        (
+            "tagged key in a fragment",
+            fragment_yaml(BOUND).replace("  rate:", "  !field rate:"),
+        ),
+    ] {
+        let definition = entity_yaml::from_str(&text)
+            .unwrap_or_else(|error| panic!("{case}: the document is a definition: {error}"));
+        assert_the_bound_is_enforced(case, definition, BOUND);
+    }
+}
+
+/// A fragment document whose floats a binary64 already holds reads exactly as before, so its
+/// definition keeps its bytes and its digest.
+#[test]
+fn a_float_a_binary64_holds_in_a_fragment_document_keeps_the_reading_it_always_had() {
+    for (written, read) in [("0.50", 0.5), ("0.1", 0.1), ("1e3", 1000.0)] {
+        for text in [fragment_yaml(written), fragment_json(written)] {
+            let definition = entity_yaml::from_str(&text).expect("the document is a definition");
+            assert_eq!(
+                definition.schema.fields["rate"].min,
+                serde_json::Number::from_f64(read),
+                "{written}: {text}"
+            );
+        }
+    }
+}
+
 /// A float a binary64 already holds as written keeps the reading it always had, so a definition
 /// that was read exactly before keeps its bytes, and its digest, through this change.
 #[test]
