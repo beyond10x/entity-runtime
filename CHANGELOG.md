@@ -4,6 +4,68 @@ Every change a user of the runtime sees, per release. Unreleased work sits at th
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-11-25
+
+This release builds on Eventlog 0.11.0. Its changes to the hosted PostgreSQL schema and to the
+tree store format cannot be undone by running an older release on the same data. Each is
+described below, with what an operator runs. An operator who uses only the File Store, the
+`entity-sqlite` or `entity-postgres` stores without `eventlog-facade`, or the `entity` command
+without `eventlog-providers` has nothing to do.
+
+### Breaking
+
+- `entity-eventlog`, the `eventlog-facade` features of `entity-sqlite` and `entity-postgres` and
+  the `eventlog-providers` feature of `entity-cli` depend on Eventlog's `0.11.0` tag instead of
+  `0.10.0`. Code that names Eventlog types directly gets that release's breaking changes:
+  `eventlog_sqlite::RestoredEvent` has the new public field `redacted: Option<String>` (a struct
+  literal adds `redacted: None`), and `eventlog_tree::MigrationReport` has the new public fields
+  `group_fingerprints_before`, `groups_fingerprinted` and `groups_without_fingerprint`. No Entity
+  Runtime API changed its signature.
+- Hosted PostgreSQL: Eventlog 0.11.0 is a new schema edition (a page index and a digest index on
+  every projection table). **What an operator runs:** stop every process of the owner built on
+  Entity Runtime 0.34.0 or older, run `eventlog_postgres::PostgresEventStore::migrate` with the
+  migration role and `entity_eventlog::projection_specs()`, then start this release. Provisioning
+  (`EventlogRecordedStoreProvisioner`) runs `migrate` itself. Until `migrate` ran, an
+  application-role open (`EventlogRecordedStoreOwner`, `EventlogPostgresStore::open`) of a store
+  an earlier release migrated is refused. **One way:** once `migrate` ran, 0.34.0 and older
+  refuse the schema ("unknown PostgreSQL schema version/checksum"). `migrate` rewrites each
+  projection table inside its transaction; reads and writes of that table wait until it commits.
+  No new grants.
+- Tree: a new tree store is created in the group format `eventlog-tree/group/2`, and a tenant
+  whose escaped name is longer than 255 bytes is kept under `tenants/%%<digest>`. **Entity
+  Runtime 0.34.0 and older refuse such a store.** Upgrade every process that reads a tree store
+  before one of this release writes it. A tree store an earlier release created keeps writing
+  `eventlog-tree/group/1` and reads unchanged.
+- Tree: an `eventlog_tree::TreeEventStore` handle no longer lists every group file on each write.
+  Code that appends to one directly gets `EventLogError::Backend` ("the tree store changed outside
+  this handle …") for a write on history a `git checkout`, `pull` or `merge` added while the
+  handle was open; reopen the store or call `TreeEventStore::reload`, then retry. An Entity
+  Runtime recorded store held across a merge still serves the merged decisions: a command on the
+  revision before the merge is refused as `RevisionConflict` naming the merged revision, and the
+  command on that revision commits on the same handle.
+
+### Added
+
+- Tree: the exact retry of a recorded command whose event was redacted or whose blob was deleted
+  gets its original receipt after a reopen, where it got a refusal before. **What an operator
+  runs** for a tree store an earlier release created: once every process that reads it runs this
+  release, `eventlog_tree::migrate(root, MigrationMode::Apply)` once, which declares
+  `eventlog-tree/group/2` and keeps the fingerprint of every group whose events and blobs are all
+  intact. A group redacted before the migration keeps refusing its exact retry
+  (`MigrationReport::groups_without_fingerprint` counts them). After the migration 0.34.0 and
+  older refuse the store.
+
+### Changed
+
+- An Eventlog projection row's indexed value may be of any length again on every provider. The
+  recorded projections declare no indexed field, so no Entity Runtime write changes.
+
+### Development
+
+- `.github/workflows/kpi.yml` has a `KPI record` job that runs only on a dispatch: it records
+  `checks/kpi/baseline.json` on a CI runner and uploads it as an artifact. The baseline is
+  recorded there, not on a workstation, and committed unedited.
+
 ## [0.34.0] — 2026-11-24
 
 This release builds on Eventlog 0.10.0 and does not move to a later Eventlog release. Two changes

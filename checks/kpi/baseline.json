@@ -1,12 +1,12 @@
 {
   "host": {
-    "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
-    "cpus": "20",
+    "cpu": "Intel(R) Xeon(R) 6975P-C",
+    "cpus": "4",
     "entity_binary": "entity",
-    "hostname": "next",
-    "loadavg": "108.08 129.56 107.82 61/5274 2028704",
+    "hostname": "ip-10-0-143-105",
+    "loadavg": "3.67 2.13 0.87 3/333 5167",
     "postgres": "ENTITY_POSTGRES_URL set",
-    "revision": "881d8e558e0a2faae033ca9f4329a136f597878b",
+    "revision": "0518447c64f2a6d7fdc0562f69aa9bbf271a388b",
     "rustc": "1.91.0-x86_64-unknown-linux-gnu"
   },
   "counters": {
@@ -21,20 +21,20 @@
     "eventlog_file.create.blob_bytes.second": 2242,
     "eventlog_file.list_empty.blob_read_opens.t64": 606,
     "eventlog_file.list_empty.blob_read_opens.t8": 81,
-    "eventlog_file.list_empty.read_bytes.t64": 1499224,
-    "eventlog_file.list_empty.read_bytes.t8": 199967,
+    "eventlog_file.list_empty.read_bytes.t64": 1499481,
+    "eventlog_file.list_empty.read_bytes.t8": 200000,
     "executor.batch_retry.history_loads.k32": 1,
     "executor.batch_retry.history_loads.k8": 1,
     "executor.fresh_create.alloc_bytes": 531597,
     "executor.fresh_create.kernel_creates": 1,
     "file.create.subject_read_opens.n33": 32,
     "file.create.subject_read_opens.n9": 8,
-    "file.execute.read_bytes.prior32": 605234,
-    "file.execute.read_bytes.prior8": 152675,
-    "file.execute.write_bytes.prior32": 207967,
-    "file.execute.write_bytes.prior8": 57107,
-    "file.first_write.fsyncs": 8,
-    "file.first_write_of_type.fsyncs": 4,
+    "file.execute.read_bytes.prior32": 49145,
+    "file.execute.read_bytes.prior8": 14320,
+    "file.execute.write_bytes.prior32": 928,
+    "file.execute.write_bytes.prior8": 917,
+    "file.first_write.fsyncs": 11,
+    "file.first_write_of_type.fsyncs": 6,
     "file.later_write_of_type.fsyncs": 3,
     "graph.mermaid.endpoint_comparisons.chain300": 898,
     "hybrid.catch_up.destination_observation_reads.n32": 1,
@@ -52,344 +52,374 @@
   },
   "timing": {
     "cli.eventlog_file.create.wall_ms": {
-      "median": 353.82,
-      "min": 262.69,
-      "max": 698.74
-    },
-    "cli.eventlog_file.execute.prior8.wall_ms": {
-      "median": 307.98,
-      "min": 301.8,
-      "max": 994.68
-    },
-    "cli.eventlog_file.list_empty.wall_ms": {
-      "median": 143.74,
-      "min": 115.16,
-      "max": 441.48
-    },
-    "cli.file.create.wall_ms": {
-      "median": 59.18,
-      "min": 33.72,
-      "max": 89.79
-    },
-    "cli.file.execute.prior8.wall_ms": {
-      "median": 75.2,
-      "min": 55.92,
-      "max": 95.14
-    },
-    "cli.graph_text.chain300.wall_ms": {
-      "median": 10.16,
-      "min": 9.67,
-      "max": 62.41
-    },
-    "eventlog_file.commit.ops_per_s": {
-      "median": 3.78,
-      "min": 3.31,
-      "max": 6.99
-    },
-    "eventlog_file.create.p50_us": {
-      "median": 139698.53,
-      "min": 123934.43,
-      "max": 159597.41
-    },
-    "eventlog_file.create.p95_us": {
-      "median": 234920.49,
-      "min": 165950.06,
-      "max": 375170.0
-    },
-    "eventlog_file.execute.prior32.p50_us": {
-      "median": 304724.55,
-      "min": 168165.76,
-      "max": 384765.04
-    },
-    "eventlog_file.execute.prior32.p95_us": {
-      "median": 323497.18,
-      "min": 203796.92,
-      "max": 411338.5
-    },
-    "eventlog_file.execute.prior8.p50_us": {
-      "median": 206028.59,
-      "min": 137632.85,
-      "max": 399813.02
-    },
-    "eventlog_file.execute.prior8.p95_us": {
-      "median": 1210412.81,
-      "min": 212057.98,
-      "max": 1456043.91
-    },
-    "eventlog_file.ids.n10.p50_us": {
-      "median": 25695.17,
-      "min": 12621.22,
-      "max": 56880.23
-    },
-    "eventlog_file.ids.n10.p95_us": {
-      "median": 158959.77,
-      "min": 97756.61,
-      "max": 281640.7
-    },
-    "eventlog_file.query_one_row.n10.p50_us": {
-      "median": 26228.72,
-      "min": 12459.1,
-      "max": 60805.38
-    },
-    "eventlog_file.query_one_row.n10.p95_us": {
-      "median": 33911.52,
-      "min": 33407.02,
-      "max": 93480.97
-    },
-    "eventlog_sqlite.commit.ops_per_s": {
-      "median": 24.01,
-      "min": 19.82,
-      "max": 25.76
-    },
-    "eventlog_sqlite.create.p50_us": {
-      "median": 39931.9,
-      "min": 21627.44,
-      "max": 63837.11
-    },
-    "eventlog_sqlite.create.p95_us": {
-      "median": 64644.99,
-      "min": 26603.27,
-      "max": 77606.11
-    },
-    "eventlog_sqlite.execute.prior32.p50_us": {
-      "median": 73205.12,
-      "min": 60258.05,
-      "max": 109028.37
-    },
-    "eventlog_sqlite.execute.prior32.p95_us": {
-      "median": 76634.43,
-      "min": 62941.48,
-      "max": 116305.82
-    },
-    "eventlog_sqlite.execute.prior8.p50_us": {
-      "median": 46541.17,
-      "min": 39745.41,
-      "max": 50021.83
-    },
-    "eventlog_sqlite.execute.prior8.p95_us": {
-      "median": 59642.94,
-      "min": 55820.6,
-      "max": 95660.43
-    },
-    "eventlog_sqlite.ids.n10.p50_us": {
-      "median": 20875.46,
-      "min": 11453.44,
-      "max": 36575.54
-    },
-    "eventlog_sqlite.ids.n10.p95_us": {
-      "median": 99249.58,
-      "min": 70294.41,
-      "max": 108605.16
-    },
-    "eventlog_sqlite.query_one_row.n10.p50_us": {
-      "median": 19739.0,
-      "min": 11931.42,
-      "max": 42522.4
-    },
-    "eventlog_sqlite.query_one_row.n10.p95_us": {
-      "median": 34983.42,
-      "min": 25123.1,
-      "max": 69333.74
-    },
-    "file.commit.ops_per_s": {
-      "median": 22.52,
-      "min": 19.28,
+      "median": 28.59,
+      "min": 28.28,
       "max": 29.17
     },
+    "cli.eventlog_file.execute.prior8.wall_ms": {
+      "median": 32.86,
+      "min": 32.31,
+      "max": 33.31
+    },
+    "cli.eventlog_file.list_empty.wall_ms": {
+      "median": 22.21,
+      "min": 22.01,
+      "max": 22.68
+    },
+    "cli.file.create.wall_ms": {
+      "median": 2.67,
+      "min": 2.63,
+      "max": 2.94
+    },
+    "cli.file.execute.prior8.wall_ms": {
+      "median": 2.77,
+      "min": 2.75,
+      "max": 3.04
+    },
+    "cli.graph_text.chain300.wall_ms": {
+      "median": 2.33,
+      "min": 2.31,
+      "max": 2.36
+    },
+    "eventlog_file.commit.ops_per_s": {
+      "median": 160.44,
+      "min": 139.71,
+      "max": 179.65
+    },
+    "eventlog_file.create.p50_us": {
+      "median": 4810.88,
+      "min": 4708.42,
+      "max": 5045.61
+    },
+    "eventlog_file.create.p95_us": {
+      "median": 5203.66,
+      "min": 4815.81,
+      "max": 5376.52
+    },
+    "eventlog_file.execute.prior32.p50_us": {
+      "median": 15284.98,
+      "min": 15005.5,
+      "max": 15495.91
+    },
+    "eventlog_file.execute.prior32.p95_us": {
+      "median": 15457.85,
+      "min": 15410.71,
+      "max": 15769.02
+    },
+    "eventlog_file.execute.prior8.p50_us": {
+      "median": 8085.99,
+      "min": 6841.11,
+      "max": 8629.31
+    },
+    "eventlog_file.execute.prior8.p95_us": {
+      "median": 8550.86,
+      "min": 7846.63,
+      "max": 8862.63
+    },
+    "eventlog_file.ids.n10.p50_us": {
+      "median": 3498.81,
+      "min": 3387.82,
+      "max": 3536.33
+    },
+    "eventlog_file.ids.n10.p95_us": {
+      "median": 19601.22,
+      "min": 19072.57,
+      "max": 21800.66
+    },
+    "eventlog_file.query_one_row.n10.p50_us": {
+      "median": 3426.14,
+      "min": 3358.63,
+      "max": 3437.55
+    },
+    "eventlog_file.query_one_row.n10.p95_us": {
+      "median": 3550.41,
+      "min": 3376.33,
+      "max": 3661.51
+    },
+    "eventlog_sqlite.commit.ops_per_s": {
+      "median": 248.57,
+      "min": 235.09,
+      "max": 269.76
+    },
+    "eventlog_sqlite.create.p50_us": {
+      "median": 2841.08,
+      "min": 2152.69,
+      "max": 2864.19
+    },
+    "eventlog_sqlite.create.p95_us": {
+      "median": 2933.04,
+      "min": 2216.53,
+      "max": 3113.53
+    },
+    "eventlog_sqlite.execute.prior32.p50_us": {
+      "median": 11517.5,
+      "min": 10551.62,
+      "max": 11752.14
+    },
+    "eventlog_sqlite.execute.prior32.p95_us": {
+      "median": 11844.53,
+      "min": 10771.47,
+      "max": 11917.7
+    },
+    "eventlog_sqlite.execute.prior8.p50_us": {
+      "median": 4600.8,
+      "min": 4464.22,
+      "max": 5214.13
+    },
+    "eventlog_sqlite.execute.prior8.p95_us": {
+      "median": 4841.72,
+      "min": 4489.62,
+      "max": 6328.88
+    },
+    "eventlog_sqlite.ids.n10.p50_us": {
+      "median": 3492.7,
+      "min": 3377.51,
+      "max": 4174.72
+    },
+    "eventlog_sqlite.ids.n10.p95_us": {
+      "median": 17609.8,
+      "min": 17571.34,
+      "max": 17913.28
+    },
+    "eventlog_sqlite.query_one_row.n10.p50_us": {
+      "median": 3443.97,
+      "min": 3331.78,
+      "max": 3585.97
+    },
+    "eventlog_sqlite.query_one_row.n10.p95_us": {
+      "median": 3634.63,
+      "min": 3598.73,
+      "max": 3778.3
+    },
+    "eventlog_sqlite.read_invoke.after.complete_snapshot.cpu_us": {
+      "median": 5521.37,
+      "min": 5417.86,
+      "max": 7593.96
+    },
+    "eventlog_sqlite.read_invoke.after.open.cpu_us": {
+      "median": 69778.01,
+      "min": 69219.82,
+      "max": 69912.17
+    },
+    "eventlog_sqlite.read_invoke.cpu_us": {
+      "median": 10546.79,
+      "min": 10257.44,
+      "max": 10568.37
+    },
+    "eventlog_sqlite.read_invoke.execute_batch.cpu_us": {
+      "median": 10120.53,
+      "min": 9966.76,
+      "max": 10149.22
+    },
+    "eventlog_sqlite.read_invoke.lookup_batch.cpu_us": {
+      "median": 76.04,
+      "min": 75.91,
+      "max": 79.23
+    },
+    "eventlog_sqlite.read_invoke.read_history.cpu_us": {
+      "median": 119.43,
+      "min": 105.06,
+      "max": 119.64
+    },
+    "file.commit.ops_per_s": {
+      "median": 1415.76,
+      "min": 1401.96,
+      "max": 1441.65
+    },
     "file.create.p50_us": {
-      "median": 54899.63,
-      "min": 40558.3,
-      "max": 203721.61
+      "median": 635.34,
+      "min": 572.11,
+      "max": 660.33
     },
     "file.create.p95_us": {
-      "median": 200486.43,
-      "min": 112582.15,
-      "max": 855567.08
+      "median": 1905.72,
+      "min": 1627.64,
+      "max": 2067.22
     },
     "file.execute.prior32.p50_us": {
-      "median": 69232.93,
-      "min": 55173.05,
-      "max": 117886.81
+      "median": 1545.01,
+      "min": 1533.27,
+      "max": 1827.12
     },
     "file.execute.prior32.p95_us": {
-      "median": 98003.38,
-      "min": 66117.33,
-      "max": 161844.04
+      "median": 1562.33,
+      "min": 1546.31,
+      "max": 1933.96
     },
     "file.execute.prior8.p50_us": {
-      "median": 32747.95,
-      "min": 28842.15,
-      "max": 43796.73
+      "median": 813.45,
+      "min": 813.17,
+      "max": 814.16
     },
     "file.execute.prior8.p95_us": {
-      "median": 57181.3,
-      "min": 32260.48,
-      "max": 118096.41
+      "median": 843.82,
+      "min": 838.18,
+      "max": 1056.26
     },
     "file.ids.n10.p50_us": {
-      "median": 19735.74,
-      "min": 6019.03,
-      "max": 29637.1
+      "median": 207.9,
+      "min": 203.53,
+      "max": 209.52
     },
     "file.ids.n10.p95_us": {
-      "median": 34256.16,
-      "min": 6745.69,
-      "max": 38404.22
+      "median": 259.51,
+      "min": 244.39,
+      "max": 263.4
     },
     "memory.commit.ops_per_s": {
-      "median": 6516.4,
-      "min": 1216.45,
-      "max": 7669.51
+      "median": 15346.26,
+      "min": 15285.39,
+      "max": 16176.24
     },
     "memory.create.p50_us": {
-      "median": 76.47,
-      "min": 75.2,
-      "max": 80.1
+      "median": 39.21,
+      "min": 37.68,
+      "max": 48.38
     },
     "memory.create.p95_us": {
-      "median": 145.06,
-      "min": 127.51,
-      "max": 1139.95
+      "median": 99.92,
+      "min": 95.57,
+      "max": 129.41
     },
     "memory.execute.prior32.p50_us": {
-      "median": 651.01,
-      "min": 624.12,
-      "max": 2002.43
+      "median": 299.29,
+      "min": 293.22,
+      "max": 300.0
     },
     "memory.execute.prior32.p95_us": {
-      "median": 669.02,
-      "min": 629.21,
-      "max": 2074.53
+      "median": 327.87,
+      "min": 311.73,
+      "max": 332.84
     },
     "memory.execute.prior8.p50_us": {
-      "median": 228.09,
-      "min": 203.42,
-      "max": 393.92
+      "median": 97.37,
+      "min": 95.17,
+      "max": 100.06
     },
     "memory.execute.prior8.p95_us": {
-      "median": 513.28,
-      "min": 246.42,
-      "max": 4446.52
+      "median": 123.6,
+      "min": 103.58,
+      "max": 393.73
     },
     "memory.ids.n10.p50_us": {
-      "median": 0.99,
-      "min": 0.96,
-      "max": 1.01
+      "median": 0.64,
+      "min": 0.59,
+      "max": 0.76
     },
     "memory.ids.n10.p95_us": {
-      "median": 3.83,
-      "min": 3.45,
-      "max": 3.99
+      "median": 3.19,
+      "min": 2.9,
+      "max": 3.76
     },
     "memory.query_one_row.n10.p50_us": {
-      "median": 1.93,
-      "min": 1.79,
-      "max": 1.94
+      "median": 1.22,
+      "min": 1.18,
+      "max": 1.23
     },
     "memory.query_one_row.n10.p95_us": {
-      "median": 8.14,
-      "min": 7.41,
-      "max": 8.31
+      "median": 7.46,
+      "min": 7.35,
+      "max": 7.67
     },
     "postgres.commit.ops_per_s": {
-      "median": 65.83,
-      "min": 41.22,
-      "max": 84.89
+      "median": 465.12,
+      "min": 454.53,
+      "max": 503.43
     },
     "postgres.create.p50_us": {
-      "median": 17462.59,
-      "min": 14205.62,
-      "max": 29106.04
+      "median": 1287.12,
+      "min": 1256.67,
+      "max": 1568.37
     },
     "postgres.create.p95_us": {
-      "median": 31020.85,
-      "min": 16444.17,
-      "max": 75586.16
+      "median": 2652.1,
+      "min": 2543.75,
+      "max": 2913.43
     },
     "postgres.execute.prior32.p50_us": {
-      "median": 11190.3,
-      "min": 8624.87,
-      "max": 13445.09
+      "median": 1877.45,
+      "min": 1872.26,
+      "max": 1878.0
     },
     "postgres.execute.prior32.p95_us": {
-      "median": 14508.04,
-      "min": 9528.12,
-      "max": 17107.91
+      "median": 1891.44,
+      "min": 1881.9,
+      "max": 1892.63
     },
     "postgres.execute.prior8.p50_us": {
-      "median": 12629.07,
-      "min": 7272.47,
-      "max": 17334.46
+      "median": 1724.74,
+      "min": 1640.94,
+      "max": 2074.3
     },
     "postgres.execute.prior8.p95_us": {
-      "median": 29289.25,
-      "min": 22239.27,
-      "max": 38531.3
+      "median": 1942.56,
+      "min": 1767.3,
+      "max": 2180.98
     },
     "postgres.ids.n10.p50_us": {
-      "median": 412.92,
-      "min": 380.64,
-      "max": 446.57
+      "median": 133.9,
+      "min": 133.17,
+      "max": 135.72
     },
     "postgres.ids.n10.p95_us": {
-      "median": 836.58,
-      "min": 685.18,
-      "max": 940.59
+      "median": 252.25,
+      "min": 248.34,
+      "max": 259.97
     },
     "postgres.query_one_row.n10.p50_us": {
-      "median": 819.28,
-      "min": 747.44,
-      "max": 891.52
+      "median": 249.06,
+      "min": 241.32,
+      "max": 296.67
     },
     "postgres.query_one_row.n10.p95_us": {
-      "median": 1577.87,
-      "min": 894.17,
-      "max": 2292.75
+      "median": 404.23,
+      "min": 370.34,
+      "max": 753.23
     },
     "sqlite.commit.ops_per_s": {
-      "median": 24.65,
-      "min": 8.76,
-      "max": 25.31
+      "median": 1311.4,
+      "min": 1303.56,
+      "max": 1347.11
     },
     "sqlite.create.p50_us": {
-      "median": 37122.65,
-      "min": 33582.61,
-      "max": 45707.36
+      "median": 582.36,
+      "min": 540.79,
+      "max": 608.54
     },
     "sqlite.create.p95_us": {
-      "median": 68731.33,
-      "min": 53724.21,
-      "max": 83280.72
+      "median": 745.12,
+      "min": 604.73,
+      "max": 759.38
     },
     "sqlite.execute.prior32.p50_us": {
-      "median": 45627.53,
-      "min": 43497.56,
-      "max": 91932.72
+      "median": 1025.75,
+      "min": 974.55,
+      "max": 1074.65
     },
     "sqlite.execute.prior32.p95_us": {
-      "median": 53038.56,
-      "min": 44801.29,
-      "max": 121817.72
+      "median": 1033.03,
+      "min": 975.46,
+      "max": 1094.16
     },
     "sqlite.execute.prior8.p50_us": {
-      "median": 38315.45,
-      "min": 34703.75,
-      "max": 42968.0
+      "median": 792.19,
+      "min": 783.68,
+      "max": 804.95
     },
     "sqlite.execute.prior8.p95_us": {
-      "median": 54493.86,
-      "min": 43407.83,
-      "max": 146332.82
+      "median": 940.39,
+      "min": 902.95,
+      "max": 1271.09
     },
     "sqlite.ids.n10.p50_us": {
-      "median": 20.92,
-      "min": 16.97,
-      "max": 20.94
+      "median": 5.84,
+      "min": 5.81,
+      "max": 5.89
     },
     "sqlite.ids.n10.p95_us": {
-      "median": 99.4,
-      "min": 96.94,
-      "max": 383.7
+      "median": 18.45,
+      "min": 17.03,
+      "max": 20.89
     }
   }
 }

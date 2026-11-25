@@ -96,7 +96,9 @@ fn create(id: &str) -> CreateRequest {
 }
 
 /// Copy every file under `from` into `into` that `into` does not hold, as a merge of branches
-/// that added different files does; a file both hold must be identical.
+/// that added different files does; a file both hold must be identical. The writer lock and the
+/// publication token each checkout's writers leave in `.cache/` (Eventlog 0.11.0) are local to
+/// that checkout, never committed, so a merge does not carry them.
 fn merge_into(from: &Path, into: &Path) {
     for entry in fs::read_dir(from).expect("readable") {
         let path = entry.expect("entry").path();
@@ -104,7 +106,9 @@ fn merge_into(from: &Path, into: &Path) {
         if path.is_dir() {
             fs::create_dir_all(&target).expect("directory");
             merge_into(&path, &target);
-        } else if path.file_name().is_some_and(|name| name == ".lock") {
+        } else if path.file_name().is_some_and(|name| name == ".lock")
+            || path.ends_with(".cache/publication")
+        {
         } else if let Ok(existing) = fs::read(&target) {
             assert_eq!(
                 existing,
@@ -382,6 +386,82 @@ fn a_merge_decision_joins_a_forked_subject_and_it_serves_again_after_reopening()
             .await
             .expect("a complete snapshot of the joined store");
         assert_eq!(snapshot.histories.len(), 2);
+    });
+}
+
+/// Since Eventlog 0.11.0 a tree handle no longer lists every group file on each write, and
+/// refuses a write on history a checkout, pull or merge put in the directory that it has not
+/// seen. A recorded store handle held across a merge still never commits over the merged
+/// decision: a command on the revision before the merge is refused as a revision conflict that
+/// names the merged revision, and the command on that revision commits on the same handle.
+#[test]
+fn a_handle_held_across_a_merge_refuses_a_stale_command_and_takes_one_on_the_merged_revision() {
+    use entity_store::asynchronous::{AsyncStateReader, AsyncStoreError, WriteFailure};
+    block_on(async {
+        let (base, authority) = store_with_x().await;
+        let ours = tempfile::tempdir().expect("directory");
+        let theirs = tempfile::tempdir().expect("directory");
+        merge_into(base.path(), ours.path());
+        merge_into(base.path(), theirs.path());
+        let x = Subject::new("ticket", "x").expect("subject");
+        let registry = registry();
+
+        let opened: Arc<dyn EventlogBackend> = backend(ours.path()).await;
+        let held = EventlogRecordedStore::open(opened, authority.clone(), LIMITS)
+            .await
+            .expect("ordinary open");
+        touch_in(theirs.path(), &authority, "x", "theirs-touch").await;
+        merge_into(theirs.path(), ours.path());
+
+        let operation = held.operation(context("stale-touch"));
+        let refused = Executor::new(&registry, &operation)
+            .batch(
+                BatchKey::Named("stale-touch".into()),
+                vec![BatchAction::Execute(touch("x", "stale-touch"))],
+            )
+            .await;
+        assert!(
+            matches!(
+                refused,
+                Err(entity_executor::ExecutionError::Write(
+                    WriteFailure::NotCommitted(AsyncStoreError::RevisionConflict {
+                        found: Some(2),
+                        ..
+                    })
+                ))
+            ),
+            "a handle held across the merge wrote over the merged decision: {refused:?}"
+        );
+        drop(operation);
+
+        let operation = held.operation(context("touch-on-merged"));
+        assert_eq!(
+            operation
+                .load(&x)
+                .await
+                .expect("x reads")
+                .map(|state| state.revision),
+            Some(2),
+            "the held handle does not serve the merged decision"
+        );
+        let mut after = touch("x", "touch-on-merged");
+        after.expected_revision = 2;
+        let outcome = Executor::new(&registry, &operation)
+            .batch(
+                BatchKey::Named("touch-on-merged".into()),
+                vec![BatchAction::Execute(after)],
+            )
+            .await
+            .expect("the command on the merged revision commits on the held handle");
+        assert!(matches!(
+            outcome,
+            AppendOutcome::Committed {
+                replayed: false,
+                ..
+            }
+        ));
+        let state: Result<_, AsyncStoreError> = operation.load(&x).await;
+        assert_eq!(state.expect("x reads").map(|state| state.revision), Some(3));
     });
 }
 

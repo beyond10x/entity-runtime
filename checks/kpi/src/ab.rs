@@ -326,30 +326,30 @@ mod tests {
 
     const HARNESS: &str = r#"[dependencies]
 entity-eventlog = { path = "../../crates/entity-eventlog", features = ["file"] }
-eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.10.0" }
-eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.10.0" }
+eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.11.0" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.11.0" }
 serde = "1"
 "#;
 
     #[test]
     fn the_base_side_harness_builds_against_the_eventlog_tag_of_the_base_crates() {
-        let base_adapter = r#"eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.9.4" }
-eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.9.4", optional = true }
+        let base_adapter = r#"eventlog-core = { git = "https://github.com/beyond10x/eventlog", tag = "0.10.0" }
+eventlog-file = { git = "https://github.com/beyond10x/eventlog", tag = "0.10.0", optional = true }
 "#;
         let tag = eventlog_tag(base_adapter).expect("the base adapter pins an Eventlog tag");
-        assert_eq!(tag, "0.9.4");
+        assert_eq!(tag, "0.10.0");
         let rewritten = retag_eventlog(HARNESS, &tag);
         assert_eq!(
-            rewritten.matches(r#"tag = "0.9.4""#).count(),
+            rewritten.matches(r#"tag = "0.10.0""#).count(),
             2,
             "{rewritten}"
         );
-        assert!(!rewritten.contains("0.10.0"), "{rewritten}");
+        assert!(!rewritten.contains("0.11.0"), "{rewritten}");
         assert!(rewritten.contains(r#"serde = "1""#), "{rewritten}");
     }
 
     #[test]
     fn a_harness_on_the_same_tag_is_unchanged() {
-        assert_eq!(retag_eventlog(HARNESS, "0.10.0"), HARNESS);
+        assert_eq!(retag_eventlog(HARNESS, "0.11.0"), HARNESS);
     }
 }

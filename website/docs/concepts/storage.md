@@ -83,7 +83,7 @@ power loss. A store written before 0.15 must be migrated first, and a v2 store c
 the result, the response and the events — on an
 [Eventlog](https://beyond10x.github.io/ecosystem/eventlog/)
 ([GitHub](https://github.com/beyond10x/eventlog)) provider. It and `entity-sqlite` need Rust 1.91;
-the rest of the workspace builds on 1.85. The workspace pins Eventlog at its 0.10.0 tag. Every provider is an
+the rest of the workspace builds on 1.85. The workspace pins Eventlog at its 0.11.0 tag. Every provider is an
 explicit Cargo feature:
 
 | Feature | Provider | Boundary |
@@ -119,6 +119,18 @@ explicit Cargo feature:
   each long text once under its SHA-256. An `eventlog-tree/1` store opens and records as before, and
   `eventlog_tree::migrate` moves one explicitly. A build older than 0.25.0 recognizes the new
   format by its name and refuses it.
+- **Tree groups keep their fingerprint.** A new tree store declares the group format
+  `eventlog-tree/group/2`: each recorded group keeps the fingerprint of the request it answered,
+  so an exact retry gets its receipt after a reopen even when one of its events was redacted. A
+  store created before 0.35.0 keeps writing `eventlog-tree/group/1`. Once every process that reads
+  it runs 0.35.0 or later, `eventlog_tree::migrate(root, MigrationMode::Apply)` moves it, once.
+  Entity Runtime 0.34.0 and older refuse a store in the new group format.
+- **A handle held across a merge.** A recorded store whose handle stayed open while a
+  `git checkout`, `pull` or `merge` changed the directory never commits over the merged
+  decisions: a command on the revision before the merge is refused as `RevisionConflict` naming
+  the merged revision, and the command on that revision commits. Code that appends to an
+  `eventlog_tree::TreeEventStore` directly is refused with `EventLogError::Backend` on such
+  history until it reopens the store or calls `TreeEventStore::reload`.
 - **Tree reopens from its kept state.** Eventlog keeps the state a tree replay folded under
   `.cache/state/`, which is never committed. `ErRecordedProjector` reports a fingerprint, so a
   reopen of an unchanged tree by the same program loads that state instead of replaying every
@@ -127,7 +139,8 @@ explicit Cargo feature:
   with the migration role, and `entity_eventlog::projection_specs()` as its projections, before an
   application-role open; provisioning does this itself. A hosted open refuses a schema an earlier
   Eventlog release migrated, and a history restored from a logical backup, until `migrate` has run
-  on it. The application role needs `SELECT, INSERT, UPDATE, DELETE` on the other tables
+  on it. To upgrade to 0.35.0 (Eventlog 0.11.0), stop every process of the owner on 0.34.0 or
+  older, run `migrate`, then start 0.35.0; 0.34.0 and older refuse the schema afterwards. The application role needs `SELECT, INSERT, UPDATE, DELETE` on the other tables
   (`<prefix>_group_batches` among them) but only `SELECT` on `<prefix>_schema_version`,
   `<prefix>_projection_registry` and `<prefix>_settlement_floor`: a hosted open refuses a role
   that can change those three. A refused guarded write binds none of its blobs, as on the other

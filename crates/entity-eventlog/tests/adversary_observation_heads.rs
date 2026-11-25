@@ -83,7 +83,9 @@ fn merge_into(from: &Path, into: &Path) {
         if path.is_dir() {
             fs::create_dir_all(&target).expect("directory");
             merge_into(&path, &target);
-        } else if path.file_name().is_some_and(|name| name == ".lock") {
+        } else if path.file_name().is_some_and(|name| name == ".lock")
+            || path.ends_with(".cache/publication")
+        {
         } else if let Ok(existing) = fs::read(&target) {
             assert_eq!(existing, fs::read(&path).expect("readable"));
         } else {
