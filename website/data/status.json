@@ -249,6 +249,13 @@
     },
     {
       "area": "Recorded execution",
+      "detail": "A new tree store keeps each recorded group's request fingerprint (eventlog-tree/group/2); eventlog_tree::migrate moves an older store, and an exact retry recorded before it is still replayed (0.35.0).",
+      "href": "/docs/concepts/storage",
+      "label": "Tree group fingerprints and their migration",
+      "status": "shipped"
+    },
+    {
+      "area": "Recorded execution",
       "detail": "CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract.",
       "href": "/docs/concepts/storage",
       "label": "Provider-tracked reads on SQLite",

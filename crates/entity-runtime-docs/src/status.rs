@@ -319,6 +319,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Recorded execution",
+        "Tree group fingerprints and their migration",
+        "A new tree store keeps each recorded group's request fingerprint (eventlog-tree/group/2); eventlog_tree::migrate moves an older store, and an exact retry recorded before it is still replayed (0.35.0).",
+        "crates/entity-eventlog/tests/tree_text_blobs.rs::a_tree_store_written_before_eventlog_0_11_is_fingerprinted_by_migrate_and_keeps_its_retries",
+        "/docs/concepts/storage",
+    ),
+    shipped(
+        "Recorded execution",
         "Provider-tracked reads on SQLite",
         "CapturePolicy::ProviderTracked reuses a verified observation SQLite proves unchanged (0.26.0); held to its own executable contract.",
         "Taskfile.yml::provider-ess-check",

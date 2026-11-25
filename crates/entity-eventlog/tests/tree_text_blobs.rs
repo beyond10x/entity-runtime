@@ -84,13 +84,20 @@ async fn backend(root: &Path) -> Arc<TreeEventStore> {
 }
 
 async fn record(root: &Path, authority: &Authority, id: &str) {
+    let outcome = record_outcome(root, authority, id).await;
+    assert!(matches!(outcome, AppendOutcome::Committed { .. }));
+}
+
+/// Create ticket `id` through a fresh handle, as a process that reopens the store does, and
+/// return what the store answered.
+async fn record_outcome(root: &Path, authority: &Authority, id: &str) -> AppendOutcome {
     let backend: Arc<dyn EventlogBackend> = backend(root).await;
     let store = EventlogRecordedStore::open(backend, authority.clone(), LIMITS)
         .await
         .expect("ordinary open");
     let registry = registry();
     let operation = store.operation(context(id));
-    let outcome = Executor::new(&registry, &operation)
+    Executor::new(&registry, &operation)
         .batch(
             BatchKey::Named(format!("create-{id}")),
             vec![BatchAction::Create(CreateRequest {
@@ -107,8 +114,35 @@ async fn record(root: &Path, authority: &Authority, id: &str) {
             })],
         )
         .await
-        .expect("a batch that creates one ticket");
-    assert!(matches!(outcome, AppendOutcome::Committed { .. }));
+        .expect("a batch that creates one ticket")
+}
+
+/// The group file format `store.json` declares, `None` when it declares none (Eventlog 0.10.0
+/// and earlier wrote no `groups` key).
+fn declared_group_format(root: &Path) -> Option<String> {
+    let text = fs::read_to_string(root.join("store.json")).expect("store.json readable");
+    let value: serde_json::Value = serde_json::from_str(&text).expect("store.json is JSON");
+    value
+        .get("groups")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+}
+
+async fn provisioned(root: &Path, tenant: &str) -> Authority {
+    let tenant = TenantId::new(tenant).expect("tenant");
+    let backend = backend(root).await;
+    let stream_identity = backend.stream_identity(&tenant).await.expect("identity");
+    let authority = Authority {
+        logical_scope: format!("scope-{}", tenant.as_str()),
+        tenant: tenant.as_str().to_owned(),
+        stream_identity,
+    };
+    let erased: Arc<dyn EventlogBackend> = backend;
+    EventlogBindingProvisioner::new(erased, LIMITS)
+        .provision_binding(authority.clone(), context("provision"))
+        .await
+        .expect("binding provisioned");
+    authority
 }
 
 async fn snapshot(root: &Path, authority: &Authority) -> String {
@@ -187,6 +221,83 @@ fn a_first_layout_store_reads_the_same_after_its_texts_are_kept_once_and_keeps_r
             "the migrated store reads its history differently"
         );
 
+        record(root, &authority, "second").await;
+        let after = snapshot(root, &authority).await;
+        assert!(after.contains(&long_title("second")) && after.contains(&long_title("first")));
+    });
+}
+
+#[test]
+fn a_new_tree_store_keeps_each_recorded_group_with_its_fingerprint() {
+    block_on(async {
+        let directory = tempfile::tempdir().expect("directory");
+        let root = directory.path();
+        let authority = provisioned(root, "tree-groups-new").await;
+        assert_eq!(
+            declared_group_format(root).as_deref(),
+            Some("eventlog-tree/group/2"),
+            "a store Entity Runtime provisioned does not declare the fingerprinted group format"
+        );
+        let first = record_outcome(root, &authority, "first").await;
+        assert!(
+            matches!(
+                first,
+                AppendOutcome::Committed {
+                    replayed: false,
+                    ..
+                }
+            ),
+            "{first:?}"
+        );
+        let retry = record_outcome(root, &authority, "first").await;
+        assert!(
+            matches!(retry, AppendOutcome::Committed { replayed: true, .. }),
+            "the exact retry after a reopen was not answered from the recorded group: {retry:?}"
+        );
+    });
+}
+
+#[test]
+fn a_tree_store_written_before_eventlog_0_11_is_fingerprinted_by_migrate_and_keeps_its_retries() {
+    block_on(async {
+        let directory = tempfile::tempdir().expect("directory");
+        let root = directory.path();
+        fs::write(
+            root.join("store.json"),
+            br#"{"format":"eventlog-tree/2","identity":"store-1"}"#,
+        )
+        .expect("a store.json as Eventlog 0.10.0 wrote it");
+        let authority = provisioned(root, "tree-groups-old").await;
+        record(root, &authority, "first").await;
+        assert_eq!(
+            declared_group_format(root),
+            None,
+            "a store written before Eventlog 0.11.0 changed its group format by itself"
+        );
+        let before = snapshot(root, &authority).await;
+
+        let report = migrate(root, MigrationMode::Apply).expect("the migration");
+        assert!(!report.group_fingerprints_before, "{report:?}");
+        assert!(
+            report.groups_fingerprinted >= 2,
+            "the binding and the record group were not both fingerprinted: {report:?}"
+        );
+        assert_eq!(report.groups_without_fingerprint, 0, "{report:?}");
+        assert_eq!(
+            declared_group_format(root).as_deref(),
+            Some("eventlog-tree/group/2")
+        );
+        assert_eq!(
+            snapshot(root, &authority).await,
+            before,
+            "the migrated store reads its history differently"
+        );
+
+        let retry = record_outcome(root, &authority, "first").await;
+        assert!(
+            matches!(retry, AppendOutcome::Committed { replayed: true, .. }),
+            "the exact retry of a group recorded before the migration was not replayed: {retry:?}"
+        );
         record(root, &authority, "second").await;
         let after = snapshot(root, &authority).await;
         assert!(after.contains(&long_title("second")) && after.contains(&long_title("first")));

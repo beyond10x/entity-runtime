@@ -231,7 +231,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "entity-core"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -239,7 +239,7 @@ dependencies = [
 
 [[package]]
 name = "entity-eventlog"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "entity-core",
  "entity-executor",
@@ -256,7 +256,7 @@ dependencies = [
 
 [[package]]
 name = "entity-executor"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -265,7 +265,7 @@ dependencies = [
 
 [[package]]
 name = "entity-query"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -275,7 +275,7 @@ dependencies = [
 
 [[package]]
 name = "entity-shell"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "entity-core",
  "entity-store",
@@ -284,7 +284,7 @@ dependencies = [
 
 [[package]]
 name = "entity-store"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "entity-core",
  "fs2",
@@ -429,7 +429,7 @@ dependencies = [
 [[package]]
 name = "eventlog-capture-types"
 version = "0.0.0"
-source = "git+https://github.com/beyond10x/eventlog?tag=0.10.0#c0f961dc65f519b643ccdadb12621597aaca4754"
+source = "git+https://github.com/beyond10x/eventlog?tag=0.11.0#4ea0fc3bdf02a322ea85f5b7cf62d643983621f5"
 dependencies = [
  "serde",
  "serde_json",
@@ -437,8 +437,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-core"
-version = "0.10.0"
-source = "git+https://github.com/beyond10x/eventlog?tag=0.10.0#c0f961dc65f519b643ccdadb12621597aaca4754"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/eventlog?tag=0.11.0#4ea0fc3bdf02a322ea85f5b7cf62d643983621f5"
 dependencies = [
  "eventlog-capture-types",
  "serde",
@@ -451,8 +451,8 @@ dependencies = [
 
 [[package]]
 name = "eventlog-sqlite"
-version = "0.10.0"
-source = "git+https://github.com/beyond10x/eventlog?tag=0.10.0#c0f961dc65f519b643ccdadb12621597aaca4754"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/eventlog?tag=0.11.0#4ea0fc3bdf02a322ea85f5b7cf62d643983621f5"
 dependencies = [
  "eventlog-capture-types",
  "eventlog-core",

@@ -96,7 +96,9 @@ fn create(id: &str) -> CreateRequest {
 }
 
 /// Copy every file under `from` into `into` that `into` does not hold, as a merge of branches
-/// that added different files does; a file both hold must be identical.
+/// that added different files does; a file both hold must be identical. The writer lock and the
+/// publication token each checkout's writers leave in `.cache/` (Eventlog 0.11.0) are local to
+/// that checkout, never committed, so a merge does not carry them.
 fn merge_into(from: &Path, into: &Path) {
     for entry in fs::read_dir(from).expect("readable") {
         let path = entry.expect("entry").path();
@@ -104,7 +106,9 @@ fn merge_into(from: &Path, into: &Path) {
         if path.is_dir() {
             fs::create_dir_all(&target).expect("directory");
             merge_into(&path, &target);
-        } else if path.file_name().is_some_and(|name| name == ".lock") {
+        } else if path.file_name().is_some_and(|name| name == ".lock")
+            || path.ends_with(".cache/publication")
+        {
         } else if let Ok(existing) = fs::read(&target) {
             assert_eq!(
                 existing,
@@ -382,6 +386,81 @@ fn a_merge_decision_joins_a_forked_subject_and_it_serves_again_after_reopening()
             .await
             .expect("a complete snapshot of the joined store");
         assert_eq!(snapshot.histories.len(), 2);
+    });
+}
+
+/// Since Eventlog 0.11.0 a tree handle does not list group files on every write: history a
+/// checkout, pull or merge put in the directory while a handle was open is not served by that
+/// handle. A write on such history is refused, naming the reopen, and never committed over a
+/// revision the handle has not seen; the same command commits once the store is reopened.
+#[test]
+fn a_write_on_history_merged_in_while_a_handle_was_open_is_refused_until_the_store_reopens() {
+    use entity_store::asynchronous::{AsyncStateReader, AsyncStoreError};
+    block_on(async {
+        let (base, authority) = store_with_x().await;
+        let ours = tempfile::tempdir().expect("directory");
+        let theirs = tempfile::tempdir().expect("directory");
+        merge_into(base.path(), ours.path());
+        merge_into(base.path(), theirs.path());
+        let x = Subject::new("ticket", "x").expect("subject");
+        let registry = registry();
+
+        let opened: Arc<dyn EventlogBackend> = backend(ours.path()).await;
+        let held = EventlogRecordedStore::open(opened, authority.clone(), LIMITS)
+            .await
+            .expect("ordinary open");
+        touch_in(theirs.path(), &authority, "x", "theirs-touch").await;
+        merge_into(theirs.path(), ours.path());
+
+        let operation = held.operation(context("stale-touch"));
+        let refused = Executor::new(&registry, &operation)
+            .batch(
+                BatchKey::Named("stale-touch".into()),
+                vec![BatchAction::Execute(touch("x", "stale-touch"))],
+            )
+            .await;
+        assert!(
+            matches!(
+                refused,
+                Err(ref error) if format!("{error:?}").contains("changed outside this handle")
+            ),
+            "a handle opened before the merge wrote over history it has not seen: {refused:?}"
+        );
+        drop(operation);
+        drop(held);
+
+        let reopened_backend: Arc<dyn EventlogBackend> = backend(ours.path()).await;
+        let reopened = EventlogRecordedStore::open(reopened_backend, authority.clone(), LIMITS)
+            .await
+            .expect("the merged store reopens");
+        let operation = reopened.operation(context("touch-after-reopen"));
+        assert_eq!(
+            operation
+                .load(&x)
+                .await
+                .expect("x reads")
+                .map(|state| state.revision),
+            Some(2),
+            "the reopened store does not serve the merged decision"
+        );
+        let mut after = touch("x", "touch-after-reopen");
+        after.expected_revision = 2;
+        let outcome = Executor::new(&registry, &operation)
+            .batch(
+                BatchKey::Named("touch-after-reopen".into()),
+                vec![BatchAction::Execute(after)],
+            )
+            .await
+            .expect("the write commits after the reopen");
+        assert!(matches!(
+            outcome,
+            AppendOutcome::Committed {
+                replayed: false,
+                ..
+            }
+        ));
+        let state: Result<_, AsyncStoreError> = operation.load(&x).await;
+        assert_eq!(state.expect("x reads").map(|state| state.revision), Some(3));
     });
 }
 
