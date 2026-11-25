@@ -544,6 +544,9 @@ rules still apply; historical brand exemptions do not authorize new public assoc
 * Ticket references go in a `Refs:` tagline at the end of the body, never in the title.
 * Write messages through a file or a quoted heredoc (`git commit -F -` with `<<'MSG'`), never
   `-m "…"` with backticks in the text.
+* **A pull request branch merges current `origin/main` before it is marked ready**, because the
+  ruleset of `main` requires an up-to-date branch and refuses the merge of one that is behind.
+  Merge, never rebase or force-push: `b10x-gates bot --repo . -- merge --no-ff -F <file> origin/main`.
 
 <!-- b10x-docs-operations:start -->
 ## Public documentation operations
