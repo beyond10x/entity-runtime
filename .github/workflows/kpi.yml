@@ -4,9 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
-  group: kpi-${{ github.ref }}
+  group: kpi-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -21,6 +22,7 @@ jobs:
   # steps below narrow further: no Markdown file moves a counter.
   classify:
     name: Changed paths
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -37,7 +39,7 @@ jobs:
   counters:
     name: KPI counters
     needs: classify
-    if: ${{ !cancelled() && needs.classify.outputs.code != 'false' }}
+    if: ${{ !cancelled() && github.event_name != 'workflow_dispatch' && needs.classify.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -179,3 +181,52 @@ jobs:
         run: |
           cargo +1.91.0 build --release --locked --manifest-path checks/kpi/Cargo.toml
           target/release/er-kpi ab --base "$BASE" --head HEAD --rounds 3
+
+  record:
+    name: KPI record
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: entity
+          POSTGRES_PASSWORD: entity
+          POSTGRES_DB: entity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U entity"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ENTITY_POSTGRES_URL: postgres://entity:entity@127.0.0.1:5432/entity
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@8d8cc9a8e0d47b64af669de71110e76860d6afbd # 1.91.0
+        with:
+          toolchain: 1.91.0
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: ". -> target"
+          shared-key: kpi
+          save-if: false
+
+      - name: Record the baseline on this runner
+        run: |
+          cargo +1.91.0 build --release --locked -p entity-cli --features eventlog-providers
+          cargo +1.91.0 build --release --locked --manifest-path checks/kpi/Cargo.toml
+          target/release/er-kpi record --entity target/release/entity
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kpi-baseline-${{ github.sha }}
+          path: checks/kpi/baseline.json
+          if-no-files-found: error
