@@ -36,12 +36,13 @@ without `eventlog-providers` has nothing to do.
   Runtime 0.34.0 and older refuse such a store.** Upgrade every process that reads a tree store
   before one of this release writes it. A tree store an earlier release created keeps writing
   `eventlog-tree/group/1` and reads unchanged.
-- Tree: a handle no longer lists every group file on each write. History a `git checkout`,
-  `pull` or `merge` put in the directory while a handle was open is served only after the store
-  is reopened, and a write on a subject or retry key that history touched is refused with
-  `AsyncStoreError::Backend` ("the tree store changed outside this handle … reopen the store …").
-  Nothing of that write is committed. Reopen the store (start a new facade or owner) after a
-  checkout, pull or merge, then retry.
+- Tree: an `eventlog_tree::TreeEventStore` handle no longer lists every group file on each write.
+  Code that appends to one directly gets `EventLogError::Backend` ("the tree store changed outside
+  this handle …") for a write on history a `git checkout`, `pull` or `merge` added while the
+  handle was open; reopen the store or call `TreeEventStore::reload`, then retry. An Entity
+  Runtime recorded store held across a merge still serves the merged decisions: a command on the
+  revision before the merge is refused as `RevisionConflict` naming the merged revision, and the
+  command on that revision commits on the same handle.
 
 ### Added
 

@@ -125,10 +125,12 @@ explicit Cargo feature:
   store created before 0.35.0 keeps writing `eventlog-tree/group/1`. Once every process that reads
   it runs 0.35.0 or later, `eventlog_tree::migrate(root, MigrationMode::Apply)` moves it, once.
   Entity Runtime 0.34.0 and older refuse a store in the new group format.
-- **Reopen a tree after a checkout, pull or merge.** A handle serves only the history it saw or
-  wrote. A write on a subject that a `git checkout`, `pull` or `merge` changed while the handle
-  was open is refused with `AsyncStoreError::Backend` naming the reopen, and nothing of it is
-  committed. Reopen the store, then retry.
+- **A handle held across a merge.** A recorded store whose handle stayed open while a
+  `git checkout`, `pull` or `merge` changed the directory never commits over the merged
+  decisions: a command on the revision before the merge is refused as `RevisionConflict` naming
+  the merged revision, and the command on that revision commits. Code that appends to an
+  `eventlog_tree::TreeEventStore` directly is refused with `EventLogError::Backend` on such
+  history until it reopens the store or calls `TreeEventStore::reload`.
 - **Tree reopens from its kept state.** Eventlog keeps the state a tree replay folded under
   `.cache/state/`, which is never committed. `ErRecordedProjector` reports a fingerprint, so a
   reopen of an unchanged tree by the same program loads that state instead of replaying every

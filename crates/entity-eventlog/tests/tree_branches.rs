@@ -389,13 +389,14 @@ fn a_merge_decision_joins_a_forked_subject_and_it_serves_again_after_reopening()
     });
 }
 
-/// Since Eventlog 0.11.0 a tree handle does not list group files on every write: history a
-/// checkout, pull or merge put in the directory while a handle was open is not served by that
-/// handle. A write on such history is refused, naming the reopen, and never committed over a
-/// revision the handle has not seen; the same command commits once the store is reopened.
+/// Since Eventlog 0.11.0 a tree handle no longer lists every group file on each write, and
+/// refuses a write on history a checkout, pull or merge put in the directory that it has not
+/// seen. A recorded store handle held across a merge still never commits over the merged
+/// decision: a command on the revision before the merge is refused as a revision conflict that
+/// names the merged revision, and the command on that revision commits on the same handle.
 #[test]
-fn a_write_on_history_merged_in_while_a_handle_was_open_is_refused_until_the_store_reopens() {
-    use entity_store::asynchronous::{AsyncStateReader, AsyncStoreError};
+fn a_handle_held_across_a_merge_refuses_a_stale_command_and_takes_one_on_the_merged_revision() {
+    use entity_store::asynchronous::{AsyncStateReader, AsyncStoreError, WriteFailure};
     block_on(async {
         let (base, authority) = store_with_x().await;
         let ours = tempfile::tempdir().expect("directory");
@@ -422,18 +423,18 @@ fn a_write_on_history_merged_in_while_a_handle_was_open_is_refused_until_the_sto
         assert!(
             matches!(
                 refused,
-                Err(ref error) if format!("{error:?}").contains("changed outside this handle")
+                Err(entity_executor::ExecutionError::Write(
+                    WriteFailure::NotCommitted(AsyncStoreError::RevisionConflict {
+                        found: Some(2),
+                        ..
+                    })
+                ))
             ),
-            "a handle opened before the merge wrote over history it has not seen: {refused:?}"
+            "a handle held across the merge wrote over the merged decision: {refused:?}"
         );
         drop(operation);
-        drop(held);
 
-        let reopened_backend: Arc<dyn EventlogBackend> = backend(ours.path()).await;
-        let reopened = EventlogRecordedStore::open(reopened_backend, authority.clone(), LIMITS)
-            .await
-            .expect("the merged store reopens");
-        let operation = reopened.operation(context("touch-after-reopen"));
+        let operation = held.operation(context("touch-on-merged"));
         assert_eq!(
             operation
                 .load(&x)
@@ -441,17 +442,17 @@ fn a_write_on_history_merged_in_while_a_handle_was_open_is_refused_until_the_sto
                 .expect("x reads")
                 .map(|state| state.revision),
             Some(2),
-            "the reopened store does not serve the merged decision"
+            "the held handle does not serve the merged decision"
         );
-        let mut after = touch("x", "touch-after-reopen");
+        let mut after = touch("x", "touch-on-merged");
         after.expected_revision = 2;
         let outcome = Executor::new(&registry, &operation)
             .batch(
-                BatchKey::Named("touch-after-reopen".into()),
+                BatchKey::Named("touch-on-merged".into()),
                 vec![BatchAction::Execute(after)],
             )
             .await
-            .expect("the write commits after the reopen");
+            .expect("the command on the merged revision commits on the held handle");
         assert!(matches!(
             outcome,
             AppendOutcome::Committed {
