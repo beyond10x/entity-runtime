@@ -9,7 +9,7 @@ custom_edit_url: null
 
 # Status
 
-45 capabilities are shipped and 5 are planned, as of 2026-10-07. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
+46 capabilities are shipped and 5 are planned, as of 2026-10-07. **Shipped** means released in a tagged version and held by a named test or gate step in the repository; `entity-runtime-docs` generates this page and `website/data/status.json` from one list and fails when a test it names is gone. **Planned** means a draft on the plan, not built. The [changelog](https://github.com/beyond10x/entity-runtime/blob/main/CHANGELOG.md) records every change a user sees, release by release.
 
 ## Kernel
 
@@ -41,6 +41,7 @@ custom_edit_url: null
 |---|---|---|
 | [Provider conformance suites](./concepts/storage.md) | ● shipped | One black-box suite holds Memory and File stores to the same write contract. |
 | [File Store v2 and its migration](./guides/migrate-a-file-store.md) | ● shipped | entity store migrate-file copies a pre-0.15 store out of place; --dry-run writes nothing. |
+| [File Store v3 and its migration](./guides/migrate-a-file-store.md) | ● shipped | A new File Store root is created as v3, which keeps each subject's state apart from its append-only history; entity store migrate-file-v3 copies a v2 store into v3 out of place, and --dry-run writes nothing (0.34.0). |
 | [SQLite provider](./concepts/storage.md) | ● shipped | State, history and events commit in one SQLite transaction. |
 | [PostgreSQL provider](./concepts/storage.md) | ● shipped | The same contract against a server the caller connects to; the gate runs it only when ENTITY_POSTGRES_URL is set. |
 | [Remote protocol](./concepts/storage.md) | ● shipped | A store behind a caller-provided transport; a server that did not answer is Unreachable, never Absent. |

@@ -206,9 +206,9 @@ tests from nextest's JUnit report either way. Nextest runs every test in a proce
 `static` in a test binary is not shared between its tests, and `CARGO_MANIFEST_PATH` is unset. Run
 the step as a gate, under one pool job (`slot task eventlog-runtime-check`): started bare, its
 `cargo` waits in the pool's queue inside the 120 s. `.cargo/config.toml` sets the `dev` profile,
-test builds included, for CI and every local build: no debug information (a cargo config file wins
-over the manifest, and this host's own config turns it on), dependencies at `opt-level` 2, and
-`entity-core`, `entity-store` and `entity-eventlog` at 1. Debug assertions and overflow checks stay
+test builds included, for CI and every local build: dependencies at `opt-level` 2, and
+`entity-core`, `entity-store` and `entity-eventlog` at 1. It sets no `debug` value: this host's
+`~/.cargo/config.toml` sets `debug = false` for every build on it. Debug assertions and overflow checks stay
 on. Unoptimised, `sha2` alone was half of `entity-eventlog`'s slowest unit test, and four of its
 tests ran 7 to 17 s (load 35-65); optimised they run 1 to 4 s.
 
@@ -530,6 +530,10 @@ rules still apply; historical brand exemptions do not authorize new public assoc
   `b10x-gates bot`, which supplies the `b10x-bot[bot]` identity from protected local credentials;
   this repository carries no credential, no token-minting machinery and no bot-authenticated git
   wrapper, and needs no Atlas checkout to commit.
+* **Every `aep` write sets `AEP_ACTOR`.** `aep` records `human:$USER` when `AEP_ACTOR` is unset, and
+  that puts a person's login into a public planning record. Run `AEP_ACTOR=agent:entity-runtime aep
+  plan artifact <verb>` for every write (`new`, `move`, `evidence`, `body`, `relate`, `scope`).
+  Prose names the role ("the owner"), never a person.
 * Conventional prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 * Title, blank line, then a body explaining what changed and why. No title-only commits.
 * Ticket references go in a `Refs:` tagline at the end of the body, never in the title.
